@@ -296,7 +296,8 @@ final class LyricsRepository {
                                 : "repo.detail.sync_applied_search"),
                         true,
                         isrc,
-                        spotifyTrackId
+                        spotifyTrackId,
+                        syncData.contributors
                 );
             }
             log.write("sync-data apply failed: falling back to LRCLIB line lyrics");
@@ -313,7 +314,8 @@ final class LyricsRepository {
                 detail,
                 false,
                 isrc,
-                spotifyTrackId
+                spotifyTrackId,
+                syncData == null ? Collections.emptyList() : syncData.contributors
         );
     }
 
@@ -472,18 +474,28 @@ final class LyricsRepository {
             }
             JSONObject syncData = data.optJSONObject("syncData");
             if (syncData != null) {
-                SyncDataResult result = new SyncDataResult(syncBodyWithDurationFallback(syncData, data), data.optString("provider", "lrclib"));
+                SyncDataResult result = new SyncDataResult(
+                        syncBodyWithDurationFallback(syncData, data),
+                        data.optString("provider", "lrclib"),
+                        parseSyncContributors(data.optJSONArray("contributors"))
+                );
                 log.write("sync-data response: provider=" + result.provider
                         + " / lines=" + result.lineCharCounts().size()
                         + " / lrclibId=" + result.lrclibId()
+                        + " / contributors=" + result.contributors.size()
                         + syncDurationSuffix(result.syncBody));
                 return result;
             }
             if (data.optJSONArray("lines") != null) {
-                SyncDataResult result = new SyncDataResult(syncBodyWithDurationFallback(data, data), data.optString("provider", "lrclib"));
+                SyncDataResult result = new SyncDataResult(
+                        syncBodyWithDurationFallback(data, data),
+                        data.optString("provider", "lrclib"),
+                        parseSyncContributors(data.optJSONArray("contributors"))
+                );
                 log.write("sync-data response: legacy body / provider=" + result.provider
                         + " / lines=" + result.lineCharCounts().size()
                         + " / lrclibId=" + result.lrclibId()
+                        + " / contributors=" + result.contributors.size()
                         + syncDurationSuffix(result.syncBody));
                 return result;
             }
@@ -1407,6 +1419,52 @@ final class LyricsRepository {
         return result;
     }
 
+    private static List<LyricsResult.SyncContributor> parseSyncContributors(JSONArray array) {
+        if (array == null || array.length() == 0) {
+            return Collections.emptyList();
+        }
+        List<LyricsResult.SyncContributor> result = new ArrayList<>();
+        List<String> seen = new ArrayList<>();
+        boolean anonymousAdded = false;
+        for (int index = 0; index < array.length(); index++) {
+            Object raw = array.opt(index);
+            String name;
+            String userHash = "";
+            boolean profileAvailable = false;
+            if (raw instanceof String) {
+                name = ((String) raw).trim();
+            } else if (raw instanceof JSONObject) {
+                JSONObject object = (JSONObject) raw;
+                name = firstNonEmpty(
+                        firstNonEmpty(object.optString("name", ""), object.optString("nickname", "")),
+                        object.optString("displayName", "")
+                );
+                userHash = object.optString("userHash", "").trim();
+                profileAvailable = object.has("profileAvailable")
+                        ? object.optBoolean("profileAvailable", false)
+                        : !userHash.isEmpty();
+            } else {
+                continue;
+            }
+            if (name == null || name.trim().isEmpty()) {
+                name = "Anonymous";
+            }
+            String key = userHash.isEmpty() ? "name:" + name.trim().toLowerCase(Locale.ROOT) : userHash;
+            boolean anonymous = "anonymous".equalsIgnoreCase(name.trim()) && userHash.isEmpty();
+            if (anonymous) {
+                if (anonymousAdded) {
+                    continue;
+                }
+                anonymousAdded = true;
+            } else if (seen.contains(key)) {
+                continue;
+            }
+            seen.add(key);
+            result.add(new LyricsResult.SyncContributor(name, userHash, profileAvailable));
+        }
+        return result.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(result);
+    }
+
     private static String normalizeComparable(String value) {
         if (value == null) return "";
         return Normalizer.normalize(value, Normalizer.Form.NFKC)
@@ -1559,10 +1617,18 @@ final class LyricsRepository {
     private static final class SyncDataResult {
         final JSONObject syncBody;
         final String provider;
+        final List<LyricsResult.SyncContributor> contributors;
 
         SyncDataResult(JSONObject syncBody, String provider) {
+            this(syncBody, provider, Collections.emptyList());
+        }
+
+        SyncDataResult(JSONObject syncBody, String provider, List<LyricsResult.SyncContributor> contributors) {
             this.syncBody = syncBody;
             this.provider = provider == null ? "" : provider;
+            this.contributors = contributors == null
+                    ? Collections.emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(contributors));
         }
 
         JSONObject source() {

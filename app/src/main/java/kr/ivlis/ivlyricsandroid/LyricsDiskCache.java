@@ -22,11 +22,14 @@ final class LyricsDiskCache {
 
     private final File directory;
     private final int maxEntries;
+    private final boolean requireContributorSchema;
 
     LyricsDiskCache(Context context, String namespace, int maxEntries) {
         File root = context.getApplicationContext().getFilesDir();
-        this.directory = new File(root, "lyrics_cache/" + safeNamespace(namespace));
+        String safeNamespace = safeNamespace(namespace);
+        this.directory = new File(root, "lyrics_cache/" + safeNamespace);
         this.maxEntries = Math.max(16, maxEntries);
+        this.requireContributorSchema = "base_lyrics".equals(safeNamespace);
     }
 
     synchronized LyricsResult get(String key) {
@@ -37,6 +40,9 @@ final class LyricsDiskCache {
         try {
             JSONObject object = new JSONObject(readUtf8(file));
             if (object.optInt("version", 0) != VERSION) {
+                return null;
+            }
+            if (requireContributorSchema && !object.has("contributors")) {
                 return null;
             }
             LyricsResult result = resultFromJson(object);
@@ -141,6 +147,11 @@ final class LyricsDiskCache {
         object.put("karaoke", result.karaoke);
         object.put("isrc", result.isrc);
         object.put("spotifyTrackId", result.spotifyTrackId);
+        JSONArray contributors = new JSONArray();
+        for (LyricsResult.SyncContributor contributor : result.contributors) {
+            contributors.put(contributorToJson(contributor));
+        }
+        object.put("contributors", contributors);
         JSONArray lines = new JSONArray();
         for (LyricsLine line : result.lines) {
             lines.put(lineToJson(line));
@@ -166,8 +177,36 @@ final class LyricsDiskCache {
                 object.optString("detail", ""),
                 object.optBoolean("karaoke", false),
                 object.optString("isrc", ""),
-                object.optString("spotifyTrackId", "")
+                object.optString("spotifyTrackId", ""),
+                contributorsFromJson(object.optJSONArray("contributors"))
         );
+    }
+
+    private static JSONObject contributorToJson(LyricsResult.SyncContributor contributor) throws Exception {
+        JSONObject object = new JSONObject();
+        object.put("name", contributor.name);
+        object.put("userHash", contributor.userHash);
+        object.put("profileAvailable", contributor.profileAvailable);
+        return object;
+    }
+
+    private static List<LyricsResult.SyncContributor> contributorsFromJson(JSONArray array) {
+        if (array == null || array.length() == 0) {
+            return new ArrayList<>();
+        }
+        List<LyricsResult.SyncContributor> contributors = new ArrayList<>();
+        for (int index = 0; index < array.length(); index++) {
+            JSONObject object = array.optJSONObject(index);
+            if (object == null) {
+                continue;
+            }
+            contributors.add(new LyricsResult.SyncContributor(
+                    object.optString("name", ""),
+                    object.optString("userHash", ""),
+                    object.optBoolean("profileAvailable", false)
+            ));
+        }
+        return contributors;
     }
 
     private static JSONObject lineToJson(LyricsLine line) throws Exception {

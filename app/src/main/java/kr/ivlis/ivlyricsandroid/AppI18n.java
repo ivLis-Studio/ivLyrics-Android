@@ -326,7 +326,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID 또는 Client Secret이 비어 있습니다.",
                 "spotify.error.credentials_not_configured", "Spotify API 정보가 등록되어 있지 않습니다.",
                 "spotify.error.no_access_token", "Spotify 토큰 응답에 access_token이 없습니다.",
-                "spotify.error.repository_unavailable", "가사 저장소를 사용할 수 없습니다."
+                "spotify.error.repository_unavailable", "가사 저장소를 사용할 수 없습니다.",
+                "lyrics.credit_sync_by_format", "sync by %s"
         );
     }
 
@@ -552,7 +553,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID or Client Secret is missing.",
                 "spotify.error.credentials_not_configured", "Spotify API credentials are not configured.",
                 "spotify.error.no_access_token", "Spotify token response did not contain access_token.",
-                "spotify.error.repository_unavailable", "Lyrics repository is unavailable."
+                "spotify.error.repository_unavailable", "Lyrics repository is unavailable.",
+                "lyrics.credit_sync_by_format", "sync by %s"
         );
     }
 
@@ -778,7 +780,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "缺少 Spotify API Client ID 或 Client Secret。",
                 "spotify.error.credentials_not_configured", "尚未配置 Spotify API 凭据。",
                 "spotify.error.no_access_token", "Spotify 令牌响应中没有 access_token。",
-                "spotify.error.repository_unavailable", "歌词存储库不可用。"
+                "spotify.error.repository_unavailable", "歌词存储库不可用。",
+                "lyrics.credit_sync_by_format", "同步制作：%s"
         );
     }
 
@@ -1004,7 +1007,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "缺少 Spotify API Client ID 或 Client Secret。",
                 "spotify.error.credentials_not_configured", "尚未設定 Spotify API 憑證。",
                 "spotify.error.no_access_token", "Spotify 權杖回應中沒有 access_token。",
-                "spotify.error.repository_unavailable", "歌詞儲存庫無法使用。"
+                "spotify.error.repository_unavailable", "歌詞儲存庫無法使用。",
+                "lyrics.credit_sync_by_format", "同步製作：%s"
         );
     }
 
@@ -1230,7 +1234,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client IDまたはClient Secretが入力されていません。",
                 "spotify.error.credentials_not_configured", "Spotify API情報が設定されていません。",
                 "spotify.error.no_access_token", "Spotifyトークン応答にaccess_tokenが含まれていません。",
-                "spotify.error.repository_unavailable", "歌詞リポジトリを使用できません。"
+                "spotify.error.repository_unavailable", "歌詞リポジトリを使用できません。",
+                "lyrics.credit_sync_by_format", "sync by %s"
         );
     }
 
@@ -1456,7 +1461,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID या Client Secret गुम है।",
                 "spotify.error.credentials_not_configured", "Spotify API credentials सेट नहीं हैं।",
                 "spotify.error.no_access_token", "Spotify token response में access_token नहीं था।",
-                "spotify.error.repository_unavailable", "गीत repository उपलब्ध नहीं है।"
+                "spotify.error.repository_unavailable", "गीत repository उपलब्ध नहीं है।",
+                "lyrics.credit_sync_by_format", "sync by %s"
         );
     }
 
@@ -1682,7 +1688,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Falta el Client ID o Client Secret de Spotify API.",
                 "spotify.error.credentials_not_configured", "Las credenciales de Spotify API no están configuradas.",
                 "spotify.error.no_access_token", "La respuesta del token Spotify no contenía access_token.",
-                "spotify.error.repository_unavailable", "El repositorio de letras no está disponible."
+                "spotify.error.repository_unavailable", "El repositorio de letras no está disponible.",
+                "lyrics.credit_sync_by_format", "sync por %s"
         );
     }
 
@@ -1908,7 +1915,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Le Client ID ou le Client Secret Spotify API manque.",
                 "spotify.error.credentials_not_configured", "Les identifiants Spotify API ne sont pas configurés.",
                 "spotify.error.no_access_token", "La réponse du jeton Spotify ne contenait pas access_token.",
-                "spotify.error.repository_unavailable", "Le dépôt de paroles est indisponible."
+                "spotify.error.repository_unavailable", "Le dépôt de paroles est indisponible.",
+                "lyrics.credit_sync_by_format", "sync par %s"
         );
     }
 
@@ -2134,7 +2142,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Client ID أو Client Secret الخاص بـ Spotify API مفقود.",
                 "spotify.error.credentials_not_configured", "لم يتم إعداد بيانات Spotify API.",
                 "spotify.error.no_access_token", "استجابة رمز Spotify لا تحتوي على access_token.",
-                "spotify.error.repository_unavailable", "مستودع الكلمات غير متاح."
+                "spotify.error.repository_unavailable", "مستودع الكلمات غير متاح.",
+                "lyrics.credit_sync_by_format", "sync بواسطة %s"
         );
     }
 
@@ -2360,7 +2369,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Client ID یا Client Secret در Spotify API وارد نشده است.",
                 "spotify.error.credentials_not_configured", "اطلاعات Spotify API تنظیم نشده است.",
                 "spotify.error.no_access_token", "پاسخ توکن Spotify شامل access_token نبود.",
-                "spotify.error.repository_unavailable", "مخزن متن آهنگ در دسترس نیست."
+                "spotify.error.repository_unavailable", "مخزن متن آهنگ در دسترس نیست.",
+                "lyrics.credit_sync_by_format", "sync توسط %s"
         );
     }
 
@@ -2586,7 +2596,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID oder Client Secret fehlt.",
                 "spotify.error.credentials_not_configured", "Spotify API-Zugangsdaten sind nicht konfiguriert.",
                 "spotify.error.no_access_token", "Die Spotify-Token-Antwort enthielt kein access_token.",
-                "spotify.error.repository_unavailable", "Das Lyrics-Repository ist nicht verfügbar."
+                "spotify.error.repository_unavailable", "Das Lyrics-Repository ist nicht verfügbar.",
+                "lyrics.credit_sync_by_format", "sync von %s"
         );
     }
 
@@ -2812,7 +2823,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Отсутствует Spotify API Client ID или Client Secret.",
                 "spotify.error.credentials_not_configured", "Учетные данные Spotify API не настроены.",
                 "spotify.error.no_access_token", "Ответ токена Spotify не содержал access_token.",
-                "spotify.error.repository_unavailable", "Репозиторий текстов недоступен."
+                "spotify.error.repository_unavailable", "Репозиторий текстов недоступен.",
+                "lyrics.credit_sync_by_format", "sync от %s"
         );
     }
 
@@ -3038,7 +3050,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID eller Client Secret saknas.",
                 "spotify.error.credentials_not_configured", "Spotify API-uppgifter är inte konfigurerade.",
                 "spotify.error.no_access_token", "Spotify-tokenresponsen innehöll inte access_token.",
-                "spotify.error.repository_unavailable", "Lyrics-repositoryt är inte tillgängligt."
+                "spotify.error.repository_unavailable", "Lyrics-repositoryt är inte tillgängligt.",
+                "lyrics.credit_sync_by_format", "sync av %s"
         );
     }
 
@@ -3264,7 +3277,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID ou Client Secret está ausente.",
                 "spotify.error.credentials_not_configured", "As credenciais da Spotify API não estão configuradas.",
                 "spotify.error.no_access_token", "A resposta do token Spotify não continha access_token.",
-                "spotify.error.repository_unavailable", "O repositório de letras está indisponível."
+                "spotify.error.repository_unavailable", "O repositório de letras está indisponível.",
+                "lyrics.credit_sync_by_format", "sync por %s"
         );
     }
 
@@ -3490,7 +3504,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID বা Client Secret অনুপস্থিত।",
                 "spotify.error.credentials_not_configured", "Spotify API credentials সেট করা নেই।",
                 "spotify.error.no_access_token", "Spotify token response-এ access_token ছিল না।",
-                "spotify.error.repository_unavailable", "লিরিক্স repository উপলভ্য নয়।"
+                "spotify.error.repository_unavailable", "লিরিক্স repository উপলভ্য নয়।",
+                "lyrics.credit_sync_by_format", "sync by %s"
         );
     }
 
@@ -3716,7 +3731,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Manca il Client ID o Client Secret della Spotify API.",
                 "spotify.error.credentials_not_configured", "Le credenziali Spotify API non sono configurate.",
                 "spotify.error.no_access_token", "La risposta del token Spotify non conteneva access_token.",
-                "spotify.error.repository_unavailable", "Il repository dei testi non è disponibile."
+                "spotify.error.repository_unavailable", "Il repository dei testi non è disponibile.",
+                "lyrics.credit_sync_by_format", "sync di %s"
         );
     }
 
@@ -3942,7 +3958,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "ขาด Spotify API Client ID หรือ Client Secret",
                 "spotify.error.credentials_not_configured", "ยังไม่ได้ตั้งค่า Spotify API credentials",
                 "spotify.error.no_access_token", "การตอบกลับ token ของ Spotify ไม่มี access_token",
-                "spotify.error.repository_unavailable", "ไม่สามารถใช้คลังเนื้อเพลงได้"
+                "spotify.error.repository_unavailable", "ไม่สามารถใช้คลังเนื้อเพลงได้",
+                "lyrics.credit_sync_by_format", "sync โดย %s"
         );
     }
 
@@ -4168,7 +4185,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Thiếu Spotify API Client ID hoặc Client Secret.",
                 "spotify.error.credentials_not_configured", "Chưa cấu hình thông tin Spotify API.",
                 "spotify.error.no_access_token", "Phản hồi token Spotify không chứa access_token.",
-                "spotify.error.repository_unavailable", "Kho lời bài hát không khả dụng."
+                "spotify.error.repository_unavailable", "Kho lời bài hát không khả dụng.",
+                "lyrics.credit_sync_by_format", "sync bởi %s"
         );
     }
 
@@ -4394,7 +4412,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID atau Client Secret belum diisi.",
                 "spotify.error.credentials_not_configured", "Credential Spotify API belum dikonfigurasi.",
                 "spotify.error.no_access_token", "Respons token Spotify tidak berisi access_token.",
-                "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia."
+                "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia.",
+                "lyrics.credit_sync_by_format", "sync oleh %s"
         );
     }
 
@@ -4620,7 +4639,8 @@ final class AppI18n {
                 "spotify.error.incomplete_credentials", "Spotify API Client ID atau Client Secret tiada.",
                 "spotify.error.credentials_not_configured", "Kelayakan Spotify API belum dikonfigurasi.",
                 "spotify.error.no_access_token", "Respons token Spotify tidak mengandungi access_token.",
-                "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia."
+                "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia.",
+                "lyrics.credit_sync_by_format", "sync oleh %s"
         );
     }
     private static Map<String, String> strings(String... values) {

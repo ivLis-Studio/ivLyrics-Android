@@ -42,10 +42,21 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -62,6 +73,9 @@ public final class MainActivity extends Activity implements
     private static final String SETTINGS_TAB_TOOLS = "tools";
     private static final String LYRICS_POPUP_TAB_LANGUAGE = "language";
     private static final String LYRICS_POPUP_TAB_SYNC = "sync";
+    private static final String CREATOR_PROFILE_ENDPOINT = "https://lyrics.api.ivl.is/user/creator-profile";
+    private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
+    private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
             "ivLyrics에 오신 것을 환영합니다",
@@ -81,6 +95,7 @@ public final class MainActivity extends Activity implements
         }
     };
     private final List<String> logLines = new ArrayList<>();
+    private final Map<String, String> creatorProfileUrlCache = Collections.synchronizedMap(new HashMap<>());
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
@@ -102,6 +117,7 @@ public final class MainActivity extends Activity implements
     private TextView artistView;
     private TextView lyricsTitleView;
     private TextView lyricsArtistView;
+    private TextView lyricsContributorView;
     private MainLyricPreviewView lyricPreviewView;
     private TextView sourceView;
     private TextView statusView;
@@ -1189,7 +1205,7 @@ public final class MainActivity extends Activity implements
         FrameLayout header = new FrameLayout(this);
         content.addView(header, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(58)
+                dp(66)
         ));
 
         View handle = new View(this);
@@ -1202,7 +1218,7 @@ public final class MainActivity extends Activity implements
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout.LayoutParams metaRowParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(46),
+                dp(54),
                 Gravity.BOTTOM
         );
         header.addView(metaRow, metaRowParams);
@@ -1223,6 +1239,14 @@ public final class MainActivity extends Activity implements
         LinearLayout.LayoutParams lyricsArtistParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lyricsArtistParams.topMargin = dp(3);
         lyricsMeta.addView(lyricsArtistView, lyricsArtistParams);
+
+        lyricsContributorView = label("", 9f, Color.argb(82, 255, 255, 255), AppFonts.regular(this));
+        lyricsContributorView.setSingleLine(true);
+        lyricsContributorView.setEllipsize(TextUtils.TruncateAt.END);
+        lyricsContributorView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lyricsContributorParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lyricsContributorParams.topMargin = dp(2);
+        lyricsMeta.addView(lyricsContributorView, lyricsContributorParams);
         attachLyricsMetaSwipe(lyricsMeta);
         attachLyricsMetaSwipe(lyricsTitleView);
         attachLyricsMetaSwipe(lyricsArtistView);
@@ -3889,6 +3913,164 @@ public final class MainActivity extends Activity implements
             configureLyricsViewUiText(landscapeLyricsView);
             landscapeLyricsView.setResult(result);
         }
+        updateLyricsContributorCredit(result);
+    }
+
+    private void updateLyricsContributorCredit(LyricsResult result) {
+        if (lyricsContributorView == null) {
+            return;
+        }
+        List<LyricsResult.SyncContributor> contributors = result == null
+                ? Collections.emptyList()
+                : result.contributors;
+        if (contributors.isEmpty()) {
+            lyricsContributorView.setVisibility(View.GONE);
+            lyricsContributorView.setText("");
+            lyricsContributorView.setOnClickListener(null);
+            lyricsContributorView.setClickable(false);
+            return;
+        }
+
+        lyricsContributorView.setText(uiFormat("lyrics.credit_sync_by_format", contributorNames(contributors, 3)));
+        lyricsContributorView.setVisibility(View.VISIBLE);
+
+        LyricsResult.SyncContributor linkedContributor = firstLinkedContributor(contributors);
+        if (linkedContributor == null) {
+            lyricsContributorView.setOnClickListener(null);
+            lyricsContributorView.setClickable(false);
+            lyricsContributorView.setTextColor(Color.argb(70, 255, 255, 255));
+            return;
+        }
+        lyricsContributorView.setTextColor(Color.argb(92, 255, 255, 255));
+        lyricsContributorView.setClickable(true);
+        lyricsContributorView.setOnClickListener(view -> openSyncContributorProfile(linkedContributor));
+    }
+
+    private String contributorNames(List<LyricsResult.SyncContributor> contributors, int limit) {
+        if (contributors == null || contributors.isEmpty()) {
+            return "";
+        }
+        int count = Math.min(Math.max(1, limit), contributors.size());
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            if (index > 0) {
+                builder.append(", ");
+            }
+            builder.append(contributors.get(index).name);
+        }
+        if (contributors.size() > count) {
+            builder.append(" +").append(contributors.size() - count);
+        }
+        return builder.toString();
+    }
+
+    private LyricsResult.SyncContributor firstLinkedContributor(List<LyricsResult.SyncContributor> contributors) {
+        if (contributors == null) {
+            return null;
+        }
+        for (LyricsResult.SyncContributor contributor : contributors) {
+            if (contributor != null && contributor.profileAvailable && !contributor.userHash.isEmpty()) {
+                return contributor;
+            }
+        }
+        return null;
+    }
+
+    private void openSyncContributorProfile(LyricsResult.SyncContributor contributor) {
+        if (contributor == null || contributor.userHash.isEmpty()) {
+            return;
+        }
+        String fallbackUrl = syncContributorProfileUrl(contributor.userHash);
+        String cachedUrl = creatorProfileUrlCache.get(contributor.userHash);
+        if (cachedUrl != null && !cachedUrl.isEmpty()) {
+            openExternalProfileUrl(cachedUrl);
+            return;
+        }
+        seekExecutor.execute(() -> {
+            String url = fallbackUrl;
+            try {
+                url = fetchSyncContributorProfileUrl(contributor.userHash, fallbackUrl);
+                creatorProfileUrlCache.put(contributor.userHash, url);
+            } catch (Exception error) {
+                String message = "sync creator profile lookup failed: " + error.getMessage();
+                handler.post(() -> appendLog(message));
+            }
+            String finalUrl = url;
+            handler.post(() -> openExternalProfileUrl(finalUrl));
+        });
+    }
+
+    private void openExternalProfileUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception error) {
+            appendLog("sync creator profile open failed: " + error.getMessage());
+        }
+    }
+
+    private String fetchSyncContributorProfileUrl(String userHash, String fallbackUrl) throws Exception {
+        URL endpoint = new URL(CREATOR_PROFILE_ENDPOINT + "?userHash=" + Uri.encode(userHash));
+        HttpURLConnection connection = (HttpURLConnection) endpoint.openConnection();
+        connection.setConnectTimeout(8_000);
+        connection.setReadTimeout(12_000);
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
+        connection.setRequestProperty("Origin", SYNC_DATA_SPOTIFY_ORIGIN);
+        connection.setRequestProperty("Referer", SYNC_DATA_SPOTIFY_REFERER);
+        connection.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate");
+        connection.setRequestProperty("Pragma", "no-cache");
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new IOException("HTTP " + status);
+            }
+            JSONObject root = new JSONObject(readSyncContributorProfileBody(connection.getInputStream()));
+            JSONObject data = root.optJSONObject("data");
+            if (!root.optBoolean("success", false) || data == null) {
+                return fallbackUrl;
+            }
+            String identifier = "";
+            JSONObject account = data.optJSONObject("account");
+            if (account != null) {
+                identifier = account.optString("username", "").trim();
+            }
+            if (identifier.isEmpty()) {
+                identifier = data.optString("nickname", "").trim();
+            }
+            if (identifier.isEmpty()) {
+                identifier = data.optString("userHash", "").trim();
+            }
+            if (identifier.isEmpty()) {
+                return fallbackUrl;
+            }
+            return syncContributorProfileUrl(identifier);
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private String readSyncContributorProfileBody(InputStream stream) throws IOException {
+        if (stream == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            char[] buffer = new char[2048];
+            int read;
+            while ((read = reader.read(buffer)) >= 0) {
+                builder.append(buffer, 0, read);
+            }
+        }
+        return builder.toString();
+    }
+
+    private String syncContributorProfileUrl(String identifier) {
+        String safeIdentifier = identifier == null ? "" : identifier.replaceFirst("^@+", "").trim();
+        if (safeIdentifier.isEmpty()) {
+            return "https://lyrics.ivl.is";
+        }
+        return "https://lyrics.ivl.is/@" + Uri.encode(safeIdentifier);
     }
 
     private void configureLyricsViewUiText(LyricsView view) {

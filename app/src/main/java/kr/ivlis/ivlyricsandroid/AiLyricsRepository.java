@@ -164,12 +164,15 @@ final class AiLyricsRepository {
         if (!bypassCache) {
             LyricsResult cached = cache.get(cacheKey);
             if (cached != null) {
+                cached = withBaseContributors(cached, baseResult);
+                cache.put(cacheKey, cached);
                 emitLog(trackKey, callback, "ai lyrics cache hit: " + settings.provider.label);
                 callback.onAiLyricsLoaded(trackKey, cached);
                 return;
             }
             LyricsResult diskCached = diskCache == null ? null : diskCache.get(cacheKey);
             if (diskCached != null) {
+                diskCached = withBaseContributors(diskCached, baseResult);
                 cache.put(cacheKey, diskCached);
                 emitLog(trackKey, callback, "ai lyrics disk cache hit: " + settings.provider.label);
                 callback.onAiLyricsLoaded(trackKey, diskCached);
@@ -207,6 +210,26 @@ final class AiLyricsRepository {
                 mainHandler.post(() -> callback.onAiLyricsError(trackKey, message));
             }
         });
+    }
+
+    private LyricsResult withBaseContributors(LyricsResult result, LyricsResult baseResult) {
+        if (result == null
+                || baseResult == null
+                || result.contributors == null
+                || !result.contributors.isEmpty()
+                || baseResult.contributors == null
+                || baseResult.contributors.isEmpty()) {
+            return result;
+        }
+        return new LyricsResult(
+                result.lines,
+                result.providerLabel,
+                result.detail,
+                result.karaoke,
+                result.isrc,
+                result.spotifyTrackId,
+                baseResult.contributors
+        );
     }
 
     void loadMetadataTranslation(
@@ -392,7 +415,8 @@ final class AiLyricsRepository {
                 detail + suffix,
                 baseResult.karaoke,
                 baseResult.isrc,
-                baseResult.spotifyTrackId
+                baseResult.spotifyTrackId,
+                baseResult.contributors
         );
     }
 
