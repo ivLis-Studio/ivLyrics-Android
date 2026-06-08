@@ -95,6 +95,7 @@ public final class MainActivity extends Activity implements
     private FrameLayout lyricsPage;
     private FrameLayout settingsPanel;
     private FrameLayout spotifySetupPanel;
+    private ScrollView spotifySetupScrollView;
     private ImageView artworkView;
     private ImageView lyricsArtworkView;
     private TextView titleView;
@@ -234,6 +235,8 @@ public final class MainActivity extends Activity implements
         aiLyricsRepository = new AiLyricsRepository(this);
         lyricsRepository = new LyricsRepository(this);
         Window window = getWindow();
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.rgb(17, 18, 22));
         setContentView(buildContentView());
@@ -1827,7 +1830,9 @@ public final class MainActivity extends Activity implements
         panel.setVisibility(isInitialSetupComplete() ? View.GONE : View.VISIBLE);
 
         ScrollView scrollView = new ScrollView(this);
+        spotifySetupScrollView = scrollView;
         scrollView.setFillViewport(true);
+        scrollView.setClipToPadding(false);
         panel.addView(scrollView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2072,9 +2077,11 @@ public final class MainActivity extends Activity implements
         body.addView(buildSpotifyApiSetupInstructions(), topMargin(matchWrap(), dp(12)));
 
         spotifySetupClientIdInput = settingEditText("", false, false);
+        attachSpotifySetupKeyboardScroll(spotifySetupClientIdInput);
         body.addView(settingField("Client ID", ui("field.spotify_client_id_desc"), spotifySetupClientIdInput), topMargin(matchWrap(), dp(14)));
 
         spotifySetupClientSecretInput = settingEditText("", false, true);
+        attachSpotifySetupKeyboardScroll(spotifySetupClientSecretInput);
         body.addView(settingField("Client Secret", ui("field.spotify_client_secret_desc"), spotifySetupClientSecretInput), topMargin(matchWrap(), dp(12)));
 
         LinearLayout actionRow = new LinearLayout(this);
@@ -2087,6 +2094,56 @@ public final class MainActivity extends Activity implements
         actionRow.addView(saveButton, weightedButtonParams(1f, dp(4)));
 
         populateSpotifyCredentialInputs(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
+    }
+
+    private void attachSpotifySetupKeyboardScroll(EditText input) {
+        if (input == null) {
+            return;
+        }
+        input.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) {
+                scrollSpotifySetupInputIntoView(view);
+            }
+        });
+        input.setOnClickListener(this::scrollSpotifySetupInputIntoView);
+    }
+
+    private void scrollSpotifySetupInputIntoView(View target) {
+        if (spotifySetupScrollView == null || target == null) {
+            return;
+        }
+        target.postDelayed(() -> scrollSpotifySetupInputIntoViewNow(target), 180L);
+        target.postDelayed(() -> scrollSpotifySetupInputIntoViewNow(target), 420L);
+    }
+
+    private void scrollSpotifySetupInputIntoViewNow(View target) {
+        if (spotifySetupScrollView == null || target == null || target.getWindowToken() == null) {
+            return;
+        }
+
+        int scrollY = spotifySetupScrollView.getScrollY();
+        int targetTop = verticalOffsetInSpotifySetupScroll(target);
+        int targetBottom = targetTop + target.getHeight();
+        int visibleBottom = scrollY + spotifySetupScrollView.getHeight() - spotifySetupScrollView.getPaddingBottom();
+        int topTarget = Math.max(0, targetTop - dp(28));
+        int bottomTarget = targetBottom + dp(110);
+
+        if (bottomTarget > visibleBottom) {
+            spotifySetupScrollView.smoothScrollTo(0, Math.max(0, bottomTarget - spotifySetupScrollView.getHeight()));
+        } else if (topTarget < scrollY) {
+            spotifySetupScrollView.smoothScrollTo(0, topTarget);
+        }
+    }
+
+    private int verticalOffsetInSpotifySetupScroll(View target) {
+        int top = 0;
+        View current = target;
+        while (current != null && current != spotifySetupScrollView) {
+            top += current.getTop();
+            Object parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return top;
     }
 
     private void updateOnboardingUiLanguageSelect() {
