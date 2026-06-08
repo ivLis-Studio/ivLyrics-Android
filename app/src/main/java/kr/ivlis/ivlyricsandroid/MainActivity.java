@@ -1239,24 +1239,28 @@ public final class MainActivity extends Activity implements
         lyricsTitleParams.leftMargin = dp(5);
         lyricsMeta.addView(lyricsTitleView, lyricsTitleParams);
 
+        LinearLayout lyricsSubtitleRow = new LinearLayout(this);
+        lyricsSubtitleRow.setOrientation(LinearLayout.HORIZONTAL);
+        lyricsSubtitleRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams subtitleRowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subtitleRowParams.topMargin = dp(3);
+        subtitleRowParams.leftMargin = dp(5);
+        lyricsMeta.addView(lyricsSubtitleRow, subtitleRowParams);
+
         lyricsArtistView = label(ui("status.waiting_spotify"), 14f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         lyricsArtistView.setSingleLine(true);
         lyricsArtistView.setEllipsize(TextUtils.TruncateAt.END);
         lyricsArtistView.setIncludeFontPadding(true);
-        LinearLayout.LayoutParams lyricsArtistParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lyricsArtistParams.topMargin = dp(3);
-        lyricsArtistParams.leftMargin = dp(5);
-        lyricsMeta.addView(lyricsArtistView, lyricsArtistParams);
+        lyricsSubtitleRow.addView(lyricsArtistView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        lyricsContributorView = label("", 9f, Color.argb(82, 255, 255, 255), AppFonts.regular(this));
+        lyricsContributorView = label("", 9f, Color.argb(118, 255, 255, 255), AppFonts.regular(this));
         lyricsContributorView.setSingleLine(true);
         lyricsContributorView.setEllipsize(TextUtils.TruncateAt.END);
         lyricsContributorView.setIncludeFontPadding(true);
         lyricsContributorView.setVisibility(View.GONE);
         LinearLayout.LayoutParams lyricsContributorParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lyricsContributorParams.topMargin = dp(2);
-        lyricsContributorParams.leftMargin = dp(5);
-        lyricsMeta.addView(lyricsContributorView, lyricsContributorParams);
+        lyricsContributorParams.leftMargin = dp(8);
+        lyricsSubtitleRow.addView(lyricsContributorView, lyricsContributorParams);
         attachLyricsMetaSwipe(lyricsTitleView);
         attachLyricsMetaSwipe(lyricsArtistView);
 
@@ -3947,10 +3951,10 @@ public final class MainActivity extends Activity implements
         if (linkedContributor == null) {
             lyricsContributorView.setOnClickListener(null);
             lyricsContributorView.setClickable(false);
-            lyricsContributorView.setTextColor(Color.argb(70, 255, 255, 255));
+            lyricsContributorView.setTextColor(Color.argb(92, 255, 255, 255));
             return;
         }
-        lyricsContributorView.setTextColor(Color.argb(92, 255, 255, 255));
+        lyricsContributorView.setTextColor(Color.argb(118, 255, 255, 255));
         lyricsContributorView.setClickable(true);
         lyricsContributorView.setOnClickListener(view -> openSyncContributorProfile(linkedContributor));
     }

@@ -19,7 +19,7 @@ import java.util.Locale;
 
 final class LyricsDiskCache {
     private static final int VERSION = 1;
-    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 2;
+    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 3;
 
     private final File directory;
     private final int maxEntries;
