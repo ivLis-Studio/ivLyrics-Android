@@ -103,7 +103,7 @@ public final class TransportButtonView extends View {
     private void drawPlay(Canvas canvas, float cx, float cy, float size) {
         float iconWidth = size * 0.26f;
         float iconHeight = size * 0.34f;
-        float left = cx - iconWidth * 0.32f + size * 0.03f;
+        float left = cx - iconWidth * 0.32f - size * 0.005f;
         path.reset();
         path.moveTo(left, cy - iconHeight * 0.5f);
         path.lineTo(left, cy + iconHeight * 0.5f);
