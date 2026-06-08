@@ -5200,6 +5200,7 @@ public final class MainActivity extends Activity implements
 
     private TextView slidingLabel(String value, float sizeSp, int color, Typeface typeface) {
         SlidingTextView view = new SlidingTextView(this);
+        view.setEdgeFadeEnabled(false);
         view.setText(value);
         view.setTextColor(color);
         view.setTextSize(sizeSp);

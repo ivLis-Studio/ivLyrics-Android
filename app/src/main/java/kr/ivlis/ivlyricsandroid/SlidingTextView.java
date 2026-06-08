@@ -23,6 +23,7 @@ final class SlidingTextView extends TextView {
 
     private final Paint fadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private long animationStartMs = SystemClock.uptimeMillis();
+    private boolean edgeFadeEnabled = true;
 
     SlidingTextView(Context context) {
         super(context);
@@ -39,6 +40,15 @@ final class SlidingTextView extends TextView {
         setEllipsize(null);
         setIncludeFontPadding(false);
         getPaint().setSubpixelText(true);
+    }
+
+    void setEdgeFadeEnabled(boolean enabled) {
+        if (edgeFadeEnabled == enabled) {
+            return;
+        }
+        edgeFadeEnabled = enabled;
+        animationStartMs = SystemClock.uptimeMillis();
+        postInvalidateOnAnimation();
     }
 
     @Override
@@ -81,7 +91,9 @@ final class SlidingTextView extends TextView {
         float endX = availableRight - fadeWidth - textWidth;
         float x = startX + (endX - startX) * slideFraction(textWidth, availableWidth);
         canvas.drawText(text, x, baseline(), paint);
-        applyEdgeFadeMask(canvas, availableLeft, availableWidth);
+        if (edgeFadeEnabled) {
+            applyEdgeFadeMask(canvas, availableLeft, availableWidth);
+        }
         canvas.restoreToCount(save);
         postInvalidateOnAnimation();
     }
@@ -129,6 +141,9 @@ final class SlidingTextView extends TextView {
     }
 
     private float edgeFadeWidth(float width) {
+        if (!edgeFadeEnabled) {
+            return 0f;
+        }
         return Math.min(dp(EDGE_FADE_DP), width * 0.22f);
     }
 
