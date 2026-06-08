@@ -245,6 +245,7 @@ public final class MainActivity extends Activity implements
     };
 
     @Override
+    @SuppressWarnings("deprecation")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
@@ -315,6 +316,7 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (isSpotifySetupPanelVisible()) {
             lastBackPressElapsedMs = 0L;
@@ -1007,6 +1009,7 @@ public final class MainActivity extends Activity implements
         return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
     }
 
+    @SuppressWarnings("deprecation")
     private void applySystemBarsForOrientation() {
         Window window = getWindow();
         if (window == null) {
