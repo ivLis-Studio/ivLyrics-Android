@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ local state
+.idea/
+*.iml
+
+# Local SDK / machine-specific config
+local.properties
+
+# Android generated files
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+*.aar
+*.dex
+
+# Signing keys and local secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+secrets.properties
+signing.properties
+google-services.json
+
+# Kotlin / Java local caches
+.kotlin/
+*.class
+
+# Logs
+*.log
