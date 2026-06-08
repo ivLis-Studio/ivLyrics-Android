@@ -1231,23 +1231,27 @@ public final class MainActivity extends Activity implements
         lyricsTitleView = label("ivLyrics", 19f, Color.WHITE, AppFonts.bold(this));
         lyricsTitleView.setSingleLine(true);
         lyricsTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        lyricsTitleView.setIncludeFontPadding(true);
         lyricsMeta.addView(lyricsTitleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         lyricsArtistView = label(ui("status.waiting_spotify"), 14f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         lyricsArtistView.setSingleLine(true);
         lyricsArtistView.setEllipsize(TextUtils.TruncateAt.END);
+        lyricsArtistView.setIncludeFontPadding(true);
         LinearLayout.LayoutParams lyricsArtistParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lyricsArtistParams.topMargin = dp(3);
+        lyricsArtistParams.leftMargin = dp(5);
         lyricsMeta.addView(lyricsArtistView, lyricsArtistParams);
 
         lyricsContributorView = label("", 9f, Color.argb(82, 255, 255, 255), AppFonts.regular(this));
         lyricsContributorView.setSingleLine(true);
         lyricsContributorView.setEllipsize(TextUtils.TruncateAt.END);
+        lyricsContributorView.setIncludeFontPadding(true);
         lyricsContributorView.setVisibility(View.GONE);
-        LinearLayout.LayoutParams lyricsContributorParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams lyricsContributorParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lyricsContributorParams.topMargin = dp(2);
+        lyricsContributorParams.leftMargin = dp(5);
         lyricsMeta.addView(lyricsContributorView, lyricsContributorParams);
-        attachLyricsMetaSwipe(lyricsMeta);
         attachLyricsMetaSwipe(lyricsTitleView);
         attachLyricsMetaSwipe(lyricsArtistView);
 
