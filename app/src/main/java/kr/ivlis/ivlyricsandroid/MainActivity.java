@@ -1235,7 +1235,9 @@ public final class MainActivity extends Activity implements
         lyricsTitleView.setSingleLine(true);
         lyricsTitleView.setEllipsize(TextUtils.TruncateAt.END);
         lyricsTitleView.setIncludeFontPadding(true);
-        lyricsMeta.addView(lyricsTitleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams lyricsTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lyricsTitleParams.leftMargin = dp(5);
+        lyricsMeta.addView(lyricsTitleView, lyricsTitleParams);
 
         lyricsArtistView = label(ui("status.waiting_spotify"), 14f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         lyricsArtistView.setSingleLine(true);

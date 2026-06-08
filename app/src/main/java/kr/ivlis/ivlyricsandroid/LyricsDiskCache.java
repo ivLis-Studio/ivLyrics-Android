@@ -19,17 +19,18 @@ import java.util.Locale;
 
 final class LyricsDiskCache {
     private static final int VERSION = 1;
+    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 2;
 
     private final File directory;
     private final int maxEntries;
-    private final boolean requireContributorSchema;
+    private final boolean baseLyricsCache;
 
     LyricsDiskCache(Context context, String namespace, int maxEntries) {
         File root = context.getApplicationContext().getFilesDir();
         String safeNamespace = safeNamespace(namespace);
         this.directory = new File(root, "lyrics_cache/" + safeNamespace);
         this.maxEntries = Math.max(16, maxEntries);
-        this.requireContributorSchema = "base_lyrics".equals(safeNamespace);
+        this.baseLyricsCache = "base_lyrics".equals(safeNamespace);
     }
 
     synchronized LyricsResult get(String key) {
@@ -42,7 +43,8 @@ final class LyricsDiskCache {
             if (object.optInt("version", 0) != VERSION) {
                 return null;
             }
-            if (requireContributorSchema && !object.has("contributors")) {
+            if (baseLyricsCache
+                    && object.optInt("contributorSchemaVersion", 0) < BASE_CONTRIBUTOR_SCHEMA_VERSION) {
                 return null;
             }
             LyricsResult result = resultFromJson(object);
@@ -67,6 +69,9 @@ final class LyricsDiskCache {
             }
             JSONObject object = resultToJson(result);
             object.put("version", VERSION);
+            if (baseLyricsCache) {
+                object.put("contributorSchemaVersion", BASE_CONTRIBUTOR_SCHEMA_VERSION);
+            }
             object.put("cacheKey", key);
             object.put("savedAtMs", System.currentTimeMillis());
             File file = fileForKey(key);

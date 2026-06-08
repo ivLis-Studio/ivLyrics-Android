@@ -130,7 +130,8 @@ final class LyricsRepository {
                 LyricsResult diskCached = diskCache == null ? null : diskCache.get(key);
                 if (diskCached != null) {
                     cache.put(key, diskCached);
-                    log.write("disk cache hit: sync-data/LRCLIB lyrics");
+                    log.write("disk cache hit: sync-data/LRCLIB lyrics"
+                            + " / contributors=" + diskCached.contributors.size());
                     mainHandler.post(() -> callback.onLyricsLoaded(key, diskCached));
                     return;
                 }
@@ -477,7 +478,7 @@ final class LyricsRepository {
                 SyncDataResult result = new SyncDataResult(
                         syncBodyWithDurationFallback(syncData, data),
                         data.optString("provider", "lrclib"),
-                        parseSyncContributors(data.optJSONArray("contributors"))
+                        parseSyncContributors(data, syncData)
                 );
                 log.write("sync-data response: provider=" + result.provider
                         + " / lines=" + result.lineCharCounts().size()
@@ -490,7 +491,7 @@ final class LyricsRepository {
                 SyncDataResult result = new SyncDataResult(
                         syncBodyWithDurationFallback(data, data),
                         data.optString("provider", "lrclib"),
-                        parseSyncContributors(data.optJSONArray("contributors"))
+                        parseSyncContributors(data, data)
                 );
                 log.write("sync-data response: legacy body / provider=" + result.provider
                         + " / lines=" + result.lineCharCounts().size()
@@ -1419,6 +1420,40 @@ final class LyricsRepository {
         return result;
     }
 
+    private static List<LyricsResult.SyncContributor> parseSyncContributors(JSONObject data, JSONObject syncData) {
+        JSONArray combined = new JSONArray();
+        appendContributorEntries(combined, data, "contributors");
+        appendContributorEntries(combined, syncData, "contributors");
+        appendContributorEntries(combined, data, "creators");
+        appendContributorEntries(combined, syncData, "creators");
+        appendContributorEntries(combined, data, "authors");
+        appendContributorEntries(combined, syncData, "authors");
+        appendContributorEntry(combined, data == null ? null : data.optJSONObject("creator"));
+        appendContributorEntry(combined, syncData == null ? null : syncData.optJSONObject("creator"));
+        return parseSyncContributors(combined);
+    }
+
+    private static void appendContributorEntries(JSONArray target, JSONObject object, String key) {
+        if (target == null || object == null || key == null) {
+            return;
+        }
+        JSONArray array = object.optJSONArray(key);
+        if (array == null) {
+            appendContributorEntry(target, object.optJSONObject(key));
+            return;
+        }
+        for (int index = 0; index < array.length(); index++) {
+            appendContributorEntry(target, array.opt(index));
+        }
+    }
+
+    private static void appendContributorEntry(JSONArray target, Object entry) {
+        if (target == null || entry == null) {
+            return;
+        }
+        target.put(entry);
+    }
+
     private static List<LyricsResult.SyncContributor> parseSyncContributors(JSONArray array) {
         if (array == null || array.length() == 0) {
             return Collections.emptyList();
@@ -1436,10 +1471,17 @@ final class LyricsRepository {
             } else if (raw instanceof JSONObject) {
                 JSONObject object = (JSONObject) raw;
                 name = firstNonEmpty(
-                        firstNonEmpty(object.optString("name", ""), object.optString("nickname", "")),
-                        object.optString("displayName", "")
+                        firstNonEmpty(
+                                firstNonEmpty(object.optString("name", ""), object.optString("nickname", "")),
+                                object.optString("displayName", "")
+                        ),
+                        firstNonEmpty(object.optString("username", ""), object.optString("spotifyDisplayName", ""))
                 );
-                userHash = object.optString("userHash", "").trim();
+                userHash = firstNonEmpty(
+                        firstNonEmpty(object.optString("userHash", ""), object.optString("hash", "")),
+                        object.optString("id", "")
+                );
+                userHash = userHash == null ? "" : userHash.trim();
                 profileAvailable = object.has("profileAvailable")
                         ? object.optBoolean("profileAvailable", false)
                         : !userHash.isEmpty();
