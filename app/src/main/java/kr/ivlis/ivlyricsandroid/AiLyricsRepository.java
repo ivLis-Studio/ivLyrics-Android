@@ -243,12 +243,16 @@ final class AiLyricsRepository {
     }
 
     private LyricsResult withBaseContributors(LyricsResult result, LyricsResult baseResult) {
-        if (result == null
-                || baseResult == null
-                || result.contributors == null
-                || !result.contributors.isEmpty()
-                || baseResult.contributors == null
-                || baseResult.contributors.isEmpty()) {
+        if (result == null || baseResult == null) {
+            return result;
+        }
+        List<LyricsResult.SyncContributor> baseContributors = baseResult.contributors == null
+                ? Collections.emptyList()
+                : baseResult.contributors;
+        List<LyricsResult.SyncContributor> resultContributors = result.contributors == null
+                ? Collections.emptyList()
+                : result.contributors;
+        if (resultContributors.equals(baseContributors)) {
             return result;
         }
         return new LyricsResult(
@@ -258,7 +262,7 @@ final class AiLyricsRepository {
                 result.karaoke,
                 result.isrc,
                 result.spotifyTrackId,
-                baseResult.contributors
+                baseContributors
         );
     }
 

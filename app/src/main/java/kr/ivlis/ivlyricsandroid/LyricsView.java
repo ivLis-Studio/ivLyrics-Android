@@ -140,7 +140,7 @@ public final class LyricsView extends View {
         } else {
             lines = result.lines;
             emptyMessage = "";
-            karaoke = result.karaoke;
+            karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
         centerInitialized = false;
         lastFrameMs = 0L;
@@ -635,6 +635,41 @@ public final class LyricsView extends View {
             return;
         }
         cachedRows("line:" + lineIndex, line.text, japaneseFuriganaEnabled ? line.furiganaText : "", line.syllables, line.startTimeMs, line.endTimeMs, textSize);
+    }
+
+    private boolean hasTimedKaraokeData(List<LyricsLine> lyricLines) {
+        if (lyricLines == null || lyricLines.isEmpty()) {
+            return false;
+        }
+        for (LyricsLine line : lyricLines) {
+            if (line == null) {
+                continue;
+            }
+            if (hasTimedSyllables(line.syllables)) {
+                return true;
+            }
+            if (line.vocalParts == null) {
+                continue;
+            }
+            for (LyricsLine.VocalPart part : line.vocalParts) {
+                if (part != null && hasTimedSyllables(part.syllables)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasTimedSyllables(List<LyricsLine.Syllable> syllables) {
+        if (syllables == null || syllables.isEmpty()) {
+            return false;
+        }
+        for (LyricsLine.Syllable syllable : syllables) {
+            if (syllable != null && syllable.endTimeMs > syllable.startTimeMs) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<DrawGroup> buildLyricGroups(DisplayLine displayLine, boolean active, float distance) {

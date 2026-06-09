@@ -448,6 +448,9 @@ final class LyricsRepository {
                 );
             }
             log.write("sync-data apply failed: falling back to LRCLIB line lyrics");
+            if (!syncData.contributors.isEmpty()) {
+                log.write("sync-data contributors ignored: sync-data was not applied");
+            }
         }
 
         String detail = isrc.isEmpty()
@@ -462,7 +465,7 @@ final class LyricsRepository {
                 false,
                 isrc,
                 spotifyTrackId,
-                syncData == null ? Collections.emptyList() : syncData.contributors
+                Collections.emptyList()
         );
     }
 
