@@ -2247,6 +2247,9 @@ public final class MainActivity extends Activity implements
         preview.addView(line2, topMargin(matchWrap(), dp(14)));
         TextView line3 = label(ui("onboarding.preview.line3"), 15f, Color.argb(76, 255, 255, 255), AppFonts.semiBold(this));
         preview.addView(line3, topMargin(matchWrap(), dp(12)));
+        TextView line4 = label(ui("onboarding.preview.line4"), 13f, Color.argb(128, 255, 255, 255), AppFonts.semiBold(this));
+        line4.setLineSpacing(dp(2), 1f);
+        preview.addView(line4, topMargin(matchWrap(), dp(10)));
     }
 
     private LinearLayout buildOnboardingUiLanguageSelect() {
