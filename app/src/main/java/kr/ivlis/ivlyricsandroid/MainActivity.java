@@ -89,7 +89,8 @@ public final class MainActivity extends Activity implements
         LyricsRepository.Callback,
         LyricsRepository.ManualLrclibCallback,
         AiLyricsRepository.Callback,
-        FuriganaRepository.Callback {
+        FuriganaRepository.Callback,
+        YouTubeBackgroundRepository.Callback {
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
@@ -138,6 +139,7 @@ public final class MainActivity extends Activity implements
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
     private FuriganaRepository furiganaRepository;
+    private YouTubeBackgroundRepository youtubeBackgroundRepository;
     private UpdateChecker updateChecker;
     private AiLyricsSettings aiLyricsSettings;
 
@@ -146,6 +148,7 @@ public final class MainActivity extends Activity implements
     private PlayerProgressView playerProgressView;
     private PlayerBackgroundView backgroundView;
     private PlayerBackgroundView lyricsBackgroundView;
+    private YouTubeBackgroundView youtubeBackgroundView;
     private FrameLayout mainPage;
     private FrameLayout lyricsPage;
     private FrameLayout inAppBrowserPage;
@@ -254,9 +257,12 @@ public final class MainActivity extends Activity implements
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
     private LyricsResult currentFuriganaResult;
+    private YouTubeBackgroundRepository.VideoInfo currentYouTubeBackgroundInfo;
+    private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
     private String currentArtworkKey = "";
+    private String currentYouTubeBackgroundRequestKey = "";
     private Bitmap currentArtworkBitmap;
     private boolean currentArtworkFromSpotify;
     private String translatedTrackTitle = "";
@@ -343,6 +349,7 @@ public final class MainActivity extends Activity implements
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
+        youtubeBackgroundRepository = new YouTubeBackgroundRepository(this);
         updateChecker = new UpdateChecker(this);
         Window window = getWindow();
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
@@ -428,11 +435,15 @@ public final class MainActivity extends Activity implements
         if (furiganaRepository != null) {
             furiganaRepository.shutdown();
         }
+        if (youtubeBackgroundRepository != null) {
+            youtubeBackgroundRepository.shutdown();
+        }
         if (updateChecker != null) {
             updateChecker.shutdown();
         }
         unregisterUpdateDownloadReceiver();
         destroyInAppBrowserWebView();
+        destroyYouTubeBackgroundView();
         seekExecutor.shutdownNow();
         super.onDestroy();
     }
@@ -520,6 +531,7 @@ public final class MainActivity extends Activity implements
             selectedRuleSourceLang = "auto";
             updateLyricsLanguageSettingsUi();
             resetManualLrclibSearchForTrack(null);
+            resetYouTubeBackgroundForTrack();
             return;
         }
 
@@ -567,6 +579,7 @@ public final class MainActivity extends Activity implements
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
             currentFuriganaKey = "";
+            resetYouTubeBackgroundForTrack();
             setLyricsTrackDurationOnViews(snapshot.durationMs);
             setLyricsResultOnViews(currentLyricsResult);
             setLyricsSupplementLoading(false, false);
@@ -575,6 +588,7 @@ public final class MainActivity extends Activity implements
                 lyricsRepository.loadLyrics(snapshot, this);
             }
         }
+        updateYouTubeBackgroundPlaybackState();
     }
 
     private void setSpotifySetupRequiredState(TrackSnapshot snapshot) {
@@ -614,6 +628,7 @@ public final class MainActivity extends Activity implements
         selectedRuleSourceLang = "auto";
         updateLyricsLanguageSettingsUi();
         resetManualLrclibSearchForTrack(null);
+        resetYouTubeBackgroundForTrack();
     }
 
     @Override
@@ -635,6 +650,7 @@ public final class MainActivity extends Activity implements
         updateLyricsLanguageSettingsUi();
         requestMetadataTranslation(false);
         requestAiLyrics(false);
+        syncYouTubeBackgroundState();
     }
 
     @Override
@@ -654,6 +670,7 @@ public final class MainActivity extends Activity implements
         updateDetectedLyricsSourceLanguage(null);
         updateLyricsLanguageSettingsUi();
         requestMetadataTranslation(false);
+        resetYouTubeBackgroundForTrack();
     }
 
     @Override
@@ -706,6 +723,7 @@ public final class MainActivity extends Activity implements
         showSavedToast(ui("lyrics.lrclib_search.loaded"));
         requestMetadataTranslation(false);
         requestAiLyrics(false);
+        syncYouTubeBackgroundState();
     }
 
     @Override
@@ -727,6 +745,50 @@ public final class MainActivity extends Activity implements
             return;
         }
         appendLog(message);
+    }
+
+    @Override
+    public void onYouTubeBackgroundLoaded(String requestKey, YouTubeBackgroundRepository.VideoInfo info, boolean fromCache) {
+        if (!isCurrentYouTubeBackgroundRequest(requestKey)) {
+            return;
+        }
+        currentYouTubeBackgroundLoading = false;
+        currentYouTubeBackgroundInfo = info;
+        appendLog("youtube background: "
+                + (fromCache ? "cache" : "loaded")
+                + " / videoId=" + info.youtubeVideoId
+                + (info.youtubeTitle.isEmpty() ? "" : " / title=\"" + info.youtubeTitle + "\"")
+                + (info.hasCaptionStartTime ? " / captionStart=" + info.captionStartTimeSeconds + "s" : "")
+                + (info.autoGenerated ? " / auto" : ""));
+        if (youtubeBackgroundView != null && isVideoBackgroundMode()) {
+            youtubeBackgroundView.loadVideo(info);
+            updateYouTubeBackgroundPlaybackState();
+        }
+    }
+
+    @Override
+    public void onYouTubeBackgroundError(String requestKey, String message) {
+        if (!isCurrentYouTubeBackgroundRequest(requestKey)) {
+            return;
+        }
+        currentYouTubeBackgroundLoading = false;
+        currentYouTubeBackgroundInfo = null;
+        appendLog(message == null || message.trim().isEmpty()
+                ? "youtube background: unavailable"
+                : message.trim());
+        if (youtubeBackgroundView != null) {
+            youtubeBackgroundView.clearVideo();
+        }
+    }
+
+    @Override
+    public void onYouTubeBackgroundLog(String requestKey, String message) {
+        if (!isCurrentYouTubeBackgroundRequest(requestKey)
+                || message == null
+                || message.trim().isEmpty()) {
+            return;
+        }
+        appendLog(message.trim());
     }
 
     @Override
@@ -831,6 +893,12 @@ public final class MainActivity extends Activity implements
         FrameLayout root = new FrameLayout(this);
         backgroundView = new PlayerBackgroundView(this);
         root.addView(backgroundView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        youtubeBackgroundView = new YouTubeBackgroundView(this);
+        root.addView(youtubeBackgroundView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
@@ -2903,6 +2971,7 @@ public final class MainActivity extends Activity implements
         currentArtworkFromSpotify = artworkFromSpotify;
         updateArtwork(artwork, currentArtworkKey);
         restoreNowPlayingViewsAfterUiLanguageChange();
+        syncYouTubeBackgroundState();
 
         if (!isInitialSetupComplete()) {
             onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, previousOnboardingStep));
@@ -3813,6 +3882,9 @@ public final class MainActivity extends Activity implements
         if (AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT.equals(normalized)) {
             return ui("background.mode.blur_gradient");
         }
+        if (AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(normalized)) {
+            return ui("background.mode.video");
+        }
         if (AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(normalized)) {
             return ui("background.mode.solid");
         }
@@ -3823,6 +3895,9 @@ public final class MainActivity extends Activity implements
         String normalized = AiLyricsSettings.normalizeBackgroundMode(modeId);
         if (AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT.equals(normalized)) {
             return ui("background.mode.blur_gradient_desc");
+        }
+        if (AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(normalized)) {
+            return ui("background.mode.video_desc");
         }
         if (AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(normalized)) {
             return ui("background.mode.solid_desc");
@@ -4036,9 +4111,119 @@ public final class MainActivity extends Activity implements
         if (backgroundView != null) {
             backgroundView.setBackgroundSettings(settings);
         }
+        boolean videoMode = AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(settings.mode);
         if (lyricsBackgroundView != null) {
             lyricsBackgroundView.setBackgroundSettings(settings);
-            lyricsBackgroundView.setVisibility(View.VISIBLE);
+            lyricsBackgroundView.setVisibility(videoMode ? View.GONE : View.VISIBLE);
+        }
+        if (youtubeBackgroundView != null) {
+            youtubeBackgroundView.setBackgroundSettings(settings);
+        }
+        syncYouTubeBackgroundState();
+    }
+
+    private boolean isVideoBackgroundMode() {
+        return aiLyricsSettings != null
+                && AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(aiLyricsSettings.snapshot().background.mode);
+    }
+
+    private void syncYouTubeBackgroundState() {
+        if (youtubeBackgroundView == null) {
+            return;
+        }
+        boolean videoMode = isVideoBackgroundMode();
+        youtubeBackgroundView.setVideoBackgroundEnabled(videoMode);
+        if (!videoMode) {
+            return;
+        }
+        if (currentYouTubeBackgroundInfo != null) {
+            youtubeBackgroundView.loadVideo(currentYouTubeBackgroundInfo);
+        } else {
+            requestYouTubeBackgroundIfNeeded();
+        }
+        updateYouTubeBackgroundPlaybackState();
+    }
+
+    private void requestYouTubeBackgroundIfNeeded() {
+        if (!isVideoBackgroundMode()
+                || youtubeBackgroundRepository == null
+                || currentTrack == null
+                || !currentTrack.hasUsableMetadata()) {
+            return;
+        }
+        LyricsResult lyricsResult = currentBaseLyricsResult == null ? LyricsResult.empty("") : currentBaseLyricsResult;
+        String isrc = nonEmpty(lyricsResult.isrc, currentTrack.isrc);
+        if (isrc.isEmpty()) {
+            appendLog("youtube background: waiting for ISRC");
+            return;
+        }
+        String trackId = nonEmpty(lyricsResult.spotifyTrackId, currentTrack.trackId);
+        String requestKey = isrc + "|" + trackId + "|" + currentTrack.title + "|" + currentTrack.artist + "|" + currentTrack.album;
+        if (requestKey.equals(currentYouTubeBackgroundRequestKey)
+                && (currentYouTubeBackgroundLoading || currentYouTubeBackgroundInfo != null)) {
+            return;
+        }
+        currentYouTubeBackgroundRequestKey = requestKey;
+        currentYouTubeBackgroundLoading = true;
+        youtubeBackgroundRepository.load(requestKey, currentTrack, lyricsResult, this);
+    }
+
+    private boolean isCurrentYouTubeBackgroundRequest(String requestKey) {
+        return requestKey != null && requestKey.equals(currentYouTubeBackgroundRequestKey);
+    }
+
+    private void resetYouTubeBackgroundForTrack() {
+        currentYouTubeBackgroundInfo = null;
+        currentYouTubeBackgroundLoading = false;
+        currentYouTubeBackgroundRequestKey = "";
+        if (youtubeBackgroundView != null) {
+            youtubeBackgroundView.clearVideo();
+            youtubeBackgroundView.setVideoBackgroundEnabled(isVideoBackgroundMode());
+        }
+    }
+
+    private void updateYouTubeBackgroundPlaybackState() {
+        if (youtubeBackgroundView == null
+                || !isVideoBackgroundMode()
+                || currentTrack == null
+                || !currentTrack.hasUsableMetadata()) {
+            return;
+        }
+        long position = currentPlaybackPosition(currentTrack);
+        youtubeBackgroundView.setPlaybackState(
+                position,
+                currentTrack.playing,
+                firstLyricTimeMs(currentBaseLyricsResult),
+                currentTrackSyncOffsetMs
+        );
+    }
+
+    private long firstLyricTimeMs(LyricsResult result) {
+        if (result == null || result.lines == null || result.lines.isEmpty()) {
+            return 0L;
+        }
+        long best = Long.MAX_VALUE;
+        for (LyricsLine line : result.lines) {
+            if (line == null) {
+                continue;
+            }
+            if (line.vocalParts != null && !line.vocalParts.isEmpty()) {
+                for (LyricsLine.VocalPart part : line.vocalParts) {
+                    if (part != null && part.startTimeMs >= 0L) {
+                        best = Math.min(best, part.startTimeMs);
+                    }
+                }
+            } else if (line.isTimed()) {
+                best = Math.min(best, line.startTimeMs);
+            }
+        }
+        return best == Long.MAX_VALUE ? 0L : best;
+    }
+
+    private void destroyYouTubeBackgroundView() {
+        if (youtubeBackgroundView != null) {
+            youtubeBackgroundView.destroy();
+            youtubeBackgroundView = null;
         }
     }
 
@@ -4397,6 +4582,7 @@ public final class MainActivity extends Activity implements
         long lyricsPosition = lyricsPlaybackPosition(position, currentTrack.durationMs);
         setLyricsPlaybackPositionOnViews(lyricsPosition);
         updateLyricPreview(lyricsPosition);
+        updateYouTubeBackgroundPlaybackState();
     }
 
     private long lyricsPlaybackPosition(long playerPositionMs, long durationMs) {
@@ -6212,6 +6398,7 @@ public final class MainActivity extends Activity implements
         long lyricsPosition = lyricsPlaybackPosition(position, snapshot.durationMs);
         setLyricsPlaybackPositionOnViews(lyricsPosition);
         playerProgressView.setProgress(position, snapshot.durationMs);
+        updateYouTubeBackgroundPlaybackState();
 
         long now = SystemClock.uptimeMillis();
         if (now - lastProgressUiUpdateMs >= 250L) {
@@ -7873,6 +8060,7 @@ public final class MainActivity extends Activity implements
         setLyricsPlaybackPositionOnViews(lyricsPosition);
         updateLyricPreview(lyricsPosition);
         updateProgressViews(target, duration);
+        updateYouTubeBackgroundPlaybackState();
         if (now - lastSeekCommandUptimeMs < 220L && Math.abs(target - lastSeekCommandPositionMs) < 700L) {
             return;
         }

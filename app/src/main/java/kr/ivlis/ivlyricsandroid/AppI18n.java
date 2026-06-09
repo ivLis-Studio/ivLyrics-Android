@@ -108,6 +108,7 @@ final class AppI18n {
         addFuriganaStrings(languages);
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
+        addVideoBackgroundStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -1744,6 +1745,74 @@ final class AppI18n {
                 "toast.speaker_colors_saved", saved,
                 "toast.speaker_colors_reset", resetToast,
                 "toast.invalid_color_format", invalidFormat
+        };
+    }
+
+    private static void addVideoBackgroundStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = videoBackgroundStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] videoBackgroundStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return videoBackgroundStringsValues("앨범 커버, 영상, 블러 그라데이션, 단색 배경 중 하나를 사용합니다.", "영상", "ivLyrics YouTube 영상 정보를 불러와 실제 영상을 배경으로 재생합니다.");
+            case "zh-CN":
+                return videoBackgroundStringsValues("选择专辑封面、视频、模糊渐变或纯色背景。", "视频", "加载 ivLyrics YouTube 视频信息，并在播放器后方播放真实视频。");
+            case "zh-TW":
+                return videoBackgroundStringsValues("選擇專輯封面、影片、模糊漸層或純色背景。", "影片", "載入 ivLyrics YouTube 影片資訊，並在播放器後方播放實際影片。");
+            case "ja":
+                return videoBackgroundStringsValues("アルバムカバー、動画、ぼかしグラデーション、単色背景から選びます。", "動画", "ivLyrics の YouTube 動画情報を読み込み、実際の動画を背景で再生します。");
+            case "hi":
+                return videoBackgroundStringsValues("एल्बम कवर, वीडियो, धुंधली ढाल, या ठोस रंग पृष्ठभूमि चुनें।", "वीडियो", "ivLyrics YouTube वीडियो जानकारी लोड करता है और प्लेयर के पीछे असली वीडियो चलाता है।");
+            case "es":
+                return videoBackgroundStringsValues("Elija portada del álbum, video, degradado borroso o fondo sólido.", "Video", "Carga datos de video de YouTube de ivLyrics y reproduce el video real detrás del reproductor.");
+            case "fr":
+                return videoBackgroundStringsValues("Choisissez une pochette, une vidéo, un dégradé flou ou une couleur unie.", "Vidéo", "Charge la vidéo YouTube ivLyrics et lit la vraie vidéo derrière le lecteur.");
+            case "ar":
+                return videoBackgroundStringsValues("اختر غلاف الألبوم أو الفيديو أو التدرج الضبابي أو لونًا ثابتًا.", "فيديو", "يحمّل معلومات فيديو YouTube من ivLyrics ويشغل الفيديو الحقيقي خلف المشغّل.");
+            case "fa":
+                return videoBackgroundStringsValues("جلد آلبوم، ویدیو، گرادیان تار یا رنگ ثابت را انتخاب کنید.", "ویدیو", "اطلاعات ویدیوی YouTube از ivLyrics را می‌گیرد و ویدیوی واقعی را پشت پخش‌کننده اجرا می‌کند.");
+            case "de":
+                return videoBackgroundStringsValues("Wählen Sie Albumcover, Video, unscharfen Verlauf oder Volltonfarbe.", "Video", "Lädt ivLyrics-YouTube-Videodaten und spielt das echte Video hinter dem Player ab.");
+            case "ru":
+                return videoBackgroundStringsValues("Выберите обложку, видео, размытый градиент или сплошной цвет.", "Видео", "Загружает YouTube-видео ivLyrics и воспроизводит настоящее видео за плеером.");
+            case "sv":
+                return videoBackgroundStringsValues("Välj albumomslag, video, suddig gradient eller enfärgad bakgrund.", "Video", "Läser in ivLyrics YouTube-video och spelar den riktiga videon bakom spelaren.");
+            case "pt":
+                return videoBackgroundStringsValues("Escolha capa do álbum, vídeo, gradiente desfocado ou cor sólida.", "Vídeo", "Carrega o vídeo do YouTube do ivLyrics e reproduz o vídeo real atrás do player.");
+            case "bn":
+                return videoBackgroundStringsValues("অ্যালবাম কভার, ভিডিও, ঝাপসা গ্রেডিয়েন্ট বা কঠিন রঙের পটভূমি বেছে নিন।", "ভিডিও", "ivLyrics YouTube ভিডিও তথ্য লোড করে এবং প্লেয়ারের পেছনে আসল ভিডিও চালায়।");
+            case "it":
+                return videoBackgroundStringsValues("Scegli copertina, video, sfumatura sfocata o colore solido.", "Video", "Carica il video YouTube di ivLyrics e riproduce il video reale dietro il player.");
+            case "th":
+                return videoBackgroundStringsValues("เลือกปกอัลบั้ม วิดีโอ ไล่ระดับแบบเบลอ หรือพื้นหลังสีทึบ", "วิดีโอ", "โหลดข้อมูลวิดีโอ YouTube ของ ivLyrics และเล่นวิดีโอจริงด้านหลังเครื่องเล่น");
+            case "vi":
+                return videoBackgroundStringsValues("Chọn bìa album, video, nền chuyển màu mờ hoặc màu đặc.", "Video", "Tải video YouTube của ivLyrics và phát video thật phía sau trình phát.");
+            case "id":
+                return videoBackgroundStringsValues("Pilih sampul album, video, gradien buram, atau warna solid.", "Video", "Memuat video YouTube ivLyrics dan memutar video asli di belakang pemutar.");
+            case "ms":
+                return videoBackgroundStringsValues("Pilih kulit album, video, kecerunan kabur atau warna pepejal.", "Video", "Memuatkan video YouTube ivLyrics dan memainkan video sebenar di belakang pemain.");
+            default:
+                return videoBackgroundStringsValues("Choose album cover, video, blurred gradient, or solid color background.", "Video", "Loads ivLyrics YouTube video metadata and plays the real video behind the player.");
+        }
+    }
+
+    private static String[] videoBackgroundStringsValues(String sectionDesc, String label, String desc) {
+        return new String[]{
+                "section.background_desc", sectionDesc,
+                "background.mode.video", label,
+                "background.mode.video_desc", desc
         };
     }
 
