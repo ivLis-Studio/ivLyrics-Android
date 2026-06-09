@@ -80,6 +80,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private boolean playerReady;
     private boolean syncLoopStarted;
     private boolean lastVisibleState;
+    private long suppressHardSyncUntilElapsedMs;
 
     public YouTubeBackgroundView(Context context) {
         super(context);
@@ -213,6 +214,11 @@ public final class YouTubeBackgroundView extends FrameLayout {
         ensureSyncLoop();
     }
 
+    void suppressHardSyncFor(long durationMs) {
+        long until = SystemClock.elapsedRealtime() + Math.max(0L, durationMs);
+        suppressHardSyncUntilElapsedMs = Math.max(suppressHardSyncUntilElapsedMs, until);
+    }
+
     void clearVideo() {
         handler.removeCallbacks(syncRunnable);
         syncLoopStarted = false;
@@ -284,9 +290,10 @@ public final class YouTubeBackgroundView extends FrameLayout {
         double firstLyricSeconds = firstLyricTimeMs / 1000d;
         double offsetSeconds = trackOffsetMs / 1000d;
         double captionStart = currentInfo.captionStartTimeSeconds;
+        boolean allowHardSync = SystemClock.elapsedRealtime() >= suppressHardSyncUntilElapsedMs;
         String script = String.format(
                 Locale.US,
-                "window.ivLyricsSyncVideo(%f,%s,%f,%f,%s,%f,%s,%s);",
+                "window.ivLyricsSyncVideo(%f,%s,%f,%f,%s,%f,%s,%s,%s);",
                 playerSeconds,
                 effectivePlaying ? "true" : "false",
                 firstLyricSeconds,
@@ -294,7 +301,8 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 currentInfo.hasCaptionStartTime ? "true" : "false",
                 captionStart,
                 currentInfo.isAutoMatchedUnknownCaptionStart() ? "true" : "false",
-                enabled ? "true" : "false"
+                enabled ? "true" : "false",
+                allowHardSync ? "true" : "false"
         );
         webView.evaluateJavascript(script, null);
     }
@@ -357,7 +365,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,rel:0,iv_load_policy:3,cc_load_policy:0,mute:1,playsinline:1,modestbranding:1,autohide:1,showinfo:0,enablecastapi:0,allowfullscreen:0,disable_polymer:1,suppress_ads:1,adformat:'0_0',widget_referrer:'https://xpui.app.spotify.com',origin:'https://xpui.app.spotify.com',fflags:'disable_persistent_ads=true&kevlar_allow_multistep_video_ads=false&enable_desktop_ad_controls=false&html5_disable_ads=true&disable_new_pause_state3_player_ads=true&player_ads_enable_gcf=false&web_player_disable_afa=true&preskip_button_style_ads_backend=false&html5_player_enable_ads_client=false'},"
                 + "events:{onReady:function(e){player=e.target;ready=true;sanitizeIframe();try{player.mute();player.playVideo();}catch(x){}disableCaptions();setTimeout(disableCaptions,250);setTimeout(disableCaptions,1000);setTimeout(disableCaptions,2500);try{AndroidYouTubeBackground.onReady();}catch(x){}},"
                 + "onStateChange:function(e){sanitizeIframe();disableCaptions();suppressAds();if(!isAdPlayback())restorePlaybackRate();},onError:function(){reloadDesired();}}});setInterval(function(){if(player&&ready){sanitizeIframe();suppressAds();}},400);}"
-                + "window.ivLyricsSyncVideo=function(playerSeconds,playing,firstLyricSeconds,offsetSeconds,hasCaption,captionStart,autoUnknown,enabled){"
+                + "window.ivLyricsSyncVideo=function(playerSeconds,playing,firstLyricSeconds,offsetSeconds,hasCaption,captionStart,autoUnknown,enabled,allowHardSync){"
                 + "if(!enabled||!player||!ready||!player.getPlayerState)return;"
                 + "try{var now=Date.now();if(now-lastCaptionDisable>5000){lastCaptionDisable=now;disableCaptions();}"
                 + "suppressAds();"
@@ -367,7 +375,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "if(player.getDuration){var duration=player.getDuration();if(duration>0&&target>=duration){target=target%duration;}}"
                 + "lastDesired={videoId:'" + safeVideoId + "',startSeconds:target};"
                 + "var state=player.getPlayerState();"
-                + "if(playing){if(state!==1&&state!==3&&!isAdPlayback()){player.playVideo();}var current=player.getCurrentTime?player.getCurrentTime():0;var diff=Math.abs(current-target);if(diff>1.15&&(diff>4||now-lastSeekAt>1500)){lastSeekAt=now;hideChromeFeedback(360);player.seekTo(target,true);}}"
+                + "if(playing){if(state!==1&&state!==3&&!isAdPlayback()){player.playVideo();}var current=player.getCurrentTime?player.getCurrentTime():0;var diff=Math.abs(current-target);if(allowHardSync&&diff>3.25&&(diff>6||now-lastSeekAt>2200)){lastSeekAt=now;hideChromeFeedback(360);player.seekTo(target,true);}}"
                 + "else{if(state===1||state===3){player.pauseVideo();}}"
                 + "}catch(e){}};"
                 + "</script></body></html>";

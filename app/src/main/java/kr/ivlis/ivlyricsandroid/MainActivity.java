@@ -151,6 +151,7 @@ public final class MainActivity extends Activity implements
     private PlayerBackgroundView backgroundView;
     private PlayerBackgroundView lyricsBackgroundView;
     private YouTubeBackgroundView youtubeBackgroundView;
+    private FrameLayout rootView;
     private FrameLayout mainPage;
     private FrameLayout lyricsPage;
     private FrameLayout inAppBrowserPage;
@@ -411,6 +412,9 @@ public final class MainActivity extends Activity implements
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (youtubeBackgroundView != null) {
+            youtubeBackgroundView.suppressHardSyncFor(900L);
+        }
         rebuildContentViewAfterConfigurationChange();
     }
 
@@ -907,6 +911,7 @@ public final class MainActivity extends Activity implements
 
     private View buildContentView() {
         FrameLayout root = new FrameLayout(this);
+        rootView = root;
         backgroundView = new PlayerBackgroundView(this);
         root.addView(backgroundView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -3083,17 +3088,11 @@ public final class MainActivity extends Activity implements
         boolean wasSettingsVisible = isSettingsPanelVisible();
         boolean wasDebugVisible = debugPanel != null && debugPanel.getVisibility() == View.VISIBLE;
         boolean wasLyricsVisible = lyricsPageVisible;
-        String previousSettingsTab = activeSettingsTab;
         int previousOnboardingStep = onboardingStep;
         dismissLyricsMetaTip();
         cancelLyricsMetaLongPress();
-        destroyInAppBrowserWebView();
-        inAppBrowserVisible = false;
-        inAppBrowserInitialUrl = "";
 
-        setContentView(buildContentView());
-        activeSettingsTab = normalizeSettingsTab(previousSettingsTab);
-        switchSettingsTab(activeSettingsTab);
+        rebuildOrientationSensitivePages();
         applySystemBarsForOrientation();
         AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
         applyKeepScreenOnSetting(settingsSnapshot);
@@ -3128,6 +3127,33 @@ public final class MainActivity extends Activity implements
             }
         }
         applyLandscapeControlsAutoHideSetting();
+    }
+
+    private void rebuildOrientationSensitivePages() {
+        if (rootView == null || mainPage == null || lyricsPage == null) {
+            setContentView(buildContentView());
+            return;
+        }
+        int mainIndex = rootView.indexOfChild(mainPage);
+        if (mainIndex < 0) {
+            mainIndex = Math.min(2, rootView.getChildCount());
+        }
+        rootView.removeView(mainPage);
+        rootView.removeView(lyricsPage);
+
+        mainPage = buildMainPage();
+        rootView.addView(mainPage, Math.min(mainIndex, rootView.getChildCount()), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        lyricsPage = buildLyricsPage();
+        lyricsPage.setVisibility(View.GONE);
+        lyricsPageVisible = false;
+        rootView.addView(lyricsPage, Math.min(mainIndex + 1, rootView.getChildCount()), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
     }
 
     private void restoreNowPlayingViewsAfterUiLanguageChange() {
