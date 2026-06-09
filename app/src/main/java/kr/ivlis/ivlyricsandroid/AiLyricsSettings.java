@@ -40,6 +40,7 @@ final class AiLyricsSettings {
     static final String KEY_BACKGROUND_REDUCE_MOTION = "background_reduce_motion";
     static final String KEY_BACKGROUND_SOLID_COLOR = "background_solid_color";
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
+    static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
     static final String KEY_SPOTIFY_CLIENT_ID = "spotify_client_id";
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
@@ -179,6 +180,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, true),
                 backgroundSettings(),
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
+                prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
@@ -332,6 +334,10 @@ final class AiLyricsSettings {
 
     void setLandscapeAutoHideControls(boolean enabled) {
         prefs.edit().putBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, enabled).apply();
+    }
+
+    void setKeepScreenOn(boolean enabled) {
+        prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply();
     }
 
     void setSpotifyApiCredentials(String clientId, String clientSecret) {
@@ -855,6 +861,7 @@ final class AiLyricsSettings {
         final boolean syncedLyricsKaraokeAnimationEnabled;
         final BackgroundSettings background;
         final boolean landscapeAutoHideControls;
+        final boolean keepScreenOn;
         final boolean metadataTranslationEnabled;
         final String spotifyClientId;
         final String spotifyClientSecret;
@@ -876,6 +883,7 @@ final class AiLyricsSettings {
                 boolean syncedLyricsKaraokeAnimationEnabled,
                 BackgroundSettings background,
                 boolean landscapeAutoHideControls,
+                boolean keepScreenOn,
                 boolean metadataTranslationEnabled,
                 String spotifyClientId,
                 String spotifyClientSecret
@@ -900,6 +908,7 @@ final class AiLyricsSettings {
                     ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR)
                     : background;
             this.landscapeAutoHideControls = landscapeAutoHideControls;
+            this.keepScreenOn = keepScreenOn;
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();

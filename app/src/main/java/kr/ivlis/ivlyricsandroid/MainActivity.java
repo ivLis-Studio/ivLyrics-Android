@@ -181,6 +181,7 @@ public final class MainActivity extends Activity implements
     private Switch autoInstrumentalBreakSwitch;
     private Switch syncedLyricsKaraokeSwitch;
     private Switch landscapeAutoHideControlsSwitch;
+    private Switch keepScreenOnSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
     private SeekBar backgroundBrightnessSeekBar;
@@ -284,7 +285,9 @@ public final class MainActivity extends Activity implements
         window.setNavigationBarColor(Color.rgb(17, 18, 22));
         setContentView(buildContentView());
         applySystemBarsForOrientation();
-        applyBackgroundSettings(aiLyricsSettings.snapshot());
+        AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
+        applyKeepScreenOnSetting(settingsSnapshot);
+        applyBackgroundSettings(settingsSnapshot);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
     }
@@ -308,6 +311,7 @@ public final class MainActivity extends Activity implements
         updateSpotifySetupGate(false);
         updateOnboardingPermissionState();
         applySystemBarsForOrientation();
+        applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
         applyLandscapeControlsAutoHideSetting();
         handler.post(ticker);
         consumeOpenLyricsPageRequest();
@@ -1861,6 +1865,20 @@ public final class MainActivity extends Activity implements
         settingsDisplayPage.addView(sectionTitle(ui("section.player")));
         settingsDisplayPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
 
+        keepScreenOnSwitch = settingSwitch(
+                ui("setting.keep_screen_on"),
+                ui("setting.keep_screen_on_desc")
+        );
+        keepScreenOnSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setKeepScreenOn(isChecked);
+            applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
+            showSavedToast(isChecked ? ui("toast.keep_screen_on_on") : ui("toast.keep_screen_on_off"));
+        });
+        settingsDisplayPage.addView(keepScreenOnSwitch, topMargin(matchWrap(), dp(12)));
+
         landscapeAutoHideControlsSwitch = settingSwitch(
                 ui("setting.landscape_auto_hide"),
                 ui("setting.landscape_auto_hide_desc")
@@ -2494,7 +2512,9 @@ public final class MainActivity extends Activity implements
         activeSettingsTab = normalizeSettingsTab(previousSettingsTab);
         switchSettingsTab(activeSettingsTab);
         applySystemBarsForOrientation();
-        applyBackgroundSettings(aiLyricsSettings.snapshot());
+        AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
+        applyKeepScreenOnSetting(settingsSnapshot);
+        applyBackgroundSettings(settingsSnapshot);
         updatePermissionState();
 
         currentTrack = snapshot;
@@ -3235,6 +3255,18 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void applyKeepScreenOnSetting(AiLyricsSettings.Snapshot snapshot) {
+        Window window = getWindow();
+        if (window == null) {
+            return;
+        }
+        if (snapshot != null && snapshot.keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
+
     private void addLyricsPopupTabButton(String tabId, String text) {
         if (lyricsPopupTabButtonsContainer == null) {
             return;
@@ -3949,6 +3981,11 @@ public final class MainActivity extends Activity implements
         if (landscapeAutoHideControlsSwitch != null) {
             suppressSettingsEvents = true;
             landscapeAutoHideControlsSwitch.setChecked(snapshot.landscapeAutoHideControls);
+            suppressSettingsEvents = false;
+        }
+        if (keepScreenOnSwitch != null) {
+            suppressSettingsEvents = true;
+            keepScreenOnSwitch.setChecked(snapshot.keepScreenOn);
             suppressSettingsEvents = false;
         }
         updateBackgroundSettingsUi(snapshot, true);

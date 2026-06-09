@@ -102,6 +102,7 @@ final class AppI18n {
         languages.put("ms", msStrings());
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
+        addDisplayPowerStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -453,6 +454,175 @@ final class AppI18n {
                 "toast.spotify_open_failed", "Could not open Spotify",
                 "onboarding.preview.line4", previewTip,
                 "lyrics.menu_tip", menuTip
+        };
+    }
+
+    private static void addDisplayPowerStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = displayPowerStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] displayPowerStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return displayPowerStringsValues(
+                        "화면 켜짐 유지",
+                        "앱을 사용하는 동안 휴대폰 화면이 자동으로 꺼지지 않게 합니다.",
+                        "화면 켜짐 유지",
+                        "화면 자동 꺼짐 허용"
+                );
+            case "zh-CN":
+                return displayPowerStringsValues(
+                        "保持屏幕常亮",
+                        "使用应用时防止手机屏幕自动关闭。",
+                        "已保持屏幕常亮",
+                        "允许屏幕自动关闭"
+                );
+            case "zh-TW":
+                return displayPowerStringsValues(
+                        "保持螢幕常亮",
+                        "使用 App 時防止手機螢幕自動關閉。",
+                        "已保持螢幕常亮",
+                        "允許螢幕自動關閉"
+                );
+            case "ja":
+                return displayPowerStringsValues(
+                        "画面を常にオン",
+                        "アプリ使用中に端末の画面が自動で消灯しないようにします。",
+                        "画面を常にオンにします",
+                        "画面の自動消灯を許可します"
+                );
+            case "hi":
+                return displayPowerStringsValues(
+                        "स्क्रीन चालू रखें",
+                        "ऐप इस्तेमाल करते समय फोन की स्क्रीन अपने आप बंद न हो।",
+                        "स्क्रीन चालू रखी जाएगी",
+                        "स्क्रीन अपने आप बंद हो सकती है"
+                );
+            case "es":
+                return displayPowerStringsValues(
+                        "Mantener pantalla encendida",
+                        "Evita que la pantalla se apague automaticamente mientras usas la app.",
+                        "Pantalla siempre encendida",
+                        "Apagado automatico permitido"
+                );
+            case "fr":
+                return displayPowerStringsValues(
+                        "Garder l'ecran allume",
+                        "Empeche l'ecran du telephone de s'eteindre pendant l'utilisation de l'app.",
+                        "Ecran maintenu allume",
+                        "Extinction automatique autorisee"
+                );
+            case "ar":
+                return displayPowerStringsValues(
+                        "إبقاء الشاشة قيد التشغيل",
+                        "يمنع إيقاف شاشة الهاتف تلقائيًا أثناء استخدام التطبيق.",
+                        "سيتم إبقاء الشاشة قيد التشغيل",
+                        "تم السماح بإيقاف الشاشة تلقائيًا"
+                );
+            case "fa":
+                return displayPowerStringsValues(
+                        "روشن نگه داشتن صفحه",
+                        "هنگام استفاده از برنامه از خاموش شدن خودکار صفحه جلوگیری می کند.",
+                        "صفحه روشن می ماند",
+                        "خاموشی خودکار صفحه مجاز است"
+                );
+            case "de":
+                return displayPowerStringsValues(
+                        "Bildschirm eingeschaltet lassen",
+                        "Verhindert, dass sich der Bildschirm waehrend der App-Nutzung automatisch ausschaltet.",
+                        "Bildschirm bleibt eingeschaltet",
+                        "Automatisches Ausschalten erlaubt"
+                );
+            case "ru":
+                return displayPowerStringsValues(
+                        "Не выключать экран",
+                        "Не дает экрану телефона автоматически гаснуть во время использования приложения.",
+                        "Экран будет оставаться включенным",
+                        "Автоотключение экрана разрешено"
+                );
+            case "sv":
+                return displayPowerStringsValues(
+                        "Hall skarmen vaken",
+                        "Forhindrar att telefonens skarm slacks automatiskt nar appen anvands.",
+                        "Skarmen halls vaken",
+                        "Automatisk skarmslackning tillaten"
+                );
+            case "pt":
+                return displayPowerStringsValues(
+                        "Manter tela ligada",
+                        "Impede que a tela do telefone apague automaticamente enquanto usa o app.",
+                        "Tela mantida ligada",
+                        "Desligamento automatico permitido"
+                );
+            case "bn":
+                return displayPowerStringsValues(
+                        "স্ক্রিন চালু রাখুন",
+                        "অ্যাপ ব্যবহারের সময় ফোনের স্ক্রিন স্বয়ংক্রিয়ভাবে বন্ধ হতে দেবে না।",
+                        "স্ক্রিন চালু রাখা হবে",
+                        "স্ক্রিন স্বয়ংক্রিয়ভাবে বন্ধ হতে পারে"
+                );
+            case "it":
+                return displayPowerStringsValues(
+                        "Mantieni schermo acceso",
+                        "Impedisce allo schermo del telefono di spegnersi automaticamente mentre usi l'app.",
+                        "Schermo mantenuto acceso",
+                        "Spegnimento automatico consentito"
+                );
+            case "th":
+                return displayPowerStringsValues(
+                        "เปิดหน้าจอค้างไว้",
+                        "ป้องกันไม่ให้หน้าจอโทรศัพท์ดับอัตโนมัติระหว่างใช้แอป",
+                        "เปิดหน้าจอค้างไว้แล้ว",
+                        "อนุญาตให้หน้าจอดับอัตโนมัติ"
+                );
+            case "vi":
+                return displayPowerStringsValues(
+                        "Giữ màn hình sáng",
+                        "Ngăn màn hình điện thoại tự tắt khi đang dùng ứng dụng.",
+                        "Màn hình sẽ luôn sáng",
+                        "Cho phép tự tắt màn hình"
+                );
+            case "id":
+                return displayPowerStringsValues(
+                        "Jaga layar tetap menyala",
+                        "Mencegah layar ponsel mati otomatis saat aplikasi digunakan.",
+                        "Layar tetap menyala",
+                        "Layar boleh mati otomatis"
+                );
+            case "ms":
+                return displayPowerStringsValues(
+                        "Kekalkan skrin menyala",
+                        "Menghalang skrin telefon padam secara automatik semasa menggunakan aplikasi.",
+                        "Skrin dikekalkan menyala",
+                        "Skrin boleh padam automatik"
+                );
+            default:
+                return displayPowerStringsValues(
+                        "Keep screen on",
+                        "Prevents the phone screen from turning off while using the app.",
+                        "Screen will stay on",
+                        "Screen can turn off automatically"
+                );
+        }
+    }
+
+    private static String[] displayPowerStringsValues(String title, String desc, String enabled, String disabled) {
+        return new String[]{
+                "setting.keep_screen_on", title,
+                "setting.keep_screen_on_desc", desc,
+                "toast.keep_screen_on_on", enabled,
+                "toast.keep_screen_on_off", disabled
         };
     }
 
