@@ -1,0 +1,6 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_splash_motion_mark">
+    <target
+        android:name="mark"
+        android:animation="@animator/splash_mark_motion" />
+</animated-vector>

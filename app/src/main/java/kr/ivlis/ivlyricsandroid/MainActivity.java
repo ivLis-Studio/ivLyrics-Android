@@ -265,6 +265,7 @@ public final class MainActivity extends Activity implements
     private boolean landscapeControlsVisible = true;
     private boolean consumeLandscapeRevealGesture;
     private boolean pendingOpenLyricsPageFromIntent;
+    private boolean launchSplashPending = true;
     private int lyricsMetaTapCount;
     private long lastLyricsMetaTapUptimeMs;
 
@@ -285,6 +286,7 @@ public final class MainActivity extends Activity implements
     @Override
     @SuppressWarnings("deprecation")
     protected void onCreate(Bundle savedInstanceState) {
+        setTheme(R.style.AppTheme);
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
         aiLyricsRepository = new AiLyricsRepository(this);
@@ -751,6 +753,19 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+        if (launchSplashPending) {
+            LaunchMotionSplashView splashView = new LaunchMotionSplashView(this);
+            root.addView(splashView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            launchSplashPending = false;
+            splashView.playAndDismiss(() -> {
+                if (splashView.getParent() == root) {
+                    root.removeView(splashView);
+                }
+            });
+        }
         return root;
     }
 

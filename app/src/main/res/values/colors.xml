@@ -5,4 +5,5 @@
     <color name="iv_text">#F4F6FB</color>
     <color name="iv_text_secondary">#AEB4C2</color>
     <color name="iv_accent">#65D6AD</color>
+    <color name="iv_splash_background">#090B11</color>
 </resources>
