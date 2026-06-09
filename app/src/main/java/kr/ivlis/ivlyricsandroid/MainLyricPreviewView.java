@@ -50,6 +50,7 @@ final class MainLyricPreviewView extends View {
     private long lineStartMs;
     private long lineEndMs;
     private boolean playing;
+    private boolean karaokeBounceEffectEnabled = true;
     private float textScale = 1f;
 
     MainLyricPreviewView(Context context) {
@@ -91,6 +92,16 @@ final class MainLyricPreviewView extends View {
         }
         textScale = safeScale;
         requestLayout();
+        postInvalidateOnAnimation();
+    }
+
+    void setKaraokeBounceEffectEnabled(boolean enabled) {
+        if (karaokeBounceEffectEnabled == enabled) {
+            return;
+        }
+        karaokeBounceEffectEnabled = enabled;
+        bounceStates.clear();
+        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -612,7 +623,7 @@ final class MainLyricPreviewView extends View {
             long positionMs,
             float textSize
     ) {
-        if (activeSegmentIndex < 0) {
+        if (!karaokeBounceEffectEnabled || activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
 

@@ -191,6 +191,7 @@ public final class MainActivity extends Activity implements
     private Switch japaneseFuriganaSwitch;
     private Switch autoInstrumentalBreakSwitch;
     private Switch syncedLyricsKaraokeSwitch;
+    private Switch karaokeBounceSwitch;
     private Switch landscapeAutoHideControlsSwitch;
     private Switch keepScreenOnSwitch;
     private Switch backgroundNoiseSwitch;
@@ -946,6 +947,7 @@ public final class MainActivity extends Activity implements
         lyricPreviewContainer.setOnClickListener(view -> showLyricsPage(true));
         attachPageSwipe(lyricPreviewContainer, true, true);
         lyricPreviewView = new MainLyricPreviewView(this);
+        lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricPreviewContainer.addView(lyricPreviewView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1143,6 +1145,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setVerticalCenterBias(0.50f);
         landscapeLyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
+        landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
         landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
@@ -1493,6 +1496,7 @@ public final class MainActivity extends Activity implements
         lyricsView.setVerticalCenterBias(0.42f);
         lyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
+        lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         lyricsView.setOnSeekListener(this::seekToPosition);
         LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
@@ -1937,6 +1941,20 @@ public final class MainActivity extends Activity implements
             showSavedToast(ui("toast.settings_saved"));
         });
         settingsLyricsPage.addView(syncedLyricsKaraokeSwitch, topMargin(matchWrap(), dp(12)));
+
+        karaokeBounceSwitch = settingSwitch(
+                ui("setting.karaoke_bounce_effect"),
+                ui("setting.karaoke_bounce_effect_desc")
+        );
+        karaokeBounceSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setKaraokeBounceEffectEnabled(isChecked);
+            setKaraokeBounceEffectOnViews(isChecked);
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsLyricsPage.addView(karaokeBounceSwitch, topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.player")));
         settingsDisplayPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
@@ -4120,6 +4138,11 @@ public final class MainActivity extends Activity implements
             syncedLyricsKaraokeSwitch.setChecked(snapshot.syncedLyricsKaraokeAnimationEnabled);
             suppressSettingsEvents = false;
         }
+        if (karaokeBounceSwitch != null) {
+            suppressSettingsEvents = true;
+            karaokeBounceSwitch.setChecked(snapshot.karaokeBounceEffectEnabled);
+            suppressSettingsEvents = false;
+        }
         if (landscapeAutoHideControlsSwitch != null) {
             suppressSettingsEvents = true;
             landscapeAutoHideControlsSwitch.setChecked(snapshot.landscapeAutoHideControls);
@@ -5022,6 +5045,18 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
+        }
+    }
+
+    private void setKaraokeBounceEffectOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setKaraokeBounceEffectEnabled(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setKaraokeBounceEffectEnabled(enabled);
+        }
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setKaraokeBounceEffectEnabled(enabled);
         }
     }
 

@@ -94,6 +94,7 @@ public final class LyricsView extends View {
     private boolean karaoke;
     private boolean autoInstrumentalBreakEnabled = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = true;
+    private boolean karaokeBounceEffectEnabled = true;
     private boolean japaneseFuriganaEnabled;
     private boolean pronunciationLoading;
     private boolean translationLoading;
@@ -214,6 +215,16 @@ public final class LyricsView extends View {
         }
         syncedLyricsKaraokeAnimationEnabled = enabled;
         rowLayoutCache.clear();
+        bounceStates.clear();
+        completedBounceKeys.clear();
+        postInvalidateOnAnimation();
+    }
+
+    void setKaraokeBounceEffectEnabled(boolean enabled) {
+        if (karaokeBounceEffectEnabled == enabled) {
+            return;
+        }
+        karaokeBounceEffectEnabled = enabled;
         bounceStates.clear();
         completedBounceKeys.clear();
         postInvalidateOnAnimation();
@@ -2032,7 +2043,7 @@ public final class LyricsView extends View {
     }
 
     private KaraokeBounce karaokeBounce(TextSegment segment, DrawGroup group) {
-        if (!group.active || group.activeSegmentIndex < 0) {
+        if (!karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
 
