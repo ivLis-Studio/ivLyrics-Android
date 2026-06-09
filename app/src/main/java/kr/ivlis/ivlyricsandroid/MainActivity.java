@@ -6763,8 +6763,8 @@ public final class MainActivity extends Activity implements
 
     private int inAppBrowserSheetTopMarginPx() {
         int topInset = statusBarInsetPx();
-        int margin = topInset + dp(10);
-        return Math.max(dp(isLandscapeLayout() ? 12 : 28), margin);
+        int margin = topInset + dp(2);
+        return Math.max(dp(isLandscapeLayout() ? 8 : 18), margin);
     }
 
     @SuppressWarnings("deprecation")
