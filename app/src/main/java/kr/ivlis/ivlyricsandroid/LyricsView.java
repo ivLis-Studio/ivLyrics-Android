@@ -5,6 +5,9 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.SystemClock;
@@ -37,6 +40,7 @@ public final class LyricsView extends View {
     private static final float PART_GAP_SP = 4f;
     private static final float SUPPLEMENT_GAP_SP = 2f;
     private static final float BLOCK_GAP_SP = 32f;
+    private static final float BOTTOM_EDGE_FADE_DP = 34f;
     private static final float WAVE_PERIOD_MS = 980f;
     private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
     private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
@@ -54,6 +58,8 @@ public final class LyricsView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint interludePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint skeletonPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF edgeFadeBounds = new RectF();
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
@@ -334,6 +340,7 @@ public final class LyricsView extends View {
         updateScrollPixelsPerIndex(layouts, blockGap);
 
         hitTargets.clear();
+        int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
             float baselineCenter = centerY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
             if (baselineCenter + layout.height * 0.5f < -blockGap
@@ -343,6 +350,8 @@ public final class LyricsView extends View {
             addHitTarget(layout, baselineCenter, blockGap);
             drawGroups(canvas, layout.groups, baselineCenter, topFadeAlpha(baselineCenter, layout.height));
         }
+        applyBottomEdgeFade(canvas);
+        canvas.restoreToCount(lyricLayer);
 
         boolean activeInterlude = activeIndex >= 0
                 && activeIndex < displayLines.size()
@@ -1674,6 +1683,32 @@ public final class LyricsView extends View {
         backgroundPaint.setShader(null);
     }
 
+    private RectF edgeFadeBounds(float left, float top, float right, float bottom) {
+        edgeFadeBounds.set(left, top, right, bottom);
+        return edgeFadeBounds;
+    }
+
+    private void applyBottomEdgeFade(Canvas canvas) {
+        float fadeHeight = Math.min(dp(BOTTOM_EDGE_FADE_DP), getHeight() * 0.12f);
+        if (fadeHeight <= 1f) {
+            return;
+        }
+        float top = getHeight() - fadeHeight;
+        edgeFadePaint.setShader(new LinearGradient(
+                0f,
+                top,
+                0f,
+                getHeight(),
+                Color.BLACK,
+                Color.TRANSPARENT,
+                Shader.TileMode.CLAMP
+        ));
+        edgeFadePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        canvas.drawRect(0f, top, getWidth(), getHeight(), edgeFadePaint);
+        edgeFadePaint.setXfermode(null);
+        edgeFadePaint.setShader(null);
+    }
+
     private float topFadeAlpha(float baselineCenter, float layoutHeight) {
         float fadeHeight = Math.min(getHeight() * 0.28f, sp(150f));
         if (fadeHeight <= 1f) {
@@ -2400,6 +2435,14 @@ public final class LyricsView extends View {
     private float sp(float value) {
         return TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_SP,
+                value,
+                getResources().getDisplayMetrics()
+        );
+    }
+
+    private float dp(float value) {
+        return TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
                 value,
                 getResources().getDisplayMetrics()
         );
