@@ -7153,8 +7153,38 @@ public final class MainActivity extends Activity implements
         if (normalizeBrowserUrl(safeUrl).equals(normalizeBrowserUrl(inAppBrowserInitialUrl))) {
             return false;
         }
+        if (isSameLyricsProfileNavigation(safeUrl, inAppBrowserInitialUrl)) {
+            return false;
+        }
         openExternalBrowserUrl(safeUrl);
         return true;
+    }
+
+    private boolean isSameLyricsProfileNavigation(String nextUrl, String initialUrl) {
+        String nextPath = lyricsProfilePath(nextUrl);
+        String initialPath = lyricsProfilePath(initialUrl);
+        return !nextPath.isEmpty() && nextPath.equals(initialPath);
+    }
+
+    private String lyricsProfilePath(String url) {
+        try {
+            Uri uri = Uri.parse(url == null ? "" : url.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            if (!("http".equals(scheme) || "https".equals(scheme)) || !"lyrics.ivl.is".equals(host)) {
+                return "";
+            }
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            while (path.endsWith("/") && path.length() > 1) {
+                path = path.substring(0, path.length() - 1);
+            }
+            if (!path.startsWith("/@") || path.indexOf('/', 2) >= 0) {
+                return "";
+            }
+            return path;
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String normalizeBrowserUrl(String url) {
