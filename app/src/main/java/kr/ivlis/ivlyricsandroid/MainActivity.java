@@ -761,9 +761,13 @@ public final class MainActivity extends Activity implements
 
         FrameLayout page = new FrameLayout(this);
         page.setPadding(dp(24), dp(20), dp(24), dp(26));
+        page.setClipChildren(false);
+        page.setClipToPadding(false);
 
         LinearLayout main = new LinearLayout(this);
         main.setOrientation(LinearLayout.VERTICAL);
+        main.setClipChildren(false);
+        main.setClipToPadding(false);
         page.addView(main, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -795,8 +799,8 @@ public final class MainActivity extends Activity implements
         ));
 
         int artworkSize = Math.min(
-                getResources().getDisplayMetrics().widthPixels - dp(40),
-                Math.round(getResources().getDisplayMetrics().heightPixels * 0.44f)
+                getResources().getDisplayMetrics().widthPixels - dp(32),
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.45f)
         );
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
