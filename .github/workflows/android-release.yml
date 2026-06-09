@@ -54,6 +54,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             release_tag="${{ inputs.tag }}"
           fi
+          release_target="$(git rev-parse --verify "${release_tag}^{commit}" 2>/dev/null || git rev-parse HEAD)"
           mkdir -p release-apks
           while IFS= read -r apk; do
             variant="$(basename "$(dirname "${apk}")")"
@@ -65,6 +66,7 @@ jobs:
           done < <(find app/build/outputs/apk -type f -name "*.apk" | sort)
           {
             echo "release_tag=${release_tag}"
+            echo "release_target=${release_target}"
             echo "apk_list<<EOF"
             find release-apks -type f -name "*.apk" -print | sort
             echo "EOF"
@@ -93,6 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
+          RELEASE_TARGET: ${{ steps.collect.outputs.release_target }}
           PRERELEASE: ${{ inputs.prerelease || false }}
         shell: bash
         run: |
@@ -103,14 +106,14 @@ jobs:
           fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release edit "${RELEASE_TAG}" \
-              --target "${GITHUB_SHA}" \
+              --target "${RELEASE_TARGET}" \
               --title "ivLyrics Android ${RELEASE_TAG}" \
               --notes-file release-metadata/release-notes.md \
               "${args[@]}"
             gh release upload "${RELEASE_TAG}" release-apks/*.apk release-metadata/* --clobber
           else
             gh release create "${RELEASE_TAG}" release-apks/*.apk release-metadata/* \
-              --target "${GITHUB_SHA}" \
+              --target "${RELEASE_TARGET}" \
               --title "ivLyrics Android ${RELEASE_TAG}" \
               --notes-file release-metadata/release-notes.md \
               "${args[@]}"
