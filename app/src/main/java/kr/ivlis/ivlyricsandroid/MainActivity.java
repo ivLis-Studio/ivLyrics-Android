@@ -160,8 +160,8 @@ public final class MainActivity extends Activity implements
     private LinearLayout providerButtonsContainer;
     private LinearLayout uiLanguageButtonsContainer;
     private LinearLayout pronunciationLanguageButtonsContainer;
+    private LinearLayout translationLanguageButtonsContainer;
     private LinearLayout sourceLanguageButtonsContainer;
-    private LinearLayout targetLanguageButtonsContainer;
     private ScrollView settingsScrollView;
     private ScrollView logScrollView;
     private Switch languageTranslationSwitch;
@@ -221,7 +221,6 @@ public final class MainActivity extends Activity implements
     private long lastSeekCommandPositionMs = -1L;
     private String detectedLyricsSourceLang = "en";
     private String selectedRuleSourceLang = "auto";
-    private String selectedTargetLang = "auto";
     private String activeLyricsPopupTab = LYRICS_POPUP_TAB_LANGUAGE;
     private int currentTrackSyncOffsetMs;
     private boolean lyricsLanguageSettingsVisible;
@@ -1426,15 +1425,6 @@ public final class MainActivity extends Activity implements
         pronunciationParams.leftMargin = dp(4);
         switchRow.addView(languagePronunciationSwitch, pronunciationParams);
 
-        targetLanguageButtonsContainer = new LinearLayout(this);
-        targetLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams targetParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        targetParams.topMargin = dp(10);
-        choicesContent.addView(targetLanguageButtonsContainer, targetParams);
-
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
         switchLyricsPopupTab(activeLyricsPopupTab);
@@ -1651,6 +1641,14 @@ public final class MainActivity extends Activity implements
                 ui("setting.pronunciation_language"),
                 ui("setting.pronunciation_language_desc"),
                 pronunciationLanguageButtonsContainer
+        ), topMargin(matchWrap(), dp(12)));
+
+        translationLanguageButtonsContainer = new LinearLayout(this);
+        translationLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        settingsLyricsPage.addView(settingGroup(
+                ui("lyrics.rule.translation_language"),
+                "",
+                translationLanguageButtonsContainer
         ), topMargin(matchWrap(), dp(12)));
 
         metadataTranslationSwitch = settingSwitch(
@@ -2876,6 +2874,7 @@ public final class MainActivity extends Activity implements
         }
         rebuildUiLanguageButtons(snapshot.uiLang);
         rebuildPronunciationLanguageButtons(snapshot.pronunciationLang);
+        rebuildTranslationLanguageButtons(snapshot.defaultRule.targetLang);
         rebuildPreviewModeButtons(snapshot.previewItems);
         rebuildSourceLanguageButtons();
         populateSelectedLanguageRule(snapshot);
@@ -2901,6 +2900,27 @@ public final class MainActivity extends Activity implements
             rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
             requestAiLyrics(true);
             showSavedToast(ui("toast.pronunciation_language_saved"));
+        });
+    }
+
+    private void rebuildTranslationLanguageButtons(String selectedLang) {
+        if (translationLanguageButtonsContainer == null) {
+            return;
+        }
+        List<LanguageChoice> choices = new ArrayList<>();
+        choices.add(new LanguageChoice("auto", ui("label.auto")));
+        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
+            choices.add(new LanguageChoice(language.code, language.nativeName));
+        }
+        rebuildChoiceButtons(translationLanguageButtonsContainer, choices, selectedLang, code -> {
+            aiLyricsSettings.setTranslationLang(code);
+            rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
+            translatedTrackTitle = "";
+            translatedTrackArtist = "";
+            updateTrackMetadataTextViews(currentTrack);
+            requestMetadataTranslation(true);
+            requestAiLyrics(true);
+            showSavedToast(ui("toast.language_rule_saved"));
         });
     }
 
@@ -3181,23 +3201,6 @@ public final class MainActivity extends Activity implements
         });
     }
 
-    private void rebuildTargetLanguageButtons(String selectedLang) {
-        if (targetLanguageButtonsContainer == null) {
-            return;
-        }
-        List<LanguageChoice> choices = new ArrayList<>();
-        choices.add(new LanguageChoice("auto", ui("label.auto")));
-        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
-            choices.add(new LanguageChoice(language.code, language.nativeName));
-        }
-        rebuildChoiceButtons(targetLanguageButtonsContainer, choices, selectedLang, code -> {
-            selectedTargetLang = AiLyricsSettings.normalizeTargetLanguage(code);
-            rebuildTargetLanguageButtons(selectedTargetLang);
-            updateSelectedLanguageRuleStatusFromUi();
-            saveLyricsLanguageRuleAndRefresh();
-        });
-    }
-
     private void rebuildChoiceButtons(LinearLayout container, List<LanguageChoice> choices, String selectedCode, ChoiceHandler handler) {
         container.removeAllViews();
         LinearLayout row = null;
@@ -3252,13 +3255,11 @@ public final class MainActivity extends Activity implements
             return;
         }
         AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(effectiveSelectedSourceLang());
-        selectedTargetLang = rule.targetLang;
         suppressLanguageRuleEvents = true;
         languageTranslationSwitch.setChecked(rule.translationEnabled);
         languagePronunciationSwitch.setChecked(rule.pronunciationEnabled);
         suppressLanguageRuleEvents = false;
         updateSelectedLanguageRuleStatusFromUi();
-        rebuildTargetLanguageButtons(selectedTargetLang);
     }
 
     private void updateSelectedLanguageRuleStatusFromUi() {
@@ -3270,8 +3271,7 @@ public final class MainActivity extends Activity implements
                 ? "\n" + ui("lyrics.rule.save_target") + ": " + AiLyricsSettings.languageLabel(effectiveSelectedSourceLang())
                 : "")
                 + "\n" + ui("lyrics.translation") + ": " + onOff(languageTranslationSwitch.isChecked())
-                + " · " + ui("lyrics.pronunciation") + ": " + onOff(languagePronunciationSwitch.isChecked())
-                + " · " + ui("lyrics.rule.translation_language") + ": " + targetLanguageLabel(selectedTargetLang));
+                + " · " + ui("lyrics.pronunciation") + ": " + onOff(languagePronunciationSwitch.isChecked()));
     }
 
     private void applySelectedLanguageRuleFromUi(boolean refreshRuleUi) {
@@ -3282,7 +3282,7 @@ public final class MainActivity extends Activity implements
                 effectiveSelectedSourceLang(),
                 languageTranslationSwitch.isChecked(),
                 languagePronunciationSwitch.isChecked(),
-                selectedTargetLang
+                aiLyricsSettings.snapshot().defaultRule.targetLang
         );
         if (refreshRuleUi) {
             populateSelectedLanguageRule(aiLyricsSettings.snapshot());
@@ -3309,13 +3309,6 @@ public final class MainActivity extends Activity implements
         return "auto".equalsIgnoreCase(selectedRuleSourceLang)
                 ? effectiveDetectedSourceLang()
                 : AiLyricsSettings.normalizeSourceLanguageKey(selectedRuleSourceLang);
-    }
-
-    private String targetLanguageLabel(String lang) {
-        if ("auto".equalsIgnoreCase(lang)) {
-            return uiFormat("label.auto_target", AiLyricsSettings.languageLabel(AiLyricsSettings.defaultOutputLanguage()));
-        }
-        return AiLyricsSettings.languageLabel(lang);
     }
 
     private String onOff(boolean enabled) {

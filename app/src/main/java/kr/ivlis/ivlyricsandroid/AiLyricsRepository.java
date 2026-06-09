@@ -793,11 +793,10 @@ final class AiLyricsRepository {
 
     private String buildPhoneticPrompt(String text, String lang) {
         AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(lang);
+        String normalizedLang = AiLyricsSettings.normalizeLanguageCode(lang);
         int lineCount = countLines(text);
-        boolean english = "en".equalsIgnoreCase(lang);
-        String scriptInstruction = english
-                ? "Use Latin alphabet only (romanization). Example: こんにちは -> konnichiwa, 안녕하세요 -> annyeonghaseyo"
-                : "Write pronunciation in " + langInfo.nativeName + " script. " + langInfo.phoneticDescription;
+        String scriptInstruction = phoneticScriptInstruction(normalizedLang, langInfo);
+        String outputScript = pronunciationOutputScript(normalizedLang, langInfo);
 
         return "You are a pronunciation converter. Convert these " + lineCount
                 + " lines of lyrics into how they SOUND (pronunciation) for "
@@ -805,8 +804,8 @@ final class AiLyricsRepository {
                 + scriptInstruction + "\n\n"
                 + "CRITICAL RULES:\n"
                 + "- This is a PRONUNCIATION task, NOT a translation task\n"
-                + "- Output how each line SOUNDS when spoken aloud, written in "
-                + (english ? "Latin alphabet" : langInfo.nativeName + " script") + "\n"
+                + "- Output how each line SOUNDS when spoken aloud, written ONLY in " + outputScript + "\n"
+                + "- Never use the input language's original script unless it is also " + outputScript + "\n"
                 + "- Do NOT translate the meaning of the lyrics\n"
                 + "- Do NOT output the original lyrics unchanged\n"
                 + "- Output EXACTLY " + lineCount + " lines, one pronunciation per line\n"
@@ -818,6 +817,69 @@ final class AiLyricsRepository {
                 + "- Just output the pronunciations, nothing else\n\n"
                 + "INPUT:\n" + text + "\n\n"
                 + "OUTPUT (" + lineCount + " lines of pronunciation only):";
+    }
+
+    private String phoneticScriptInstruction(String lang, AiLyricsSettings.Language langInfo) {
+        switch (AiLyricsSettings.normalizeLanguageCode(lang)) {
+            case "ko":
+                return "Use Korean Hangul syllables only. Example: こんにちは -> 콘니치와, ありがとう -> 아리가토, hello -> 헬로. "
+                        + "Never output Japanese kana, Chinese characters, or Latin romanization for Korean pronunciation.";
+            case "en":
+                return "Use Latin alphabet only (romanization). Example: こんにちは -> konnichiwa, 안녕하세요 -> annyeonghaseyo. "
+                        + "Never output Hangul, kana, or Chinese characters for English romanization.";
+            case "ja":
+                return "Use Japanese Katakana only. Example: hello -> ハロー, 안녕하세요 -> アンニョンハセヨ. "
+                        + "Prefer Katakana over Hiragana for foreign pronunciation guides.";
+            case "zh-CN":
+                return "Use Simplified Chinese characters only for a Chinese pronunciation guide. "
+                        + "Do not output Latin pinyin unless the input itself is a non-pronounceable marker.";
+            case "zh-TW":
+                return "Use Traditional Chinese characters only for a Chinese pronunciation guide. "
+                        + "Do not output Latin pinyin unless the input itself is a non-pronounceable marker.";
+            case "hi":
+                return "Use Devanagari script only for Hindi pronunciation. " + langInfo.phoneticDescription;
+            case "ar":
+                return "Use Arabic script only for Arabic pronunciation. " + langInfo.phoneticDescription;
+            case "fa":
+                return "Use Persian script only for Persian pronunciation. " + langInfo.phoneticDescription;
+            case "ru":
+                return "Use Cyrillic script only for Russian pronunciation. " + langInfo.phoneticDescription;
+            case "bn":
+                return "Use Bengali script only for Bengali pronunciation. " + langInfo.phoneticDescription;
+            case "th":
+                return "Use Thai script only for Thai pronunciation. " + langInfo.phoneticDescription;
+            default:
+                return "Write pronunciation in " + langInfo.nativeName + " spelling. " + langInfo.phoneticDescription;
+        }
+    }
+
+    private String pronunciationOutputScript(String lang, AiLyricsSettings.Language langInfo) {
+        switch (AiLyricsSettings.normalizeLanguageCode(lang)) {
+            case "ko":
+                return "Korean Hangul";
+            case "en":
+                return "Latin alphabet";
+            case "ja":
+                return "Japanese Katakana";
+            case "zh-CN":
+                return "Simplified Chinese";
+            case "zh-TW":
+                return "Traditional Chinese";
+            case "hi":
+                return "Devanagari";
+            case "ar":
+                return "Arabic script";
+            case "fa":
+                return "Persian script";
+            case "ru":
+                return "Cyrillic";
+            case "bn":
+                return "Bengali script";
+            case "th":
+                return "Thai script";
+            default:
+                return langInfo.name + " pronunciation spelling";
+        }
     }
 
     private List<String> parseTextLines(String text, int expectedLineCount) {

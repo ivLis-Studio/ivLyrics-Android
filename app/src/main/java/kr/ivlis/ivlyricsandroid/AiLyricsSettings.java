@@ -217,19 +217,42 @@ final class AiLyricsSettings {
     }
 
     void setTargetLang(String lang) {
+        setTranslationLang(lang);
+    }
+
+    void setTranslationLang(String lang) {
         Snapshot snapshot = snapshot();
-        LanguageRule rule = snapshot.defaultRule;
-        setLanguageRule(DEFAULT_SOURCE_LANG, rule.translationEnabled, rule.pronunciationEnabled, lang);
+        String target = normalizeTargetLanguage(lang);
+        LanguageRule defaultRule = new LanguageRule(
+                DEFAULT_SOURCE_LANG,
+                snapshot.defaultRule.translationEnabled,
+                snapshot.defaultRule.pronunciationEnabled,
+                target
+        );
+        Map<String, LanguageRule> rules = new LinkedHashMap<>();
+        for (Map.Entry<String, LanguageRule> entry : snapshot.languageRules.entrySet()) {
+            LanguageRule rule = entry.getValue();
+            rules.put(entry.getKey(), new LanguageRule(
+                    rule.sourceLang,
+                    rule.translationEnabled,
+                    rule.pronunciationEnabled,
+                    target
+            ));
+        }
+        saveRuleConfig(defaultRule, rules);
     }
 
     void setLanguageRule(String sourceLang, boolean translationEnabled, boolean pronunciationEnabled, String targetLang) {
         Snapshot snapshot = snapshot();
         String sourceKey = normalizeSourceLanguageKey(sourceLang);
+        String target = DEFAULT_SOURCE_LANG.equals(sourceKey)
+                ? normalizeTargetLanguage(targetLang)
+                : snapshot.defaultRule.targetLang;
         LanguageRule nextRule = new LanguageRule(
                 sourceKey,
                 translationEnabled,
                 pronunciationEnabled,
-                normalizeTargetLanguage(targetLang)
+                target
         );
         LanguageRule defaultRule = snapshot.defaultRule;
         Map<String, LanguageRule> rules = new LinkedHashMap<>(snapshot.languageRules);
@@ -805,7 +828,7 @@ final class AiLyricsSettings {
         }
 
         String cacheKey() {
-            return sourceLang + ":t=" + translationEnabled + ":p=" + pronunciationEnabled + ":target=" + targetLang;
+            return sourceLang + ":t=" + translationEnabled + ":p=" + pronunciationEnabled;
         }
     }
 
@@ -909,7 +932,7 @@ final class AiLyricsSettings {
         }
 
         String resolveTargetLanguage(String sourceLang) {
-            String target = ruleForSource(sourceLang).targetLang;
+            String target = defaultRule.targetLang;
             return "auto".equalsIgnoreCase(target)
                     ? defaultOutputLanguage()
                     : normalizeLanguageCode(target);
@@ -927,6 +950,7 @@ final class AiLyricsSettings {
             StringBuilder builder = new StringBuilder();
             builder.append(provider.id)
                     .append("|pronunciation=").append(pronunciationLang)
+                    .append("|translationTarget=").append(defaultRule.targetLang)
                     .append("|default=").append(defaultRule.cacheKey())
                     .append("|model=").append(model)
                     .append("|url=").append(baseUrl)
