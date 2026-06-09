@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -68,11 +70,23 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Generate release notes and version file
+        env:
+          RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
+          APK_DIR: release-apks
+          RELEASE_METADATA_DIR: release-metadata
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: python3 .github/scripts/generate_release_metadata.py
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ivLyrics-Android-${{ steps.collect.outputs.release_tag }}-apks
-          path: release-apks/*.apk
+          path: |
+            release-apks/*.apk
+            release-metadata/*
           if-no-files-found: error
 
       - name: Create or update GitHub Release
@@ -88,11 +102,16 @@ jobs:
             args+=(--prerelease)
           fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" release-apks/*.apk --clobber
-          else
-            gh release create "${RELEASE_TAG}" release-apks/*.apk \
+            gh release edit "${RELEASE_TAG}" \
               --target "${GITHUB_SHA}" \
               --title "ivLyrics Android ${RELEASE_TAG}" \
-              --generate-notes \
+              --notes-file release-metadata/release-notes.md \
+              "${args[@]}"
+            gh release upload "${RELEASE_TAG}" release-apks/*.apk release-metadata/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" release-apks/*.apk release-metadata/* \
+              --target "${GITHUB_SHA}" \
+              --title "ivLyrics Android ${RELEASE_TAG}" \
+              --notes-file release-metadata/release-notes.md \
               "${args[@]}"
           fi
