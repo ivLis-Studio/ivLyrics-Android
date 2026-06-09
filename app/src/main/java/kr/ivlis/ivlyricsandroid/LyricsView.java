@@ -1240,20 +1240,115 @@ public final class LyricsView extends View {
         float currentWidth = 0f;
 
         for (TextSegment segment : segments) {
-            if (currentWidth > 0f && currentWidth + segment.width > maxWidth) {
-                addTrimmedRow(rows, current);
-                current = new ArrayList<>();
-                currentWidth = 0f;
+            for (TextSegment piece : splitSegmentForWrap(segment, maxWidth)) {
+                if (currentWidth > 0f && currentWidth + piece.width > maxWidth) {
+                    addTrimmedRow(rows, current);
+                    current = new ArrayList<>();
+                    currentWidth = 0f;
+                }
+                if (current.isEmpty() && isWhitespace(piece.text)) {
+                    continue;
+                }
+                current.add(piece);
+                currentWidth += piece.width;
             }
-            if (current.isEmpty() && isWhitespace(segment.text)) {
-                continue;
-            }
-            current.add(segment);
-            currentWidth += segment.width;
         }
 
         addTrimmedRow(rows, current);
         return rows;
+    }
+
+    private List<TextSegment> splitSegmentForWrap(TextSegment segment, float maxWidth) {
+        if (segment == null) {
+            return Collections.emptyList();
+        }
+        if (maxWidth <= 0f || segment.width <= maxWidth || isWhitespace(segment.text)) {
+            return Collections.singletonList(segment);
+        }
+
+        List<String> chars = splitChars(segment.text);
+        if (chars.size() <= 1) {
+            return Collections.singletonList(segment);
+        }
+
+        List<TextSegment> pieces = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        float currentWidth = 0f;
+        int currentStart = 0;
+        for (int index = 0; index < chars.size(); index++) {
+            String value = chars.get(index);
+            float valueWidth = textPaint.measureText(value);
+            if (!current.isEmpty() && currentWidth + valueWidth > maxWidth) {
+                pieces.add(createSplitSegment(segment, current, currentStart, currentWidth));
+                current = new ArrayList<>();
+                currentWidth = 0f;
+                currentStart = index;
+            }
+            current.add(value);
+            currentWidth += valueWidth;
+        }
+
+        if (!current.isEmpty()) {
+            pieces.add(createSplitSegment(segment, current, currentStart, currentWidth));
+        }
+        return pieces.isEmpty() ? Collections.singletonList(segment) : pieces;
+    }
+
+    private TextSegment createSplitSegment(TextSegment source, List<String> chars, int sourceOffset, float width) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : chars) {
+            builder.append(value);
+        }
+
+        int length = Math.max(1, chars.size());
+        int totalLength = Math.max(length, source.sourceLength);
+        int safeOffset = Math.max(0, Math.min(sourceOffset, totalLength));
+        int safeEnd = Math.min(totalLength, safeOffset + length);
+        long duration = Math.max(0L, source.endTimeMs - source.startTimeMs);
+        long start = duration <= 0L
+                ? source.startTimeMs
+                : source.startTimeMs + Math.round(duration * (safeOffset / (float) totalLength));
+        long end = duration <= 0L
+                ? source.endTimeMs
+                : source.startTimeMs + Math.round(duration * (Math.min(totalLength, safeEnd) / (float) totalLength));
+        return new TextSegment(
+                builder.toString(),
+                width,
+                start,
+                Math.max(start, end),
+                source.sourceIndex,
+                length,
+                rubyForSplitSegment(source, safeOffset, length)
+        );
+    }
+
+    private String rubyForSplitSegment(TextSegment source, int start, int length) {
+        if (source == null || source.rubyText == null || source.rubyText.trim().isEmpty() || length <= 0) {
+            return "";
+        }
+        if (start <= 0 && length >= source.sourceLength) {
+            return source.rubyText;
+        }
+
+        List<String> rubyChars = splitChars(source.rubyText.replace(" ", ""));
+        if (rubyChars.isEmpty()) {
+            return source.rubyText;
+        }
+
+        int sourceLength = Math.max(1, source.sourceLength);
+        int readStart = Math.min(rubyChars.size(), Math.round(rubyChars.size() * (start / (float) sourceLength)));
+        int readEnd = start + length >= sourceLength
+                ? rubyChars.size()
+                : Math.min(rubyChars.size(), Math.round(rubyChars.size() * ((start + length) / (float) sourceLength)));
+        if (readEnd <= readStart) {
+            readEnd = Math.min(rubyChars.size(), readStart + 1);
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (int index = readStart; index < readEnd; index++) {
+            builder.append(rubyChars.get(index));
+        }
+        return builder.toString();
     }
 
     private List<TextRow> wrapWordUnits(List<WrapUnit> units, float maxWidth) {
