@@ -377,7 +377,7 @@ final class AppI18n {
             case "ko":
                 return new String[]{
                         "section.spotify_shortcut", "Spotify 바로가기",
-                        "section.spotify_shortcut_desc", "Spotify 앱 안에서만 작은 이동식 아이콘을 띄웁니다. 누르면 ivLyrics 가사 페이지로 이동합니다.",
+                        "section.spotify_shortcut_desc", "Spotify 재생 화면에서만 작은 이동식 아이콘을 띄웁니다. 누르면 ivLyrics 가사 페이지로 이동합니다.",
                         "button.open_accessibility_permission", "Spotify 감지 권한 열기",
                         "button.accessibility_permission_enabled", "Spotify 감지 권한 허용됨",
                         "button.open_overlay_permission", "플로팅 아이콘 권한 열기",
@@ -391,56 +391,56 @@ final class AppI18n {
             case "zh-CN":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
-                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "点按标题或艺人即可返回 Spotify。",
                         "点按一次打开 Spotify；快速点按 3 次打开翻译和发音设置。"
                 );
             case "zh-TW":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
-                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "點按標題或藝人即可返回 Spotify。",
                         "點按一次開啟 Spotify；快速點按 3 次開啟翻譯與發音設定。"
                 );
             case "ja":
                 return spotifyShortcutStringsEn(
                         "Spotifyショートカット",
-                        "Spotifyアプリを開いている間だけ、小さな移動アイコンを表示します。タップするとivLyricsの歌詞ページを開きます。",
+                        "Spotifyの再生画面でのみ、小さな移動アイコンを表示します。タップするとivLyricsの歌詞ページを開きます。",
                         "タイトルまたはアーティストをタップするとSpotifyに戻ります。",
                         "1回タップでSpotifyを開き、素早く3回タップで翻訳・発音設定を開きます。"
                 );
             case "es":
                 return spotifyShortcutStringsEn(
                         "Acceso directo de Spotify",
-                        "Solo muestra un icono pequeño y movible mientras Spotify esta abierto. Al tocarlo abre la pagina de letras de ivLyrics.",
+                        "Solo muestra un icono pequeño y movible en la pantalla de reproduccion de Spotify. Al tocarlo abre la pagina de letras de ivLyrics.",
                         "Toca el título o artista para volver a Spotify.",
                         "Toca una vez para abrir Spotify; toca 3 veces rápido para abrir traducción y pronunciación."
                 );
             case "fr":
                 return spotifyShortcutStringsEn(
                         "Raccourci Spotify",
-                        "Affiche une petite icone deplacable uniquement quand Spotify est ouvert. Un toucher ouvre la page de paroles ivLyrics.",
+                        "Affiche une petite icone deplacable uniquement sur l'ecran de lecture Spotify. Un toucher ouvre la page de paroles ivLyrics.",
                         "Touchez le titre ou l'artiste pour revenir a Spotify.",
                         "Touchez une fois pour ouvrir Spotify ; touchez 3 fois vite pour ouvrir traduction et prononciation."
                 );
             case "de":
                 return spotifyShortcutStringsEn(
                         "Spotify-Verknuepfung",
-                        "Zeigt nur bei geoeffneter Spotify-App ein kleines verschiebbares Symbol. Antippen oeffnet die ivLyrics-Lyrics-Seite.",
+                        "Zeigt nur auf dem Spotify-Now-Playing-Bildschirm ein kleines verschiebbares Symbol. Antippen oeffnet die ivLyrics-Lyrics-Seite.",
                         "Titel oder Kuenstler antippen, um zu Spotify zurueckzukehren.",
                         "Einmal tippen oeffnet Spotify, dreimal schnell tippen oeffnet Uebersetzung und Aussprache."
                 );
             case "pt":
                 return spotifyShortcutStringsEn(
                         "Atalho do Spotify",
-                        "Mostra um pequeno icone movel somente quando o Spotify esta aberto. Tocar abre a pagina de letras do ivLyrics.",
+                        "Mostra um pequeno icone movel somente na tela de reproducao do Spotify. Tocar abre a pagina de letras do ivLyrics.",
                         "Toque no titulo ou artista para voltar ao Spotify.",
                         "Toque uma vez para abrir o Spotify; toque 3 vezes rapido para abrir traducao e pronuncia."
                 );
             default:
                 return spotifyShortcutStringsEn(
                         "Spotify Shortcut",
-                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "Tap the title or artist to jump back to Spotify.",
                         "Tap once to open Spotify; tap 3 times quickly to open translation and pronunciation settings."
                 );

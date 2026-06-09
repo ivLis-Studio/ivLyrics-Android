@@ -21,7 +21,14 @@ public final class SpotifyForegroundAccessibilityService extends AccessibilitySe
         if (isIgnoredPackage(packageValue)) {
             return;
         }
-        SpotifyShortcutOverlayController.setSpotifyForeground(isSpotifyPackage(packageValue));
+        if (!isSpotifyPackage(packageValue)) {
+            SpotifyShortcutOverlayController.setSpotifyNowPlayingForeground(false);
+            return;
+        }
+        CharSequence className = event.getClassName();
+        SpotifyShortcutOverlayController.setSpotifyNowPlayingForeground(
+                isSpotifyNowPlayingClass(className == null ? "" : className.toString())
+        );
     }
 
     @Override
@@ -30,13 +37,22 @@ public final class SpotifyForegroundAccessibilityService extends AccessibilitySe
 
     @Override
     public void onDestroy() {
-        SpotifyShortcutOverlayController.setSpotifyForeground(false);
+        SpotifyShortcutOverlayController.setSpotifyNowPlayingForeground(false);
         super.onDestroy();
     }
 
     static boolean isSpotifyPackage(String packageName) {
         String value = packageName == null ? "" : packageName.trim().toLowerCase(Locale.ROOT);
         return SPOTIFY_PACKAGE.equals(value) || value.startsWith("com.spotify.");
+    }
+
+    private boolean isSpotifyNowPlayingClass(String className) {
+        String value = className == null ? "" : className.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty() || value.contains("lyricsfullscreenpageactivity")) {
+            return false;
+        }
+        return value.contains("nowplayingactivity")
+                || (value.contains("nowplaying") && value.contains("activity"));
     }
 
     private boolean isIgnoredPackage(String packageName) {

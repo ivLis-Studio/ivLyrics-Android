@@ -27,7 +27,7 @@ final class SpotifyShortcutOverlayController {
     private static final int CLICK_SLOP_DP = 8;
 
     private static volatile boolean appForeground;
-    private static volatile boolean spotifyForeground;
+    private static volatile boolean spotifyNowPlayingForeground;
     private static WeakReference<SpotifyShortcutOverlayController> activeController = new WeakReference<>(null);
 
     private final Context context;
@@ -61,8 +61,8 @@ final class SpotifyShortcutOverlayController {
         }
     }
 
-    static void setSpotifyForeground(boolean foreground) {
-        spotifyForeground = foreground;
+    static void setSpotifyNowPlayingForeground(boolean foreground) {
+        spotifyNowPlayingForeground = foreground;
         SpotifyShortcutOverlayController controller = activeController.get();
         if (controller != null) {
             controller.refreshOverlayState();
@@ -90,7 +90,7 @@ final class SpotifyShortcutOverlayController {
     }
 
     private boolean shouldShow() {
-        return shouldPollForeground() && spotifyForeground;
+        return shouldPollForeground() && spotifyNowPlayingForeground;
     }
 
     private boolean shouldPollForeground() {
