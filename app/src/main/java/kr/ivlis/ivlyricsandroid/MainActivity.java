@@ -872,6 +872,10 @@ public final class MainActivity extends Activity implements
         titleView = slidingLabel("ivLyrics", 23f, Color.WHITE, AppFonts.bold(this));
         titleView.setGravity(Gravity.CENTER);
         titleView.setMaxLines(1);
+        titleView.setMinHeight(dp(30));
+        titleView.setIncludeFontPadding(true);
+        titleView.setShadowLayer(dp(3), 0f, dp(1), Color.argb(150, 0, 0, 0));
+        titleView.setTextColor(Color.WHITE);
         meta.addView(titleView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -880,6 +884,10 @@ public final class MainActivity extends Activity implements
         artistView = slidingLabel(ui("status.waiting_spotify"), 15f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         artistView.setGravity(Gravity.CENTER);
         artistView.setSingleLine(true);
+        artistView.setMinHeight(dp(22));
+        artistView.setIncludeFontPadding(true);
+        artistView.setShadowLayer(dp(2), 0f, dp(1), Color.argb(130, 0, 0, 0));
+        artistView.setTextColor(Color.argb(224, 255, 255, 255));
         LinearLayout.LayoutParams artistParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
