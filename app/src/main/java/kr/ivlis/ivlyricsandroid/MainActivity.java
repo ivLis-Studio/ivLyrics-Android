@@ -5407,7 +5407,7 @@ public final class MainActivity extends Activity implements
     }
 
     private PreviewText originalPreviewText(LyricsLine line) {
-        if (line.text != null && !line.text.trim().isEmpty()) {
+        if (!hasMultiplePreviewVocalParts(line) && line.text != null && !line.text.trim().isEmpty()) {
             String text = line.text.trim();
             return new PreviewText(text, karaokeSyllablesForText(text, line.syllables), line.kind);
         }
@@ -5434,6 +5434,22 @@ public final class MainActivity extends Activity implements
             return new PreviewText("♪", Collections.emptyList(), line.kind);
         }
         return new PreviewText(builder.toString(), syllablesUsable ? syllables : Collections.emptyList(), line.kind);
+    }
+
+    private boolean hasMultiplePreviewVocalParts(LyricsLine line) {
+        if (line == null || line.vocalParts == null) {
+            return false;
+        }
+        int count = 0;
+        for (LyricsLine.VocalPart part : line.vocalParts) {
+            if (part != null && part.text != null && !part.text.trim().isEmpty()) {
+                count++;
+                if (count > 1) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<LyricsLine.Syllable> karaokeSyllablesForText(String text, List<LyricsLine.Syllable> syllables) {
