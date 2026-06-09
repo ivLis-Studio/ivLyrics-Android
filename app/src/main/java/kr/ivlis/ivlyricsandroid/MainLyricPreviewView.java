@@ -568,8 +568,9 @@ final class MainLyricPreviewView extends View {
             }
 
             drawRubyText(canvas, segment, cursor, baseline + offsetY, line.kind, textSize, fill, line.primary);
+            float textLeft = cursor + segment.textInset;
             configureTextPaint(inactiveColor, line.kind, textSize, false);
-            canvas.drawText(segment.text, cursor, baseline + offsetY, textPaint);
+            canvas.drawText(segment.text, textLeft, baseline + offsetY, textPaint);
             if (fill > 0f) {
                 drawActiveFill(canvas, segment, cursor, baseline, offsetY, line.kind, textSize, activeColor, fill);
             }
@@ -592,20 +593,22 @@ final class MainLyricPreviewView extends View {
             float fill
     ) {
         float safeFill = clamp(fill);
-        float fillRight = cursor + segment.width * safeFill;
+        float textLeft = cursor + segment.textInset;
+        float textRight = textLeft + segment.textWidth;
+        float fillRight = textLeft + segment.textWidth * safeFill;
         float top = baseline - textSize * 1.28f;
         float bottom = baseline + textSize * 0.48f;
-        float softWidth = Math.min(sp(7f), Math.max(0f, segment.width * 0.30f));
+        float softWidth = Math.min(sp(7f), Math.max(0f, segment.textWidth * 0.30f));
         float clipRight = safeFill >= 0.995f
-                ? cursor + segment.width
-                : Math.min(cursor + segment.width, fillRight + softWidth);
+                ? textRight
+                : Math.min(textRight, fillRight + softWidth);
 
         int clipSave = canvas.save();
-        canvas.clipRect(cursor, top, clipRight, bottom);
+        canvas.clipRect(textLeft, top, clipRight, bottom);
         configureTextPaint(activeColor, kind, textSize, true);
-        if (safeFill < 0.995f && softWidth > 1f && clipRight > cursor) {
-            float softStart = Math.max(cursor, fillRight - softWidth * 0.42f);
-            float softEnd = Math.max(softStart + 1f, Math.min(cursor + segment.width, fillRight + softWidth));
+        if (safeFill < 0.995f && softWidth > 1f && clipRight > textLeft) {
+            float softStart = Math.max(textLeft, fillRight - softWidth * 0.42f);
+            float softEnd = Math.max(softStart + 1f, Math.min(textRight, fillRight + softWidth));
             textPaint.setShader(new LinearGradient(
                     softStart,
                     0f,
@@ -620,7 +623,7 @@ final class MainLyricPreviewView extends View {
                     Shader.TileMode.CLAMP
             ));
         }
-        canvas.drawText(segment.text, cursor, baseline + offsetY, textPaint);
+        canvas.drawText(segment.text, textLeft, baseline + offsetY, textPaint);
         textPaint.setShader(null);
         canvas.restoreToCount(clipSave);
     }
@@ -700,9 +703,8 @@ final class MainLyricPreviewView extends View {
             }
             String value = syllable.text;
             int charLength = Math.max(1, value.codePointCount(0, value.length()));
-            segments.add(new TextSegment(
+            segments.add(createMeasuredSegment(
                     value,
-                    textPaint.measureText(value),
                     syllable.startTimeMs,
                     syllable.endTimeMs,
                     index,
@@ -712,6 +714,35 @@ final class MainLyricPreviewView extends View {
             charOffset += charLength;
         }
         return segments;
+    }
+
+    private TextSegment createMeasuredSegment(
+            String text,
+            long startTimeMs,
+            long endTimeMs,
+            int sourceIndex,
+            int sourceLength,
+            String rubyText
+    ) {
+        String safeText = text == null ? "" : text;
+        float textWidth = textPaint.measureText(safeText);
+        float width = rubyAwareSegmentWidth(textWidth, rubyText);
+        return new TextSegment(safeText, textWidth, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, rubyText);
+    }
+
+    private float rubyAwareSegmentWidth(float textWidth, String rubyText) {
+        String ruby = rubyText == null ? "" : rubyText.trim();
+        if (ruby.isEmpty()) {
+            return textWidth;
+        }
+        float previousSize = textPaint.getTextSize();
+        Typeface previousTypeface = textPaint.getTypeface();
+        textPaint.setTextSize(Math.max(sp(7.4f), previousSize * FURIGANA_TEXT_RATIO));
+        textPaint.setTypeface(previousTypeface);
+        float rubyWidth = textPaint.measureText(ruby);
+        textPaint.setTextSize(previousSize);
+        textPaint.setTypeface(previousTypeface);
+        return Math.max(textWidth, rubyWidth + sp(2f));
     }
 
     private List<RubyAnnotation> parseRubyAnnotations(String text, String rubyText) {
@@ -1172,7 +1203,9 @@ final class MainLyricPreviewView extends View {
 
     private static final class TextSegment {
         final String text;
+        final float textWidth;
         final float width;
+        final float textInset;
         final long startTimeMs;
         final long endTimeMs;
         final int sourceIndex;
@@ -1180,12 +1213,18 @@ final class MainLyricPreviewView extends View {
         final String rubyText;
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength) {
-            this(text, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
+            this(text, width, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
         }
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength, String rubyText) {
+            this(text, width, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, rubyText);
+        }
+
+        TextSegment(String text, float textWidth, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength, String rubyText) {
             this.text = text == null ? "" : text;
+            this.textWidth = Math.max(0f, textWidth);
             this.width = Math.max(0f, width);
+            this.textInset = Math.max(0f, (this.width - this.textWidth) * 0.5f);
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
             this.sourceIndex = Math.max(0, sourceIndex);
