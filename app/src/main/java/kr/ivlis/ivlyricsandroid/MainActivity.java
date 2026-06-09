@@ -71,6 +71,8 @@ public final class MainActivity extends Activity implements
         LyricsRepository.Callback,
         LyricsRepository.ManualLrclibCallback,
         AiLyricsRepository.Callback {
+    static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
+    private static final long META_SINGLE_TAP_DELAY_MS = 320L;
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
@@ -134,6 +136,7 @@ public final class MainActivity extends Activity implements
     private TextView debugProgressView;
     private TextView elapsedView;
     private TextView remainingView;
+    private TextView overlayPermissionButton;
     private TextView logView;
     private TextView aiSettingsStatusView;
     private TextView providerSummaryView;
@@ -249,10 +252,15 @@ public final class MainActivity extends Activity implements
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
     private boolean landscapeControlsVisible = true;
     private boolean consumeLandscapeRevealGesture;
+    private boolean pendingOpenLyricsPageFromIntent;
     private int lyricsMetaTapCount;
     private long lastLyricsMetaTapUptimeMs;
 
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
+    private final Runnable lyricsMetaSingleTapRunnable = () -> {
+        lyricsMetaTapCount = 0;
+        openSpotifyForCurrentTrack();
+    };
 
     private final Runnable ticker = new Runnable() {
         @Override
@@ -278,11 +286,21 @@ public final class MainActivity extends Activity implements
         applySystemBarsForOrientation();
         applyBackgroundSettings(aiLyricsSettings.snapshot());
         updateSpotifySetupGate(false);
+        handleLaunchIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleLaunchIntent(intent);
+        consumeOpenLyricsPageRequest();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        SpotifyShortcutOverlayController.setIvLyricsForeground(true);
         NowPlayingService.register(this);
         updatePermissionState();
         NowPlayingService.requestRefresh(this);
@@ -292,6 +310,7 @@ public final class MainActivity extends Activity implements
         applySystemBarsForOrientation();
         applyLandscapeControlsAutoHideSetting();
         handler.post(ticker);
+        consumeOpenLyricsPageRequest();
     }
 
     @Override
@@ -314,9 +333,12 @@ public final class MainActivity extends Activity implements
 
     @Override
     protected void onPause() {
+        SpotifyShortcutOverlayController.setIvLyricsForeground(false);
+        NowPlayingService.requestRefresh(this);
         NowPlayingService.unregister(this);
         handler.removeCallbacks(ticker);
         handler.removeCallbacks(landscapeControlsAutoHideRunnable);
+        handler.removeCallbacks(lyricsMetaSingleTapRunnable);
         handler.removeCallbacks(onboardingWelcomeTicker);
         super.onPause();
     }
@@ -786,6 +808,7 @@ public final class MainActivity extends Activity implements
 
         titleView = slidingLabel("ivLyrics", 28f, Color.WHITE, AppFonts.bold(this));
         titleView.setMaxLines(1);
+        attachSpotifyMetaTap(titleView);
         meta.addView(titleView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -793,6 +816,7 @@ public final class MainActivity extends Activity implements
 
         artistView = slidingLabel(ui("status.waiting_spotify"), 18f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         artistView.setSingleLine(true);
+        attachSpotifyMetaTap(artistView);
         LinearLayout.LayoutParams artistParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -953,6 +977,7 @@ public final class MainActivity extends Activity implements
         titleView.setIncludeFontPadding(true);
         titleView.setShadowLayer(dp(3), 0f, dp(1), Color.argb(150, 0, 0, 0));
         titleView.setTextColor(Color.WHITE);
+        attachSpotifyMetaTap(titleView);
         LinearLayout.LayoutParams landscapeTitleParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -968,6 +993,7 @@ public final class MainActivity extends Activity implements
         artistView.setIncludeFontPadding(true);
         artistView.setShadowLayer(dp(2), 0f, dp(1), Color.argb(130, 0, 0, 0));
         artistView.setTextColor(Color.argb(224, 255, 255, 255));
+        attachSpotifyMetaTap(artistView);
         LinearLayout.LayoutParams artistParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1974,6 +2000,15 @@ public final class MainActivity extends Activity implements
 
         settingsToolsPage.addView(sectionTitle(ui("section.tools")));
         settingsToolsPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
+
+        overlayPermissionButton = debugButton("");
+        overlayPermissionButton.setOnClickListener(view -> openOverlayPermissionSettings());
+        updateOverlayPermissionButton();
+        settingsToolsPage.addView(settingGroup(
+                ui("section.spotify_shortcut"),
+                ui("section.spotify_shortcut_desc"),
+                overlayPermissionButton
+        ), topMargin(matchWrap(), dp(16)));
 
         settingsToolsPage.addView(sectionTitle(ui("section.spotify_api")), topMargin(matchWrap(), dp(24)));
         settingsToolsPage.addView(sectionDescription(ui("section.spotify_api_desc")), topMargin(matchWrap(), dp(8)));
@@ -3650,6 +3685,14 @@ public final class MainActivity extends Activity implements
         return enabled ? ui("label.on") : ui("label.off");
     }
 
+    private void attachSpotifyMetaTap(View view) {
+        if (view == null) {
+            return;
+        }
+        view.setClickable(true);
+        view.setOnClickListener(target -> openSpotifyForCurrentTrack());
+    }
+
     private void handleLyricsMetaTap() {
         dismissLyricsMetaTip();
         long now = SystemClock.uptimeMillis();
@@ -3659,8 +3702,11 @@ public final class MainActivity extends Activity implements
         lastLyricsMetaTapUptimeMs = now;
         lyricsMetaTapCount++;
         if (lyricsMetaTapCount < 3) {
+            handler.removeCallbacks(lyricsMetaSingleTapRunnable);
+            handler.postDelayed(lyricsMetaSingleTapRunnable, META_SINGLE_TAP_DELAY_MS);
             return;
         }
+        handler.removeCallbacks(lyricsMetaSingleTapRunnable);
         lyricsMetaTapCount = 0;
         toggleLyricsLanguageSettings();
     }
@@ -3693,6 +3739,75 @@ public final class MainActivity extends Activity implements
                     .start();
         }
         updateLyricsLanguageButtonState();
+    }
+
+    private void handleLaunchIntent(Intent intent) {
+        if (intent != null && intent.getBooleanExtra(EXTRA_OPEN_LYRICS_PAGE, false)) {
+            pendingOpenLyricsPageFromIntent = true;
+        }
+    }
+
+    private void consumeOpenLyricsPageRequest() {
+        if (!pendingOpenLyricsPageFromIntent) {
+            return;
+        }
+        pendingOpenLyricsPageFromIntent = false;
+        if (!isInitialSetupComplete()) {
+            return;
+        }
+        handler.postDelayed(() -> {
+            if (!isLandscapeLayout()) {
+                showLyricsPage(true);
+            }
+        }, 90L);
+    }
+
+    private void openSpotifyForCurrentTrack() {
+        TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
+        String packageName = snapshot != null && isSpotifyPackage(snapshot.packageName)
+                ? snapshot.packageName
+                : "com.spotify.music";
+        String trackId = snapshot == null ? "" : snapshot.trackId;
+        if (!trackId.isEmpty()) {
+            Intent spotifyTrackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:track:" + trackId));
+            spotifyTrackIntent.setPackage(packageName);
+            spotifyTrackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStartActivity(spotifyTrackIntent)) {
+                return;
+            }
+
+            Intent webTrackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/track/" + trackId));
+            webTrackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStartActivity(webTrackIntent)) {
+                return;
+            }
+        }
+
+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+        if (launchIntent == null && !"com.spotify.music".equals(packageName)) {
+            launchIntent = getPackageManager().getLaunchIntentForPackage("com.spotify.music");
+        }
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStartActivity(launchIntent)) {
+                return;
+            }
+        }
+        showSavedToast(ui("toast.spotify_open_failed"));
+    }
+
+    private boolean tryStartActivity(Intent intent) {
+        try {
+            startActivity(intent);
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isSpotifyPackage(String packageName) {
+        String value = packageName == null ? "" : packageName.trim().toLowerCase(Locale.ROOT);
+        return value.startsWith("com.spotify.");
     }
 
     private void saveLyricsLanguageRuleAndRefresh() {
@@ -4675,11 +4790,13 @@ public final class MainActivity extends Activity implements
     private void updatePermissionState() {
         if (permissionButton == null) {
             updateOnboardingPermissionState();
+            updateOverlayPermissionButton();
             return;
         }
         boolean enabled = NowPlayingService.isNotificationAccessEnabled(this);
         permissionButton.setVisibility(enabled ? View.GONE : View.VISIBLE);
         updateOnboardingPermissionState();
+        updateOverlayPermissionButton();
     }
 
     private void updateOnboardingPermissionState() {
@@ -4701,6 +4818,27 @@ public final class MainActivity extends Activity implements
 
     private void openMediaPermissionSettings() {
         startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+    }
+
+    private void updateOverlayPermissionButton() {
+        if (overlayPermissionButton == null) {
+            return;
+        }
+        boolean enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+        overlayPermissionButton.setText(enabled
+                ? ui("button.overlay_permission_enabled")
+                : ui("button.open_overlay_permission"));
+        overlayPermissionButton.setAlpha(enabled ? 0.72f : 1f);
+    }
+
+    private void openOverlayPermissionSettings() {
+        Intent intent = new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName())
+        );
+        if (!tryStartActivity(intent)) {
+            showSavedToast(ui("toast.overlay_permission_needed"));
+        }
     }
 
     private void updatePlaybackUi() {

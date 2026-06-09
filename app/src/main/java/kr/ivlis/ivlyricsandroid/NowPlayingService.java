@@ -46,6 +46,7 @@ public final class NowPlayingService extends NotificationListenerService {
     private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, Bitmap> artworkCache = new ConcurrentHashMap<>();
     private final Set<String> artworkLoading = ConcurrentHashMap.newKeySet();
+    private SpotifyShortcutOverlayController shortcutOverlayController;
 
     interface Listener {
         void onNowPlayingChanged(TrackSnapshot snapshot);
@@ -132,6 +133,7 @@ public final class NowPlayingService extends NotificationListenerService {
     public void onCreate() {
         super.onCreate();
         instance = new WeakReference<>(this);
+        shortcutOverlayController = new SpotifyShortcutOverlayController(this);
     }
 
     @Override
@@ -157,6 +159,10 @@ public final class NowPlayingService extends NotificationListenerService {
     @Override
     public void onDestroy() {
         unregisterActiveCallback();
+        if (shortcutOverlayController != null) {
+            shortcutOverlayController.destroy();
+            shortcutOverlayController = null;
+        }
         artworkExecutor.shutdownNow();
         if (instance.get() == this) {
             instance = new WeakReference<>(null);
@@ -339,6 +345,9 @@ public final class NowPlayingService extends NotificationListenerService {
     private void publish(TrackSnapshot snapshot) {
         latestSnapshot = snapshot;
         MAIN.post(() -> {
+            if (shortcutOverlayController != null) {
+                shortcutOverlayController.update(snapshot);
+            }
             for (Listener listener : LISTENERS) {
                 listener.onNowPlayingChanged(snapshot);
             }
