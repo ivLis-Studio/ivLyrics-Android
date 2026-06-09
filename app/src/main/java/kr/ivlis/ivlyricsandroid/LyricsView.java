@@ -38,6 +38,7 @@ public final class LyricsView extends View {
     private static final float FURIGANA_TEXT_RATIO = 0.42f;
     private static final float FURIGANA_EXTRA_HEIGHT_RATIO = 0.34f;
     private static final float PART_GAP_SP = 4f;
+    private static final float FURIGANA_MULTI_VOCAL_GAP_SP = 8f;
     private static final float SUPPLEMENT_GAP_SP = 2f;
     private static final float BLOCK_GAP_SP = 32f;
     private static final float BOTTOM_EDGE_FADE_DP = 34f;
@@ -1033,9 +1034,7 @@ public final class LyricsView extends View {
             }
             top += group.height();
             if (groupIndex + 1 < groups.size()) {
-                boolean currentSupplement = group.supplement;
-                boolean nextSupplement = groups.get(groupIndex + 1).supplement;
-                top += currentSupplement || nextSupplement ? sp(SUPPLEMENT_GAP_SP) : sp(PART_GAP_SP);
+                top += gapBetweenGroups(groups, groupIndex, groupIndex + 1);
             }
         }
     }
@@ -1044,14 +1043,42 @@ public final class LyricsView extends View {
         float totalHeight = 0f;
         for (int index = 0; index < groups.size(); index++) {
             if (index > 0) {
-                boolean previousSupplement = groups.get(index - 1).supplement;
-                boolean currentSupplement = groups.get(index).supplement;
-                totalHeight += previousSupplement || currentSupplement ? sp(SUPPLEMENT_GAP_SP) : sp(PART_GAP_SP);
+                totalHeight += gapBetweenGroups(groups, index - 1, index);
             }
             DrawGroup group = groups.get(index);
             totalHeight += group.height();
         }
         return totalHeight;
+    }
+
+    private float gapBetweenGroups(List<DrawGroup> groups, int previousIndex, int nextIndex) {
+        DrawGroup previous = groups.get(previousIndex);
+        DrawGroup next = groups.get(nextIndex);
+        float gap = previous.supplement || next.supplement ? sp(SUPPLEMENT_GAP_SP) : sp(PART_GAP_SP);
+        if (isFuriganaMultiVocalBoundary(groups, nextIndex)) {
+            gap = Math.max(gap, sp(FURIGANA_MULTI_VOCAL_GAP_SP));
+        }
+        return gap;
+    }
+
+    private boolean isFuriganaMultiVocalBoundary(List<DrawGroup> groups, int nextIndex) {
+        if (!japaneseFuriganaEnabled || nextIndex <= 0 || nextIndex >= groups.size()) {
+            return false;
+        }
+        DrawGroup next = groups.get(nextIndex);
+        if (next.supplement || next.isInterlude() || !next.hasRuby()) {
+            return false;
+        }
+        int primaryCount = 0;
+        for (DrawGroup group : groups) {
+            if (!group.supplement && !group.isInterlude()) {
+                primaryCount++;
+                if (primaryCount > 1) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void drawInterludeGroup(Canvas canvas, DrawGroup group, float centerY, float fadeAlpha) {
