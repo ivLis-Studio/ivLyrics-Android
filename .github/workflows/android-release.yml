@@ -1,0 +1,95 @@
+name: Android Release APKs
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update"
+        required: true
+        default: "v1.0.1"
+      prerelease:
+        description: "Mark release as prerelease"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build and publish APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build all APK variants
+        run: ./gradlew :app:assembleDebug :app:assembleRelease
+
+      - name: Collect APKs
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            release_tag="${{ inputs.tag }}"
+          fi
+          mkdir -p release-apks
+          while IFS= read -r apk; do
+            variant="$(basename "$(dirname "${apk}")")"
+            name="ivLyrics-Android-${release_tag}-${variant}.apk"
+            if [[ "${apk}" == *"unsigned"* ]]; then
+              name="ivLyrics-Android-${release_tag}-${variant}-unsigned.apk"
+            fi
+            cp "${apk}" "release-apks/${name}"
+          done < <(find app/build/outputs/apk -type f -name "*.apk" | sort)
+          {
+            echo "release_tag=${release_tag}"
+            echo "apk_list<<EOF"
+            find release-apks -type f -name "*.apk" -print | sort
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ivLyrics-Android-${{ steps.collect.outputs.release_tag }}-apks
+          path: release-apks/*.apk
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
+          PRERELEASE: ${{ inputs.prerelease || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-apks/*.apk --clobber
+          else
+            gh release create "${RELEASE_TAG}" release-apks/*.apk \
+              --target "${GITHUB_SHA}" \
+              --title "ivLyrics Android ${RELEASE_TAG}" \
+              --generate-notes \
+              "${args[@]}"
+          fi
