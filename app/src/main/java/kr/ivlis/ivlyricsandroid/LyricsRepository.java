@@ -565,6 +565,13 @@ final class LyricsRepository {
                     + " preferred=" + candidate.preferredLyricsSource
                     + " " + describeLrclibCandidate(candidate));
         }
+        if (shouldPreferLegacyExactSyncLineShape(syncData)) {
+            LrclibCandidate exact = selectLegacyExactLineShapeCandidate(track, candidates, log);
+            if (exact != null) {
+                return exact;
+            }
+            log.write("lrclib legacy sync-data: no exact line-shape candidate found; using ranked fallback");
+        }
         LrclibCandidate best = candidates.get(0);
         if (best.score <= 2.2 && best.syncSourceMatchScore <= 0 && !best.syncLineExactMatch) {
             log.write("lrclib selected: rejected top candidate, score below threshold: " + fmt(best.score));
@@ -624,13 +631,92 @@ final class LyricsRepository {
     }
 
     private boolean needsLegacySyncLineShapeMatch(SyncDataResult syncData, List<LrclibCandidate> candidates) {
-        if (syncData == null || syncData.lineCharCounts().isEmpty()) {
-            return false;
-        }
-        if (!syncData.sourceLineCharCounts().isEmpty()) {
+        if (!shouldPreferLegacyExactSyncLineShape(syncData)) {
             return false;
         }
         return !hasSyncLineExactCandidate(candidates, syncData);
+    }
+
+    private boolean shouldPreferLegacyExactSyncLineShape(SyncDataResult syncData) {
+        return syncData != null
+                && !syncData.lineCharCounts().isEmpty()
+                && syncData.lrclibId() <= 0L
+                && syncData.sourceLineCharCounts().isEmpty();
+    }
+
+    private LrclibCandidate selectLegacyExactLineShapeCandidate(
+            TrackSnapshot track,
+            List<LrclibCandidate> candidates,
+            LogSink log
+    ) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        List<LrclibCandidate> exactCandidates = new ArrayList<>();
+        for (LrclibCandidate candidate : candidates) {
+            if (candidate != null && candidate.syncLineExactMatch) {
+                exactCandidates.add(candidate);
+            }
+        }
+        if (exactCandidates.isEmpty()) {
+            return null;
+        }
+
+        exactCandidates.sort((left, right) -> compareLegacyExactLineShapeCandidates(track, left, right));
+        LrclibCandidate selected = exactCandidates.get(0);
+        log.write("lrclib legacy sync-data: selected exact line-shape candidate"
+                + " / group=" + legacyExactLineShapeGroup(selected)
+                + " / withinDuration=" + isWithinDurationTolerance(track, selected)
+                + " / " + describeLrclibCandidate(selected));
+        return selected;
+    }
+
+    private int compareLegacyExactLineShapeCandidates(
+            TrackSnapshot track,
+            LrclibCandidate left,
+            LrclibCandidate right
+    ) {
+        int group = Integer.compare(legacyExactLineShapeGroup(right), legacyExactLineShapeGroup(left));
+        if (group != 0) return group;
+
+        int durationWithin = Boolean.compare(
+                isWithinDurationTolerance(track, right),
+                isWithinDurationTolerance(track, left)
+        );
+        if (durationWithin != 0) return durationWithin;
+
+        int durationDiff = Double.compare(durationDiffSeconds(track, left), durationDiffSeconds(track, right));
+        if (durationDiff != 0) return durationDiff;
+
+        return compareLrclibCandidates(left, right);
+    }
+
+    private int legacyExactLineShapeGroup(LrclibCandidate candidate) {
+        if (candidate == null) {
+            return 0;
+        }
+        if (candidate.hasOriginalLyricsScript && candidate.exactSyncedLineMatch) {
+            return 4;
+        }
+        if (candidate.hasOriginalLyricsScript && candidate.exactPlainLineMatch) {
+            return 3;
+        }
+        if (candidate.exactSyncedLineMatch) {
+            return 2;
+        }
+        return candidate.exactPlainLineMatch ? 1 : 0;
+    }
+
+    private boolean isWithinDurationTolerance(TrackSnapshot track, LrclibCandidate candidate) {
+        return durationDiffSeconds(track, candidate) <= DURATION_TOLERANCE_SECONDS;
+    }
+
+    private double durationDiffSeconds(TrackSnapshot track, LrclibCandidate candidate) {
+        if (track == null || candidate == null || track.durationMs <= 0L || candidate.durationSeconds <= 0.0) {
+            return Double.MAX_VALUE;
+        }
+        return Math.abs((track.durationMs / 1000.0) - candidate.durationSeconds);
     }
 
     private boolean hasSyncLineExactCandidate(List<LrclibCandidate> candidates, SyncDataResult syncData) {
@@ -1271,18 +1357,31 @@ final class LyricsRepository {
         candidate.syncSourceIdMatch = false;
         candidate.syncSourceTextMatch = false;
         candidate.syncSourceLineCountMatch = false;
+        candidate.hasOriginalLyricsScript = false;
 
         if (syncData == null) {
             return;
         }
 
         List<Integer> syncLineCounts = syncData.lineCharCounts();
-        candidate.exactSyncedLineMatch = hasExactLineShape(syncLineCounts, candidateLineCharCounts(candidate.syncedLyrics, true));
-        candidate.exactPlainLineMatch = hasExactLineShape(syncLineCounts, candidateLineCharCounts(candidate.plainLyrics, false));
+        boolean normalizeParentheticalLines = syncData.shouldNormalizeParentheticalLines();
+        candidate.exactSyncedLineMatch = hasExactLineShape(
+                syncLineCounts,
+                candidateLineCharCounts(candidate.syncedLyrics, true, normalizeParentheticalLines)
+        );
+        candidate.exactPlainLineMatch = hasExactLineShape(
+                syncLineCounts,
+                candidateLineCharCounts(candidate.plainLyrics, false, normalizeParentheticalLines)
+        );
         candidate.syncLineExactMatch = candidate.exactSyncedLineMatch || candidate.exactPlainLineMatch;
         candidate.preferredLyricsSource = candidate.exactSyncedLineMatch
                 ? "synced"
                 : (candidate.exactPlainLineMatch ? "plain" : syncData.preferredLyricsSource());
+        candidate.hasOriginalLyricsScript = hasOriginalLyricsScript(candidateComparableText(
+                candidate,
+                candidate.preferredLyricsSource,
+                normalizeParentheticalLines
+        ));
 
         if (!syncData.hasLrclibSource()) {
             return;
@@ -1292,8 +1391,14 @@ final class LyricsRepository {
         candidate.syncSourceIdMatch = sourceId > 0L && candidate.id == sourceId;
 
         List<Integer> sourceLineCounts = syncData.sourceLineCharCounts();
-        boolean sourceSyncedLineMatch = hasExactLineShape(sourceLineCounts, candidateLineCharCounts(candidate.syncedLyrics, true));
-        boolean sourcePlainLineMatch = hasExactLineShape(sourceLineCounts, candidateLineCharCounts(candidate.plainLyrics, false));
+        boolean sourceSyncedLineMatch = hasExactLineShape(
+                sourceLineCounts,
+                candidateLineCharCounts(candidate.syncedLyrics, true, normalizeParentheticalLines)
+        );
+        boolean sourcePlainLineMatch = hasExactLineShape(
+                sourceLineCounts,
+                candidateLineCharCounts(candidate.plainLyrics, false, normalizeParentheticalLines)
+        );
         if (candidate.preferredLyricsSource.isEmpty()) {
             candidate.preferredLyricsSource = sourceSyncedLineMatch
                     ? "synced"
@@ -1301,14 +1406,14 @@ final class LyricsRepository {
         }
 
         String preferredSource = firstNonEmpty(candidate.preferredLyricsSource, syncData.preferredLyricsSource());
-        String candidateText = candidateComparableText(candidate, preferredSource);
+        String candidateText = candidateComparableText(candidate, preferredSource, normalizeParentheticalLines);
         String sourceFingerprint = syncData.sourceLyricsFingerprint();
         candidate.syncSourceTextMatch = !sourceFingerprint.isEmpty()
                 && sourceFingerprint.equals(lyricsFingerprint(candidateText));
 
         candidate.syncSourceLineCountMatch = hasExactLineShape(
                 sourceLineCounts,
-                lineCharCounts(comparableLyricsLines(candidateText, false))
+                lineCharCounts(comparableLyricsLines(candidateText, false, false))
         );
 
         if (candidate.syncSourceIdMatch) {
@@ -1335,12 +1440,16 @@ final class LyricsRepository {
         return true;
     }
 
-    private List<Integer> candidateLineCharCounts(String text, boolean stripTimestamps) {
+    private List<Integer> candidateLineCharCounts(
+            String text,
+            boolean stripTimestamps,
+            boolean normalizeParentheticalLines
+    ) {
         if (text == null || text.isEmpty()) {
             return Collections.emptyList();
         }
 
-        return lineCharCounts(comparableLyricsLines(text, stripTimestamps));
+        return lineCharCounts(comparableLyricsLines(text, stripTimestamps, normalizeParentheticalLines));
     }
 
     private List<Integer> lineCharCounts(List<String> lines) {
@@ -1352,6 +1461,14 @@ final class LyricsRepository {
     }
 
     private List<String> comparableLyricsLines(String text, boolean stripTimestamps) {
+        return comparableLyricsLines(text, stripTimestamps, false);
+    }
+
+    private List<String> comparableLyricsLines(
+            String text,
+            boolean stripTimestamps,
+            boolean normalizeParentheticalLines
+    ) {
         if (text == null || text.trim().isEmpty()) {
             return Collections.emptyList();
         }
@@ -1366,10 +1483,25 @@ final class LyricsRepository {
             }
             lines.add(line);
         }
+        if (normalizeParentheticalLines) {
+            List<String> normalizedLines = normalizeStandaloneParentheticalBlocks(lines);
+            List<String> filtered = new ArrayList<>();
+            for (String line : normalizedLines) {
+                String normalized = Normalizer.normalize(line == null ? "" : line, Normalizer.Form.NFC).trim();
+                if (!normalized.isEmpty()) {
+                    filtered.add(normalized);
+                }
+            }
+            return filtered;
+        }
         return lines;
     }
 
-    private String candidateComparableText(LrclibCandidate candidate, String preferredSource) {
+    private String candidateComparableText(
+            LrclibCandidate candidate,
+            String preferredSource,
+            boolean normalizeParentheticalLines
+    ) {
         if (candidate == null) {
             return "";
         }
@@ -1379,8 +1511,154 @@ final class LyricsRepository {
         String text = useSynced
                 ? stripLrcTimestamps(candidate.syncedLyrics)
                 : firstNonEmpty(candidate.plainLyrics, stripLrcTimestamps(candidate.syncedLyrics));
-        List<String> lines = comparableLyricsLines(text, false);
+        List<String> lines = comparableLyricsLines(text, false, normalizeParentheticalLines);
         return joinLinesForFingerprint(lines);
+    }
+
+    private List<String> normalizeStandaloneParentheticalBlocks(List<String> lines) {
+        List<String> normalizedLines = new ArrayList<>();
+        if (lines != null) {
+            for (String line : lines) {
+                normalizedLines.add(stripStandaloneParentheticalLine(line));
+            }
+        }
+
+        for (int index = 0; index < normalizedLines.size(); index++) {
+            String trimmed = Normalizer.normalize(
+                    normalizedLines.get(index) == null ? "" : normalizedLines.get(index),
+                    Normalizer.Form.NFC
+            ).trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            int openCodePoint = firstCodePoint(trimmed);
+            String closeChar = getParenthesisClose(openCodePoint);
+            if (closeChar.isEmpty() || trimmed.contains(closeChar)) {
+                continue;
+            }
+
+            int closeLineIndex = -1;
+            for (int candidate = index + 1; candidate < normalizedLines.size(); candidate++) {
+                String candidateTrimmed = Normalizer.normalize(
+                        normalizedLines.get(candidate) == null ? "" : normalizedLines.get(candidate),
+                        Normalizer.Form.NFC
+                ).trim();
+                if (!candidateTrimmed.isEmpty() && candidateTrimmed.endsWith(closeChar)) {
+                    closeLineIndex = candidate;
+                    break;
+                }
+            }
+            if (closeLineIndex < 0) {
+                continue;
+            }
+
+            normalizedLines.set(index, stripLeadingParenthesis(normalizedLines.get(index)).trim());
+            normalizedLines.set(closeLineIndex, stripTrailingParenthesis(
+                    normalizedLines.get(closeLineIndex),
+                    closeChar
+            ).trim());
+        }
+        return normalizedLines;
+    }
+
+    private String stripStandaloneParentheticalLine(String text) {
+        String value = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFC).trim();
+        while (isStandaloneParentheticalLine(value)) {
+            List<Integer> codePoints = codePoints(value);
+            value = codePointsToString(codePoints, 1, codePoints.size() - 2).trim();
+        }
+        return value;
+    }
+
+    private boolean isStandaloneParentheticalLine(String text) {
+        String value = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFC).trim();
+        List<Integer> codePoints = codePoints(value);
+        if (codePoints.size() < 2) {
+            return false;
+        }
+
+        String expectedClose = getParenthesisClose(codePoints.get(0));
+        return !expectedClose.isEmpty()
+                && expectedClose.equals(codePointsToString(codePoints, codePoints.size() - 1, codePoints.size() - 1));
+    }
+
+    private String stripLeadingParenthesis(String text) {
+        List<Integer> codePoints = codePoints(text);
+        for (int index = 0; index < codePoints.size(); index++) {
+            int codePoint = codePoints.get(index);
+            if (Character.isWhitespace(codePoint)) {
+                continue;
+            }
+            if (!getParenthesisClose(codePoint).isEmpty()) {
+                codePoints.remove(index);
+            }
+            break;
+        }
+        return codePointsToString(codePoints, 0, codePoints.size() - 1);
+    }
+
+    private String stripTrailingParenthesis(String text, String closeChar) {
+        List<Integer> codePoints = codePoints(text);
+        for (int index = codePoints.size() - 1; index >= 0; index--) {
+            int codePoint = codePoints.get(index);
+            if (Character.isWhitespace(codePoint)) {
+                continue;
+            }
+            if (closeChar.equals(codePointsToString(codePoints, index, index))) {
+                codePoints.remove(index);
+            }
+            break;
+        }
+        return codePointsToString(codePoints, 0, codePoints.size() - 1);
+    }
+
+    private String getParenthesisClose(int openCodePoint) {
+        if (openCodePoint == '(') return ")";
+        if (openCodePoint == '（') return "）";
+        return "";
+    }
+
+    private int firstCodePoint(String value) {
+        List<Integer> codePoints = codePoints(value);
+        return codePoints.isEmpty() ? -1 : codePoints.get(0);
+    }
+
+    private List<Integer> codePoints(String value) {
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFC);
+        List<Integer> codePoints = new ArrayList<>();
+        normalized.codePoints().forEach(codePoints::add);
+        return codePoints;
+    }
+
+    private String codePointsToString(List<Integer> codePoints, int start, int end) {
+        if (codePoints == null || codePoints.isEmpty() || start > end) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        int safeStart = Math.max(0, start);
+        int safeEnd = Math.min(codePoints.size() - 1, end);
+        for (int index = safeStart; index <= safeEnd; index++) {
+            builder.appendCodePoint(codePoints.get(index));
+        }
+        return builder.toString();
+    }
+
+    private boolean hasOriginalLyricsScript(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        String normalized = Normalizer.normalize(text, Normalizer.Form.NFC);
+        return normalized.codePoints().anyMatch(codePoint ->
+                (codePoint >= 0x3040 && codePoint <= 0x30ff)
+                        || (codePoint >= 0x3400 && codePoint <= 0x4dbf)
+                        || (codePoint >= 0x4e00 && codePoint <= 0x9fff)
+                        || (codePoint >= 0xf900 && codePoint <= 0xfaff)
+                        || (codePoint >= 0x1100 && codePoint <= 0x11ff)
+                        || (codePoint >= 0x3130 && codePoint <= 0x318f)
+                        || (codePoint >= 0xac00 && codePoint <= 0xd7af)
+        );
     }
 
     private static String stripLeadingLrcTimestamp(String text) {
@@ -1921,6 +2199,7 @@ final class LyricsRepository {
         boolean syncSourceIdMatch;
         boolean syncSourceTextMatch;
         boolean syncSourceLineCountMatch;
+        boolean hasOriginalLyricsScript;
 
         LrclibCandidate(
                 long id,
@@ -2065,6 +2344,11 @@ final class LyricsRepository {
                 counts.add(chars == null ? 0 : chars.length());
             }
             return counts;
+        }
+
+        boolean shouldNormalizeParentheticalLines() {
+            return syncBody != null
+                    && (syncBody.optInt("version", 1) >= 2 || !sourceLineCharCounts().isEmpty());
         }
     }
 
