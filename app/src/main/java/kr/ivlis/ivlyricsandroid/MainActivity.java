@@ -3802,22 +3802,6 @@ public final class MainActivity extends Activity implements
         String packageName = snapshot != null && isSpotifyPackage(snapshot.packageName)
                 ? snapshot.packageName
                 : "com.spotify.music";
-        String trackId = snapshot == null ? "" : snapshot.trackId;
-        if (!trackId.isEmpty()) {
-            Intent spotifyTrackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:track:" + trackId));
-            spotifyTrackIntent.setPackage(packageName);
-            spotifyTrackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (tryStartActivity(spotifyTrackIntent)) {
-                return;
-            }
-
-            Intent webTrackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/track/" + trackId));
-            webTrackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (tryStartActivity(webTrackIntent)) {
-                return;
-            }
-        }
-
         Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
         if (launchIntent == null && !"com.spotify.music".equals(packageName)) {
             launchIntent = getPackageManager().getLaunchIntentForPackage("com.spotify.music");
