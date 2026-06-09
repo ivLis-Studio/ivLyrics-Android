@@ -14,9 +14,10 @@ final class LyricsLine {
     final List<VocalPart> vocalParts;
     final String pronunciationText;
     final String translationText;
+    final String furiganaText;
 
     LyricsLine(long startTimeMs, long endTimeMs, String text, List<Syllable> syllables) {
-        this(startTimeMs, endTimeMs, text, syllables, "", "vocal", Collections.emptyList(), "", "");
+        this(startTimeMs, endTimeMs, text, syllables, "", "vocal", Collections.emptyList(), "", "", "");
     }
 
     LyricsLine(
@@ -28,7 +29,7 @@ final class LyricsLine {
             String kind,
             List<VocalPart> vocalParts
     ) {
-        this(startTimeMs, endTimeMs, text, syllables, speaker, kind, vocalParts, "", "");
+        this(startTimeMs, endTimeMs, text, syllables, speaker, kind, vocalParts, "", "", "");
     }
 
     LyricsLine(
@@ -40,7 +41,8 @@ final class LyricsLine {
             String kind,
             List<VocalPart> vocalParts,
             String pronunciationText,
-            String translationText
+            String translationText,
+            String furiganaText
     ) {
         this.startTimeMs = Math.max(0L, startTimeMs);
         this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
@@ -55,6 +57,7 @@ final class LyricsLine {
                 : Collections.unmodifiableList(new ArrayList<>(vocalParts));
         this.pronunciationText = pronunciationText == null ? "" : pronunciationText;
         this.translationText = translationText == null ? "" : translationText;
+        this.furiganaText = furiganaText == null ? "" : furiganaText;
     }
 
     boolean isTimed() {
@@ -62,6 +65,10 @@ final class LyricsLine {
     }
 
     LyricsLine withSupplements(String pronunciation, String translation) {
+        return withSupplements(pronunciation, translation, furiganaText);
+    }
+
+    LyricsLine withSupplements(String pronunciation, String translation, String furigana) {
         return new LyricsLine(
                 startTimeMs,
                 endTimeMs,
@@ -71,7 +78,8 @@ final class LyricsLine {
                 kind,
                 vocalParts,
                 pronunciation,
-                translation
+                translation,
+                furigana
         );
     }
 
@@ -98,9 +106,10 @@ final class LyricsLine {
         final long endTimeMs;
         final String pronunciationText;
         final String translationText;
+        final String furiganaText;
 
         VocalPart(String id, String role, String speaker, String kind, String text, List<Syllable> syllables) {
-            this(id, role, speaker, kind, text, syllables, "", "");
+            this(id, role, speaker, kind, text, syllables, "", "", "");
         }
 
         VocalPart(
@@ -111,7 +120,8 @@ final class LyricsLine {
                 String text,
                 List<Syllable> syllables,
                 String pronunciationText,
-                String translationText
+                String translationText,
+                String furiganaText
         ) {
             this.id = id == null ? "" : id;
             this.role = role == null ? "" : role;
@@ -127,9 +137,14 @@ final class LyricsLine {
                     : this.syllables.get(this.syllables.size() - 1).endTimeMs;
             this.pronunciationText = pronunciationText == null ? "" : pronunciationText;
             this.translationText = translationText == null ? "" : translationText;
+            this.furiganaText = furiganaText == null ? "" : furiganaText;
         }
 
         VocalPart withSupplements(String pronunciation, String translation) {
+            return withSupplements(pronunciation, translation, furiganaText);
+        }
+
+        VocalPart withSupplements(String pronunciation, String translation, String furigana) {
             return new VocalPart(
                     id,
                     role,
@@ -138,7 +153,8 @@ final class LyricsLine {
                     text,
                     syllables,
                     pronunciation,
-                    translation
+                    translation,
+                    furigana
             );
         }
     }

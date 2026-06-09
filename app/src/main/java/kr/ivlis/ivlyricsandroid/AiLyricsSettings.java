@@ -46,6 +46,7 @@ final class AiLyricsSettings {
     static final String KEY_SPOTIFY_CLIENT_ID = "spotify_client_id";
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
+    static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
 
     static final String DEFAULT_SOURCE_LANG = "default";
     static final String PREVIEW_MODE_ORIGINAL = "original";
@@ -186,6 +187,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
                 prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
+                prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
@@ -201,6 +203,10 @@ final class AiLyricsSettings {
 
     void setMetadataTranslationEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_METADATA_TRANSLATION_ENABLED, enabled).apply();
+    }
+
+    void setJapaneseFuriganaEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_JAPANESE_FURIGANA_ENABLED, enabled).apply();
     }
 
     void setTranslationEnabled(boolean enabled) {
@@ -928,6 +934,7 @@ final class AiLyricsSettings {
         final boolean landscapeAutoHideControls;
         final boolean keepScreenOn;
         final boolean metadataTranslationEnabled;
+        final boolean japaneseFuriganaEnabled;
         final String spotifyClientId;
         final String spotifyClientSecret;
 
@@ -950,6 +957,7 @@ final class AiLyricsSettings {
                 boolean landscapeAutoHideControls,
                 boolean keepScreenOn,
                 boolean metadataTranslationEnabled,
+                boolean japaneseFuriganaEnabled,
                 String spotifyClientId,
                 String spotifyClientSecret
         ) {
@@ -975,11 +983,15 @@ final class AiLyricsSettings {
             this.landscapeAutoHideControls = landscapeAutoHideControls;
             this.keepScreenOn = keepScreenOn;
             this.metadataTranslationEnabled = metadataTranslationEnabled;
+            this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
         }
 
         boolean enabled() {
+            if (japaneseFuriganaEnabled) {
+                return true;
+            }
             if (defaultRule.enabled()) {
                 return true;
             }
@@ -1033,6 +1045,7 @@ final class AiLyricsSettings {
                     .append("|resolvedOutput=").append(resolveOutputLanguage(outputLang, uiLang))
                     .append("|translationTarget=").append(defaultRule.targetLang)
                     .append("|default=").append(defaultRule.cacheKey())
+                    .append("|furigana=").append(japaneseFuriganaEnabled)
                     .append("|model=").append(model)
                     .append("|url=").append(baseUrl)
                     .append("|tok=").append(maxTokens)

@@ -223,6 +223,7 @@ final class LyricsDiskCache {
         object.put("kind", line.kind);
         object.put("pronunciationText", line.pronunciationText);
         object.put("translationText", line.translationText);
+        object.put("furiganaText", line.furiganaText);
         object.put("syllables", syllablesToJson(line.syllables));
         JSONArray parts = new JSONArray();
         for (LyricsLine.VocalPart part : line.vocalParts) {
@@ -242,7 +243,8 @@ final class LyricsDiskCache {
                 object.optString("kind", "vocal"),
                 vocalPartsFromJson(object.optJSONArray("vocalParts")),
                 object.optString("pronunciationText", ""),
-                object.optString("translationText", "")
+                object.optString("translationText", ""),
+                object.optString("furiganaText", "")
         );
     }
 
@@ -255,6 +257,7 @@ final class LyricsDiskCache {
         object.put("text", part.text);
         object.put("pronunciationText", part.pronunciationText);
         object.put("translationText", part.translationText);
+        object.put("furiganaText", part.furiganaText);
         object.put("syllables", syllablesToJson(part.syllables));
         return object;
     }
@@ -277,7 +280,8 @@ final class LyricsDiskCache {
                     object.optString("text", ""),
                     syllablesFromJson(object.optJSONArray("syllables")),
                     object.optString("pronunciationText", ""),
-                    object.optString("translationText", "")
+                    object.optString("translationText", ""),
+                    object.optString("furiganaText", "")
             ));
         }
         return parts;

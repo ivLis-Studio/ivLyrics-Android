@@ -32,9 +32,13 @@ import java.util.regex.Pattern;
 final class AiLyricsRepository {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 70_000;
-    private static final String SUPPLEMENT_PROMPT_VERSION = "v2-id-aligned";
+    private static final String SUPPLEMENT_PROMPT_VERSION = "v3-id-aligned-furigana";
     private static final Pattern TAGGED_OUTPUT_PATTERN = Pattern.compile(
             "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern RUBY_TAG_PATTERN = Pattern.compile(
+            "<ruby>([^<>]+)<rt>([^<>]*)</rt></ruby>",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -105,11 +109,17 @@ final class AiLyricsRepository {
         final SupplementRequest request;
         final String pronunciation;
         final String translation;
+        final String furigana;
 
         SupplementResult(SupplementRequest request, String pronunciation, String translation) {
+            this(request, pronunciation, translation, "");
+        }
+
+        SupplementResult(SupplementRequest request, String pronunciation, String translation, String furigana) {
             this.request = request;
             this.pronunciation = pronunciation == null ? "" : pronunciation;
             this.translation = translation == null ? "" : translation;
+            this.furigana = furigana == null ? "" : furigana;
         }
     }
 
@@ -167,9 +177,10 @@ final class AiLyricsRepository {
         AiLyricsSettings.LanguageRule rule = settings.ruleForSource(sourceLang);
         String targetLang = settings.resolveTargetLanguage(sourceLang);
         String pronunciationLang = settings.pronunciationLanguage();
-        if (!rule.enabled()) {
+        boolean furiganaEnabled = shouldGenerateFurigana(settings, sourceLang, textPayload);
+        if (!rule.enabled() && !furiganaEnabled) {
             emitLog(trackKey, callback, "ai lyrics skipped for source=" + sourceLang
-                    + ": translation=false / pronunciation=false");
+                    + ": translation=false / pronunciation=false / furigana=false");
             callback.onAiLyricsLoaded(trackKey, baseResult);
             return;
         }
@@ -211,12 +222,13 @@ final class AiLyricsRepository {
                 + " / pronunciation=" + pronunciationLang
                 + " / target=" + targetLang
                 + " / translation=" + rule.translationEnabled
-                + " / pronunciation=" + rule.pronunciationEnabled);
+                + " / pronunciation=" + rule.pronunciationEnabled
+                + " / furigana=" + furiganaEnabled);
 
         executor.execute(() -> {
             LogSink log = message -> emitLog(trackKey, callback, message);
             try {
-                LyricsResult result = loadSupplementsBlocking(baseResult, settings, rule, textPayload, sourceLang, targetLang, pronunciationLang, log);
+                LyricsResult result = loadSupplementsBlocking(baseResult, settings, rule, textPayload, sourceLang, targetLang, pronunciationLang, furiganaEnabled, log);
                 cache.put(cacheKey, result);
                 if (diskCache != null) {
                     diskCache.put(cacheKey, result);
@@ -373,18 +385,27 @@ final class AiLyricsRepository {
             String sourceLang,
             String targetLang,
             String pronunciationLang,
+            boolean furiganaEnabled,
             LogSink log
     ) throws Exception {
         List<SupplementRequest> requests = buildSupplementRequests(baseResult.lines);
         int expectedLineCount = requests.size();
         List<String> pronunciation = Collections.emptyList();
         List<String> translation = Collections.emptyList();
+        List<String> furigana = Collections.emptyList();
 
         if (rule.pronunciationEnabled) {
             log.write("ai pronunciation request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
             String raw = callProviderRaw(buildPhoneticPrompt(requests, pronunciationLang), settings);
             pronunciation = parseTaggedTextLines(raw, requests, "pronunciation", log);
             log.write("ai pronunciation response: lines=" + pronunciation.size());
+        }
+
+        if (furiganaEnabled) {
+            log.write("ai furigana request: lines=" + expectedLineCount);
+            String raw = callProviderRaw(buildFuriganaPrompt(requests), settings);
+            furigana = parseFuriganaTextLines(raw, requests, log);
+            log.write("ai furigana response: lines=" + furigana.size());
         }
 
         boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
@@ -408,7 +429,8 @@ final class AiLyricsRepository {
             lineResults.add(new SupplementResult(
                     request,
                     valueAt(pronunciation, index),
-                    valueAt(translation, index)
+                    valueAt(translation, index),
+                    valueAt(furigana, index)
             ));
         }
 
@@ -420,10 +442,16 @@ final class AiLyricsRepository {
 
         String detail = baseResult.detail;
         String taskLabel = translationSkipped
-                ? (rule.pronunciationEnabled ? "translation skipped, pronunciation" : "translation skipped")
+                ? (rule.pronunciationEnabled
+                ? (furiganaEnabled ? "translation skipped, pronunciation/furigana" : "translation skipped, pronunciation")
+                : (furiganaEnabled ? "translation skipped, furigana" : "translation skipped"))
                 : rule.translationEnabled && rule.pronunciationEnabled
-                ? "translation/pronunciation"
-                : rule.translationEnabled ? "translation" : "pronunciation";
+                ? (furiganaEnabled ? "translation/pronunciation/furigana" : "translation/pronunciation")
+                : rule.translationEnabled
+                ? (furiganaEnabled ? "translation/furigana" : "translation")
+                : rule.pronunciationEnabled
+                ? (furiganaEnabled ? "pronunciation/furigana" : "pronunciation")
+                : "furigana";
         String suffix = " AI " + settings.provider.label + " "
                 + taskLabel
                 + " applied. source=" + sourceLang + ", pronunciation=" + pronunciationLang + ", target=" + targetLang + ".";
@@ -445,8 +473,9 @@ final class AiLyricsRepository {
 
         String pronunciationText = joinSupplementResults(results, true);
         String translationText = joinSupplementResults(results, false);
+        String furiganaText = joinFuriganaResults(results);
         if (line.vocalParts == null || line.vocalParts.isEmpty()) {
-            return line.withSupplements(pronunciationText, translationText);
+            return line.withSupplements(pronunciationText, translationText, furiganaText);
         }
 
         List<LyricsLine.VocalPart> parts = new ArrayList<>(line.vocalParts);
@@ -457,11 +486,11 @@ final class AiLyricsRepository {
                 continue;
             }
             LyricsLine.VocalPart part = parts.get(partIndex);
-            parts.set(partIndex, part.withSupplements(result.pronunciation, result.translation));
+            parts.set(partIndex, part.withSupplements(result.pronunciation, result.translation, result.furigana));
             changedPart = true;
         }
         if (!changedPart) {
-            return line.withSupplements(pronunciationText, translationText);
+            return line.withSupplements(pronunciationText, translationText, furiganaText);
         }
         return new LyricsLine(
                 line.startTimeMs,
@@ -472,7 +501,8 @@ final class AiLyricsRepository {
                 line.kind,
                 parts,
                 pronunciationText,
-                translationText
+                translationText,
+                furiganaText
         );
     }
 
@@ -487,6 +517,25 @@ final class AiLyricsRepository {
                 builder.append(" / ");
             }
             builder.append(value.trim());
+        }
+        return builder.toString();
+    }
+
+    private String joinFuriganaResults(List<SupplementResult> results) {
+        StringBuilder builder = new StringBuilder();
+        for (SupplementResult result : results) {
+            String value = result.furigana == null ? "" : result.furigana.trim();
+            if (value.isEmpty()) {
+                String fallback = result.request == null ? "" : result.request.text;
+                value = fallback == null ? "" : fallback.trim();
+            }
+            if (value.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(" / ");
+            }
+            builder.append(value);
         }
         return builder.toString();
     }
@@ -853,6 +902,36 @@ final class AiLyricsRepository {
                 + "OUTPUT_ROWS (" + lineCount + " rows, same IDs, tab-separated pronunciation only):";
     }
 
+    private String buildFuriganaPrompt(List<SupplementRequest> requests) {
+        int lineCount = requests == null ? 0 : requests.size();
+        return "You are a Japanese furigana annotator for song lyrics. Add hiragana ruby readings above kanji.\n\n"
+                + "CRITICAL RULES:\n"
+                + "- This is a FURIGANA task, NOT a translation or romanization task\n"
+                + "- Output must preserve the exact original visible Japanese text for each row\n"
+                + "- Annotate kanji or kanji compounds only using this exact markup: <ruby>漢字<rt>かんじ</rt></ruby>\n"
+                + "- Use hiragana readings inside <rt>, never katakana, romaji, Hangul, or translations\n"
+                + "- Do not wrap kana-only text in ruby\n"
+                + "- Do not add spaces, remove spaces, change punctuation, or normalize characters\n"
+                + "- If a row has no kanji, output the original row text unchanged\n"
+                + "- Input rows are ID-tagged as L0001, L0002, etc. Treat each ID as an immutable timing anchor\n"
+                + "- Output EXACTLY " + lineCount + " rows, one output row for every input row\n"
+                + "- Preserve every row ID exactly and keep the same order\n"
+                + "- Output format must be: L0001<TAB>original text with ruby tags\n"
+                + "- Row L000N in the output must annotate ONLY row L000N from the input\n"
+                + "- Never merge adjacent rows and never split one row into multiple rows\n"
+                + "- If an input row contains \" / \" between simultaneous vocal parts, preserve \" / \" exactly\n"
+                + "- Do NOT output explanations, JSON, markdown, code blocks, or extra row IDs\n\n"
+                + "INPUT_ROWS (tab-separated ID and source text):\n" + buildTaggedPayload(requests) + "\n\n"
+                + "Correct output example:\n"
+                + "L0001\t<ruby>紅蓮<rt>ぐれん</rt></ruby>の<ruby>弓矢<rt>ゆみや</rt></ruby>\n"
+                + "L0002\tだから<ruby>一定<rt>いってい</rt></ruby>の<ruby>距離<rt>きょり</rt></ruby>は<ruby>保<rt>たも</rt></ruby>った\n\n"
+                + "Wrong output examples:\n"
+                + "L0001\tGuren no Yumiya\n"
+                + "L0001\t홍련의 화살\n"
+                + "L0001\t紅蓮の弓矢の読み方はぐれんのゆみやです\n\n"
+                + "OUTPUT_ROWS (" + lineCount + " rows, same IDs, tab-separated ruby text only):";
+    }
+
     private String phoneticScriptInstruction(String lang, AiLyricsSettings.Language langInfo) {
         switch (AiLyricsSettings.normalizeLanguageCode(lang)) {
             case "ko":
@@ -1036,6 +1115,84 @@ final class AiLyricsRepository {
         return parseTextLines(text, expectedLineCount);
     }
 
+    private List<String> parseFuriganaTextLines(String text, List<SupplementRequest> requests, LogSink log) {
+        List<String> values = parseTaggedTextLines(text, requests, "furigana", log);
+        if (values.isEmpty() || requests == null || requests.isEmpty()) {
+            return values;
+        }
+        int dropped = 0;
+        List<String> sanitized = new ArrayList<>();
+        int count = Math.min(values.size(), requests.size());
+        for (int index = 0; index < count; index++) {
+            String value = sanitizeFuriganaOutput(values.get(index), requests.get(index).text);
+            if (!values.get(index).trim().isEmpty() && value.isEmpty() && containsKanji(requests.get(index).text)) {
+                dropped++;
+            }
+            sanitized.add(value);
+        }
+        while (sanitized.size() < values.size()) {
+            sanitized.add("");
+        }
+        if (dropped > 0 && log != null) {
+            log.write("ai furigana alignment: dropped invalid ruby rows=" + dropped);
+        }
+        return sanitized;
+    }
+
+    private static String sanitizeFuriganaOutput(String value, String original) {
+        String cleaned = cleanSupplementOutput(value)
+                .replace("&lt;ruby&gt;", "<ruby>")
+                .replace("&lt;/ruby&gt;", "</ruby>")
+                .replace("&lt;rt&gt;", "<rt>")
+                .replace("&lt;/rt&gt;", "</rt>")
+                .trim();
+        if (cleaned.isEmpty()) {
+            return "";
+        }
+        String originalText = promptRowText(original);
+        if (!containsKanji(originalText)) {
+            return "";
+        }
+        if (!cleaned.contains("<ruby>")) {
+            return cleaned.equals(originalText) ? "" : "";
+        }
+        String plain = stripRubyMarkup(cleaned);
+        if (!plain.equals(originalText)) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        Matcher matcher = RUBY_TAG_PATTERN.matcher(cleaned);
+        int cursor = 0;
+        while (matcher.find()) {
+            String before = cleaned.substring(cursor, matcher.start());
+            if (before.contains("<") || before.contains(">")) {
+                return "";
+            }
+            builder.append(before);
+            String base = matcher.group(1);
+            String reading = matcher.group(2);
+            if (base == null || reading == null || base.trim().isEmpty() || reading.trim().isEmpty()) {
+                return "";
+            }
+            if (!containsKanji(base)) {
+                builder.append(base);
+            } else {
+                builder.append("<ruby>")
+                        .append(base)
+                        .append("<rt>")
+                        .append(reading)
+                        .append("</rt></ruby>");
+            }
+            cursor = matcher.end();
+        }
+        String tail = cleaned.substring(cursor);
+        if (tail.contains("<") || tail.contains(">")) {
+            return "";
+        }
+        builder.append(tail);
+        return builder.toString();
+    }
+
     private static List<String> emptySupplementList(int size) {
         List<String> values = new ArrayList<>();
         for (int index = 0; index < size; index++) {
@@ -1067,7 +1224,7 @@ final class AiLyricsRepository {
 
     private static String cleanSupplementOutput(String value) {
         String cleaned = value == null ? "" : value.trim();
-        cleaned = cleaned.replaceFirst("(?i)^\\s*(translation|translated text|pronunciation|pronunciation text|romanization|번역|발음)\\s*[:：\\-]\\s*", "");
+        cleaned = cleaned.replaceFirst("(?i)^\\s*(translation|translated text|pronunciation|pronunciation text|romanization|furigana|ruby|reading|번역|발음|후리가나|후라가나)\\s*[:：\\-]\\s*", "");
         if ((cleaned.startsWith("\"") && cleaned.endsWith("\""))
                 || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
             cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
@@ -1091,6 +1248,42 @@ final class AiLyricsRepository {
 
     static String buildPayloadText(List<LyricsLine> lines) {
         return payloadTextForRequests(buildSupplementRequests(lines));
+    }
+
+    private static boolean shouldGenerateFurigana(AiLyricsSettings.Snapshot settings, String sourceLang, String textPayload) {
+        return settings != null
+                && settings.japaneseFuriganaEnabled
+                && "ja".equalsIgnoreCase(AiLyricsSettings.normalizeLanguageCode(sourceLang))
+                && containsKanji(textPayload);
+    }
+
+    private static boolean containsKanji(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            if ((codePoint >= 0x3400 && codePoint <= 0x4DBF)
+                    || (codePoint >= 0x4E00 && codePoint <= 0x9FFF)
+                    || (codePoint >= 0xF900 && codePoint <= 0xFAFF)) {
+                return true;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return false;
+    }
+
+    private static String stripRubyMarkup(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuffer buffer = new StringBuffer();
+        Matcher matcher = RUBY_TAG_PATTERN.matcher(value);
+        while (matcher.find()) {
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(matcher.group(1)));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString().replaceAll("<[^>]+>", "");
     }
 
     private static String buildTaggedPayload(List<SupplementRequest> requests) {

@@ -186,6 +186,7 @@ public final class MainActivity extends Activity implements
     private Switch languageTranslationSwitch;
     private Switch languagePronunciationSwitch;
     private Switch metadataTranslationSwitch;
+    private Switch japaneseFuriganaSwitch;
     private Switch autoInstrumentalBreakSwitch;
     private Switch syncedLyricsKaraokeSwitch;
     private Switch landscapeAutoHideControlsSwitch;
@@ -255,6 +256,7 @@ public final class MainActivity extends Activity implements
     private boolean aiLyricsGenerating;
     private boolean lyricsSupplementPronunciationLoading;
     private boolean lyricsSupplementTranslationLoading;
+    private boolean lyricsSupplementFuriganaLoading;
     private boolean spotifyCredentialsValidationInFlight;
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
@@ -436,7 +438,7 @@ public final class MainActivity extends Activity implements
             currentBaseLyricsResult = currentLyricsResult;
             setLyricsTrackDurationOnViews(0L);
             setLyricsResultOnViews(currentLyricsResult);
-            setLyricsSupplementLoading(false, false);
+            setLyricsSupplementLoading(false, false, false);
             updateLyricPreview(0L);
             currentLyricsKey = "";
             currentArtworkKey = "";
@@ -1103,6 +1105,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setVerticalCenterBias(0.50f);
         landscapeLyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
+        landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
         landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
         landscapeLyricsView.setResult(currentLyricsResult);
@@ -1126,7 +1129,7 @@ public final class MainActivity extends Activity implements
         lyricsPane.addView(landscapeLyricsSupplementLoadingIndicator, loadingParams);
         setLoadingIndicatorVisible(
                 landscapeLyricsSupplementLoadingIndicator,
-                lyricsSupplementPronunciationLoading || lyricsSupplementTranslationLoading,
+                lyricsSupplementPronunciationLoading || lyricsSupplementTranslationLoading || lyricsSupplementFuriganaLoading,
                 false
         );
 
@@ -1434,7 +1437,7 @@ public final class MainActivity extends Activity implements
         metaRow.addView(lyricsSupplementLoadingIndicator, loadingParams);
         setLoadingIndicatorVisible(
                 lyricsSupplementLoadingIndicator,
-                lyricsSupplementPronunciationLoading || lyricsSupplementTranslationLoading,
+                lyricsSupplementPronunciationLoading || lyricsSupplementTranslationLoading || lyricsSupplementFuriganaLoading,
                 false
         );
 
@@ -1452,6 +1455,7 @@ public final class MainActivity extends Activity implements
         lyricsView.setVerticalCenterBias(0.42f);
         lyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
+        lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         lyricsView.setOnSeekListener(this::seekToPosition);
         LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1835,6 +1839,25 @@ public final class MainActivity extends Activity implements
             showSavedToast(isChecked ? ui("toast.metadata_translation_on") : ui("toast.metadata_translation_off"));
         });
         settingsLyricsPage.addView(metadataTranslationSwitch, topMargin(matchWrap(), dp(12)));
+
+        japaneseFuriganaSwitch = settingSwitch(
+                ui("setting.japanese_furigana"),
+                ui("setting.japanese_furigana_desc")
+        );
+        japaneseFuriganaSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setJapaneseFuriganaEnabled(isChecked);
+            setJapaneseFuriganaOnViews(isChecked);
+            if (isChecked) {
+                requestAiLyrics(true);
+            } else {
+                updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+            }
+            showSavedToast(isChecked ? ui("toast.furigana_on") : ui("toast.furigana_off"));
+        });
+        settingsLyricsPage.addView(japaneseFuriganaSwitch, topMargin(matchWrap(), dp(12)));
 
         previewModeButtonsContainer = new LinearLayout(this);
         previewModeButtonsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -2591,7 +2614,7 @@ public final class MainActivity extends Activity implements
         setLyricsTrackDurationOnViews(currentTrack.durationMs);
         setLyricsPlaybackPositionOnViews(lyricsPosition);
         setLyricsResultOnViews(currentLyricsResult);
-        setLyricsSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
+        setLyricsSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading, lyricsSupplementFuriganaLoading);
         updateLyricPreview(lyricsPosition);
         playPauseButton.setPlaying(currentTrack.playing);
         updateLyricsLanguageSettingsUi();
@@ -3984,6 +4007,11 @@ public final class MainActivity extends Activity implements
             metadataTranslationSwitch.setChecked(snapshot.metadataTranslationEnabled);
             suppressSettingsEvents = false;
         }
+        if (japaneseFuriganaSwitch != null) {
+            suppressSettingsEvents = true;
+            japaneseFuriganaSwitch.setChecked(snapshot.japaneseFuriganaEnabled);
+            suppressSettingsEvents = false;
+        }
         if (autoInstrumentalBreakSwitch != null) {
             suppressSettingsEvents = true;
             autoInstrumentalBreakSwitch.setChecked(snapshot.autoInstrumentalBreakEnabled);
@@ -4479,22 +4507,28 @@ public final class MainActivity extends Activity implements
         String target = snapshot.resolveTargetLanguage(source);
         setLyricsSupplementLoading(
                 snapshot.hasApiKey() && rule.pronunciationEnabled,
-                snapshot.hasApiKey() && rule.translationEnabled && !snapshot.shouldSkipTranslation(source, target)
+                snapshot.hasApiKey() && rule.translationEnabled && !snapshot.shouldSkipTranslation(source, target),
+                snapshot.hasApiKey() && shouldGenerateJapaneseFurigana(snapshot, source)
         );
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
         aiLyricsRepository.loadSupplements(currentTrack, currentBaseLyricsResult, snapshot, source, clearCache, this);
     }
 
     private void setLyricsSupplementLoading(boolean pronunciation, boolean translation) {
+        setLyricsSupplementLoading(pronunciation, translation, false);
+    }
+
+    private void setLyricsSupplementLoading(boolean pronunciation, boolean translation, boolean furigana) {
         lyricsSupplementPronunciationLoading = pronunciation;
         lyricsSupplementTranslationLoading = translation;
+        lyricsSupplementFuriganaLoading = furigana;
         if (lyricsView != null) {
             lyricsView.setSupplementLoading(pronunciation, translation);
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSupplementLoading(pronunciation, translation);
         }
-        updateLyricsSupplementLoadingIndicator(pronunciation || translation);
+        updateLyricsSupplementLoadingIndicator(pronunciation || translation || furigana);
     }
 
     private void updateLyricsSupplementLoadingIndicator(boolean visible) {
@@ -4820,6 +4854,15 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
+        }
+    }
+
+    private void setJapaneseFuriganaOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setJapaneseFuriganaEnabled(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setJapaneseFuriganaEnabled(enabled);
         }
     }
 
@@ -5398,6 +5441,51 @@ public final class MainActivity extends Activity implements
         }
         if (item == AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION) {
             return rule.pronunciationEnabled;
+        }
+        return false;
+    }
+
+    private boolean shouldGenerateJapaneseFurigana(AiLyricsSettings.Snapshot snapshot, String sourceLang) {
+        return snapshot != null
+                && snapshot.japaneseFuriganaEnabled
+                && "ja".equalsIgnoreCase(AiLyricsSettings.normalizeLanguageCode(sourceLang))
+                && lyricsContainKanji(currentBaseLyricsResult);
+    }
+
+    private boolean lyricsContainKanji(LyricsResult result) {
+        if (result == null || result.lines == null) {
+            return false;
+        }
+        for (LyricsLine line : result.lines) {
+            if (line == null) {
+                continue;
+            }
+            if (containsKanji(line.text)) {
+                return true;
+            }
+            if (line.vocalParts != null) {
+                for (LyricsLine.VocalPart part : line.vocalParts) {
+                    if (part != null && containsKanji(part.text)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean containsKanji(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            if ((codePoint >= 0x3400 && codePoint <= 0x4DBF)
+                    || (codePoint >= 0x4E00 && codePoint <= 0x9FFF)
+                    || (codePoint >= 0xF900 && codePoint <= 0xFAFF)) {
+                return true;
+            }
+            offset += Character.charCount(codePoint);
         }
         return false;
     }
