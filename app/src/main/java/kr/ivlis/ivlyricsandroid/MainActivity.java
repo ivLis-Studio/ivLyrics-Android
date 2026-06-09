@@ -225,6 +225,8 @@ public final class MainActivity extends Activity implements
     private TrackSnapshot currentTrack;
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
+    private LyricsResult currentFuriganaResult;
+    private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
     private String currentArtworkKey = "";
     private Bitmap currentArtworkBitmap;
@@ -444,6 +446,8 @@ public final class MainActivity extends Activity implements
             resetLogs("waiting for current track");
             currentLyricsResult = LyricsResult.empty(ui("status.waiting_current_track"));
             currentBaseLyricsResult = currentLyricsResult;
+            currentFuriganaResult = null;
+            currentFuriganaKey = "";
             setLyricsTrackDurationOnViews(0L);
             setLyricsResultOnViews(currentLyricsResult);
             setLyricsSupplementLoading(false, false, false);
@@ -502,6 +506,8 @@ public final class MainActivity extends Activity implements
                     + packageSuffix(snapshot.packageName));
             currentLyricsResult = LyricsResult.empty(ui("status.lyrics_loading"));
             currentBaseLyricsResult = currentLyricsResult;
+            currentFuriganaResult = null;
+            currentFuriganaKey = "";
             setLyricsTrackDurationOnViews(snapshot.durationMs);
             setLyricsResultOnViews(currentLyricsResult);
             setLyricsSupplementLoading(false, false);
@@ -534,6 +540,8 @@ public final class MainActivity extends Activity implements
         pendingSeekPositionMs = -1L;
         currentLyricsResult = LyricsResult.empty(ui("status.spotify_required_plain"));
         currentBaseLyricsResult = currentLyricsResult;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
         setLyricsTrackDurationOnViews(0L);
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(false, false);
@@ -557,6 +565,8 @@ public final class MainActivity extends Activity implements
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
         setLyricsResultOnViews(result);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -575,6 +585,8 @@ public final class MainActivity extends Activity implements
         }
         currentLyricsResult = LyricsResult.empty(ui("status.lyrics_request_failed"));
         currentBaseLyricsResult = currentLyricsResult;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(0L);
@@ -622,6 +634,8 @@ public final class MainActivity extends Activity implements
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
         setLyricsResultOnViews(result);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -662,15 +676,14 @@ public final class MainActivity extends Activity implements
             return;
         }
         aiLyricsGenerating = false;
-        currentLyricsResult = result;
-        setLyricsResultOnViews(result);
-        setLyricsSupplementLoading(false, false, false);
+        currentLyricsResult = mergeCurrentFuriganaInto(result);
+        setLyricsResultOnViews(currentLyricsResult);
+        setLyricsSupplementLoading(false, false, lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
-        statusView.setText(result.detail);
+        statusView.setText(currentLyricsResult.detail);
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(ui("status.ai_applied"));
         }
-        requestJapaneseFurigana(false);
     }
 
     @Override
@@ -684,7 +697,6 @@ public final class MainActivity extends Activity implements
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(uiFormat("status.ai_failed_format", message));
         }
-        requestJapaneseFurigana(false);
     }
 
     @Override
@@ -700,11 +712,13 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
-        currentLyricsResult = result;
-        setLyricsResultOnViews(result);
+        currentFuriganaKey = trackKey;
+        currentFuriganaResult = result;
+        currentLyricsResult = mergeFuriganaIntoResult(currentLyricsResult, result);
+        setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
-        statusView.setText(result.detail);
+        statusView.setText(currentLyricsResult.detail);
     }
 
     @Override
@@ -4529,6 +4543,8 @@ public final class MainActivity extends Activity implements
         pendingSeekPositionMs = -1L;
         currentLyricsResult = LyricsResult.empty(ui("status.lyrics_loading"));
         currentBaseLyricsResult = currentLyricsResult;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
         currentTrackSyncOffsetMs = snapshot == null || aiLyricsSettings == null
                 ? 0
                 : aiLyricsSettings.trackSyncOffsetMs(snapshot.stableKey());
@@ -4822,13 +4838,14 @@ public final class MainActivity extends Activity implements
                 shouldGenerateJapaneseFurigana(snapshot, source)
         );
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
+        requestJapaneseFurigana(clearCache);
         aiLyricsRepository.loadSupplements(currentTrack, currentBaseLyricsResult, snapshot, source, clearCache, this);
     }
 
     private void requestJapaneseFurigana(boolean clearCache) {
         if (currentTrack == null
-                || currentLyricsResult == null
-                || currentLyricsResult.lines.isEmpty()
+                || currentBaseLyricsResult == null
+                || currentBaseLyricsResult.lines.isEmpty()
                 || furiganaRepository == null
                 || aiLyricsSettings == null) {
             setLyricsSupplementLoading(
@@ -4849,6 +4866,8 @@ public final class MainActivity extends Activity implements
             return;
         }
         if (clearCache) {
+            currentFuriganaResult = null;
+            currentFuriganaKey = "";
             furiganaRepository.clearMemoryCache();
         }
         setLyricsSupplementLoading(
@@ -4856,7 +4875,95 @@ public final class MainActivity extends Activity implements
                 lyricsSupplementTranslationLoading,
                 true
         );
-        furiganaRepository.loadFurigana(currentTrack, currentLyricsResult, clearCache, this);
+        furiganaRepository.loadFurigana(currentTrack, currentBaseLyricsResult, clearCache, this);
+    }
+
+    private LyricsResult mergeCurrentFuriganaInto(LyricsResult target) {
+        if (target == null) {
+            return null;
+        }
+        if (currentFuriganaResult == null || !currentLyricsKey.equals(currentFuriganaKey)) {
+            return target;
+        }
+        return mergeFuriganaIntoResult(target, currentFuriganaResult);
+    }
+
+    private LyricsResult mergeFuriganaIntoResult(LyricsResult target, LyricsResult furiganaSource) {
+        if (target == null || furiganaSource == null || target.lines.isEmpty()) {
+            return target;
+        }
+        List<LyricsLine> lines = new ArrayList<>();
+        int count = target.lines.size();
+        for (int index = 0; index < count; index++) {
+            LyricsLine targetLine = target.lines.get(index);
+            LyricsLine furiganaLine = index < furiganaSource.lines.size()
+                    ? furiganaSource.lines.get(index)
+                    : null;
+            lines.add(mergeFuriganaIntoLine(targetLine, furiganaLine));
+        }
+        return new LyricsResult(
+                lines,
+                target.providerLabel,
+                target.detail,
+                target.karaoke,
+                target.isrc,
+                target.spotifyTrackId,
+                target.contributors
+        );
+    }
+
+    private LyricsLine mergeFuriganaIntoLine(LyricsLine target, LyricsLine furiganaSource) {
+        if (target == null) {
+            return null;
+        }
+        String lineFurigana = nonEmpty(
+                furiganaSource == null ? "" : furiganaSource.furiganaText,
+                target.furiganaText
+        );
+        if (target.vocalParts == null || target.vocalParts.isEmpty()) {
+            return target.withSupplements(target.pronunciationText, target.translationText, lineFurigana);
+        }
+        List<LyricsLine.VocalPart> parts = new ArrayList<>();
+        for (int index = 0; index < target.vocalParts.size(); index++) {
+            LyricsLine.VocalPart targetPart = target.vocalParts.get(index);
+            LyricsLine.VocalPart sourcePart = furiganaSource != null
+                    && furiganaSource.vocalParts != null
+                    && index < furiganaSource.vocalParts.size()
+                    ? furiganaSource.vocalParts.get(index)
+                    : null;
+            String partFurigana = nonEmpty(
+                    sourcePart == null ? "" : sourcePart.furiganaText,
+                    targetPart.furiganaText
+            );
+            if (partFurigana.isEmpty() && target.vocalParts.size() == 1) {
+                partFurigana = lineFurigana;
+            }
+            parts.add(targetPart.withSupplements(
+                    targetPart.pronunciationText,
+                    targetPart.translationText,
+                    partFurigana
+            ));
+        }
+        return new LyricsLine(
+                target.startTimeMs,
+                target.endTimeMs,
+                target.text,
+                target.syllables,
+                target.speaker,
+                target.kind,
+                parts,
+                target.pronunciationText,
+                target.translationText,
+                lineFurigana
+        );
+    }
+
+    private String nonEmpty(String preferred, String fallback) {
+        String value = preferred == null ? "" : preferred.trim();
+        if (!value.isEmpty()) {
+            return value;
+        }
+        return fallback == null ? "" : fallback.trim();
     }
 
     private void setLyricsSupplementLoading(boolean pronunciation, boolean translation) {
