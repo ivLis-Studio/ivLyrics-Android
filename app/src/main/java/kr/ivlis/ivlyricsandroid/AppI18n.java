@@ -391,63 +391,140 @@ final class AppI18n {
                         "toast.overlay_permission_needed", "다른 앱 위에 표시 권한이 필요합니다",
                         "toast.spotify_open_failed", "Spotify를 열 수 없습니다",
                         "onboarding.preview.line4", "제목이나 아티스트를 탭하면 Spotify로 돌아갑니다",
-                        "lyrics.menu_tip", "한 번 탭하면 Spotify로 이동하고, 3번 빠르게 탭하면 번역·발음 설정이 열립니다."
+                        "lyrics.menu_tip", "한 번 탭하면 Spotify로 이동하고, 길게 누르면 번역·발음 설정이 열립니다."
                 };
             case "zh-CN":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
                         "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "点按标题或艺人即可返回 Spotify。",
-                        "点按一次打开 Spotify；快速点按 3 次打开翻译和发音设置。"
+                        "点按一次打开 Spotify；长按可打开翻译和发音设置。"
                 );
             case "zh-TW":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
                         "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "點按標題或藝人即可返回 Spotify。",
-                        "點按一次開啟 Spotify；快速點按 3 次開啟翻譯與發音設定。"
+                        "點按一次開啟 Spotify；長按可開啟翻譯與發音設定。"
                 );
             case "ja":
                 return spotifyShortcutStringsEn(
                         "Spotifyショートカット",
                         "Spotifyの再生画面でのみ、小さな移動アイコンを表示します。タップするとivLyricsの歌詞ページを開きます。",
                         "タイトルまたはアーティストをタップするとSpotifyに戻ります。",
-                        "1回タップでSpotifyを開き、素早く3回タップで翻訳・発音設定を開きます。"
+                        "1回タップでSpotifyを開き、長押しで翻訳・発音設定を開きます。"
+                );
+            case "hi":
+                return spotifyShortcutStringsEn(
+                        "Spotify शॉर्टकट",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Spotify पर वापस जाने के लिए शीर्षक या कलाकार पर टैप करें।",
+                        "एक बार टैप करने से Spotify खुलेगा; देर तक दबाने से अनुवाद और उच्चारण सेटिंग खुलेंगी।"
                 );
             case "es":
                 return spotifyShortcutStringsEn(
                         "Acceso directo de Spotify",
                         "Solo muestra un icono pequeño y movible en la pantalla de reproduccion de Spotify. Al tocarlo abre la pagina de letras de ivLyrics.",
                         "Toca el título o artista para volver a Spotify.",
-                        "Toca una vez para abrir Spotify; toca 3 veces rápido para abrir traducción y pronunciación."
+                        "Toca una vez para abrir Spotify; mantén pulsado para abrir traducción y pronunciación."
                 );
             case "fr":
                 return spotifyShortcutStringsEn(
                         "Raccourci Spotify",
                         "Affiche une petite icone deplacable uniquement sur l'ecran de lecture Spotify. Un toucher ouvre la page de paroles ivLyrics.",
                         "Touchez le titre ou l'artiste pour revenir a Spotify.",
-                        "Touchez une fois pour ouvrir Spotify ; touchez 3 fois vite pour ouvrir traduction et prononciation."
+                        "Touchez une fois pour ouvrir Spotify ; appuyez longuement pour ouvrir traduction et prononciation."
+                );
+            case "ar":
+                return spotifyShortcutStringsEn(
+                        "اختصار Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "اضغط على العنوان أو الفنان للعودة إلى Spotify.",
+                        "اضغط مرة واحدة لفتح Spotify؛ واضغط مطولًا لفتح إعدادات الترجمة والنطق."
+                );
+            case "fa":
+                return spotifyShortcutStringsEn(
+                        "میانبر Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "برای بازگشت به Spotify روی عنوان یا هنرمند بزنید.",
+                        "یک بار بزنید تا Spotify باز شود؛ برای باز کردن تنظیمات ترجمه و تلفظ نگه دارید."
                 );
             case "de":
                 return spotifyShortcutStringsEn(
                         "Spotify-Verknuepfung",
                         "Zeigt nur auf dem Spotify-Now-Playing-Bildschirm ein kleines verschiebbares Symbol. Antippen oeffnet die ivLyrics-Lyrics-Seite.",
                         "Titel oder Kuenstler antippen, um zu Spotify zurueckzukehren.",
-                        "Einmal tippen oeffnet Spotify, dreimal schnell tippen oeffnet Uebersetzung und Aussprache."
+                        "Einmal tippen oeffnet Spotify, langes Druecken oeffnet Uebersetzung und Aussprache."
+                );
+            case "ru":
+                return spotifyShortcutStringsEn(
+                        "Ярлык Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Коснитесь названия или исполнителя, чтобы вернуться в Spotify.",
+                        "Коснитесь один раз, чтобы открыть Spotify; нажмите и удерживайте, чтобы открыть настройки перевода и произношения."
+                );
+            case "sv":
+                return spotifyShortcutStringsEn(
+                        "Spotify-genvaeg",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Tryck pa titel eller artist for att ga tillbaka till Spotify.",
+                        "Tryck en gang for att oppna Spotify; hall in for att oppna oversattning och uttal."
                 );
             case "pt":
                 return spotifyShortcutStringsEn(
                         "Atalho do Spotify",
                         "Mostra um pequeno icone movel somente na tela de reproducao do Spotify. Tocar abre a pagina de letras do ivLyrics.",
                         "Toque no titulo ou artista para voltar ao Spotify.",
-                        "Toque uma vez para abrir o Spotify; toque 3 vezes rapido para abrir traducao e pronuncia."
+                        "Toque uma vez para abrir o Spotify; mantenha pressionado para abrir traducao e pronuncia."
+                );
+            case "bn":
+                return spotifyShortcutStringsEn(
+                        "Spotify শর্টকাট",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Spotify-এ ফিরতে শিরোনাম বা শিল্পীর নামে ট্যাপ করুন।",
+                        "একবার ট্যাপ করলে Spotify খুলবে; ধরে চাপলে অনুবাদ ও উচ্চারণ সেটিংস খুলবে।"
+                );
+            case "it":
+                return spotifyShortcutStringsEn(
+                        "Scorciatoia Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Tocca titolo o artista per tornare a Spotify.",
+                        "Tocca una volta per aprire Spotify; tieni premuto per aprire traduzione e pronuncia."
+                );
+            case "th":
+                return spotifyShortcutStringsEn(
+                        "ทางลัด Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "แตะชื่อเพลงหรือศิลปินเพื่อกลับไปที่ Spotify",
+                        "แตะหนึ่งครั้งเพื่อเปิด Spotify; กดค้างเพื่อเปิดการตั้งค่าคำแปลและการออกเสียง"
+                );
+            case "vi":
+                return spotifyShortcutStringsEn(
+                        "Loi tat Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Nhấn tiêu đề hoặc nghệ sĩ để quay lại Spotify.",
+                        "Nhấn một lần để mở Spotify; nhấn giữ để mở cài đặt dịch và phát âm."
+                );
+            case "id":
+                return spotifyShortcutStringsEn(
+                        "Pintasan Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Ketuk judul atau artis untuk kembali ke Spotify.",
+                        "Ketuk sekali untuk membuka Spotify; tekan lama untuk membuka pengaturan terjemahan dan pengucapan."
+                );
+            case "ms":
+                return spotifyShortcutStringsEn(
+                        "Pintasan Spotify",
+                        "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
+                        "Ketik tajuk atau artis untuk kembali ke Spotify.",
+                        "Ketik sekali untuk membuka Spotify; tekan lama untuk membuka tetapan terjemahan dan sebutan."
                 );
             default:
                 return spotifyShortcutStringsEn(
                         "Spotify Shortcut",
                         "Only shows a small movable icon on Spotify's Now Playing screen. Tapping opens the ivLyrics lyrics page.",
                         "Tap the title or artist to jump back to Spotify.",
-                        "Tap once to open Spotify; tap 3 times quickly to open translation and pronunciation settings."
+                        "Tap once to open Spotify; long-press to open translation and pronunciation settings."
                 );
         }
     }
@@ -1786,7 +1863,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "재생 중인 곡이 없으면 저장되지 않습니다.",
                 "lyrics.sync.track_scope", "\"%s\"에만 저장됩니다.",
                 "lyrics.sync.help", "+값은 가사를 더 일찍 보여주고, -값은 더 늦게 보여줍니다.",
-                "lyrics.menu_tip", "제목이나 아티스트를 3번 탭하면 번역·발음 설정이 열립니다.",
+                "lyrics.menu_tip", "제목이나 아티스트를 길게 누르면 번역·발음 설정이 열립니다.",
                 "lyrics.rule.track_language", "곡 언어",
                 "lyrics.rule.save_target", "저장 대상",
                 "lyrics.rule.translation_language", "번역 언어",
@@ -2020,7 +2097,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "No playing song, so this will not be saved.",
                 "lyrics.sync.track_scope", "Saved only for \"%s\".",
                 "lyrics.sync.help", "+ values show lyrics earlier; - values show them later.",
-                "lyrics.menu_tip", "Triple-tap the title or artist to open translation and pronunciation settings.",
+                "lyrics.menu_tip", "Long-press the title or artist to open translation and pronunciation settings.",
                 "lyrics.rule.track_language", "Song language",
                 "lyrics.rule.save_target", "Save target",
                 "lyrics.rule.translation_language", "Translation language",
@@ -2254,7 +2331,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "没有正在播放的歌曲，因此不会保存。",
                 "lyrics.sync.track_scope", "仅为“%s”保存。",
                 "lyrics.sync.help", "+ 值会更早显示歌词，- 值会更晚显示。",
-                "lyrics.menu_tip", "轻点标题或艺人 3 次可打开翻译和发音设置。",
+                "lyrics.menu_tip", "长按标题或艺人可打开翻译和发音设置。",
                 "lyrics.rule.track_language", "歌曲语言",
                 "lyrics.rule.save_target", "保存目标",
                 "lyrics.rule.translation_language", "翻译语言",
@@ -2488,7 +2565,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "沒有播放歌曲，因此不會儲存。",
                 "lyrics.sync.track_scope", "僅為“%s”保存。",
                 "lyrics.sync.help", "+ 值更早顯示歌詞； - 值稍後顯示。",
-                "lyrics.menu_tip", "輕點標題或藝人 3 次即可開啟翻譯與發音設定。",
+                "lyrics.menu_tip", "長按標題或藝人即可開啟翻譯與發音設定。",
                 "lyrics.rule.track_language", "歌曲語言",
                 "lyrics.rule.save_target", "Save 目標",
                 "lyrics.rule.translation_language", "翻譯語言",
@@ -2722,7 +2799,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "再生中の曲がないため保存されません。",
                 "lyrics.sync.track_scope", "「%s」のみに保存されました。",
                 "lyrics.sync.help", "+値は歌詞を早く表示し、-値は遅く表示します。",
-                "lyrics.menu_tip", "タイトルまたはアーティストを3回タップすると翻訳・発音設定が開きます。",
+                "lyrics.menu_tip", "タイトルまたはアーティストを長押しすると翻訳・発音設定が開きます。",
                 "lyrics.rule.track_language", "曲の言語",
                 "lyrics.rule.save_target", "保存先",
                 "lyrics.rule.translation_language", "翻訳言語",
@@ -2956,7 +3033,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "कोई गाना नहीं चल रहा है, इसलिए इसे सहेजा नहीं जाएगा।",
                 "lyrics.sync.track_scope", "केवल \"%s\" के लिए सहेजा गया।",
                 "lyrics.sync.help", "+ मान गीत को पहले दिखाते हैं; - मान उन्हें बाद में दिखाते हैं।",
-                "lyrics.menu_tip", "अनुवाद और उच्चारण सेटिंग खोलने के लिए शीर्षक या कलाकार को 3 बार टैप करें।",
+                "lyrics.menu_tip", "अनुवाद और उच्चारण सेटिंग खोलने के लिए शीर्षक या कलाकार को देर तक दबाएँ।",
                 "lyrics.rule.track_language", "गाने की भाषा",
                 "lyrics.rule.save_target", "Save लक्ष्य",
                 "lyrics.rule.translation_language", "अनुवाद भाषा",
@@ -3190,7 +3267,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "No se reproduce ninguna canción, por lo que no se guardará.",
                 "lyrics.sync.track_scope", "Guardado sólo para \"%s\".",
                 "lyrics.sync.help", "+ muestran la letra antes; - los valores los muestran más tarde.",
-                "lyrics.menu_tip", "Toca 3 veces el título o el artista para abrir los ajustes de traducción y pronunciación.",
+                "lyrics.menu_tip", "Mantén pulsado el título o el artista para abrir los ajustes de traducción y pronunciación.",
                 "lyrics.rule.track_language", "Idioma de la canción",
                 "lyrics.rule.save_target", "Save destino",
                 "lyrics.rule.translation_language", "Idioma de traducción",
@@ -3424,7 +3501,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Aucune chanson en cours de lecture, elle ne sera donc pas enregistrée.",
                 "lyrics.sync.track_scope", "Enregistré uniquement pour \"%s\".",
                 "lyrics.sync.help", "+ affichent les paroles plus tôt ; - les valeurs les montrent plus tard.",
-                "lyrics.menu_tip", "Touchez 3 fois le titre ou l’artiste pour ouvrir les réglages de traduction et de prononciation.",
+                "lyrics.menu_tip", "Appuyez longuement sur le titre ou l’artiste pour ouvrir les réglages de traduction et de prononciation.",
                 "lyrics.rule.track_language", "Langue du morceau",
                 "lyrics.rule.save_target", "Cible Save",
                 "lyrics.rule.translation_language", "Langue de traduction",
@@ -3658,7 +3735,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "لا يتم تشغيل الأغنية، لذلك لن يتم حفظها.",
                 "lyrics.sync.track_scope", "تم الحفظ لـ \"%s\" فقط.",
                 "lyrics.sync.help", "+ كلمات الأغاني مسبقًا؛ - القيم تظهر لهم لاحقا .",
-                "lyrics.menu_tip", "اضغط على العنوان أو الفنان 3 مرات لفتح إعدادات الترجمة والنطق.",
+                "lyrics.menu_tip", "اضغط مطولًا على العنوان أو الفنان لفتح إعدادات الترجمة والنطق.",
                 "lyrics.rule.track_language", "لغة الأغنية",
                 "lyrics.rule.save_target", "Save الهدف",
                 "lyrics.rule.translation_language", "لغة الترجمة",
@@ -3892,7 +3969,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "آهنگ پخش نمی شود، بنابراین ذخیره نمی شود.",
                 "lyrics.sync.track_scope", "فقط برای \"%s\" ذخیره شد.",
                 "lyrics.sync.help", "+ مقادیر اشعار را زودتر نشان می دهد. - مقادیر بعداً آنها را نشان می دهد.",
-                "lyrics.menu_tip", "برای باز کردن تنظیمات ترجمه و تلفظ، عنوان یا هنرمند را ۳ بار بزنید.",
+                "lyrics.menu_tip", "برای باز کردن تنظیمات ترجمه و تلفظ، عنوان یا هنرمند را نگه دارید.",
                 "lyrics.rule.track_language", "زبان آهنگ",
                 "lyrics.rule.save_target", "Save هدف",
                 "lyrics.rule.translation_language", "",
@@ -4126,7 +4203,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Kein Song wird abgespielt, daher wird dieser nicht gespeichert.",
                 "lyrics.sync.track_scope", "Nur für „%s“ gespeichert.",
                 "lyrics.sync.help", "+ Werte zeigen Liedtext früher an; - Werte zeigen sie später an.",
-                "lyrics.menu_tip", "Tippe 3-mal auf Titel oder Künstler, um Übersetzung und Aussprache zu öffnen.",
+                "lyrics.menu_tip", "Halte Titel oder Künstler gedrückt, um Übersetzung und Aussprache zu öffnen.",
                 "lyrics.rule.track_language", "Songsprache",
                 "lyrics.rule.save_target", "Save Ziel",
                 "lyrics.rule.translation_language", "Übersetzungssprache",
@@ -4360,7 +4437,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Песня не воспроизводится, поэтому она не будет сохранена.",
                 "lyrics.sync.track_scope", "Сохранено только для \"%s\".",
                 "lyrics.sync.help", "+ показывают текст песни ранее; - значения покажут их позже.",
-                "lyrics.menu_tip", "Коснитесь названия или исполнителя 3 раза, чтобы открыть настройки перевода и произношения.",
+                "lyrics.menu_tip", "Нажмите и удерживайте название или исполнителя, чтобы открыть настройки перевода и произношения.",
                 "lyrics.rule.track_language", "Язык песни",
                 "lyrics.rule.save_target", "Save цель",
                 "lyrics.rule.translation_language", "Язык перевода",
@@ -4594,7 +4671,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Ingen låt spelas, så denna kommer inte att sparas.",
                 "lyrics.sync.track_scope", "Sparad endast för \"%s\".",
                 "lyrics.sync.help", "+ värden visar texter tidigare; - värden visar dem senare.",
-                "lyrics.menu_tip", "Tryck 3 gånger på titel eller artist för att öppna översättning och uttal.",
+                "lyrics.menu_tip", "Håll titel eller artist intryckt för att öppna översättning och uttal.",
                 "lyrics.rule.track_language", "Låtspråk",
                 "lyrics.rule.save_target", "Save mål",
                 "lyrics.rule.translation_language", "Översättningsspråk",
@@ -4828,7 +4905,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Nenhuma música sendo reproduzida, portanto, esta não será salva.",
                 "lyrics.sync.track_scope", "Salvo apenas para \"%s\".",
                 "lyrics.sync.help", "+ mostram as letras mais cedo; - os valores mostram-nos mais tarde.",
-                "lyrics.menu_tip", "Toque 3 vezes no título ou artista para abrir tradução e pronúncia.",
+                "lyrics.menu_tip", "Mantenha título ou artista pressionado para abrir tradução e pronúncia.",
                 "lyrics.rule.track_language", "Idioma da música",
                 "lyrics.rule.save_target", "Save alvo",
                 "lyrics.rule.translation_language", "Idioma de tradução",
@@ -5062,7 +5139,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "রিসেট করুন কোনও গান বাজানো হয়নি, তাই এটি সংরক্ষণ করা হবে না৷",
                 "lyrics.sync.track_scope", "শুধুমাত্র \"%s\" এর জন্য সংরক্ষিত।",
                 "lyrics.sync.help", "+ মান আগে গান দেখায়; - মান তাদের পরে দেখায়।",
-                "lyrics.menu_tip", "অনুবাদ ও উচ্চারণ সেটিংস খুলতে শিরোনাম বা শিল্পীর নামে ৩ বার ট্যাপ করুন।",
+                "lyrics.menu_tip", "অনুবাদ ও উচ্চারণ সেটিংস খুলতে শিরোনাম বা শিল্পীর নাম ধরে চাপুন।",
                 "lyrics.rule.track_language", "গানের ভাষা",
                 "lyrics.rule.save_target", "Save টার্গেট",
                 "lyrics.rule.translation_language", "অনুবাদের ভাষা",
@@ -5296,7 +5373,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Nessun brano in riproduzione, quindi non verrà salvato.",
                 "lyrics.sync.track_scope", "Salvato solo per \"%s\".",
                 "lyrics.sync.help", "+ i valori mostrano i testi precedenti; - i valori li mostrano più tardi.",
-                "lyrics.menu_tip", "Tocca 3 volte titolo o artista per aprire traduzione e pronuncia.",
+                "lyrics.menu_tip", "Tieni premuto titolo o artista per aprire traduzione e pronuncia.",
                 "lyrics.rule.track_language", "Lingua della canzone",
                 "lyrics.rule.save_target", "Save destinazione",
                 "lyrics.rule.translation_language", "Lingua di traduzione",
@@ -5530,7 +5607,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "ไม่มีการเล่นเพลง ดังนั้นสิ่งนี้จะไม่ถูกบันทึก",
                 "lyrics.sync.track_scope", "บันทึกเฉพาะสำหรับ \"%s\"",
                 "lyrics.sync.help", "+ ค่าแสดงเนื้อเพลงก่อนหน้า; - ค่าจะแสดงในภายหลัง",
-                "lyrics.menu_tip", "แตะชื่อเพลงหรือศิลปิน 3 ครั้งเพื่อเปิดการตั้งค่าคำแปลและการออกเสียง",
+                "lyrics.menu_tip", "กดชื่อเพลงหรือศิลปินค้างไว้เพื่อเปิดการตั้งค่าคำแปลและการออกเสียง",
                 "lyrics.rule.track_language", "ภาษาเพลง",
                 "lyrics.rule.save_target", "Save เป้าหมาย",
                 "lyrics.rule.translation_language", "การแปลภาษา",
@@ -5764,7 +5841,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Không phát bài hát nên bài hát này sẽ không được lưu.",
                 "lyrics.sync.track_scope", "Chỉ được lưu cho \"%s\".",
                 "lyrics.sync.help", "+ hiển thị lời bài hát sớm hơn; - giá trị hiển thị chúng sau.",
-                "lyrics.menu_tip", "Nhấn 3 lần vào tiêu đề hoặc nghệ sĩ để mở cài đặt dịch và phát âm.",
+                "lyrics.menu_tip", "Nhấn giữ tiêu đề hoặc nghệ sĩ để mở cài đặt dịch và phát âm.",
                 "lyrics.rule.track_language", "Ngôn ngữ bài hát",
                 "lyrics.rule.save_target", "Save mục tiêu",
                 "lyrics.rule.translation_language", "Ngôn ngữ dịch",
@@ -5998,7 +6075,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Tidak ada lagu yang diputar, jadi ini tidak akan disimpan.",
                 "lyrics.sync.track_scope", "Disimpan hanya untuk \"%s\".",
                 "lyrics.sync.help", "+nilai menampilkan lirik tadi; - nilai-nilai menunjukkannya nanti.",
-                "lyrics.menu_tip", "Ketuk judul atau artis 3 kali untuk membuka pengaturan terjemahan dan pengucapan.",
+                "lyrics.menu_tip", "Tekan lama judul atau artis untuk membuka pengaturan terjemahan dan pengucapan.",
                 "lyrics.rule.track_language", "Bahasa lagu",
                 "lyrics.rule.save_target", "Save sasaran",
                 "lyrics.rule.translation_language", "Bahasa terjemahan",
@@ -6232,7 +6309,7 @@ final class AppI18n {
                 "lyrics.sync.no_track", "Tiada lagu dimainkan, jadi ini tidak akan disimpan.",
                 "lyrics.sync.track_scope", "Disimpan hanya untuk \"%s\".",
                 "lyrics.sync.help", "+ nilai menunjukkan lirik lebih awal; - nilai menunjukkannya kemudian.",
-                "lyrics.menu_tip", "Ketik tajuk atau artis 3 kali untuk membuka tetapan terjemahan dan sebutan.",
+                "lyrics.menu_tip", "Tekan lama tajuk atau artis untuk membuka tetapan terjemahan dan sebutan.",
                 "lyrics.rule.track_language", "Bahasa lagu",
                 "lyrics.rule.save_target", "Save sasaran",
                 "lyrics.rule.translation_language", "Bahasa terjemahan",

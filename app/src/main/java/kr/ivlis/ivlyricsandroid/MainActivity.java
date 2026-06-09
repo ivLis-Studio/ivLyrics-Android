@@ -36,9 +36,11 @@ import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.accessibility.AccessibilityManager;
@@ -89,7 +91,6 @@ public final class MainActivity extends Activity implements
         AiLyricsRepository.Callback,
         FuriganaRepository.Callback {
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
-    private static final long META_SINGLE_TAP_DELAY_MS = 320L;
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
@@ -306,16 +307,12 @@ public final class MainActivity extends Activity implements
     private boolean landscapeControlsVisible = true;
     private boolean consumeLandscapeRevealGesture;
     private boolean pendingOpenLyricsPageFromIntent;
-    private int lyricsMetaTapCount;
-    private long lastLyricsMetaTapUptimeMs;
+    private boolean lyricsMetaLongPressTriggered;
     private long updateDownloadId = -1L;
+    private Runnable lyricsMetaLongPressRunnable;
     private UpdateChecker.UpdateInfo pendingUpdateInfo;
 
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
-    private final Runnable lyricsMetaSingleTapRunnable = () -> {
-        lyricsMetaTapCount = 0;
-        openSpotifyForCurrentTrack();
-    };
     private final BroadcastReceiver updateDownloadReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -414,7 +411,7 @@ public final class MainActivity extends Activity implements
         NowPlayingService.unregister(this);
         handler.removeCallbacks(ticker);
         handler.removeCallbacks(landscapeControlsAutoHideRunnable);
-        handler.removeCallbacks(lyricsMetaSingleTapRunnable);
+        cancelLyricsMetaLongPress();
         handler.removeCallbacks(onboardingWelcomeTicker);
         super.onPause();
     }
@@ -4586,20 +4583,33 @@ public final class MainActivity extends Activity implements
 
     private void handleLyricsMetaTap() {
         dismissLyricsMetaTip();
-        long now = SystemClock.uptimeMillis();
-        if (now - lastLyricsMetaTapUptimeMs > 720L) {
-            lyricsMetaTapCount = 0;
+        openSpotifyForCurrentTrack();
+    }
+
+    private void handleLyricsMetaLongPress(View target) {
+        dismissLyricsMetaTip();
+        if (target != null) {
+            target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
-        lastLyricsMetaTapUptimeMs = now;
-        lyricsMetaTapCount++;
-        if (lyricsMetaTapCount < 3) {
-            handler.removeCallbacks(lyricsMetaSingleTapRunnable);
-            handler.postDelayed(lyricsMetaSingleTapRunnable, META_SINGLE_TAP_DELAY_MS);
-            return;
-        }
-        handler.removeCallbacks(lyricsMetaSingleTapRunnable);
-        lyricsMetaTapCount = 0;
         toggleLyricsLanguageSettings();
+    }
+
+    private void scheduleLyricsMetaLongPress(View target) {
+        cancelLyricsMetaLongPress();
+        lyricsMetaLongPressTriggered = false;
+        lyricsMetaLongPressRunnable = () -> {
+            lyricsMetaLongPressRunnable = null;
+            lyricsMetaLongPressTriggered = true;
+            handleLyricsMetaLongPress(target);
+        };
+        handler.postDelayed(lyricsMetaLongPressRunnable, ViewConfiguration.getLongPressTimeout());
+    }
+
+    private void cancelLyricsMetaLongPress() {
+        if (lyricsMetaLongPressRunnable != null) {
+            handler.removeCallbacks(lyricsMetaLongPressRunnable);
+            lyricsMetaLongPressRunnable = null;
+        }
     }
 
     private void toggleLyricsLanguageSettings() {
@@ -7597,14 +7607,19 @@ public final class MainActivity extends Activity implements
                     if (mainPage != null) {
                         mainPage.animate().cancel();
                     }
+                    scheduleLyricsMetaLongPress(target);
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(true);
                     }
                     return true;
                 case MotionEvent.ACTION_MOVE: {
+                    if (lyricsMetaLongPressTriggered) {
+                        return true;
+                    }
                     float dy = event.getRawY() - pageDragStartY;
                     if (Math.abs(dy) > dp(12)) {
                         pageDragging = true;
+                        cancelLyricsMetaLongPress();
                     }
                     if (lyricsPageVisible) {
                         applyLyricsDragTranslation(Math.max(0f, pageDragStartTranslationY + dy));
@@ -7613,10 +7628,13 @@ public final class MainActivity extends Activity implements
                 }
                 case MotionEvent.ACTION_UP: {
                     float releaseVelocityY = pageVelocityY();
+                    cancelLyricsMetaLongPress();
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
-                    if (pageDragging && lyricsPageVisible) {
+                    if (lyricsMetaLongPressTriggered) {
+                        lyricsMetaLongPressTriggered = false;
+                    } else if (pageDragging && lyricsPageVisible) {
                         settleLyricsDrag(releaseVelocityY);
                     } else {
                         handleLyricsMetaTap();
@@ -7625,6 +7643,8 @@ public final class MainActivity extends Activity implements
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
+                    cancelLyricsMetaLongPress();
+                    lyricsMetaLongPressTriggered = false;
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }

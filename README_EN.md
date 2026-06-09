@@ -49,7 +49,7 @@ You can download the latest APK from [Releases](https://github.com/ivLis-Studio/
 ## Lyrics Page Tips
 
 - Tap the title or artist once to open Spotify.
-- Triple-tap the title/artist area on the lyrics page to open lyric settings.
+- Long-press the title/artist area on the lyrics page to open lyric settings.
 - Tap a lyric line to jump to that position.
 - Drag the progress bar to seek.
 - If the timing feels off, adjust the sync offset from the lyric settings menu.
@@ -82,7 +82,7 @@ Translation and pronunciation data is cached. Once generated, it stays available
 
 ### The wrong lyrics were selected
 
-- Triple-tap the title/artist area on the lyrics page to open the menu.
+- Long-press the title/artist area on the lyrics page to open the menu.
 - Run manual LRCLIB search.
 - Choose the correct lyric result.
 - If needed, clear the current track cache and load the track again.
