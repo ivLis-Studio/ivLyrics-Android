@@ -1026,13 +1026,14 @@ public final class LyricsView extends View {
                 }
                 continue;
             }
-            float lineHeight = group.lineHeight();
+            float rowTop = top;
             for (int rowIndex = 0; rowIndex < group.rows.size(); rowIndex++) {
                 TextRow row = group.rows.get(rowIndex);
-                float baseline = top + group.baselineOffset() + rowIndex * lineHeight;
+                float baseline = rowTop + group.baselineOffset(row);
                 drawTextRow(canvas, row, baseline, group, rowIndex, fadeAlpha);
+                rowTop += group.rowHeight(row);
             }
-            top += group.height();
+            top = rowTop;
             if (groupIndex + 1 < groups.size()) {
                 top += gapBetweenGroups(groups, groupIndex, groupIndex + 1);
             }
@@ -1066,7 +1067,7 @@ public final class LyricsView extends View {
             return false;
         }
         DrawGroup next = groups.get(nextIndex);
-        if (next.supplement || next.isInterlude() || !next.hasRuby()) {
+        if (next.supplement || next.isInterlude() || !next.firstRowHasRuby()) {
             return false;
         }
         int primaryCount = 0;
@@ -2716,16 +2717,16 @@ public final class LyricsView extends View {
             this.supplement = supplement;
         }
 
-        float lineHeight() {
-            return textSize * LINE_HEIGHT_MULTIPLIER + rubyExtraHeight();
+        float rowHeight(TextRow row) {
+            return textSize * LINE_HEIGHT_MULTIPLIER + rubyExtraHeight(row);
         }
 
-        float baselineOffset() {
-            return textSize + rubyExtraHeight();
+        float baselineOffset(TextRow row) {
+            return textSize + rubyExtraHeight(row);
         }
 
-        float rubyExtraHeight() {
-            if (!hasRuby()) {
+        float rubyExtraHeight(TextRow row) {
+            if (row == null || !row.hasRuby()) {
                 return 0f;
             }
             return textSize * FURIGANA_EXTRA_HEIGHT_RATIO;
@@ -2735,7 +2736,14 @@ public final class LyricsView extends View {
             if (isInterlude()) {
                 return textSize * 2.2f;
             }
-            return Math.max(1, rows.size()) * lineHeight();
+            if (rows.isEmpty()) {
+                return textSize * LINE_HEIGHT_MULTIPLIER;
+            }
+            float total = 0f;
+            for (TextRow row : rows) {
+                total += rowHeight(row);
+            }
+            return total;
         }
 
         boolean isInterlude() {
@@ -2749,6 +2757,10 @@ public final class LyricsView extends View {
                 }
             }
             return false;
+        }
+
+        boolean firstRowHasRuby() {
+            return !rows.isEmpty() && rows.get(0).hasRuby();
         }
     }
 
