@@ -22,6 +22,7 @@ final class AiLyricsSettings {
     static final String KEY_PROVIDER = "provider";
     static final String KEY_TARGET_LANG = "target_lang";
     static final String KEY_UI_LANG = "ui_lang";
+    static final String KEY_OUTPUT_LANG = "output_lang";
     static final String KEY_PRONUNCIATION_LANG = "pronunciation_lang";
     static final String KEY_LANGUAGE_RULES = "language_rules_v2";
     static final String KEY_API_KEYS = "api_keys";
@@ -53,12 +54,13 @@ final class AiLyricsSettings {
     static final String BACKGROUND_MODE_GRADIENT = "gradient-background";
     static final String BACKGROUND_MODE_BLUR_GRADIENT = "blur-gradient-background";
     static final String BACKGROUND_MODE_SOLID = "solid-background";
+    static final String OUTPUT_LANG_SAME_UI = "same_ui";
     static final int PREVIEW_ITEM_NONE = 0;
     static final int PREVIEW_ITEM_ORIGINAL = 1;
     static final int PREVIEW_ITEM_PRONUNCIATION = 1 << 1;
     static final int PREVIEW_ITEM_TRANSLATION = 1 << 2;
     private static final String DEFAULT_PROVIDER = "gemini";
-    private static final String DEFAULT_TARGET_LANG_RULES = "auto";
+    private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
     private static final String DEFAULT_SOLID_BACKGROUND_COLOR = "#1e3a8a";
 
@@ -161,9 +163,11 @@ final class AiLyricsSettings {
         String baseUrl = prefs.getString(KEY_BASE_URL, provider.defaultBaseUrl);
         String model = prefs.getString(KEY_MODEL, provider.defaultModel);
         RuleConfig ruleConfig = loadRuleConfig();
+        String outputLang = storedOutputLanguage(ruleConfig);
+        ruleConfig = ruleConfig.withTarget(outputLang);
         return new Snapshot(
                 normalizedUiLanguage(prefs.getString(KEY_UI_LANG, autoTargetLanguage())),
-                normalizedPronunciationLanguage(prefs.getString(KEY_PRONUNCIATION_LANG, autoTargetLanguage())),
+                outputLang,
                 provider,
                 ruleConfig.defaultRule,
                 ruleConfig.languageRules,
@@ -192,7 +196,7 @@ final class AiLyricsSettings {
     }
 
     void setPronunciationLang(String lang) {
-        prefs.edit().putString(KEY_PRONUNCIATION_LANG, normalizedPronunciationLanguage(lang)).apply();
+        setOutputLang(lang);
     }
 
     void setMetadataTranslationEnabled(boolean enabled) {
@@ -221,12 +225,16 @@ final class AiLyricsSettings {
     }
 
     void setTargetLang(String lang) {
-        setTranslationLang(lang);
+        setOutputLang(lang);
     }
 
     void setTranslationLang(String lang) {
+        setOutputLang(lang);
+    }
+
+    void setOutputLang(String lang) {
         Snapshot snapshot = snapshot();
-        String target = normalizeTargetLanguage(lang);
+        String target = normalizeOutputLanguage(lang);
         LanguageRule defaultRule = new LanguageRule(
                 DEFAULT_SOURCE_LANG,
                 snapshot.defaultRule.translationEnabled,
@@ -244,6 +252,10 @@ final class AiLyricsSettings {
             ));
         }
         saveRuleConfig(defaultRule, rules);
+        prefs.edit()
+                .putString(KEY_OUTPUT_LANG, target)
+                .remove(KEY_PRONUNCIATION_LANG)
+                .apply();
     }
 
     void setLanguageRule(String sourceLang, boolean translationEnabled, boolean pronunciationEnabled, String targetLang) {
@@ -462,6 +474,20 @@ final class AiLyricsSettings {
         return new RuleConfig(defaultRule, rules);
     }
 
+    private String storedOutputLanguage(RuleConfig ruleConfig) {
+        if (prefs.contains(KEY_OUTPUT_LANG)) {
+            return normalizeOutputLanguage(prefs.getString(KEY_OUTPUT_LANG, OUTPUT_LANG_SAME_UI));
+        }
+        String target = ruleConfig == null || ruleConfig.defaultRule == null ? "" : ruleConfig.defaultRule.targetLang;
+        if (!target.trim().isEmpty() && !OUTPUT_LANG_SAME_UI.equalsIgnoreCase(target) && !"auto".equalsIgnoreCase(target)) {
+            return normalizeOutputLanguage(target);
+        }
+        if (prefs.contains(KEY_PRONUNCIATION_LANG)) {
+            return normalizeOutputLanguage(prefs.getString(KEY_PRONUNCIATION_LANG, OUTPUT_LANG_SAME_UI));
+        }
+        return OUTPUT_LANG_SAME_UI;
+    }
+
     private void saveRuleConfig(LanguageRule defaultRule, Map<String, LanguageRule> rules) {
         try {
             JSONObject object = new JSONObject();
@@ -570,12 +596,21 @@ final class AiLyricsSettings {
     }
 
     static String normalizeTargetLanguage(String lang) {
+        return normalizeOutputLanguage(lang);
+    }
+
+    static String normalizeOutputLanguage(String lang) {
         String value = lang == null ? "" : lang.trim();
-        if (value.isEmpty() || "auto".equalsIgnoreCase(value)) {
+        if (value.isEmpty()
+                || "auto".equalsIgnoreCase(value)
+                || OUTPUT_LANG_SAME_UI.equalsIgnoreCase(value)
+                || "ui".equalsIgnoreCase(value)
+                || "ui_lang".equalsIgnoreCase(value)
+                || "ui_language".equalsIgnoreCase(value)) {
             return DEFAULT_TARGET_LANG_RULES;
         }
         String normalized = normalizeLanguageCode(value);
-        return normalized.isEmpty() ? DEFAULT_TARGET_LANG_RULES : normalized;
+        return LANGUAGE_BY_CODE.containsKey(normalized.toLowerCase(Locale.ROOT)) ? normalized : DEFAULT_TARGET_LANG_RULES;
     }
 
     static String normalizePreviewMode(String mode) {
@@ -632,7 +667,7 @@ final class AiLyricsSettings {
     static boolean isSameLanguage(String sourceLang, String targetLang) {
         String source = normalizeLanguageCode(sourceLang);
         String target = normalizeLanguageCode(targetLang);
-        if (source.isEmpty() || target.isEmpty() || "auto".equalsIgnoreCase(target)) {
+        if (source.isEmpty() || target.isEmpty() || "auto".equalsIgnoreCase(target) || OUTPUT_LANG_SAME_UI.equalsIgnoreCase(target)) {
             return false;
         }
         return source.equalsIgnoreCase(target);
@@ -657,6 +692,15 @@ final class AiLyricsSettings {
         return LANGUAGE_BY_CODE.containsKey(normalized.toLowerCase(Locale.ROOT))
                 ? normalized
                 : autoTargetLanguage();
+    }
+
+    private static String resolveOutputLanguage(String outputLang, String uiLang) {
+        String normalized = normalizeOutputLanguage(outputLang);
+        if (OUTPUT_LANG_SAME_UI.equalsIgnoreCase(normalized)) {
+            String ui = normalizedUiLanguage(uiLang);
+            return LANGUAGE_BY_CODE.containsKey(ui.toLowerCase(Locale.ROOT)) ? ui : autoTargetLanguage();
+        }
+        return normalizeLanguageCode(normalized);
     }
 
     static String defaultOutputLanguage() {
@@ -758,6 +802,27 @@ final class AiLyricsSettings {
             this.defaultRule = defaultRule;
             this.languageRules = Collections.unmodifiableMap(new LinkedHashMap<>(languageRules));
         }
+
+        RuleConfig withTarget(String targetLang) {
+            String target = normalizeOutputLanguage(targetLang);
+            LanguageRule nextDefault = new LanguageRule(
+                    defaultRule.sourceLang,
+                    defaultRule.translationEnabled,
+                    defaultRule.pronunciationEnabled,
+                    target
+            );
+            Map<String, LanguageRule> nextRules = new LinkedHashMap<>();
+            for (Map.Entry<String, LanguageRule> entry : languageRules.entrySet()) {
+                LanguageRule rule = entry.getValue();
+                nextRules.put(entry.getKey(), new LanguageRule(
+                        rule.sourceLang,
+                        rule.translationEnabled,
+                        rule.pronunciationEnabled,
+                        target
+                ));
+            }
+            return new RuleConfig(nextDefault, nextRules);
+        }
     }
 
     static final class Provider {
@@ -846,7 +911,7 @@ final class AiLyricsSettings {
 
     static final class Snapshot {
         final String uiLang;
-        final String pronunciationLang;
+        final String outputLang;
         final Provider provider;
         final LanguageRule defaultRule;
         final Map<String, LanguageRule> languageRules;
@@ -868,7 +933,7 @@ final class AiLyricsSettings {
 
         Snapshot(
                 String uiLang,
-                String pronunciationLang,
+                String outputLang,
                 Provider provider,
                 LanguageRule defaultRule,
                 Map<String, LanguageRule> languageRules,
@@ -889,7 +954,7 @@ final class AiLyricsSettings {
                 String spotifyClientSecret
         ) {
             this.uiLang = normalizedUiLanguage(uiLang);
-            this.pronunciationLang = normalizedPronunciationLanguage(pronunciationLang);
+            this.outputLang = normalizeOutputLanguage(outputLang);
             this.provider = provider;
             this.defaultRule = defaultRule == null
                     ? new LanguageRule(DEFAULT_SOURCE_LANG, false, false, DEFAULT_TARGET_LANG_RULES)
@@ -950,14 +1015,11 @@ final class AiLyricsSettings {
         }
 
         String resolveTargetLanguage(String sourceLang) {
-            String target = defaultRule.targetLang;
-            return "auto".equalsIgnoreCase(target)
-                    ? defaultOutputLanguage()
-                    : normalizeLanguageCode(target);
+            return resolveOutputLanguage(defaultRule.targetLang, uiLang);
         }
 
         String pronunciationLanguage() {
-            return normalizedPronunciationLanguage(pronunciationLang);
+            return resolveOutputLanguage(outputLang, uiLang);
         }
 
         boolean shouldSkipTranslation(String sourceLang, String resolvedTargetLang) {
@@ -967,7 +1029,8 @@ final class AiLyricsSettings {
         String cacheKey() {
             StringBuilder builder = new StringBuilder();
             builder.append(provider.id)
-                    .append("|pronunciation=").append(pronunciationLang)
+                    .append("|output=").append(outputLang)
+                    .append("|resolvedOutput=").append(resolveOutputLanguage(outputLang, uiLang))
                     .append("|translationTarget=").append(defaultRule.targetLang)
                     .append("|default=").append(defaultRule.cacheKey())
                     .append("|model=").append(model)

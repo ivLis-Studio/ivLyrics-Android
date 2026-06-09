@@ -179,8 +179,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout backgroundModeButtonsContainer;
     private LinearLayout providerButtonsContainer;
     private LinearLayout uiLanguageButtonsContainer;
-    private LinearLayout pronunciationLanguageButtonsContainer;
-    private LinearLayout translationLanguageButtonsContainer;
+    private LinearLayout outputLanguageButtonsContainer;
     private LinearLayout sourceLanguageButtonsContainer;
     private ScrollView settingsScrollView;
     private ScrollView logScrollView;
@@ -1810,20 +1809,12 @@ public final class MainActivity extends Activity implements
                 uiLanguageButtonsContainer
         ), topMargin(matchWrap(), dp(12)));
 
-        pronunciationLanguageButtonsContainer = new LinearLayout(this);
-        pronunciationLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        outputLanguageButtonsContainer = new LinearLayout(this);
+        outputLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
         settingsLyricsPage.addView(settingGroup(
                 ui("setting.pronunciation_language"),
                 ui("setting.pronunciation_language_desc"),
-                pronunciationLanguageButtonsContainer
-        ), topMargin(matchWrap(), dp(12)));
-
-        translationLanguageButtonsContainer = new LinearLayout(this);
-        translationLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        settingsLyricsPage.addView(settingGroup(
-                ui("lyrics.rule.translation_language"),
-                "",
-                translationLanguageButtonsContainer
+                outputLanguageButtonsContainer
         ), topMargin(matchWrap(), dp(12)));
 
         metadataTranslationSwitch = settingSwitch(
@@ -3106,8 +3097,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         rebuildUiLanguageButtons(snapshot.uiLang);
-        rebuildPronunciationLanguageButtons(snapshot.pronunciationLang);
-        rebuildTranslationLanguageButtons(snapshot.defaultRule.targetLang);
+        rebuildOutputLanguageButtons(snapshot.outputLang);
         rebuildPreviewModeButtons(snapshot.previewItems);
         rebuildSourceLanguageButtons();
         populateSelectedLanguageRule(snapshot);
@@ -3120,40 +3110,36 @@ public final class MainActivity extends Activity implements
         rebuildChoiceButtons(uiLanguageButtonsContainer, uiLanguageChoices(), selectedLang, code -> {
             aiLyricsSettings.setUiLang(code);
             applyUiLanguageChange();
+            AiLyricsSettings.Snapshot nextSnapshot = aiLyricsSettings.snapshot();
+            if (AiLyricsSettings.OUTPUT_LANG_SAME_UI.equalsIgnoreCase(nextSnapshot.outputLang)) {
+                translatedTrackTitle = "";
+                translatedTrackArtist = "";
+                updateTrackMetadataTextViews(currentTrack);
+                requestMetadataTranslation(true);
+                requestAiLyrics(true);
+            }
             showSavedToast(ui("toast.ui_language_saved"));
         });
     }
 
-    private void rebuildPronunciationLanguageButtons(String selectedLang) {
-        if (pronunciationLanguageButtonsContainer == null) {
-            return;
-        }
-        rebuildChoiceButtons(pronunciationLanguageButtonsContainer, languageChoices(false), selectedLang, code -> {
-            aiLyricsSettings.setPronunciationLang(code);
-            rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
-            requestAiLyrics(true);
-            showSavedToast(ui("toast.pronunciation_language_saved"));
-        });
-    }
-
-    private void rebuildTranslationLanguageButtons(String selectedLang) {
-        if (translationLanguageButtonsContainer == null) {
+    private void rebuildOutputLanguageButtons(String selectedLang) {
+        if (outputLanguageButtonsContainer == null) {
             return;
         }
         List<LanguageChoice> choices = new ArrayList<>();
-        choices.add(new LanguageChoice("auto", ui("label.auto")));
+        choices.add(new LanguageChoice(AiLyricsSettings.OUTPUT_LANG_SAME_UI, ui("label.same_as_ui_language")));
         for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
             choices.add(new LanguageChoice(language.code, language.nativeName));
         }
-        rebuildChoiceButtons(translationLanguageButtonsContainer, choices, selectedLang, code -> {
-            aiLyricsSettings.setTranslationLang(code);
+        rebuildChoiceButtons(outputLanguageButtonsContainer, choices, selectedLang, code -> {
+            aiLyricsSettings.setOutputLang(code);
             rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
             translatedTrackTitle = "";
             translatedTrackArtist = "";
             updateTrackMetadataTextViews(currentTrack);
             requestMetadataTranslation(true);
             requestAiLyrics(true);
-            showSavedToast(ui("toast.language_rule_saved"));
+            showSavedToast(ui("toast.pronunciation_language_saved"));
         });
     }
 
@@ -3683,9 +3669,13 @@ public final class MainActivity extends Activity implements
     private boolean sameChoice(String left, String right) {
         String a = "auto".equalsIgnoreCase(left)
                 ? "auto"
+                : AiLyricsSettings.OUTPUT_LANG_SAME_UI.equalsIgnoreCase(left)
+                ? AiLyricsSettings.OUTPUT_LANG_SAME_UI
                 : AiLyricsSettings.normalizeSourceLanguageKey(left);
         String b = "auto".equalsIgnoreCase(right)
                 ? "auto"
+                : AiLyricsSettings.OUTPUT_LANG_SAME_UI.equalsIgnoreCase(right)
+                ? AiLyricsSettings.OUTPUT_LANG_SAME_UI
                 : AiLyricsSettings.normalizeSourceLanguageKey(right);
         return a.equalsIgnoreCase(b);
     }

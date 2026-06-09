@@ -103,6 +103,7 @@ final class AppI18n {
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
         addDisplayPowerStrings(languages);
+        addUnifiedOutputLanguageStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -629,6 +630,224 @@ final class AppI18n {
                 "setting.keep_screen_on_desc", desc,
                 "toast.keep_screen_on_on", enabled,
                 "toast.keep_screen_on_off", disabled
+        };
+    }
+
+    private static void addUnifiedOutputLanguageStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = unifiedOutputLanguageStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] unifiedOutputLanguageStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return unifiedOutputLanguageStringsValues(
+                        "앱 표시 언어와 발음/번역 출력 언어를 관리합니다.",
+                        "발음/번역 언어",
+                        "발음 표기와 번역이 함께 사용할 언어입니다. UI 언어와 동일하게 두거나 특정 언어로 고정할 수 있습니다.",
+                        "UI 언어와 동일",
+                        "발음/번역 언어 저장됨",
+                        "현재 곡의 제목과 아티스트 이름도 선택한 출력 언어 기준으로 표시합니다."
+                );
+            case "zh-CN":
+                return unifiedOutputLanguageStringsValues(
+                        "管理界面语言以及发音/翻译输出语言。",
+                        "发音/翻译语言",
+                        "发音标注和翻译共同使用的语言。可与界面语言相同，也可固定为指定语言。",
+                        "与界面语言相同",
+                        "发音/翻译语言已保存",
+                        "当前歌曲的标题和艺人也会按所选输出语言显示。"
+                );
+            case "zh-TW":
+                return unifiedOutputLanguageStringsValues(
+                        "管理介面語言以及發音/翻譯輸出語言。",
+                        "發音/翻譯語言",
+                        "發音標註和翻譯共同使用的語言。可與介面語言相同，也可固定為指定語言。",
+                        "與介面語言相同",
+                        "發音/翻譯語言已儲存",
+                        "目前歌曲的標題和藝人也會依所選輸出語言顯示。"
+                );
+            case "ja":
+                return unifiedOutputLanguageStringsValues(
+                        "アプリ表示言語と発音/翻訳の出力言語を管理します。",
+                        "発音/翻訳言語",
+                        "発音表記と翻訳で共通して使う言語です。UI言語と同じにするか、特定の言語に固定できます。",
+                        "UI言語と同じ",
+                        "発音/翻訳言語を保存しました",
+                        "現在の曲名とアーティスト名も選択した出力言語で表示します。"
+                );
+            case "hi":
+                return unifiedOutputLanguageStringsValues(
+                        "App display language and pronunciation/translation output language.",
+                        "Pronunciation/Translation Language",
+                        "The shared language for pronunciation and translation output. Match the UI language or pin a specific language.",
+                        "Same as UI language",
+                        "Pronunciation/translation language saved",
+                        "Track title and artist are also shown in the selected output language."
+                );
+            case "es":
+                return unifiedOutputLanguageStringsValues(
+                        "Gestiona el idioma de la app y el idioma de salida de pronunciación/traducción.",
+                        "Idioma de pronunciación/traducción",
+                        "Idioma compartido para la pronunciación y la traducción. Puedes usar el idioma de la interfaz o fijar uno concreto.",
+                        "Igual que el idioma de la interfaz",
+                        "Idioma de pronunciación/traducción guardado",
+                        "El título y el artista también se muestran en el idioma de salida seleccionado."
+                );
+            case "fr":
+                return unifiedOutputLanguageStringsValues(
+                        "Gere la langue de l'app et la langue de sortie prononciation/traduction.",
+                        "Langue de prononciation/traduction",
+                        "Langue commune pour la prononciation et la traduction. Utilisez la langue de l'interface ou fixez une langue precise.",
+                        "Identique a la langue de l'interface",
+                        "Langue de prononciation/traduction enregistree",
+                        "Le titre et l'artiste sont aussi affiches dans la langue de sortie choisie."
+                );
+            case "ar":
+                return unifiedOutputLanguageStringsValues(
+                        "إدارة لغة واجهة التطبيق ولغة نطق/ترجمة الإخراج.",
+                        "لغة النطق/الترجمة",
+                        "اللغة المشتركة لإخراج النطق والترجمة. يمكن مطابقتها مع لغة الواجهة أو تثبيتها على لغة محددة.",
+                        "مثل لغة الواجهة",
+                        "تم حفظ لغة النطق/الترجمة",
+                        "سيظهر عنوان المقطع واسم الفنان أيضاً بلغة الإخراج المحددة."
+                );
+            case "fa":
+                return unifiedOutputLanguageStringsValues(
+                        "زبان نمایش برنامه و زبان خروجی تلفظ/ترجمه را مدیریت کنید.",
+                        "زبان تلفظ/ترجمه",
+                        "زبان مشترک برای خروجی تلفظ و ترجمه. می‌توانید آن را با زبان رابط یکی کنید یا روی یک زبان ثابت بگذارید.",
+                        "همانند زبان رابط کاربری",
+                        "زبان تلفظ/ترجمه ذخیره شد",
+                        "عنوان آهنگ و نام هنرمند نیز با زبان خروجی انتخاب‌شده نمایش داده می‌شود."
+                );
+            case "de":
+                return unifiedOutputLanguageStringsValues(
+                        "Verwalte App-Sprache und Ausgabe-Sprache fuer Aussprache/Uebersetzung.",
+                        "Aussprache-/Uebersetzungssprache",
+                        "Gemeinsame Sprache fuer Aussprache und Uebersetzung. Sie kann der UI-Sprache folgen oder fest gewaehlt werden.",
+                        "Wie UI-Sprache",
+                        "Aussprache-/Uebersetzungssprache gespeichert",
+                        "Titel und Kuenstler werden ebenfalls in der gewaehlten Ausgabesprache angezeigt."
+                );
+            case "ru":
+                return unifiedOutputLanguageStringsValues(
+                        "Управление языком интерфейса и языком вывода произношения/перевода.",
+                        "Язык произношения/перевода",
+                        "Общий язык для произношения и перевода. Можно использовать язык интерфейса или закрепить конкретный язык.",
+                        "Как язык интерфейса",
+                        "Язык произношения/перевода сохранен",
+                        "Название трека и артист также отображаются на выбранном языке вывода."
+                );
+            case "sv":
+                return unifiedOutputLanguageStringsValues(
+                        "Hantera appens språk och utdata för uttal/översättning.",
+                        "Uttals-/översättningsspråk",
+                        "Gemensamt språk för uttal och översättning. Följ UI-språket eller välj ett fast språk.",
+                        "Samma som UI-språket",
+                        "Uttals-/översättningsspråk sparat",
+                        "Låttitel och artist visas också på valt utdataspråk."
+                );
+            case "pt":
+                return unifiedOutputLanguageStringsValues(
+                        "Gerencie o idioma do app e o idioma de saida de pronuncia/traducao.",
+                        "Idioma de pronuncia/traducao",
+                        "Idioma compartilhado para pronuncia e traducao. Use o idioma da interface ou fixe um idioma especifico.",
+                        "Igual ao idioma da interface",
+                        "Idioma de pronuncia/traducao salvo",
+                        "O titulo e o artista tambem aparecem no idioma de saida escolhido."
+                );
+            case "bn":
+                return unifiedOutputLanguageStringsValues(
+                        "App display language and pronunciation/translation output language.",
+                        "Pronunciation/Translation Language",
+                        "The shared language for pronunciation and translation output. Match the UI language or pin a specific language.",
+                        "Same as UI language",
+                        "Pronunciation/translation language saved",
+                        "Track title and artist are also shown in the selected output language."
+                );
+            case "it":
+                return unifiedOutputLanguageStringsValues(
+                        "Gestisci la lingua dell'app e la lingua di output per pronuncia/traduzione.",
+                        "Lingua pronuncia/traduzione",
+                        "Lingua condivisa per pronuncia e traduzione. Segui la lingua dell'interfaccia o scegli una lingua fissa.",
+                        "Uguale alla lingua dell'interfaccia",
+                        "Lingua pronuncia/traduzione salvata",
+                        "Titolo e artista vengono mostrati anche nella lingua di output scelta."
+                );
+            case "th":
+                return unifiedOutputLanguageStringsValues(
+                        "จัดการภาษาที่แสดงในแอปและภาษาผลลัพธ์ของการออกเสียง/การแปล",
+                        "ภาษาการออกเสียง/การแปล",
+                        "ภาษาที่ใช้ร่วมกันสำหรับผลลัพธ์การออกเสียงและการแปล จะให้ตรงกับภาษา UI หรือกำหนดภาษาเองก็ได้",
+                        "เหมือนภาษา UI",
+                        "บันทึกภาษาการออกเสียง/การแปลแล้ว",
+                        "ชื่อเพลงและศิลปินจะแสดงเป็นภาษาผลลัพธ์ที่เลือกด้วย"
+                );
+            case "vi":
+                return unifiedOutputLanguageStringsValues(
+                        "Quan ly ngon ngu hien thi cua ung dung va ngon ngu dau ra phat am/dich.",
+                        "Ngon ngu phat am/dich",
+                        "Ngon ngu dung chung cho phat am va ban dich. Co the theo ngon ngu giao dien hoac co dinh mot ngon ngu.",
+                        "Giong ngon ngu giao dien",
+                        "Da luu ngon ngu phat am/dich",
+                        "Tieu de bai hat va nghe si cung hien thi bang ngon ngu dau ra da chon."
+                );
+            case "id":
+                return unifiedOutputLanguageStringsValues(
+                        "Kelola bahasa tampilan app dan bahasa keluaran pelafalan/terjemahan.",
+                        "Bahasa pelafalan/terjemahan",
+                        "Bahasa bersama untuk keluaran pelafalan dan terjemahan. Ikuti bahasa UI atau pilih bahasa tetap.",
+                        "Sama dengan bahasa UI",
+                        "Bahasa pelafalan/terjemahan disimpan",
+                        "Judul lagu dan artis juga ditampilkan dalam bahasa keluaran yang dipilih."
+                );
+            case "ms":
+                return unifiedOutputLanguageStringsValues(
+                        "Urus bahasa paparan app dan bahasa output sebutan/terjemahan.",
+                        "Bahasa sebutan/terjemahan",
+                        "Bahasa bersama untuk output sebutan dan terjemahan. Ikut bahasa UI atau tetapkan bahasa tertentu.",
+                        "Sama seperti bahasa UI",
+                        "Bahasa sebutan/terjemahan disimpan",
+                        "Tajuk lagu dan artis juga dipaparkan dalam bahasa output yang dipilih."
+                );
+            default:
+                return unifiedOutputLanguageStringsValues(
+                        "Manage app display language and pronunciation/translation output language.",
+                        "Pronunciation/Translation Language",
+                        "The shared language for pronunciation and translation output. Match the UI language or pin a specific language.",
+                        "Same as UI language",
+                        "Pronunciation/translation language saved",
+                        "Track title and artist are also shown in the selected output language."
+                );
+        }
+    }
+
+    private static String[] unifiedOutputLanguageStringsValues(
+            String sectionDescription,
+            String title,
+            String description,
+            String sameUi,
+            String saved,
+            String metadataDescription
+    ) {
+        return new String[]{
+                "section.language_desc", sectionDescription,
+                "setting.pronunciation_language", title,
+                "setting.pronunciation_language_desc", description,
+                "label.same_as_ui_language", sameUi,
+                "toast.pronunciation_language_saved", saved,
+                "setting.metadata_translation_desc", metadataDescription
         };
     }
 
