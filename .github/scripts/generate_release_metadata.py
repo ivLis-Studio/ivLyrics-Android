@@ -11,6 +11,9 @@ import urllib.request
 from pathlib import Path
 
 
+TEMPLATE_PATH = Path(".github/release-notes-template.md")
+
+
 def run_git(args, allow_fail=False):
     result = subprocess.run(
         ["git", *args],
@@ -111,27 +114,105 @@ def apk_assets(apk_dir):
     return assets
 
 
-def fallback_notes(current_tag, previous, log_text, assets):
-    compare = f"{previous}...{current_tag}" if previous else current_tag
-    lines = [
-        f"## ivLyrics Android {current_tag}",
-        "",
-    ]
+def compare_url(current_tag, previous):
     if previous:
-        lines.append(f"Changes since `{previous}`.")
-    else:
-        lines.append("Initial tagged release.")
-    lines.extend(["", "### Changes"])
+        return f"https://github.com/ivLis-Studio/ivLyrics-Android/compare/{previous}...{current_tag}"
+    return f"https://github.com/ivLis-Studio/ivLyrics-Android/commits/{current_tag}"
+
+
+def commit_subjects(log_text):
     commits = [line for line in log_text.splitlines() if line.strip()]
-    if commits:
-        lines.extend(f"- {line.split(chr(9), 1)[-1]}" for line in commits)
-    else:
-        lines.append("- Build and release APK assets.")
-    lines.extend(["", "### APK files"])
+    return [line.split("\t", 1)[-1] for line in commits] or ["Build and release APK assets."]
+
+
+def markdown_bullets(values):
+    items = [str(value).strip() for value in values if str(value).strip()]
+    if not items:
+        items = ["No notable changes."]
+    return "\n".join(f"- {item}" for item in items)
+
+
+def asset_downloads(assets, lang):
+    if not assets:
+        return ["APK assets were not found." if lang == "en" else "APK 파일을 찾지 못했습니다."]
+    lines = []
     for asset in assets:
-        lines.append(f"- `{asset['name']}` ({asset['size']} bytes, SHA-256 `{asset['sha256']}`)")
-    lines.extend(["", f"**Full Changelog**: https://github.com/ivLis-Studio/ivLyrics-Android/compare/{compare}"])
-    return "\n".join(lines) + "\n"
+        name = asset["name"]
+        if lang == "ko":
+            note = "서명되지 않은 릴리즈 APK입니다." if "unsigned" in name else "설치 테스트용 디버그 APK입니다."
+            lines.append(f"`{name}`: {note}")
+        else:
+            note = "Unsigned release APK." if "unsigned" in name else "Debug APK for install testing."
+            lines.append(f"`{name}`: {note}")
+    return lines
+
+
+def checksum_lines(assets):
+    if not assets:
+        return ["No APK assets."]
+    return [
+        f"`{asset['name']}`: `{asset['sha256']}`"
+        for asset in assets
+    ]
+
+
+def fallback_content(current_tag, previous, log_text, assets):
+    subjects = commit_subjects(log_text)
+    highlights = subjects[:6]
+    fixes = subjects[6:] or ["APK build and release metadata generation."]
+    return {
+        "ko": {
+            "summary": f"{current_tag} 릴리즈입니다. 이전 버전 대비 변경 사항과 APK 파일을 함께 제공합니다.",
+            "highlights": highlights,
+            "fixes": fixes,
+        },
+        "en": {
+            "summary": f"{current_tag} release with APK assets and change notes compared with the previous version.",
+            "highlights": highlights,
+            "fixes": fixes,
+        },
+    }
+
+
+def load_template():
+    if TEMPLATE_PATH.exists():
+        return TEMPLATE_PATH.read_text(encoding="utf-8")
+    return textwrap.dedent("""
+        # ivLyrics Android {tag}
+
+        ## 한국어
+        {ko_summary}
+
+        {ko_highlights}
+
+        ## English
+        {en_summary}
+
+        {en_highlights}
+
+        **Full Changelog**: {compare_url}
+    """).strip() + "\n"
+
+
+def render_notes(current_tag, previous, version, assets, content):
+    ko = content.get("ko") or {}
+    en = content.get("en") or {}
+    return load_template().format(
+        tag=current_tag,
+        version_name=version.get("versionName") or "unknown",
+        version_code=version.get("versionCode") or "unknown",
+        previous_tag=previous or "None",
+        compare_url=compare_url(current_tag, previous),
+        ko_summary=ko.get("summary") or "릴리즈 노트가 생성되었습니다.",
+        ko_highlights=markdown_bullets(ko.get("highlights") or []),
+        ko_fixes=markdown_bullets(ko.get("fixes") or []),
+        ko_downloads=markdown_bullets(asset_downloads(assets, "ko")),
+        en_summary=en.get("summary") or "Release notes were generated.",
+        en_highlights=markdown_bullets(en.get("highlights") or []),
+        en_fixes=markdown_bullets(en.get("fixes") or []),
+        en_downloads=markdown_bullets(asset_downloads(assets, "en")),
+        checksums=markdown_bullets(checksum_lines(assets)),
+    )
 
 
 def normalize_chat_url(base_url):
@@ -145,39 +226,88 @@ def normalize_chat_url(base_url):
     return base + "/v1/chat/completions"
 
 
-def ai_release_notes(current_tag, previous, version, log_text, stat_text, assets):
+def parse_ai_json(text):
+    value = (text or "").strip()
+    value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*```$", "", value)
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    ko = data.get("ko") if isinstance(data.get("ko"), dict) else {}
+    en = data.get("en") if isinstance(data.get("en"), dict) else {}
+    if not ko or not en:
+        return {}
+    return {"ko": normalize_note_section(ko), "en": normalize_note_section(en)}
+
+
+def normalize_note_section(section):
+    def text_value(key):
+        return str(section.get(key) or "").strip()
+
+    def list_value(key):
+        value = section.get(key)
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    return {
+        "summary": text_value("summary"),
+        "highlights": list_value("highlights"),
+        "fixes": list_value("fixes"),
+    }
+
+
+def ai_release_content(current_tag, previous, version, log_text, stat_text, assets):
     api_key = os.environ.get("AI_API_KEY", "").strip()
     api_url = normalize_chat_url(os.environ.get("AI_BASE_URL", ""))
     model = os.environ.get("AI_MODEL", "").strip() or "gpt-4o-mini"
     if not api_key or not api_url:
-        return ""
+        return {}
 
     asset_text = "\n".join(
         f"- {asset['name']} ({asset['size']} bytes, sha256={asset['sha256']})"
         for asset in assets
     )
-    compare_url = (
-        f"https://github.com/ivLis-Studio/ivLyrics-Android/compare/{previous}...{current_tag}"
-        if previous
-        else f"https://github.com/ivLis-Studio/ivLyrics-Android/commits/{current_tag}"
-    )
     prompt = textwrap.dedent(f"""
-        You write GitHub release notes for an Android music lyrics app named ivLyrics Android.
-        Write in Korean. Be concise, concrete, and user-facing.
+        You write bilingual GitHub release note content for an Android music lyrics app named ivLyrics Android.
+        Return JSON only. Do not return Markdown.
 
         Current tag: {current_tag}
         Previous tag: {previous or "(none)"}
-        Compare URL: {compare_url}
+        Compare URL: {compare_url(current_tag, previous)}
         Android versionName: {version.get("versionName") or "(unknown)"}
         Android versionCode: {version.get("versionCode") or "(unknown)"}
 
+        Output JSON schema:
+        {{
+          "ko": {{
+            "summary": "Korean one-sentence summary",
+            "highlights": ["Korean user-facing highlight", "..."],
+            "fixes": ["Korean improvement or fix", "..."]
+          }},
+          "en": {{
+            "summary": "English one-sentence summary",
+            "highlights": ["English user-facing highlight", "..."],
+            "fixes": ["English improvement or fix", "..."]
+          }}
+        }}
+
         Requirements:
+        - Write both Korean and English.
+        - Keep Korean and English sections semantically equivalent.
         - Compare this release against the previous tag.
-        - Group notes into short sections.
+        - Keep each bullet short and concrete.
+        - Put major user-facing changes in highlights.
+        - Put smaller polish, fixes, and maintenance changes in fixes.
         - Mention APK assets and clarify that release APK is unsigned if its filename says unsigned.
         - Do not invent changes not supported by the commit list.
         - Do not mention secrets, private URLs, or internal token endpoints.
-        - End with a Full Changelog link.
+        - Do not include a Full Changelog link; the template adds it.
 
         Commits:
         {log_text or "(no commit log)"}
@@ -213,12 +343,12 @@ def ai_release_notes(current_tag, previous, version, log_text, stat_text, assets
             data = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"AI release note generation failed: {exc}", file=sys.stderr)
-        return ""
+        return {}
     choices = data.get("choices") or []
     if not choices:
-        return ""
+        return {}
     message = choices[0].get("message") or {}
-    return (message.get("content") or "").strip()
+    return parse_ai_json(message.get("content") or "")
 
 
 def main():
@@ -233,12 +363,10 @@ def main():
     version = read_gradle_version()
     assets = apk_assets(os.environ.get("APK_DIR", "release-apks"))
 
-    notes = ai_release_notes(current_tag, previous, version, log_text, stat_text, assets)
-    if not notes:
-        notes = fallback_notes(current_tag, previous, log_text, assets)
-    if "**Full Changelog**" not in notes:
-        compare = f"{previous}...{current_tag}" if previous else current_tag
-        notes += f"\n\n**Full Changelog**: https://github.com/ivLis-Studio/ivLyrics-Android/compare/{compare}\n"
+    content = ai_release_content(current_tag, previous, version, log_text, stat_text, assets)
+    if not content:
+        content = fallback_content(current_tag, previous, log_text, assets)
+    notes = render_notes(current_tag, previous, version, assets, content)
 
     metadata = {
         "tag": current_tag,
@@ -247,9 +375,7 @@ def main():
         "versionName": version.get("versionName"),
         "versionCode": version.get("versionCode"),
         "compareUrl": (
-            f"https://github.com/ivLis-Studio/ivLyrics-Android/compare/{previous}...{current_tag}"
-            if previous
-            else f"https://github.com/ivLis-Studio/ivLyrics-Android/commits/{current_tag}"
+            compare_url(current_tag, previous)
         ),
         "apks": assets,
     }
