@@ -9,6 +9,10 @@ import android.view.MotionEvent;
 import android.view.View;
 
 public final class PlayerProgressView extends View {
+    private static final int TRACK_COLOR = 0x3A000000;
+    private static final int PROGRESS_COLOR = 0x78000000;
+    private static final int THUMB_COLOR = 0xA8000000;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private long positionMs;
     private long durationMs;
@@ -101,26 +105,37 @@ public final class PlayerProgressView extends View {
         }
 
         float centerY = height * 0.5f;
-        float radius = dp(2.2f);
+        float trackStroke = dp(3.6f);
+        float thumbRadius = dp(5.0f);
+        float horizontalInset = thumbRadius + Math.max(1f, trackStroke * 0.25f);
+        float trackStart = Math.min(horizontalInset, width * 0.5f);
+        float trackEnd = Math.max(trackStart, width - horizontalInset);
         float progress = durationMs <= 0L ? 0f : positionMs / (float) durationMs;
-        float endX = Math.max(0f, Math.min(width, width * progress));
+        float endX = trackStart + ((trackEnd - trackStart) * Math.max(0f, Math.min(1f, progress)));
 
         paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(dp(3.6f));
-        paint.setColor(Color.argb(132, 49, 50, 56));
-        canvas.drawLine(0f, centerY, width, centerY, paint);
+        paint.setStrokeWidth(trackStroke);
+        paint.setColor(TRACK_COLOR);
+        canvas.drawLine(trackStart, centerY, trackEnd, centerY, paint);
 
-        paint.setColor(Color.rgb(246, 246, 248));
-        canvas.drawLine(0f, centerY, endX, centerY, paint);
+        paint.setColor(PROGRESS_COLOR);
+        canvas.drawLine(trackStart, centerY, endX, centerY, paint);
 
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.WHITE);
-        canvas.drawCircle(endX, centerY, Math.max(dp(4.5f), radius), paint);
+        paint.setColor(THUMB_COLOR);
+        canvas.drawCircle(endX, centerY, thumbRadius, paint);
     }
 
     private void updateFromTouch(float x) {
         float width = Math.max(1f, getWidth());
-        float progress = Math.max(0f, Math.min(1f, x / width));
+        float trackStroke = dp(3.6f);
+        float thumbRadius = dp(5.0f);
+        float horizontalInset = thumbRadius + Math.max(1f, trackStroke * 0.25f);
+        float trackStart = Math.min(horizontalInset, width * 0.5f);
+        float trackEnd = Math.max(trackStart, width - horizontalInset);
+        float progress = trackEnd <= trackStart
+                ? 0f
+                : Math.max(0f, Math.min(1f, (x - trackStart) / (trackEnd - trackStart)));
         positionMs = Math.round(durationMs * progress);
         invalidate();
     }
