@@ -51,6 +51,10 @@ import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import org.json.JSONObject;
 
@@ -132,6 +136,7 @@ public final class MainActivity extends Activity implements
     private PlayerBackgroundView lyricsBackgroundView;
     private FrameLayout mainPage;
     private FrameLayout lyricsPage;
+    private FrameLayout inAppBrowserPage;
     private FrameLayout settingsPanel;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
@@ -142,6 +147,8 @@ public final class MainActivity extends Activity implements
     private TextView lyricsTitleView;
     private TextView lyricsArtistView;
     private TextView lyricsContributorView;
+    private TextView inAppBrowserTitleView;
+    private WebView inAppBrowserWebView;
     private MainLyricPreviewView lyricPreviewView;
     private TextView sourceView;
     private TextView statusView;
@@ -239,6 +246,8 @@ public final class MainActivity extends Activity implements
     private String translatedTrackTitle = "";
     private String translatedTrackArtist = "";
     private boolean lyricsPageVisible;
+    private boolean inAppBrowserVisible;
+    private String inAppBrowserInitialUrl = "";
     private long lastBackPressElapsedMs;
     private float pageDragStartY;
     private float pageDragStartTranslationY;
@@ -385,6 +394,7 @@ public final class MainActivity extends Activity implements
         if (furiganaRepository != null) {
             furiganaRepository.shutdown();
         }
+        destroyInAppBrowserWebView();
         seekExecutor.shutdownNow();
         super.onDestroy();
     }
@@ -392,6 +402,15 @@ public final class MainActivity extends Activity implements
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (isInAppBrowserVisible()) {
+            lastBackPressElapsedMs = 0L;
+            if (inAppBrowserWebView != null && inAppBrowserWebView.canGoBack()) {
+                inAppBrowserWebView.goBack();
+                return;
+            }
+            showInAppBrowser(false);
+            return;
+        }
         if (isSpotifySetupPanelVisible()) {
             lastBackPressElapsedMs = 0L;
             if (onboardingStep > 0) {
@@ -810,6 +829,13 @@ public final class MainActivity extends Activity implements
 
         spotifySetupPanel = buildSpotifySetupPanel();
         root.addView(spotifySetupPanel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        inAppBrowserPage = buildInAppBrowserPage();
+        inAppBrowserPage.setVisibility(View.GONE);
+        root.addView(inAppBrowserPage, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
@@ -1534,6 +1560,81 @@ public final class MainActivity extends Activity implements
         content.addView(lyricsView, lyricsParams);
 
         attachPageSwipe(header, false, false);
+        return page;
+    }
+
+    private FrameLayout buildInAppBrowserPage() {
+        FrameLayout page = new FrameLayout(this);
+        page.setBackgroundColor(Color.rgb(12, 13, 17));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(30), dp(18), 0);
+        page.addView(content, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        View handle = new View(this);
+        handle.setBackground(roundDrawable(Color.argb(78, 255, 255, 255), dp(1.5f)));
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(dp(42), dp(3));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        content.addView(handle, handleParams);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(58)
+        );
+        content.addView(header, headerParams);
+
+        ImageButton closeButton = iconButton(
+                R.drawable.ic_chevron_down,
+                44,
+                22,
+                Color.WHITE,
+                Color.TRANSPARENT,
+                ui("button.close")
+        );
+        closeButton.setOnClickListener(view -> showInAppBrowser(false));
+        header.addView(closeButton, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        inAppBrowserTitleView = label("lyrics.ivl.is", 14f, Color.WHITE, AppFonts.semiBold(this));
+        inAppBrowserTitleView.setSingleLine(true);
+        inAppBrowserTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        titleParams.leftMargin = dp(10);
+        header.addView(inAppBrowserTitleView, titleParams);
+
+        inAppBrowserWebView = new WebView(this);
+        inAppBrowserWebView.setBackgroundColor(Color.rgb(12, 13, 17));
+        WebSettings settings = inAppBrowserWebView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        inAppBrowserWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null || !request.isForMainFrame()) {
+                    return false;
+                }
+                return shouldOpenBrowserNavigationExternally(request.getUrl().toString());
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return shouldOpenBrowserNavigationExternally(url);
+            }
+        });
+        content.addView(inAppBrowserWebView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+        ));
         return page;
     }
 
@@ -2689,6 +2790,9 @@ public final class MainActivity extends Activity implements
         String artworkKey = currentArtworkKey;
         boolean artworkFromSpotify = currentArtworkFromSpotify;
 
+        destroyInAppBrowserWebView();
+        inAppBrowserVisible = false;
+        inAppBrowserInitialUrl = "";
         setContentView(buildContentView());
         activeSettingsTab = normalizeSettingsTab(previousSettingsTab);
         switchSettingsTab(activeSettingsTab);
@@ -5501,7 +5605,7 @@ public final class MainActivity extends Activity implements
         String fallbackUrl = syncContributorProfileUrl(contributor.userHash);
         String cachedUrl = creatorProfileUrlCache.get(contributor.userHash);
         if (cachedUrl != null && !cachedUrl.isEmpty()) {
-            openExternalProfileUrl(cachedUrl);
+            openContributorProfileUrl(cachedUrl);
             return;
         }
         seekExecutor.execute(() -> {
@@ -5514,16 +5618,12 @@ public final class MainActivity extends Activity implements
                 handler.post(() -> appendLog(message));
             }
             String finalUrl = url;
-            handler.post(() -> openExternalProfileUrl(finalUrl));
+            handler.post(() -> openContributorProfileUrl(finalUrl));
         });
     }
 
-    private void openExternalProfileUrl(String url) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-        } catch (Exception error) {
-            appendLog("sync creator profile open failed: " + error.getMessage());
-        }
+    private void openContributorProfileUrl(String url) {
+        openInAppBrowser(url);
     }
 
     private String fetchSyncContributorProfileUrl(String userHash, String fallbackUrl) throws Exception {
@@ -6515,6 +6615,108 @@ public final class MainActivity extends Activity implements
                         resetLyricsPageDragTopPadding(false);
                     })
                     .start();
+        }
+    }
+
+    private boolean isInAppBrowserVisible() {
+        return inAppBrowserPage != null
+                && inAppBrowserVisible
+                && inAppBrowserPage.getVisibility() == View.VISIBLE;
+    }
+
+    private void destroyInAppBrowserWebView() {
+        if (inAppBrowserWebView == null) {
+            return;
+        }
+        inAppBrowserWebView.stopLoading();
+        inAppBrowserWebView.destroy();
+        inAppBrowserWebView = null;
+    }
+
+    private void openInAppBrowser(String url) {
+        String safeUrl = url == null ? "" : url.trim();
+        if (safeUrl.isEmpty() || inAppBrowserPage == null || inAppBrowserWebView == null) {
+            return;
+        }
+        inAppBrowserInitialUrl = safeUrl;
+        if (inAppBrowserTitleView != null) {
+            Uri uri = Uri.parse(safeUrl);
+            String title = uri.getHost() == null ? safeUrl : uri.getHost();
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            if (!path.isEmpty() && !"/".equals(path)) {
+                title += path;
+            }
+            inAppBrowserTitleView.setText(title);
+        }
+        inAppBrowserWebView.stopLoading();
+        inAppBrowserWebView.clearHistory();
+        inAppBrowserWebView.loadUrl(safeUrl);
+        showInAppBrowser(true);
+    }
+
+    private void showInAppBrowser(boolean show) {
+        if (inAppBrowserPage == null || show == inAppBrowserVisible) {
+            return;
+        }
+        lastBackPressElapsedMs = 0L;
+        inAppBrowserVisible = show;
+        int height = getResources().getDisplayMetrics().heightPixels;
+        inAppBrowserPage.animate().cancel();
+        if (show) {
+            inAppBrowserPage.setVisibility(View.VISIBLE);
+            inAppBrowserPage.bringToFront();
+            inAppBrowserPage.setTranslationY(height);
+            inAppBrowserPage.animate()
+                    .translationY(0f)
+                    .setDuration(320L)
+                    .start();
+            return;
+        }
+        inAppBrowserPage.animate()
+                .translationY(height)
+                .setDuration(260L)
+                .withEndAction(() -> {
+                    inAppBrowserPage.setVisibility(View.GONE);
+                    inAppBrowserPage.setTranslationY(0f);
+                })
+                .start();
+    }
+
+    private boolean shouldOpenBrowserNavigationExternally(String url) {
+        String safeUrl = url == null ? "" : url.trim();
+        if (safeUrl.isEmpty() || safeUrl.startsWith("about:") || safeUrl.startsWith("data:")) {
+            return false;
+        }
+        if (normalizeBrowserUrl(safeUrl).equals(normalizeBrowserUrl(inAppBrowserInitialUrl))) {
+            return false;
+        }
+        openExternalBrowserUrl(safeUrl);
+        return true;
+    }
+
+    private String normalizeBrowserUrl(String url) {
+        try {
+            Uri uri = Uri.parse(url == null ? "" : url.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            while (path.endsWith("/") && path.length() > 1) {
+                path = path.substring(0, path.length() - 1);
+            }
+            String query = uri.getQuery() == null ? "" : "?" + uri.getQuery();
+            return scheme + "://" + host + path + query;
+        } catch (Exception ignored) {
+            return url == null ? "" : url.trim();
+        }
+    }
+
+    private void openExternalBrowserUrl(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception error) {
+            appendLog("external browser open failed: " + error.getMessage());
         }
     }
 
