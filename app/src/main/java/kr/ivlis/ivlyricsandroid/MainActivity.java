@@ -144,6 +144,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout landscapeLyricsSupplementLoadingIndicator;
     private LinearLayout lyricPreviewContainer;
     private LinearLayout landscapeHeroContainer;
+    private LinearLayout landscapeMetaContainer;
     private LinearLayout settingsTabButtonsContainer;
     private LinearLayout settingsLyricsPage;
     private LinearLayout settingsDisplayPage;
@@ -862,28 +863,34 @@ public final class MainActivity extends Activity implements
         LinearLayout meta = new LinearLayout(this);
         meta.setOrientation(LinearLayout.VERTICAL);
         meta.setGravity(Gravity.CENTER_HORIZONTAL);
+        landscapeMetaContainer = meta;
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        metaParams.topMargin = dp(12);
+        metaParams.gravity = Gravity.CENTER_HORIZONTAL;
+        metaParams.topMargin = landscapeMetadataTopMargin(true);
         landscapeHeroContainer.addView(meta, metaParams);
 
-        titleView = slidingLabel("ivLyrics", 23f, Color.WHITE, AppFonts.bold(this));
+        titleView = label("ivLyrics", 23f, Color.WHITE, AppFonts.bold(this));
         titleView.setGravity(Gravity.CENTER);
         titleView.setMaxLines(1);
+        titleView.setEllipsize(TextUtils.TruncateAt.END);
         titleView.setMinHeight(dp(30));
         titleView.setIncludeFontPadding(true);
         titleView.setShadowLayer(dp(3), 0f, dp(1), Color.argb(150, 0, 0, 0));
         titleView.setTextColor(Color.WHITE);
-        meta.addView(titleView, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams landscapeTitleParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        );
+        landscapeTitleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        meta.addView(titleView, landscapeTitleParams);
 
-        artistView = slidingLabel(ui("status.waiting_spotify"), 15f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
+        artistView = label(ui("status.waiting_spotify"), 15f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
         artistView.setGravity(Gravity.CENTER);
         artistView.setSingleLine(true);
+        artistView.setEllipsize(TextUtils.TruncateAt.END);
         artistView.setMinHeight(dp(22));
         artistView.setIncludeFontPadding(true);
         artistView.setShadowLayer(dp(2), 0f, dp(1), Color.argb(130, 0, 0, 0));
@@ -892,6 +899,7 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
+        artistParams.gravity = Gravity.CENTER_HORIZONTAL;
         artistParams.topMargin = dp(4);
         meta.addView(artistView, artistParams);
 
@@ -1131,6 +1139,7 @@ public final class MainActivity extends Activity implements
         float heroTranslationY = controlsVisible ? 0f : dp(42);
         float artworkScale = controlsVisible ? 1f : 1.08f;
         long duration = controlsVisible ? 180L : 260L;
+        updateLandscapeMetadataGap(controlsVisible);
 
         if (landscapeHeroContainer != null) {
             landscapeHeroContainer.animate().cancel();
@@ -1156,6 +1165,28 @@ public final class MainActivity extends Activity implements
                 artworkView.setScaleY(artworkScale);
             }
         }
+    }
+
+    private int landscapeMetadataTopMargin(boolean controlsVisible) {
+        return dp(controlsVisible ? 12 : 24);
+    }
+
+    private void updateLandscapeMetadataGap(boolean controlsVisible) {
+        if (landscapeMetaContainer == null) {
+            return;
+        }
+        ViewGroup.LayoutParams rawParams = landscapeMetaContainer.getLayoutParams();
+        if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+            return;
+        }
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) rawParams;
+        int nextTopMargin = landscapeMetadataTopMargin(controlsVisible);
+        if (params.topMargin == nextTopMargin) {
+            return;
+        }
+        params.topMargin = nextTopMargin;
+        params.gravity = Gravity.CENTER_HORIZONTAL;
+        landscapeMetaContainer.setLayoutParams(params);
     }
 
     private void setAutoHideViewVisible(View view, boolean visible, boolean animate) {
