@@ -18,7 +18,12 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -3980,22 +3985,74 @@ public final class MainActivity extends Activity implements
             lyricsContributorView.setText("");
             lyricsContributorView.setOnClickListener(null);
             lyricsContributorView.setClickable(false);
+            lyricsContributorView.setLinksClickable(false);
+            lyricsContributorView.setMovementMethod(null);
             return;
         }
 
-        lyricsContributorView.setText(uiFormat("lyrics.credit_sync_by_format", contributorNames(contributors, 3)));
+        int visibleContributorLimit = 3;
+        boolean hasLinkedContributor = hasLinkedContributor(contributors, visibleContributorLimit);
+        lyricsContributorView.setText(contributorCreditText(contributors, visibleContributorLimit, hasLinkedContributor));
         lyricsContributorView.setVisibility(View.VISIBLE);
-
-        LyricsResult.SyncContributor linkedContributor = firstLinkedContributor(contributors);
-        if (linkedContributor == null) {
-            lyricsContributorView.setOnClickListener(null);
+        lyricsContributorView.setOnClickListener(null);
+        if (!hasLinkedContributor) {
+            lyricsContributorView.setMovementMethod(null);
             lyricsContributorView.setClickable(false);
+            lyricsContributorView.setLinksClickable(false);
             lyricsContributorView.setTextColor(Color.argb(92, 255, 255, 255));
             return;
         }
+        lyricsContributorView.setMovementMethod(LinkMovementMethod.getInstance());
+        lyricsContributorView.setHighlightColor(Color.TRANSPARENT);
+        lyricsContributorView.setLinksClickable(true);
         lyricsContributorView.setTextColor(Color.argb(118, 255, 255, 255));
         lyricsContributorView.setClickable(true);
-        lyricsContributorView.setOnClickListener(view -> openSyncContributorProfile(linkedContributor));
+    }
+
+    private SpannableString contributorCreditText(
+            List<LyricsResult.SyncContributor> contributors,
+            int limit,
+            boolean linked
+    ) {
+        String names = contributorNames(contributors, limit);
+        SpannableString text = new SpannableString(uiFormat("lyrics.credit_sync_by_format", names));
+        if (!linked || contributors == null || contributors.isEmpty()) {
+            return text;
+        }
+        int namesStart = text.toString().indexOf(names);
+        if (namesStart < 0) {
+            return text;
+        }
+        int count = Math.min(Math.max(1, limit), contributors.size());
+        int searchFrom = namesStart;
+        for (int index = 0; index < count; index++) {
+            LyricsResult.SyncContributor contributor = contributors.get(index);
+            if (contributor == null || contributor.name.isEmpty()) {
+                continue;
+            }
+            int start = text.toString().indexOf(contributor.name, searchFrom);
+            if (start < 0) {
+                continue;
+            }
+            int end = start + contributor.name.length();
+            if (contributor.profileAvailable && !contributor.userHash.isEmpty()) {
+                text.setSpan(new ClickableSpan() {
+                    @Override
+                    public void onClick(View widget) {
+                        openSyncContributorProfile(contributor);
+                    }
+
+                    @Override
+                    public void updateDrawState(TextPaint ds) {
+                        super.updateDrawState(ds);
+                        ds.setColor(Color.argb(150, 255, 255, 255));
+                        ds.setUnderlineText(false);
+                    }
+                }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            searchFrom = end;
+        }
+        return text;
     }
 
     private String contributorNames(List<LyricsResult.SyncContributor> contributors, int limit) {
@@ -4005,10 +4062,14 @@ public final class MainActivity extends Activity implements
         int count = Math.min(Math.max(1, limit), contributors.size());
         StringBuilder builder = new StringBuilder();
         for (int index = 0; index < count; index++) {
-            if (index > 0) {
+            LyricsResult.SyncContributor contributor = contributors.get(index);
+            if (contributor == null || contributor.name.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
                 builder.append(", ");
             }
-            builder.append(contributors.get(index).name);
+            builder.append(contributor.name);
         }
         if (contributors.size() > count) {
             builder.append(" +").append(contributors.size() - count);
@@ -4016,16 +4077,18 @@ public final class MainActivity extends Activity implements
         return builder.toString();
     }
 
-    private LyricsResult.SyncContributor firstLinkedContributor(List<LyricsResult.SyncContributor> contributors) {
+    private boolean hasLinkedContributor(List<LyricsResult.SyncContributor> contributors, int limit) {
         if (contributors == null) {
-            return null;
+            return false;
         }
-        for (LyricsResult.SyncContributor contributor : contributors) {
+        int count = Math.min(Math.max(1, limit), contributors.size());
+        for (int index = 0; index < count; index++) {
+            LyricsResult.SyncContributor contributor = contributors.get(index);
             if (contributor != null && contributor.profileAvailable && !contributor.userHash.isEmpty()) {
-                return contributor;
+                return true;
             }
         }
-        return null;
+        return false;
     }
 
     private void openSyncContributorProfile(LyricsResult.SyncContributor contributor) {
