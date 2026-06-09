@@ -178,8 +178,8 @@ public final class MainActivity extends Activity implements
     private LinearLayout previewModeButtonsContainer;
     private LinearLayout backgroundModeButtonsContainer;
     private LinearLayout providerButtonsContainer;
-    private LinearLayout uiLanguageButtonsContainer;
-    private LinearLayout outputLanguageButtonsContainer;
+    private TextView uiLanguageSelectButton;
+    private TextView outputLanguageSelectButton;
     private LinearLayout sourceLanguageButtonsContainer;
     private ScrollView settingsScrollView;
     private ScrollView logScrollView;
@@ -1805,20 +1805,20 @@ public final class MainActivity extends Activity implements
         settingsLyricsPage.addView(sectionTitle(ui("section.language")));
         settingsLyricsPage.addView(sectionDescription(ui("section.language_desc")), topMargin(matchWrap(), dp(8)));
 
-        uiLanguageButtonsContainer = new LinearLayout(this);
-        uiLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        uiLanguageSelectButton = settingsSelectButton("");
+        uiLanguageSelectButton.setOnClickListener(view -> showSettingsUiLanguagePopup(uiLanguageSelectButton));
         settingsLyricsPage.addView(settingGroup(
                 ui("setting.ui_language"),
                 ui("setting.ui_language_desc"),
-                uiLanguageButtonsContainer
+                uiLanguageSelectButton
         ), topMargin(matchWrap(), dp(12)));
 
-        outputLanguageButtonsContainer = new LinearLayout(this);
-        outputLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        outputLanguageSelectButton = settingsSelectButton("");
+        outputLanguageSelectButton.setOnClickListener(view -> showSettingsOutputLanguagePopup(outputLanguageSelectButton));
         settingsLyricsPage.addView(settingGroup(
                 ui("setting.pronunciation_language"),
                 ui("setting.pronunciation_language_desc"),
-                outputLanguageButtonsContainer
+                outputLanguageSelectButton
         ), topMargin(matchWrap(), dp(12)));
 
         metadataTranslationSwitch = settingSwitch(
@@ -2482,16 +2482,34 @@ public final class MainActivity extends Activity implements
         if (anchor == null || aiLyricsSettings == null) {
             return;
         }
+        String selected = aiLyricsSettings.snapshot().uiLang;
+        showLanguageSelectPopup(anchor, uiLanguageChoices(), selected, code -> {
+            aiLyricsSettings.setUiLang(code);
+            applyUiLanguageChange();
+            showSavedToast(ui("toast.ui_language_saved"));
+        });
+    }
+
+    private void showLanguageSelectPopup(
+            View anchor,
+            List<LanguageChoice> choices,
+            String selected,
+            ChoiceHandler handler
+    ) {
+        if (anchor == null || choices == null || choices.isEmpty() || handler == null) {
+            return;
+        }
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(8), dp(8), dp(8), dp(8));
         content.setBackground(roundDrawable(Color.rgb(30, 32, 42), dp(14)));
 
-        String selected = aiLyricsSettings.snapshot().uiLang;
+        int visibleCount = Math.min(7, choices.size());
         PopupWindow popup = new PopupWindow(
                 content,
                 Math.max(anchor.getWidth(), dp(220)),
-                Math.min(dp(320), dp(44) * Math.min(7, AppI18n.UI_LANGUAGES.size()) + dp(16)),
+                Math.min(dp(320), dp(44) * visibleCount + dp(16)),
                 true
         );
         popup.setOutsideTouchable(true);
@@ -2513,9 +2531,9 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
-            boolean active = sameChoice(language.code, selected);
-            TextView item = label(language.nativeName + " · " + language.name, 13f,
+        for (LanguageChoice choice : choices) {
+            boolean active = sameChoice(choice.code, selected);
+            TextView item = label(choice.label, 13f,
                     active ? Color.rgb(12, 13, 17) : Color.WHITE,
                     AppFonts.semiBold(this));
             item.setGravity(Gravity.CENTER_VERTICAL);
@@ -2527,10 +2545,8 @@ public final class MainActivity extends Activity implements
                     dp(10)
             ));
             item.setOnClickListener(view -> {
-                aiLyricsSettings.setUiLang(language.code);
                 popup.dismiss();
-                applyUiLanguageChange();
-                showSavedToast(ui("toast.ui_language_saved"));
+                handler.onChoice(choice.code);
             });
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2635,7 +2651,7 @@ public final class MainActivity extends Activity implements
     private List<LanguageChoice> uiLanguageChoices() {
         List<LanguageChoice> choices = new ArrayList<>();
         for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
-            choices.add(new LanguageChoice(language.code, language.nativeName));
+            choices.add(new LanguageChoice(language.code, language.nativeName + " · " + language.name));
         }
         return choices;
     }
@@ -3119,18 +3135,25 @@ public final class MainActivity extends Activity implements
         if (snapshot == null) {
             return;
         }
-        rebuildUiLanguageButtons(snapshot.uiLang);
-        rebuildOutputLanguageButtons(snapshot.outputLang);
+        updateUiLanguageSelect(snapshot.uiLang);
+        updateOutputLanguageSelect(snapshot.outputLang);
         rebuildPreviewModeButtons(snapshot.previewItems);
         rebuildSourceLanguageButtons();
         populateSelectedLanguageRule(snapshot);
     }
 
-    private void rebuildUiLanguageButtons(String selectedLang) {
-        if (uiLanguageButtonsContainer == null) {
+    private void updateUiLanguageSelect(String selectedLang) {
+        if (uiLanguageSelectButton == null) {
             return;
         }
-        rebuildChoiceButtons(uiLanguageButtonsContainer, uiLanguageChoices(), selectedLang, code -> {
+        uiLanguageSelectButton.setText(AppI18n.label(selectedLang) + "  v");
+    }
+
+    private void showSettingsUiLanguagePopup(View anchor) {
+        if (anchor == null || aiLyricsSettings == null) {
+            return;
+        }
+        showLanguageSelectPopup(anchor, uiLanguageChoices(), aiLyricsSettings.snapshot().uiLang, code -> {
             aiLyricsSettings.setUiLang(code);
             applyUiLanguageChange();
             AiLyricsSettings.Snapshot nextSnapshot = aiLyricsSettings.snapshot();
@@ -3145,16 +3168,18 @@ public final class MainActivity extends Activity implements
         });
     }
 
-    private void rebuildOutputLanguageButtons(String selectedLang) {
-        if (outputLanguageButtonsContainer == null) {
+    private void updateOutputLanguageSelect(String selectedLang) {
+        if (outputLanguageSelectButton == null) {
             return;
         }
-        List<LanguageChoice> choices = new ArrayList<>();
-        choices.add(new LanguageChoice(AiLyricsSettings.OUTPUT_LANG_SAME_UI, ui("label.same_as_ui_language")));
-        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
-            choices.add(new LanguageChoice(language.code, language.nativeName));
+        outputLanguageSelectButton.setText(outputLanguageSelectLabel(selectedLang) + "  v");
+    }
+
+    private void showSettingsOutputLanguagePopup(View anchor) {
+        if (anchor == null || aiLyricsSettings == null) {
+            return;
         }
-        rebuildChoiceButtons(outputLanguageButtonsContainer, choices, selectedLang, code -> {
+        showLanguageSelectPopup(anchor, outputLanguageChoices(), aiLyricsSettings.snapshot().outputLang, code -> {
             aiLyricsSettings.setOutputLang(code);
             rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
             translatedTrackTitle = "";
@@ -3164,6 +3189,22 @@ public final class MainActivity extends Activity implements
             requestAiLyrics(true);
             showSavedToast(ui("toast.pronunciation_language_saved"));
         });
+    }
+
+    private List<LanguageChoice> outputLanguageChoices() {
+        List<LanguageChoice> choices = new ArrayList<>();
+        choices.add(new LanguageChoice(AiLyricsSettings.OUTPUT_LANG_SAME_UI, ui("label.same_as_ui_language")));
+        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
+            choices.add(new LanguageChoice(language.code, language.nativeName + " · " + language.name));
+        }
+        return choices;
+    }
+
+    private String outputLanguageSelectLabel(String selectedLang) {
+        if (AiLyricsSettings.OUTPUT_LANG_SAME_UI.equalsIgnoreCase(selectedLang)) {
+            return ui("label.same_as_ui_language");
+        }
+        return AiLyricsSettings.languageLabel(selectedLang);
     }
 
     private void rebuildPreviewModeButtons(int selectedItems) {
@@ -3686,6 +3727,17 @@ public final class MainActivity extends Activity implements
                 selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
                 dp(11)
         ));
+        return button;
+    }
+
+    private TextView settingsSelectButton(String text) {
+        TextView button = label(text, 13f, Color.WHITE, AppFonts.semiBold(this));
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setMinHeight(dp(42));
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setBackground(roundDrawable(Color.argb(44, 255, 255, 255), dp(12)));
         return button;
     }
 
