@@ -249,6 +249,7 @@ public final class MainActivity extends Activity implements
     private boolean inAppBrowserVisible;
     private String inAppBrowserInitialUrl = "";
     private long lastBackPressElapsedMs;
+    private float pageDragStartX;
     private float pageDragStartY;
     private float pageDragStartTranslationY;
     private boolean pageDragging;
@@ -1581,6 +1582,7 @@ public final class MainActivity extends Activity implements
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
+        attachInAppBrowserContentSwipe(inAppBrowserWebView);
         inAppBrowserWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -6780,6 +6782,68 @@ public final class MainActivity extends Activity implements
                     return true;
                 default:
                     return true;
+            }
+        });
+    }
+
+    private void attachInAppBrowserContentSwipe(WebView view) {
+        view.setOnTouchListener((target, event) -> {
+            if (pageVelocityTracker != null) {
+                pageVelocityTracker.addMovement(event);
+            }
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    recyclePageVelocityTracker();
+                    pageVelocityTracker = VelocityTracker.obtain();
+                    pageVelocityTracker.addMovement(event);
+                    pageDragStartX = event.getRawX();
+                    pageDragStartY = event.getRawY();
+                    pageDragStartTranslationY = inAppBrowserPage == null ? 0f : inAppBrowserPage.getTranslationY();
+                    pageDragging = false;
+                    if (inAppBrowserPage != null) {
+                        inAppBrowserPage.animate().cancel();
+                    }
+                    return false;
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = event.getRawX() - pageDragStartX;
+                    float dy = event.getRawY() - pageDragStartY;
+                    if (!pageDragging) {
+                        boolean downwardIntent = dy > dp(14) && dy > Math.abs(dx) * 1.2f;
+                        if (!inAppBrowserVisible || !downwardIntent || target.canScrollVertically(-1)) {
+                            return false;
+                        }
+                        pageDragging = true;
+                        if (target.getParent() != null) {
+                            target.getParent().requestDisallowInterceptTouchEvent(true);
+                        }
+                    }
+                    applyInAppBrowserDragTranslation(Math.max(0f, pageDragStartTranslationY + dy));
+                    return true;
+                }
+                case MotionEvent.ACTION_UP: {
+                    if (target.getParent() != null) {
+                        target.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    if (!pageDragging) {
+                        recyclePageVelocityTracker();
+                        return false;
+                    }
+                    settleInAppBrowserDrag(pageVelocityY());
+                    recyclePageVelocityTracker();
+                    return true;
+                }
+                case MotionEvent.ACTION_CANCEL:
+                    if (target.getParent() != null) {
+                        target.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    if (pageDragging && inAppBrowserVisible) {
+                        settleInAppBrowserDrag(0f);
+                    }
+                    pageDragging = false;
+                    recyclePageVelocityTracker();
+                    return false;
+                default:
+                    return false;
             }
         });
     }
