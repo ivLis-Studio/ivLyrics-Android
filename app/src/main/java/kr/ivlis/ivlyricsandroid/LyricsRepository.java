@@ -562,6 +562,7 @@ final class LyricsRepository {
 
         for (LrclibCandidate candidate : candidates) {
             decorateCandidateForSyncData(candidate, syncData);
+            candidate.albumMatchScore = 0.0;
             candidate.score = scoreCandidate(track, candidate, syncData);
             if (spotifySearchTrack != null) {
                 candidate.score = Math.max(candidate.score, scoreCandidate(spotifySearchTrack, candidate, syncData));
@@ -577,6 +578,7 @@ final class LyricsRepository {
             LrclibCandidate candidate = candidates.get(index);
             log.write("  #" + (index + 1)
                     + " score=" + fmt(candidate.score)
+                    + " album=" + fmt(candidate.albumMatchScore)
                     + " sourceScore=" + candidate.syncSourceMatchScore
                     + " syncLineExact=" + candidate.syncLineExactMatch
                     + " preferred=" + candidate.preferredLyricsSource
@@ -1483,11 +1485,17 @@ final class LyricsRepository {
     private double scoreCandidate(TrackSnapshot track, LrclibCandidate candidate, SyncDataResult syncData) {
         double titleScore = titleScore(track.title, candidate.trackName);
         double artistScore = bestArtistScore(track.artist, candidate.artistName);
+        double albumScore = albumScore(track.album, candidate.albumName);
         double durationScore = durationScore(track.durationMs, candidate.durationSeconds);
         double lyricsScore = candidate.useSyncedLyrics()
                 ? 0.8
                 : (candidate.plainLyrics != null && !candidate.plainLyrics.trim().isEmpty() ? 0.25 : 0.0);
-        double score = (titleScore * 4.0) + (artistScore * 3.0) + (durationScore * 2.0) + lyricsScore;
+        candidate.albumMatchScore = Math.max(candidate.albumMatchScore, albumScore);
+        double score = (titleScore * 4.0)
+                + (artistScore * 3.0)
+                + (albumScore * 1.25)
+                + (durationScore * 2.0)
+                + lyricsScore;
 
         if (track.durationMs > 0 && candidate.durationSeconds > 0) {
             double diff = Math.abs((track.durationMs / 1000.0) - candidate.durationSeconds);
@@ -1964,6 +1972,27 @@ final class LyricsRepository {
         return jaroWinkler(left, right);
     }
 
+    private double albumScore(String expected, String candidate) {
+        String left = normalizeComparable(expected);
+        String right = normalizeComparable(candidate);
+        if (left.isEmpty() || right.isEmpty() || "null".equals(right)) return 0.0;
+        if (left.equals(right)) return 1.0;
+        if (isAlbumExpansion(left, right) || isAlbumExpansion(right, left)) return 0.72;
+
+        double similarity = jaroWinkler(left, right);
+        if (similarity >= 0.92) return 0.55;
+        if (similarity >= 0.84) return 0.25;
+        return 0.0;
+    }
+
+    private boolean isAlbumExpansion(String base, String expanded) {
+        if (base.isEmpty() || expanded.isEmpty() || !expanded.startsWith(base) || expanded.length() == base.length()) {
+            return false;
+        }
+        char next = expanded.charAt(base.length());
+        return Character.isWhitespace(next) || next == '-' || next == ':' || next == '(' || next == '[';
+    }
+
     private double bestArtistScore(String expectedArtists, String candidateArtists) {
         List<String> expected = splitArtists(expectedArtists);
         List<String> candidates = splitArtists(candidateArtists);
@@ -2362,6 +2391,7 @@ final class LyricsRepository {
         boolean syncSourceTextMatch;
         boolean syncSourceLineCountMatch;
         boolean hasOriginalLyricsScript;
+        double albumMatchScore;
 
         LrclibCandidate(
                 long id,
