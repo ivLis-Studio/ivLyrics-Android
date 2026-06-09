@@ -872,16 +872,43 @@ final class AiLyricsRepository {
                         + "Do not output Latin pinyin unless the input itself is a non-pronounceable marker.";
             case "hi":
                 return "Use Devanagari script only for Hindi pronunciation. " + langInfo.phoneticDescription;
+            case "es":
+                return "Use Spanish spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Spanish speakers using the Latin alphabet; do not translate meanings.";
+            case "fr":
+                return "Use French spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for French speakers using the Latin alphabet; do not translate meanings.";
             case "ar":
                 return "Use Arabic script only for Arabic pronunciation. " + langInfo.phoneticDescription;
             case "fa":
                 return "Use Persian script only for Persian pronunciation. " + langInfo.phoneticDescription;
+            case "de":
+                return "Use German spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for German speakers using the Latin alphabet; do not translate meanings.";
             case "ru":
                 return "Use Cyrillic script only for Russian pronunciation. " + langInfo.phoneticDescription;
+            case "sv":
+                return "Use Swedish spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Swedish speakers using the Latin alphabet; do not translate meanings.";
+            case "pt":
+                return "Use Portuguese spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Portuguese speakers using the Latin alphabet; do not translate meanings.";
             case "bn":
                 return "Use Bengali script only for Bengali pronunciation. " + langInfo.phoneticDescription;
+            case "it":
+                return "Use Italian spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Italian speakers using the Latin alphabet; do not translate meanings.";
             case "th":
                 return "Use Thai script only for Thai pronunciation. " + langInfo.phoneticDescription;
+            case "vi":
+                return "Use Vietnamese Quốc Ngữ spelling only for pronunciation guides. "
+                        + "Use Vietnamese diacritics where they help pronunciation; do not translate meanings.";
+            case "id":
+                return "Use Indonesian spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Indonesian speakers using the Latin alphabet; do not translate meanings.";
+            case "ms":
+                return "Use Malay spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Malay speakers using the Latin alphabet; do not translate meanings.";
             default:
                 return "Write pronunciation in " + langInfo.nativeName + " spelling. " + langInfo.phoneticDescription;
         }
@@ -901,16 +928,34 @@ final class AiLyricsRepository {
                 return "Traditional Chinese";
             case "hi":
                 return "Devanagari";
+            case "es":
+                return "Spanish Latin spelling";
+            case "fr":
+                return "French Latin spelling";
             case "ar":
                 return "Arabic script";
             case "fa":
                 return "Persian script";
+            case "de":
+                return "German Latin spelling";
             case "ru":
                 return "Cyrillic";
+            case "sv":
+                return "Swedish Latin spelling";
+            case "pt":
+                return "Portuguese Latin spelling";
             case "bn":
                 return "Bengali script";
+            case "it":
+                return "Italian Latin spelling";
             case "th":
                 return "Thai script";
+            case "vi":
+                return "Vietnamese Quốc Ngữ";
+            case "id":
+                return "Indonesian Latin spelling";
+            case "ms":
+                return "Malay Latin spelling";
             default:
                 return langInfo.name + " pronunciation spelling";
         }
