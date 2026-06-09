@@ -6793,7 +6793,10 @@ public final class MainActivity extends Activity implements
         }
         String theme = isDeviceNightMode() ? "dark" : "light";
         String css = ".login-btn,"
-                + ".credit[href*=\"github.com/ivLis-Studio/ivLyrics\"]{display:none!important;}"
+                + ".credit[href*=\"github.com/ivLis-Studio/ivLyrics\"],"
+                + ".theme-toggle,"
+                + ".topbar .handle,"
+                + ".topbar .handle .dot{display:none!important;}"
                 + ".page{padding-bottom:28px!important;}";
         String js = "(function(){"
                 + "var theme=" + JSONObject.quote(theme) + ";"
