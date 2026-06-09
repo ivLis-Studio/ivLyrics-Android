@@ -804,6 +804,7 @@ public final class MainActivity extends Activity implements
         );
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
+        artworkParams.bottomMargin = dp(8);
         main.addView(artworkView, artworkParams);
 
         main.addView(flexSpacer(0.45f), new LinearLayout.LayoutParams(
@@ -851,7 +852,7 @@ public final class MainActivity extends Activity implements
         );
         progressParams.leftMargin = dp(2);
         progressParams.rightMargin = dp(2);
-        progressParams.topMargin = dp(22);
+        progressParams.topMargin = dp(26);
         main.addView(playerProgressView, progressParams);
 
         LinearLayout times = new LinearLayout(this);
