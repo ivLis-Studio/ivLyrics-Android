@@ -43,6 +43,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewParent;
 import android.view.accessibility.AccessibilityManager;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -405,6 +406,12 @@ public final class MainActivity extends Activity implements
             applySystemBarsForOrientation();
             applyLandscapeControlsAutoHideSetting();
         }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        rebuildContentViewAfterConfigurationChange();
     }
 
     @Override
@@ -906,7 +913,7 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        youtubeBackgroundView = new YouTubeBackgroundView(this);
+        youtubeBackgroundView = reusableYouTubeBackgroundView();
         root.addView(youtubeBackgroundView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -951,6 +958,24 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return root;
+    }
+
+    private YouTubeBackgroundView reusableYouTubeBackgroundView() {
+        if (youtubeBackgroundView == null) {
+            return new YouTubeBackgroundView(this);
+        }
+        detachFromParent(youtubeBackgroundView);
+        return youtubeBackgroundView;
+    }
+
+    private void detachFromParent(View view) {
+        if (view == null) {
+            return;
+        }
+        ViewParent parent = view.getParent();
+        if (parent instanceof ViewGroup) {
+            ((ViewGroup) parent).removeView(view);
+        }
     }
 
     private FrameLayout buildMainPage() {
@@ -3049,6 +3074,57 @@ public final class MainActivity extends Activity implements
             }
             if (wasLyricsVisible) {
                 showLyricsPage(true);
+            }
+        }
+        applyLandscapeControlsAutoHideSetting();
+    }
+
+    private void rebuildContentViewAfterConfigurationChange() {
+        boolean wasSettingsVisible = isSettingsPanelVisible();
+        boolean wasDebugVisible = debugPanel != null && debugPanel.getVisibility() == View.VISIBLE;
+        boolean wasLyricsVisible = lyricsPageVisible;
+        String previousSettingsTab = activeSettingsTab;
+        int previousOnboardingStep = onboardingStep;
+        dismissLyricsMetaTip();
+        cancelLyricsMetaLongPress();
+        destroyInAppBrowserWebView();
+        inAppBrowserVisible = false;
+        inAppBrowserInitialUrl = "";
+
+        setContentView(buildContentView());
+        activeSettingsTab = normalizeSettingsTab(previousSettingsTab);
+        switchSettingsTab(activeSettingsTab);
+        applySystemBarsForOrientation();
+        AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
+        applyKeepScreenOnSetting(settingsSnapshot);
+        applyBackgroundSettings(settingsSnapshot);
+        applyTypographySettings(settingsSnapshot);
+        applySpeakerColorSettings(settingsSnapshot);
+        updatePermissionState();
+        updateArtwork(currentArtworkBitmap, currentArtworkKey);
+        restoreNowPlayingViewsAfterUiLanguageChange();
+        if (currentLyricsResult != null && currentTrack != null && currentTrack.hasUsableMetadata()) {
+            sourceView.setText(currentLyricsResult.providerLabel);
+            statusView.setText(currentLyricsResult.detail);
+        }
+        syncYouTubeBackgroundState();
+
+        if (!isInitialSetupComplete()) {
+            onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, previousOnboardingStep));
+            showOnboardingStep(onboardingStep);
+            updateSpotifySetupGate(false);
+        } else {
+            updateSpotifySetupGate(false);
+            if (wasSettingsVisible) {
+                showSettingsPanel(true);
+            }
+            if (wasDebugVisible && debugPanel != null) {
+                debugPanel.setVisibility(View.VISIBLE);
+            }
+            if (wasLyricsVisible && !isLandscapeLayout()) {
+                showLyricsPage(true);
+            } else if (isLandscapeLayout()) {
+                lyricsPageVisible = false;
             }
         }
         applyLandscapeControlsAutoHideSetting();
