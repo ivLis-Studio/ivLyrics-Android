@@ -335,6 +335,8 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "ivLyrics-Android-ReleaseBot/1.0",
         },
         method="POST",
     )
