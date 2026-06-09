@@ -153,8 +153,7 @@ final class SpotifyShortcutOverlayController {
         view.setContentDescription("Open ivLyrics lyrics");
 
         ImageView icon = new ImageView(context);
-        icon.setImageResource(R.drawable.ic_overlay_music_note);
-        icon.setColorFilter(Color.argb(236, 255, 255, 255));
+        icon.setImageResource(R.drawable.ivlyrics_overlay_symbol);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         view.addView(icon, new FrameLayout.LayoutParams(
                 dp(34),
