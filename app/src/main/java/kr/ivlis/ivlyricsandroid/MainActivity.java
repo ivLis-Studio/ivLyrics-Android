@@ -117,7 +117,7 @@ public final class MainActivity extends Activity implements
     };
     private final List<String> logLines = new ArrayList<>();
     private final Map<String, String> creatorProfileUrlCache = Collections.synchronizedMap(new HashMap<>());
-    private final Map<String, EditText> speakerColorInputs = new LinkedHashMap<>();
+    private final Map<String, TextView> speakerColorValueViews = new LinkedHashMap<>();
     private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private LyricsRepository lyricsRepository;
@@ -209,7 +209,8 @@ public final class MainActivity extends Activity implements
     private EditText baseUrlInput;
     private EditText maxTokensInput;
     private EditText temperatureInput;
-    private EditText backgroundSolidColorInput;
+    private TextView backgroundSolidColorValueView;
+    private View backgroundSolidColorSwatch;
     private EditText spotifyClientIdInput;
     private EditText spotifyClientSecretInput;
     private EditText spotifySetupClientIdInput;
@@ -2100,8 +2101,11 @@ public final class MainActivity extends Activity implements
         });
         settingsDisplayPage.addView(backgroundReduceMotionSwitch, topMargin(matchWrap(), dp(12)));
 
-        backgroundSolidColorInput = settingEditText("#1e3a8a", false, false);
-        settingsDisplayPage.addView(settingField(ui("field.solid_color"), ui("field.solid_color_desc"), backgroundSolidColorInput), topMargin(matchWrap(), dp(12)));
+        settingsDisplayPage.addView(settingGroup(
+                ui("field.solid_color"),
+                ui("field.solid_color_desc"),
+                buildBackgroundSolidColorControl()
+        ), topMargin(matchWrap(), dp(12)));
 
         settingsAiPage.addView(sectionTitle(ui("section.ai_lyrics")));
         settingsAiPage.addView(sectionDescription(ui("section.ai_lyrics_desc")), topMargin(matchWrap(), dp(8)));
@@ -3123,7 +3127,7 @@ public final class MainActivity extends Activity implements
     }
 
     private LinearLayout buildSpeakerColorSettingsList() {
-        speakerColorInputs.clear();
+        speakerColorValueViews.clear();
         speakerColorSwatches.clear();
 
         LinearLayout body = new LinearLayout(this);
@@ -3151,10 +3155,7 @@ public final class MainActivity extends Activity implements
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView resetButton = debugButton(ui("button.reset_colors"));
         resetButton.setOnClickListener(view -> resetSpeakerColorSettingsFromUi());
-        actionRow.addView(resetButton, weightedButtonParams(1f, dp(4)));
-        TextView saveButton = primaryButton(ui("button.apply_colors"));
-        saveButton.setOnClickListener(view -> applySpeakerColorSettingsFromUi(true));
-        actionRow.addView(saveButton, weightedButtonParams(1f, dp(4)));
+        actionRow.addView(resetButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         body.addView(actionRow, topMargin(matchWrap(), dp(14)));
 
         return body;
@@ -3175,35 +3176,146 @@ public final class MainActivity extends Activity implements
         titleParams.leftMargin = dp(10);
         row.addView(title, titleParams);
 
-        EditText input = settingEditText(ui("speaker_color.hex_hint"), false, false);
-        input.setText(value);
-        input.setSelectAllOnFocus(true);
-        input.setOnFocusChangeListener((view, hasFocus) -> {
-            if (!hasFocus) {
-                updateSpeakerColorSwatch(slot.id, textOf(input));
-            }
-        });
-        row.addView(input, new LinearLayout.LayoutParams(dp(104), dp(42)));
-        speakerColorInputs.put(slot.id, input);
+        TextView valueView = colorValueButton(value);
+        row.addView(valueView, new LinearLayout.LayoutParams(dp(104), dp(42)));
+        speakerColorValueViews.put(slot.id, valueView);
+
+        View.OnClickListener pickerListener = view -> showSpeakerColorPicker(slot);
+        row.setOnClickListener(pickerListener);
+        swatch.setOnClickListener(pickerListener);
+        title.setOnClickListener(pickerListener);
+        valueView.setOnClickListener(pickerListener);
         return row;
     }
 
-    private void applySpeakerColorSettingsFromUi(boolean showToast) {
+    private LinearLayout buildBackgroundSolidColorControl() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(2), 0, 0);
+
+        String color = aiLyricsSettings == null
+                ? "#1e3a8a"
+                : aiLyricsSettings.snapshot().background.solidColor;
+        backgroundSolidColorSwatch = new View(this);
+        backgroundSolidColorSwatch.setBackground(roundDrawable(parseColor(color, Color.rgb(30, 58, 138)), dp(10)));
+        row.addView(backgroundSolidColorSwatch, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        TextView label = label(ui("speaker_color.hex_hint"), 12f, Color.argb(160, 255, 255, 255), AppFonts.regular(this));
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelParams.leftMargin = dp(10);
+        row.addView(label, labelParams);
+
+        backgroundSolidColorValueView = colorValueButton(color);
+        row.addView(backgroundSolidColorValueView, new LinearLayout.LayoutParams(dp(112), dp(42)));
+
+        View.OnClickListener pickerListener = view -> showBackgroundSolidColorPicker();
+        row.setOnClickListener(pickerListener);
+        backgroundSolidColorSwatch.setOnClickListener(pickerListener);
+        label.setOnClickListener(pickerListener);
+        backgroundSolidColorValueView.setOnClickListener(pickerListener);
+        return row;
+    }
+
+    private TextView colorValueButton(String color) {
+        TextView value = label(color, 12f, Color.WHITE, AppFonts.semiBold(this));
+        value.setGravity(Gravity.CENTER);
+        value.setMinHeight(dp(42));
+        value.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(9)));
+        value.setPadding(dp(8), 0, dp(8), 0);
+        return value;
+    }
+
+    private void showSpeakerColorPicker(AiLyricsSettings.SpeakerColorSlot slot) {
+        if (aiLyricsSettings == null || slot == null) {
+            return;
+        }
+        String color = aiLyricsSettings.snapshot().speakerColors.hex(slot.id);
+        showColorPickerDialog(
+                speakerColorSlotLabel(slot),
+                color,
+                slot.defaultColorInt(),
+                selectedColor -> saveSpeakerColor(slot, hexColor(selectedColor), true)
+        );
+    }
+
+    private void showBackgroundSolidColorPicker() {
         if (aiLyricsSettings == null) {
             return;
         }
+        String color = aiLyricsSettings.snapshot().background.solidColor;
+        showColorPickerDialog(
+                ui("field.solid_color"),
+                color,
+                Color.rgb(30, 58, 138),
+                selectedColor -> {
+                    aiLyricsSettings.setBackgroundSolidColor(hexColor(selectedColor));
+                    AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                    updateBackgroundSettingsUi(snapshot, false);
+                    applyBackgroundSettings(snapshot);
+                    showSavedToast(ui("toast.background_saved"));
+                }
+        );
+    }
+
+    private void showColorPickerDialog(String title, String initialHex, int fallbackColor, ColorPickedCallback callback) {
+        int initialColor = parseColor(initialHex, fallbackColor);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(14), dp(18), dp(6));
+
+        ColorPickerView picker = new ColorPickerView(this);
+        picker.setColor(initialColor);
+        content.addView(picker, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(286)));
+
+        LinearLayout previewRow = new LinearLayout(this);
+        previewRow.setOrientation(LinearLayout.HORIZONTAL);
+        previewRow.setGravity(Gravity.CENTER_VERTICAL);
+        View swatch = new View(this);
+        swatch.setBackground(roundDrawable(initialColor, dp(10)));
+        previewRow.addView(swatch, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        TextView value = colorValueButton(hexColor(initialColor));
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        valueParams.leftMargin = dp(10);
+        previewRow.addView(value, valueParams);
+        content.addView(previewRow, topMargin(matchWrap(), dp(12)));
+
+        picker.setOnColorChangedListener(color -> {
+            swatch.setBackground(roundDrawable(color, dp(10)));
+            value.setText(hexColor(color));
+        });
+
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(content)
+                .setNegativeButton(ui("button.close"), null)
+                .setPositiveButton(ui("button.apply_colors"), (dialogInterface, which) -> {
+                    if (callback != null) {
+                        callback.onColorPicked(picker.getColor());
+                    }
+                })
+                .create();
+        dialog.setOnShowListener(dialogInterface -> {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.rgb(37, 99, 235));
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.rgb(84, 91, 110));
+        });
+        dialog.show();
+    }
+
+    private interface ColorPickedCallback {
+        void onColorPicked(int color);
+    }
+
+    private void saveSpeakerColor(AiLyricsSettings.SpeakerColorSlot changedSlot, String color, boolean showToast) {
+        if (aiLyricsSettings == null || changedSlot == null) {
+            return;
+        }
+        AiLyricsSettings.Snapshot current = aiLyricsSettings.snapshot();
         Map<String, String> colors = new LinkedHashMap<>();
         for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
-            EditText input = speakerColorInputs.get(slot.id);
-            String value = input == null ? "" : textOf(input);
-            if (value.isEmpty()) {
-                value = slot.defaultColor;
-            }
-            if (!AiLyricsSettings.isHexColor(value)) {
-                showSavedToast(uiFormat("toast.invalid_color_format", speakerColorSlotLabel(slot)));
-                return;
-            }
-            colors.put(slot.id, value);
+            String value = slot.id.equals(changedSlot.id) ? color : current.speakerColors.hex(slot.id);
+            colors.put(slot.id, AiLyricsSettings.isHexColor(value) ? value : slot.defaultColor);
         }
         aiLyricsSettings.setSpeakerColors(colors);
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
@@ -3231,9 +3343,9 @@ public final class MainActivity extends Activity implements
                 : snapshot.speakerColors;
         for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
             String color = settings.hex(slot.id);
-            EditText input = speakerColorInputs.get(slot.id);
-            if (input != null && !input.hasFocus()) {
-                input.setText(color);
+            TextView valueView = speakerColorValueViews.get(slot.id);
+            if (valueView != null) {
+                valueView.setText(color);
             }
             updateSpeakerColorSwatch(slot.id, color);
         }
@@ -3286,6 +3398,10 @@ public final class MainActivity extends Activity implements
         } catch (Exception ignored) {
             return fallback;
         }
+    }
+
+    private String hexColor(int color) {
+        return String.format(Locale.ROOT, "#%06x", color & 0x00ffffff);
     }
 
     private LinearLayout buildTypographySlotControl(AiLyricsSettings.TypographySlot slot) {
@@ -3700,8 +3816,11 @@ public final class MainActivity extends Activity implements
         if (backgroundReduceMotionSwitch != null) {
             backgroundReduceMotionSwitch.setChecked(background.reduceMotion);
         }
-        if (backgroundSolidColorInput != null && !backgroundSolidColorInput.hasFocus()) {
-            backgroundSolidColorInput.setText(background.solidColor);
+        if (backgroundSolidColorValueView != null) {
+            backgroundSolidColorValueView.setText(background.solidColor);
+        }
+        if (backgroundSolidColorSwatch != null) {
+            backgroundSolidColorSwatch.setBackground(roundDrawable(parseColor(background.solidColor, Color.rgb(30, 58, 138)), dp(10)));
         }
         suppressSettingsEvents = false;
         if (backgroundBrightnessValueView != null) {
@@ -4560,7 +4679,6 @@ public final class MainActivity extends Activity implements
         aiLyricsSettings.setBaseUrl(textOf(baseUrlInput));
         aiLyricsSettings.setMaxTokens(parseInt(textOf(maxTokensInput), 16000));
         aiLyricsSettings.setTemperature(parseFloat(textOf(temperatureInput), 0.3f));
-        aiLyricsSettings.setBackgroundSolidColor(textOf(backgroundSolidColorInput));
         applyBackgroundSettings(aiLyricsSettings.snapshot());
         if (updateStatus && aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(ui("toast.settings_saved"));

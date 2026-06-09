@@ -1461,45 +1461,45 @@ final class AppI18n {
     private static String[] speakerColorStrings(String lang) {
         switch (normalize(lang)) {
             case "ko":
-                return speakerColorStringsValues("보컬 색상", "normal, duet, male, female 보컬 색상을 HEX 값으로 조절합니다.", "Normal", "Duet", "Male", "Female", "HEX 색상", "색상 저장", "기본값으로", "보컬 색상 저장됨", "보컬 색상 기본값 적용됨", "%s 색상 형식이 올바르지 않습니다.");
+                return speakerColorStringsValues("보컬 색상", "normal, duet, male, female 보컬 색상을 색상 선택기로 조절합니다.", "Normal", "Duet", "Male", "Female", "선택 색상", "색상 저장", "기본값으로", "보컬 색상 저장됨", "보컬 색상 기본값 적용됨", "%s 색상 형식이 올바르지 않습니다.");
             case "zh-CN":
-                return speakerColorStringsValues("人声颜色", "用 HEX 值调整 normal、duet、male、female 的歌词颜色。", "普通", "合唱", "男声", "女声", "HEX 颜色", "保存颜色", "恢复默认", "人声颜色已保存", "人声颜色已恢复默认", "%s 的颜色格式不正确。");
+                return speakerColorStringsValues("人声颜色", "使用颜色选择器调整 normal、duet、male、female 的歌词颜色。", "普通", "合唱", "男声", "女声", "已选颜色", "保存颜色", "恢复默认", "人声颜色已保存", "人声颜色已恢复默认", "%s 的颜色格式不正确。");
             case "zh-TW":
-                return speakerColorStringsValues("人聲顏色", "用 HEX 值調整 normal、duet、male、female 的歌詞顏色。", "一般", "合唱", "男聲", "女聲", "HEX 色彩", "儲存色彩", "恢復預設", "人聲色彩已儲存", "人聲色彩已恢復預設", "%s 的色彩格式不正確。");
+                return speakerColorStringsValues("人聲顏色", "使用色彩選擇器調整 normal、duet、male、female 的歌詞顏色。", "一般", "合唱", "男聲", "女聲", "已選色彩", "儲存色彩", "恢復預設", "人聲色彩已儲存", "人聲色彩已恢復預設", "%s 的色彩格式不正確。");
             case "ja":
-                return speakerColorStringsValues("ボーカルカラー", "normal、duet、male、female の歌詞色を HEX 値で調整します。", "Normal", "Duet", "Male", "Female", "HEX カラー", "色を保存", "初期値に戻す", "ボーカルカラーを保存しました", "ボーカルカラーを初期値に戻しました", "%s の色形式が正しくありません。");
+                return speakerColorStringsValues("ボーカルカラー", "normal、duet、male、female の歌詞色をカラーピッカーで調整します。", "Normal", "Duet", "Male", "Female", "選択色", "色を保存", "初期値に戻す", "ボーカルカラーを保存しました", "ボーカルカラーを初期値に戻しました", "%s の色形式が正しくありません。");
             case "hi":
-                return speakerColorStringsValues("वोकल रंग", "normal, duet, male, female गीत रंगों को HEX मानों से बदलें।", "Normal", "Duet", "Male", "Female", "HEX रंग", "रंग सहेजें", "डिफॉल्ट", "वोकल रंग सहेजे गए", "वोकल रंग डिफॉल्ट पर लौटे", "%s रंग प्रारूप सही नहीं है।");
+                return speakerColorStringsValues("वोकल रंग", "normal, duet, male, female गीत रंगों को रंग चयनकर्ता से बदलें।", "Normal", "Duet", "Male", "Female", "चुना गया रंग", "रंग सहेजें", "डिफॉल्ट", "वोकल रंग सहेजे गए", "वोकल रंग डिफॉल्ट पर लौटे", "%s रंग प्रारूप सही नहीं है।");
             case "es":
-                return speakerColorStringsValues("Colores vocales", "Ajusta los colores normal, duet, male y female con valores HEX.", "Normal", "Dueto", "Masculino", "Femenino", "Color HEX", "Guardar colores", "Restablecer", "Colores vocales guardados", "Colores vocales restablecidos", "El formato de color de %s no es valido.");
+                return speakerColorStringsValues("Colores vocales", "Ajusta los colores normal, duet, male y female con un selector de color.", "Normal", "Dueto", "Masculino", "Femenino", "Color elegido", "Guardar colores", "Restablecer", "Colores vocales guardados", "Colores vocales restablecidos", "El formato de color de %s no es valido.");
             case "fr":
-                return speakerColorStringsValues("Couleurs vocales", "Reglez les couleurs normal, duet, male et female avec des valeurs HEX.", "Normal", "Duo", "Homme", "Femme", "Couleur HEX", "Enregistrer", "Reinitialiser", "Couleurs vocales enregistrees", "Couleurs vocales reinitialisees", "Le format de couleur de %s est invalide.");
+                return speakerColorStringsValues("Couleurs vocales", "Reglez les couleurs normal, duet, male et female avec un selecteur de couleur.", "Normal", "Duo", "Homme", "Femme", "Couleur choisie", "Enregistrer", "Reinitialiser", "Couleurs vocales enregistrees", "Couleurs vocales reinitialisees", "Le format de couleur de %s est invalide.");
             case "ar":
-                return speakerColorStringsValues("ألوان الأصوات", "اضبط ألوان normal وduet وmale وfemale بقيم HEX.", "Normal", "Duet", "Male", "Female", "لون HEX", "حفظ الألوان", "إعادة الضبط", "تم حفظ ألوان الأصوات", "تمت إعادة ألوان الأصوات", "تنسيق لون %s غير صحيح.");
+                return speakerColorStringsValues("ألوان الأصوات", "اضبط ألوان normal وduet وmale وfemale باستخدام منتقي الألوان.", "Normal", "Duet", "Male", "Female", "اللون المحدد", "حفظ الألوان", "إعادة الضبط", "تم حفظ ألوان الأصوات", "تمت إعادة ألوان الأصوات", "تنسيق لون %s غير صحيح.");
             case "fa":
-                return speakerColorStringsValues("رنگ‌های وکال", "رنگ normal، duet، male و female را با مقدار HEX تنظیم کنید.", "Normal", "Duet", "Male", "Female", "رنگ HEX", "ذخیره رنگ‌ها", "بازنشانی", "رنگ‌های وکال ذخیره شد", "رنگ‌های وکال بازنشانی شد", "قالب رنگ %s درست نیست.");
+                return speakerColorStringsValues("رنگ‌های وکال", "رنگ normal، duet، male و female را با انتخابگر رنگ تنظیم کنید.", "Normal", "Duet", "Male", "Female", "رنگ انتخاب‌شده", "ذخیره رنگ‌ها", "بازنشانی", "رنگ‌های وکال ذخیره شد", "رنگ‌های وکال بازنشانی شد", "قالب رنگ %s درست نیست.");
             case "de":
-                return speakerColorStringsValues("Vokal-Farben", "Passe normal, duet, male und female Farben mit HEX-Werten an.", "Normal", "Duett", "Maennlich", "Weiblich", "HEX-Farbe", "Farben speichern", "Zuruecksetzen", "Vokal-Farben gespeichert", "Vokal-Farben zurueckgesetzt", "Das Farbformat von %s ist ungueltig.");
+                return speakerColorStringsValues("Vokal-Farben", "Passe normal, duet, male und female Farben mit einem Farbauswahler an.", "Normal", "Duett", "Maennlich", "Weiblich", "Ausgewahlte Farbe", "Farben speichern", "Zuruecksetzen", "Vokal-Farben gespeichert", "Vokal-Farben zurueckgesetzt", "Das Farbformat von %s ist ungueltig.");
             case "ru":
-                return speakerColorStringsValues("Цвета вокала", "Настройте цвета normal, duet, male и female через HEX.", "Normal", "Duet", "Male", "Female", "HEX-цвет", "Сохранить цвета", "Сбросить", "Цвета вокала сохранены", "Цвета вокала сброшены", "Неверный формат цвета для %s.");
+                return speakerColorStringsValues("Цвета вокала", "Настройте цвета normal, duet, male и female через выбор цвета.", "Normal", "Duet", "Male", "Female", "Выбранный цвет", "Сохранить цвета", "Сбросить", "Цвета вокала сохранены", "Цвета вокала сброшены", "Неверный формат цвета для %s.");
             case "sv":
-                return speakerColorStringsValues("Vokalfarger", "Justera normal, duet, male och female med HEX-varden.", "Normal", "Duett", "Manlig", "Kvinnlig", "HEX-farg", "Spara farger", "Aterstall", "Vokalfarger sparade", "Vokalfarger aterstallda", "Fargformatet for %s ar ogiltigt.");
+                return speakerColorStringsValues("Vokalfarger", "Justera normal, duet, male och female med en fargvaljare.", "Normal", "Duett", "Manlig", "Kvinnlig", "Vald farg", "Spara farger", "Aterstall", "Vokalfarger sparade", "Vokalfarger aterstallda", "Fargformatet for %s ar ogiltigt.");
             case "pt":
-                return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, duet, male e female com valores HEX.", "Normal", "Dueto", "Masculino", "Feminino", "Cor HEX", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s e invalido.");
+                return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, duet, male e female com um seletor de cor.", "Normal", "Dueto", "Masculino", "Feminino", "Cor escolhida", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s e invalido.");
             case "bn":
-                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্স রঙ HEX মান দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "HEX রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
+                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্স রঙ রঙ নির্বাচনকারী দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "নির্বাচিত রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
             case "it":
-                return speakerColorStringsValues("Colori vocali", "Regola i colori normal, duet, male e female con valori HEX.", "Normal", "Duetto", "Maschile", "Femminile", "Colore HEX", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non e valido.");
+                return speakerColorStringsValues("Colori vocali", "Regola i colori normal, duet, male e female con un selettore colore.", "Normal", "Duetto", "Maschile", "Femminile", "Colore scelto", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non e valido.");
             case "th":
-                return speakerColorStringsValues("สีเสียงร้อง", "ปรับสี normal, duet, male และ female ด้วยค่า HEX", "Normal", "Duet", "Male", "Female", "สี HEX", "บันทึกสี", "รีเซ็ต", "บันทึกสีเสียงร้องแล้ว", "รีเซ็ตสีเสียงร้องแล้ว", "รูปแบบสีของ %s ไม่ถูกต้อง");
+                return speakerColorStringsValues("สีเสียงร้อง", "ปรับสี normal, duet, male และ female ด้วยตัวเลือกสี", "Normal", "Duet", "Male", "Female", "สีที่เลือก", "บันทึกสี", "รีเซ็ต", "บันทึกสีเสียงร้องแล้ว", "รีเซ็ตสีเสียงร้องแล้ว", "รูปแบบสีของ %s ไม่ถูกต้อง");
             case "vi":
-                return speakerColorStringsValues("Mau giong hat", "Chinh mau normal, duet, male va female bang gia tri HEX.", "Normal", "Duet", "Male", "Female", "Mau HEX", "Luu mau", "Dat lai", "Da luu mau giong hat", "Da dat lai mau giong hat", "Dinh dang mau cua %s khong hop le.");
+                return speakerColorStringsValues("Mau giong hat", "Chinh mau normal, duet, male va female bang bang chon mau.", "Normal", "Duet", "Male", "Female", "Mau da chon", "Luu mau", "Dat lai", "Da luu mau giong hat", "Da dat lai mau giong hat", "Dinh dang mau cua %s khong hop le.");
             case "id":
-                return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, male, dan female dengan nilai HEX.", "Normal", "Duet", "Male", "Female", "Warna HEX", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
+                return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, male, dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna terpilih", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
             case "ms":
-                return speakerColorStringsValues("Warna vokal", "Laraskan warna normal, duet, male dan female dengan nilai HEX.", "Normal", "Duet", "Male", "Female", "Warna HEX", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
+                return speakerColorStringsValues("Warna vokal", "Laraskan warna normal, duet, male dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna dipilih", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
             default:
-                return speakerColorStringsValues("Vocal Colors", "Customize normal, duet, male, and female lyric colors with HEX values.", "Normal", "Duet", "Male", "Female", "HEX color", "Apply colors", "Reset", "Vocal colors saved", "Vocal colors reset", "%s color format is invalid.");
+                return speakerColorStringsValues("Vocal Colors", "Customize normal, duet, male, and female lyric colors with a color picker.", "Normal", "Duet", "Male", "Female", "Selected color", "Apply colors", "Reset", "Vocal colors saved", "Vocal colors reset", "%s color format is invalid.");
         }
     }
 
@@ -1666,7 +1666,7 @@ final class AppI18n {
                 "field.max_tokens", "최대 토큰",
                 "field.temperature", "창의성",
                 "field.solid_color", "단색 배경 색상",
-                "field.solid_color_desc", "단색 모드에서 사용할 HEX 색상입니다.",
+                "field.solid_color_desc", "단색 모드에서 사용할 색상을 선택합니다.",
                 "field.spotify_client_id_desc", "Spotify 앱의 Client ID입니다.",
                 "field.spotify_client_secret_desc", "Spotify 앱의 Client Secret입니다.",
                 "preview.none", "표시안함",
@@ -1900,7 +1900,7 @@ final class AppI18n {
                 "field.max_tokens", "Max tokens",
                 "field.temperature", "Creativity",
                 "field.solid_color", "Solid background color",
-                "field.solid_color_desc", "HEX color used in solid background mode.",
+                "field.solid_color_desc", "Choose the color used in solid background mode.",
                 "field.spotify_client_id_desc", "Client ID of your Spotify app.",
                 "field.spotify_client_secret_desc", "Client Secret of your Spotify app.",
                 "preview.none", "Hidden",
@@ -2134,7 +2134,7 @@ final class AppI18n {
                 "field.max_tokens", "最大令牌",
                 "field.temperature", "创意度",
                 "field.solid_color", "纯色背景颜色",
-                "field.solid_color_desc", "纯色背景模式中使用的十六进制颜色。",
+                "field.solid_color_desc", "选择纯色背景模式中使用的颜色。",
                 "field.spotify_client_id_desc", "Spotify 应用的 Client ID。",
                 "field.spotify_client_secret_desc", "Spotify 应用的 Client Secret。",
                 "preview.none", "不显示",
@@ -2368,7 +2368,7 @@ final class AppI18n {
                 "field.max_tokens", "最大標記",
                 "field.temperature", "創造力",
                 "field.solid_color", "純色背景色",
-                "field.solid_color_desc", "純色背景模式中使用的十六進位顏色。",
+                "field.solid_color_desc", "選擇純色背景模式中使用的色彩。",
                 "field.spotify_client_id_desc", "Spotify 應用程式的 Client ID。",
                 "field.spotify_client_secret_desc", "Spotify 應用程式的 Client Secret。",
                 "preview.none", "隱藏",
@@ -2602,7 +2602,7 @@ final class AppI18n {
                 "field.max_tokens", "最大トークン",
                 "field.temperature", "創造性",
                 "field.solid_color", "単色背景の色",
-                "field.solid_color_desc", "単色背景モードで使用される 16 進数カラー。",
+                "field.solid_color_desc", "単色背景モードで使う色を選択します。",
                 "field.spotify_client_id_desc", "SpotifyアプリのClient IDです。",
                 "field.spotify_client_secret_desc", "SpotifyアプリのClient Secretです。",
                 "preview.none", "非表示",
@@ -2836,7 +2836,7 @@ final class AppI18n {
                 "field.max_tokens", "अधिकतम टोकन",
                 "field.temperature", "रचनात्मकता",
                 "field.solid_color", "ठोस पृष्ठभूमि रंग",
-                "field.solid_color_desc", "ठोस पृष्ठभूमि मोड में उपयोग होने वाला HEX रंग।",
+                "field.solid_color_desc", "ठोस पृष्ठभूमि मोड में उपयोग होने वाला रंग चुनें।",
                 "field.spotify_client_id_desc", "Client ID। आपके Spotify ऐप का",
                 "field.spotify_client_secret_desc", "Client Secret।",
                 "preview.none", "छिपा हुआ",
@@ -3070,7 +3070,7 @@ final class AppI18n {
                 "field.max_tokens", "Tokens máximos",
                 "field.temperature", "Creatividad",
                 "field.solid_color", "Color de fondo sólido",
-                "field.solid_color_desc", "Color HEX utilizado en modo de fondo sólido.",
+                "field.solid_color_desc", "Elige el color utilizado en el modo de fondo sólido.",
                 "field.spotify_client_id_desc", "Client ID de su aplicación Spotify.",
                 "field.spotify_client_secret_desc", "Client Secret de su aplicación Spotify.",
                 "preview.none", "Oculto",
@@ -3304,7 +3304,7 @@ final class AppI18n {
                 "field.max_tokens", "Nombre maximum de jetons",
                 "field.temperature", "Créativité",
                 "field.solid_color", "Couleur de fond uni",
-                "field.solid_color_desc", "Couleur HEX utilisée en mode arrière-plan uni.",
+                "field.solid_color_desc", "Choisissez la couleur utilisée en mode arrière-plan uni.",
                 "field.spotify_client_id_desc", "Client ID de votre application Spotify.",
                 "field.spotify_client_secret_desc", "Client Secret de votre application Spotify.",
                 "preview.none", "Caché",
@@ -3538,7 +3538,7 @@ final class AppI18n {
                 "field.max_tokens", "الحد الأقصى من الرموز المميزة",
                 "field.temperature", "الإبداع",
                 "field.solid_color", "لون الخلفية الصلبة",
-                "field.solid_color_desc", "لون HEX يستخدم في وضع الخلفية الصلبة.",
+                "field.solid_color_desc", "اختر اللون المستخدم في وضع الخلفية الصلبة.",
                 "field.spotify_client_id_desc", "Client ID لتطبيق Spotify الخاص بك.",
                 "field.spotify_client_secret_desc", "Client Secret لتطبيق Spotify الخاص بك.",
                 "preview.none", "مخفي",
@@ -3772,7 +3772,7 @@ final class AppI18n {
                 "field.max_tokens", "Max",
                 "field.temperature", "خلاقیت",
                 "field.solid_color", "رنگ پس‌زمینه ثابت",
-                "field.solid_color_desc", "رنگ HEX در حالت پس زمینه جامد استفاده می شود.",
+                "field.solid_color_desc", "رنگ مورد استفاده در حالت پس‌زمینه ثابت را انتخاب کنید.",
                 "field.spotify_client_id_desc", "Client ID برنامه Spotify شما.",
                 "field.spotify_client_secret_desc", "Client Secret برنامه Spotify شما.",
                 "preview.none", "پنهان شده است",
@@ -4006,7 +4006,7 @@ final class AppI18n {
                 "field.max_tokens", "Max. Token",
                 "field.temperature", "Kreativität",
                 "field.solid_color", "Feste Hintergrundfarbe",
-                "field.solid_color_desc", "HEX-Farbe, die im einfarbigen Hintergrundmodus verwendet wird.",
+                "field.solid_color_desc", "Wahlen Sie die Farbe fur den einfarbigen Hintergrundmodus.",
                 "field.spotify_client_id_desc", "Client ID Ihrer Spotify App.",
                 "field.spotify_client_secret_desc", "Client Secret Ihrer Spotify App.",
                 "preview.none", "Versteckt",
@@ -4240,7 +4240,7 @@ final class AppI18n {
                 "field.max_tokens", "Максимальное количество токенов",
                 "field.temperature", "Креативность",
                 "field.solid_color", "Сплошной цвет фона",
-                "field.solid_color_desc", "Цвет HEX, используемый в режиме сплошного фона.",
+                "field.solid_color_desc", "Выберите цвет для режима сплошного фона.",
                 "field.spotify_client_id_desc", "Client ID вашего приложения Spotify.",
                 "field.spotify_client_secret_desc", "Client Secret вашего приложения Spotify.",
                 "preview.none", "Скрытый",
@@ -4474,7 +4474,7 @@ final class AppI18n {
                 "field.max_tokens", "Max tokens",
                 "field.temperature", "Kreativitet",
                 "field.solid_color", "Enfärgad bakgrundsfärg",
-                "field.solid_color_desc", "HEX-färg som används i solid bakgrundsläge.",
+                "field.solid_color_desc", "Valj fargen som anvands i enfargat bakgrundslage.",
                 "field.spotify_client_id_desc", "Client ID av din Spotify-app.",
                 "field.spotify_client_secret_desc", "Client Secret av din Spotify-app.",
                 "preview.none", "Dold",
@@ -4708,7 +4708,7 @@ final class AppI18n {
                 "field.max_tokens", "Máximo de tokens",
                 "field.temperature", "Criatividade",
                 "field.solid_color", "Cor de fundo sólida",
-                "field.solid_color_desc", "Cor HEX usada no modo de fundo sólido.",
+                "field.solid_color_desc", "Escolha a cor usada no modo de fundo sólido.",
                 "field.spotify_client_id_desc", "Client ID do seu aplicativo Spotify.",
                 "field.spotify_client_secret_desc", "Client Secret do seu aplicativo Spotify.",
                 "preview.none", "Oculto",
@@ -4942,7 +4942,7 @@ final class AppI18n {
                 "field.max_tokens", "সর্বোচ্চ টোকেন",
                 "field.temperature", "সৃজনশীলতা",
                 "field.solid_color", "সলিড ব্যাকগ্রাউন্ড কালার",
-                "field.solid_color_desc", "সলিড ব্যাকগ্রাউন্ড মোডে ব্যবহৃত HEX রঙ।",
+                "field.solid_color_desc", "সলিড ব্যাকগ্রাউন্ড মোডে ব্যবহৃত রঙ নির্বাচন করুন।",
                 "field.spotify_client_id_desc", "Client ID। আপনার Spotify অ্যাপের",
                 "field.spotify_client_secret_desc", "Client Secret।",
                 "preview.none", "লুকানো",
@@ -5176,7 +5176,7 @@ final class AppI18n {
                 "field.max_tokens", "Gettoni massimi",
                 "field.temperature", "Creatività",
                 "field.solid_color", "Colore di sfondo a tinta unita",
-                "field.solid_color_desc", "Colore HEX utilizzato in modalità sfondo solido.",
+                "field.solid_color_desc", "Scegli il colore usato in modalita sfondo solido.",
                 "field.spotify_client_id_desc", "Client ID della tua app Spotify.",
                 "field.spotify_client_secret_desc", "Client Secret della tua app Spotify.",
                 "preview.none", "",
@@ -5410,7 +5410,7 @@ final class AppI18n {
                 "field.max_tokens", "โทเค็นสูงสุด",
                 "field.temperature", "ความคิดสร้างสรรค์",
                 "field.solid_color", "สีพื้นหลังทึบ",
-                "field.solid_color_desc", "สี HEX ที่ใช้ในโหมดพื้นหลังทึบ",
+                "field.solid_color_desc", "เลือกสีที่จะใช้ในโหมดพื้นหลังทึบ",
                 "field.spotify_client_id_desc", "Client ID ของแอป Spotify ของคุณ",
                 "field.spotify_client_secret_desc", "Client Secret ของแอป Spotify ของคุณ",
                 "preview.none", "ซ่อน",
@@ -5644,7 +5644,7 @@ final class AppI18n {
                 "field.max_tokens", "Mã thông báo tối đa",
                 "field.temperature", "Sáng tạo",
                 "field.solid_color", "Màu nền đồng nhất",
-                "field.solid_color_desc", "Màu HEX được sử dụng ở chế độ nền đồng nhất.",
+                "field.solid_color_desc", "Chon mau dung o che do nen dong nhat.",
                 "field.spotify_client_id_desc", "Client ID trong ứng dụng Spotify của bạn.",
                 "field.spotify_client_secret_desc", "Client Secret trong ứng dụng Spotify của bạn.",
                 "preview.none", "Ẩn",
@@ -5878,7 +5878,7 @@ final class AppI18n {
                 "field.max_tokens", "Token maksimal",
                 "field.temperature", "Kreativitas",
                 "field.solid_color", "Warna latar belakang solid",
-                "field.solid_color_desc", "Warna HEX digunakan dalam mode latar belakang solid.",
+                "field.solid_color_desc", "Pilih warna yang digunakan dalam mode latar belakang solid.",
                 "field.spotify_client_id_desc", "Client ID dari aplikasi Spotify Anda.",
                 "field.spotify_client_secret_desc", "Client Secret dari aplikasi Spotify Anda.",
                 "preview.none", "Tersembunyi",
@@ -6112,7 +6112,7 @@ final class AppI18n {
                 "field.max_tokens", "Token maksimum",
                 "field.temperature", "Kreativiti",
                 "field.solid_color", "Warna latar belakang pepejal",
-                "field.solid_color_desc", "Warna HEX digunakan dalam mod latar belakang pepejal.",
+                "field.solid_color_desc", "Pilih warna yang digunakan dalam mod latar belakang pepejal.",
                 "field.spotify_client_id_desc", "Client ID apl Spotify anda.",
                 "field.spotify_client_secret_desc", "Client Secret apl Spotify anda.",
                 "preview.none", "Tersembunyi",
