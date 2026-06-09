@@ -172,6 +172,7 @@ public final class MainActivity extends Activity implements
     private Switch languagePronunciationSwitch;
     private Switch metadataTranslationSwitch;
     private Switch autoInstrumentalBreakSwitch;
+    private Switch syncedLyricsKaraokeSwitch;
     private Switch landscapeAutoHideControlsSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
@@ -992,6 +993,7 @@ public final class MainActivity extends Activity implements
         configureLyricsViewUiText(landscapeLyricsView);
         landscapeLyricsView.setVerticalCenterBias(0.50f);
         landscapeLyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
+        landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
         landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
         landscapeLyricsView.setResult(currentLyricsResult);
@@ -1338,6 +1340,7 @@ public final class MainActivity extends Activity implements
         configureLyricsViewUiText(lyricsView);
         lyricsView.setVerticalCenterBias(0.42f);
         lyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
+        lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         lyricsView.setOnSeekListener(this::seekToPosition);
         LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1696,6 +1699,20 @@ public final class MainActivity extends Activity implements
             showSavedToast(isChecked ? ui("toast.auto_interlude_on") : ui("toast.auto_interlude_off"));
         });
         settingsLyricsPage.addView(autoInstrumentalBreakSwitch, topMargin(matchWrap(), dp(12)));
+
+        syncedLyricsKaraokeSwitch = settingSwitch(
+                ui("setting.synced_karaoke_animation"),
+                ui("setting.synced_karaoke_animation_desc")
+        );
+        syncedLyricsKaraokeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setSyncedLyricsKaraokeAnimationEnabled(isChecked);
+            setSyncedLyricsKaraokeAnimationOnViews(isChecked);
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsLyricsPage.addView(syncedLyricsKaraokeSwitch, topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.player")));
         settingsDisplayPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
@@ -3493,6 +3510,11 @@ public final class MainActivity extends Activity implements
             autoInstrumentalBreakSwitch.setChecked(snapshot.autoInstrumentalBreakEnabled);
             suppressSettingsEvents = false;
         }
+        if (syncedLyricsKaraokeSwitch != null) {
+            suppressSettingsEvents = true;
+            syncedLyricsKaraokeSwitch.setChecked(snapshot.syncedLyricsKaraokeAnimationEnabled);
+            suppressSettingsEvents = false;
+        }
         if (landscapeAutoHideControlsSwitch != null) {
             suppressSettingsEvents = true;
             landscapeAutoHideControlsSwitch.setChecked(snapshot.landscapeAutoHideControls);
@@ -4305,6 +4327,15 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setAutoInstrumentalBreakEnabled(enabled);
+        }
+    }
+
+    private void setSyncedLyricsKaraokeAnimationOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
         }
     }
 

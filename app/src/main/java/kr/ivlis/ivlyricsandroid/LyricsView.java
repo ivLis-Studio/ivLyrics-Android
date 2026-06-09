@@ -91,6 +91,7 @@ public final class LyricsView extends View {
     private String postludeLabel = AppI18n.t("en", "interlude.postlude");
     private boolean karaoke;
     private boolean autoInstrumentalBreakEnabled = true;
+    private boolean syncedLyricsKaraokeAnimationEnabled = true;
     private boolean pronunciationLoading;
     private boolean translationLoading;
     private boolean centerInitialized;
@@ -201,6 +202,17 @@ public final class LyricsView extends View {
         }
         autoInstrumentalBreakEnabled = enabled;
         centerInitialized = false;
+        postInvalidateOnAnimation();
+    }
+
+    void setSyncedLyricsKaraokeAnimationEnabled(boolean enabled) {
+        if (syncedLyricsKaraokeAnimationEnabled == enabled) {
+            return;
+        }
+        syncedLyricsKaraokeAnimationEnabled = enabled;
+        rowLayoutCache.clear();
+        bounceStates.clear();
+        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -836,7 +848,10 @@ public final class LyricsView extends View {
             long endTimeMs,
             float textSize
     ) {
-        String key = cacheKey + ":w:" + Math.round(contentWidth()) + ":s:" + Math.round(textSize);
+        String key = cacheKey
+                + ":w:" + Math.round(contentWidth())
+                + ":s:" + Math.round(textSize)
+                + ":fake:" + syncedLyricsKaraokeAnimationEnabled;
         List<TextRow> cached = rowLayoutCache.get(key);
         if (cached != null) {
             return cached;
@@ -1290,6 +1305,18 @@ public final class LyricsView extends View {
                 ));
             }
             return segments;
+        }
+
+        if (!syncedLyricsKaraokeAnimationEnabled) {
+            String value = text == null ? "" : text;
+            return Collections.singletonList(new TextSegment(
+                    value,
+                    textPaint.measureText(value),
+                    0L,
+                    0L,
+                    0,
+                    Math.max(1, value.codePointCount(0, value.length()))
+            ));
         }
 
         List<String> chars = splitChars(text);

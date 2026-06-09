@@ -32,6 +32,7 @@ final class AiLyricsSettings {
     static final String KEY_PREVIEW_MODE = "preview_mode";
     static final String KEY_PREVIEW_ITEMS = "preview_items";
     static final String KEY_AUTO_INSTRUMENTAL_BREAK = "auto_instrumental_break";
+    static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_BACKGROUND_MODE = "background_mode";
     static final String KEY_BACKGROUND_BRIGHTNESS = "background_brightness";
     static final String KEY_BACKGROUND_BLUR = "background_blur";
@@ -175,6 +176,7 @@ final class AiLyricsSettings {
                         ? prefs.getInt(KEY_PREVIEW_ITEMS, PREVIEW_ITEM_ORIGINAL)
                         : previewItemsForMode(prefs.getString(KEY_PREVIEW_MODE, PREVIEW_MODE_ORIGINAL))),
                 prefs.getBoolean(KEY_AUTO_INSTRUMENTAL_BREAK, true),
+                prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, true),
                 backgroundSettings(),
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
@@ -298,6 +300,10 @@ final class AiLyricsSettings {
 
     void setAutoInstrumentalBreakEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_AUTO_INSTRUMENTAL_BREAK, enabled).apply();
+    }
+
+    void setSyncedLyricsKaraokeAnimationEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, enabled).apply();
     }
 
     void setBackgroundMode(String mode) {
@@ -846,6 +852,7 @@ final class AiLyricsSettings {
         final String previewMode;
         final int previewItems;
         final boolean autoInstrumentalBreakEnabled;
+        final boolean syncedLyricsKaraokeAnimationEnabled;
         final BackgroundSettings background;
         final boolean landscapeAutoHideControls;
         final boolean metadataTranslationEnabled;
@@ -866,6 +873,7 @@ final class AiLyricsSettings {
                 String previewMode,
                 int previewItems,
                 boolean autoInstrumentalBreakEnabled,
+                boolean syncedLyricsKaraokeAnimationEnabled,
                 BackgroundSettings background,
                 boolean landscapeAutoHideControls,
                 boolean metadataTranslationEnabled,
@@ -887,6 +895,7 @@ final class AiLyricsSettings {
             this.previewMode = normalizePreviewMode(previewMode);
             this.previewItems = normalizePreviewItems(previewItems);
             this.autoInstrumentalBreakEnabled = autoInstrumentalBreakEnabled;
+            this.syncedLyricsKaraokeAnimationEnabled = syncedLyricsKaraokeAnimationEnabled;
             this.background = background == null
                     ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR)
                     : background;
