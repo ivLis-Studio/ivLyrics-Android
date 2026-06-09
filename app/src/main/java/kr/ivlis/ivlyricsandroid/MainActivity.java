@@ -1582,6 +1582,8 @@ public final class MainActivity extends Activity implements
 
         inAppBrowserWebView = new WebView(this);
         inAppBrowserWebView.setBackgroundColor(inAppBrowserBackgroundColor());
+        inAppBrowserWebView.setHapticFeedbackEnabled(false);
+        inAppBrowserWebView.setOnLongClickListener(view -> true);
         WebSettings settings = inAppBrowserWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -6797,6 +6799,13 @@ public final class MainActivity extends Activity implements
                 + ".theme-toggle,"
                 + ".topbar .handle,"
                 + ".topbar .handle .dot{display:none!important;}"
+                + "html,body,.page,.shell,.profile,.tracks,.track,*{"
+                + "-webkit-user-select:none!important;"
+                + "user-select:none!important;"
+                + "-webkit-touch-callout:none!important;}"
+                + "img,a{"
+                + "-webkit-user-drag:none!important;"
+                + "user-drag:none!important;}"
                 + ".page{padding-bottom:28px!important;}";
         String js = "(function(){"
                 + "var theme=" + JSONObject.quote(theme) + ";"
@@ -6810,6 +6819,11 @@ public final class MainActivity extends Activity implements
                 + "style.id=id;"
                 + "style.textContent=" + JSONObject.quote(css) + ";"
                 + "(document.head||document.documentElement).appendChild(style);"
+                + "var block=function(event){event.preventDefault();return false;};"
+                + "document.addEventListener('contextmenu',block,true);"
+                + "document.addEventListener('selectstart',block,true);"
+                + "document.addEventListener('dragstart',block,true);"
+                + "document.oncontextmenu=function(){return false;};"
                 + "})();";
         view.evaluateJavascript(js, null);
     }
