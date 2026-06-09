@@ -138,6 +138,9 @@ public final class MainActivity extends Activity implements
     private FrameLayout lyricsPage;
     private FrameLayout inAppBrowserPage;
     private FrameLayout inAppBrowserSheet;
+    private FrameLayout inAppBrowserLoadingView;
+    private FrameLayout inAppBrowserHandleTouchTarget;
+    private View inAppBrowserHandleView;
     private FrameLayout settingsPanel;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
@@ -256,6 +259,8 @@ public final class MainActivity extends Activity implements
     private int lyricsPageCornerRadiusDp = -1;
     private int lyricsPageContentTopPaddingPx = -1;
     private ValueAnimator lyricsPageContentPaddingAnimator;
+    private ValueAnimator inAppBrowserSkeletonAnimator;
+    private final List<View> inAppBrowserSkeletonPulseViews = new ArrayList<>();
     private VelocityTracker pageVelocityTracker;
     private float artworkSwipeStartX;
     private float artworkSwipeStartY;
@@ -1566,7 +1571,7 @@ public final class MainActivity extends Activity implements
         page.setClickable(true);
 
         inAppBrowserSheet = new FrameLayout(this);
-        inAppBrowserSheet.setBackground(topRoundDrawable(Color.rgb(12, 13, 17), dp(24)));
+        inAppBrowserSheet.setBackground(topRoundDrawable(inAppBrowserBackgroundColor(), dp(24)));
         clipTopRoundView(inAppBrowserSheet, 24);
         FrameLayout.LayoutParams sheetParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1576,7 +1581,7 @@ public final class MainActivity extends Activity implements
         page.addView(inAppBrowserSheet, sheetParams);
 
         inAppBrowserWebView = new WebView(this);
-        inAppBrowserWebView.setBackgroundColor(Color.rgb(12, 13, 17));
+        inAppBrowserWebView.setBackgroundColor(inAppBrowserBackgroundColor());
         WebSettings settings = inAppBrowserWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -1599,8 +1604,14 @@ public final class MainActivity extends Activity implements
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                showInAppBrowserLoading(true);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 injectInAppBrowserProfileCss(view, url);
+                handler.postDelayed(() -> showInAppBrowserLoading(false), 80L);
             }
         });
         inAppBrowserSheet.addView(inAppBrowserWebView, new FrameLayout.LayoutParams(
@@ -1608,21 +1619,28 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        FrameLayout dragZone = new FrameLayout(this);
-        dragZone.setBackgroundColor(Color.TRANSPARENT);
-        FrameLayout.LayoutParams dragZoneParams = new FrameLayout.LayoutParams(
+        inAppBrowserLoadingView = buildInAppBrowserLoadingView();
+        inAppBrowserLoadingView.setVisibility(View.GONE);
+        inAppBrowserSheet.addView(inAppBrowserLoadingView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(58),
-                Gravity.TOP
-        );
-        inAppBrowserSheet.addView(dragZone, dragZoneParams);
-        attachInAppBrowserSwipe(dragZone);
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
 
-        View handle = new View(this);
-        handle.setBackground(roundDrawable(Color.argb(82, 255, 255, 255), dp(1.5f)));
+        inAppBrowserHandleTouchTarget = new FrameLayout(this);
+        inAppBrowserHandleTouchTarget.setBackgroundColor(Color.TRANSPARENT);
+        FrameLayout.LayoutParams handleTargetParams = new FrameLayout.LayoutParams(
+                dp(110),
+                dp(34),
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL
+        );
+        inAppBrowserSheet.addView(inAppBrowserHandleTouchTarget, handleTargetParams);
+        attachInAppBrowserSwipe(inAppBrowserHandleTouchTarget);
+
+        inAppBrowserHandleView = new View(this);
+        inAppBrowserHandleView.setBackground(roundDrawable(inAppBrowserHandleColor(), dp(1.5f)));
         FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(dp(42), dp(3), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         handleParams.topMargin = dp(12);
-        dragZone.addView(handle, handleParams);
+        inAppBrowserHandleTouchTarget.addView(inAppBrowserHandleView, handleParams);
         return page;
     }
 
@@ -6613,6 +6631,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void destroyInAppBrowserWebView() {
+        stopInAppBrowserSkeletonAnimation();
         if (inAppBrowserWebView == null) {
             return;
         }
@@ -6627,6 +6646,8 @@ public final class MainActivity extends Activity implements
             return;
         }
         inAppBrowserInitialUrl = safeUrl;
+        applyInAppBrowserChromeTheme();
+        showInAppBrowserLoading(true);
         inAppBrowserWebView.stopLoading();
         inAppBrowserWebView.clearHistory();
         inAppBrowserWebView.loadUrl(safeUrl);
@@ -6679,6 +6700,67 @@ public final class MainActivity extends Activity implements
         inAppBrowserSheet.setLayoutParams(params);
     }
 
+    private void applyInAppBrowserChromeTheme() {
+        int background = inAppBrowserBackgroundColor();
+        if (inAppBrowserSheet != null) {
+            inAppBrowserSheet.setBackground(topRoundDrawable(background, dp(24)));
+        }
+        if (inAppBrowserWebView != null) {
+            inAppBrowserWebView.setBackgroundColor(background);
+        }
+        if (inAppBrowserHandleView != null) {
+            inAppBrowserHandleView.setBackground(roundDrawable(inAppBrowserHandleColor(), dp(1.5f)));
+        }
+        rebuildInAppBrowserLoadingView();
+    }
+
+    private void rebuildInAppBrowserLoadingView() {
+        if (inAppBrowserSheet == null) {
+            return;
+        }
+        boolean wasVisible = inAppBrowserLoadingView != null && inAppBrowserLoadingView.getVisibility() == View.VISIBLE;
+        if (inAppBrowserLoadingView != null) {
+            inAppBrowserSheet.removeView(inAppBrowserLoadingView);
+        }
+        inAppBrowserLoadingView = buildInAppBrowserLoadingView();
+        inAppBrowserLoadingView.setVisibility(wasVisible ? View.VISIBLE : View.GONE);
+        inAppBrowserSheet.addView(inAppBrowserLoadingView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        if (inAppBrowserHandleTouchTarget != null) {
+            inAppBrowserHandleTouchTarget.bringToFront();
+        }
+        if (wasVisible) {
+            startInAppBrowserSkeletonAnimation();
+        }
+    }
+
+    private int inAppBrowserBackgroundColor() {
+        return isDeviceNightMode() ? Color.rgb(14, 17, 22) : Color.rgb(251, 251, 252);
+    }
+
+    private int inAppBrowserSurfaceColor() {
+        return isDeviceNightMode() ? Color.rgb(25, 28, 34) : Color.WHITE;
+    }
+
+    private int inAppBrowserSkeletonColor() {
+        return isDeviceNightMode() ? Color.rgb(45, 49, 58) : Color.rgb(236, 238, 241);
+    }
+
+    private int inAppBrowserSkeletonStrongColor() {
+        return isDeviceNightMode() ? Color.rgb(58, 63, 72) : Color.rgb(224, 227, 232);
+    }
+
+    private int inAppBrowserHandleColor() {
+        return isDeviceNightMode() ? Color.argb(86, 255, 255, 255) : Color.argb(78, 14, 17, 22);
+    }
+
+    private boolean isDeviceNightMode() {
+        int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return mask == Configuration.UI_MODE_NIGHT_YES;
+    }
+
     private int inAppBrowserSheetTopMarginPx() {
         int topInset = statusBarInsetPx();
         int margin = topInset + dp(10);
@@ -6709,10 +6791,15 @@ public final class MainActivity extends Activity implements
         if (view == null || !isLyricsProfileUrl(url)) {
             return;
         }
+        String theme = isDeviceNightMode() ? "dark" : "light";
         String css = ".login-btn,"
                 + ".credit[href*=\"github.com/ivLis-Studio/ivLyrics\"]{display:none!important;}"
                 + ".page{padding-bottom:28px!important;}";
         String js = "(function(){"
+                + "var theme=" + JSONObject.quote(theme) + ";"
+                + "try{localStorage.setItem('ivlyrics_profile_theme',theme);}catch(error){}"
+                + "document.documentElement.dataset.theme=theme;"
+                + "document.documentElement.style.colorScheme=theme;"
                 + "var id='ivlyrics-android-profile-style';"
                 + "var old=document.getElementById(id);"
                 + "if(old){old.remove();}"
@@ -6733,6 +6820,174 @@ public final class MainActivity extends Activity implements
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private FrameLayout buildInAppBrowserLoadingView() {
+        inAppBrowserSkeletonPulseViews.clear();
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setClickable(true);
+        overlay.setBackgroundColor(inAppBrowserBackgroundColor());
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(dp(16), dp(28), dp(16), dp(18));
+        overlay.addView(shell, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        LinearLayout topbar = new LinearLayout(this);
+        topbar.setOrientation(LinearLayout.HORIZONTAL);
+        topbar.setGravity(Gravity.CENTER_VERTICAL);
+        shell.addView(topbar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(44)
+        ));
+        topbar.addView(skeletonBlock(inAppBrowserSkeletonStrongColor(), 118, 16, 8));
+        View spacer = new View(this);
+        topbar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        topbar.addView(skeletonBlock(inAppBrowserSkeletonColor(), 40, 34, 17));
+        topbar.addView(skeletonBlock(inAppBrowserSkeletonColor(), 76, 34, 17), leftMargin(wrapFixed(dp(76), dp(34)), dp(8)));
+
+        LinearLayout profile = new LinearLayout(this);
+        profile.setOrientation(LinearLayout.VERTICAL);
+        profile.setPadding(dp(20), dp(20), dp(20), dp(18));
+        profile.setBackground(roundDrawable(inAppBrowserSurfaceColor(), dp(22)));
+        LinearLayout.LayoutParams profileParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        profileParams.topMargin = dp(10);
+        shell.addView(profile, profileParams);
+
+        LinearLayout profileTop = new LinearLayout(this);
+        profileTop.setGravity(Gravity.CENTER_VERTICAL);
+        profileTop.setOrientation(LinearLayout.HORIZONTAL);
+        profile.addView(profileTop, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(82)
+        ));
+        profileTop.addView(skeletonBlock(inAppBrowserSkeletonStrongColor(), 78, 78, 39));
+        LinearLayout profileText = new LinearLayout(this);
+        profileText.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams profileTextParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        profileTextParams.leftMargin = dp(16);
+        profileTop.addView(profileText, profileTextParams);
+        profileText.addView(skeletonBlock(inAppBrowserSkeletonStrongColor(), 142, 24, 10));
+        profileText.addView(skeletonBlock(inAppBrowserSkeletonColor(), 190, 14, 7), topMargin(wrapFixed(dp(190), dp(14)), dp(10)));
+        profileText.addView(skeletonBlock(inAppBrowserSkeletonColor(), 98, 14, 7), topMargin(wrapFixed(dp(98), dp(14)), dp(8)));
+
+        LinearLayout stats = new LinearLayout(this);
+        stats.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams statsParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(54)
+        );
+        statsParams.topMargin = dp(18);
+        profile.addView(stats, statsParams);
+        stats.addView(skeletonBlock(inAppBrowserSkeletonColor(), 0, 54, 14), new LinearLayout.LayoutParams(0, dp(54), 1f));
+        stats.addView(skeletonBlock(inAppBrowserSkeletonColor(), 0, 54, 14), leftMargin(new LinearLayout.LayoutParams(0, dp(54), 1f), dp(10)));
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(40)
+        );
+        tabsParams.topMargin = dp(16);
+        shell.addView(tabs, tabsParams);
+        tabs.addView(skeletonBlock(inAppBrowserSkeletonStrongColor(), 92, 34, 17));
+        tabs.addView(skeletonBlock(inAppBrowserSkeletonColor(), 82, 34, 17), leftMargin(wrapFixed(dp(82), dp(34)), dp(8)));
+
+        for (int index = 0; index < 5; index++) {
+            shell.addView(buildInAppBrowserSkeletonTrack(index), topMargin(matchWrap(), dp(index == 0 ? 10 : 9)));
+        }
+        return overlay;
+    }
+
+    private LinearLayout buildInAppBrowserSkeletonTrack(int index) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(12), dp(12), dp(12));
+        row.setBackground(roundDrawable(inAppBrowserSurfaceColor(), dp(18)));
+        row.addView(skeletonBlock(inAppBrowserSkeletonColor(), 44, 44, 14));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textParams.leftMargin = dp(12);
+        row.addView(text, textParams);
+        text.addView(skeletonBlock(inAppBrowserSkeletonStrongColor(), index % 2 == 0 ? 184 : 138, 17, 8));
+        text.addView(skeletonBlock(inAppBrowserSkeletonColor(), index % 3 == 0 ? 126 : 162, 13, 7), topMargin(wrapFixed(dp(index % 3 == 0 ? 126 : 162), dp(13)), dp(9)));
+        row.addView(skeletonBlock(inAppBrowserSkeletonColor(), 34, 34, 17));
+        return row;
+    }
+
+    private View skeletonBlock(int color, int widthDp, int heightDp, int radiusDp) {
+        View view = new View(this);
+        view.setBackground(roundDrawable(color, dp(radiusDp)));
+        view.setAlpha(0.78f);
+        inAppBrowserSkeletonPulseViews.add(view);
+        if (widthDp > 0 && heightDp > 0) {
+            view.setLayoutParams(new LinearLayout.LayoutParams(dp(widthDp), dp(heightDp)));
+        }
+        return view;
+    }
+
+    private LinearLayout.LayoutParams wrapFixed(int widthPx, int heightPx) {
+        return new LinearLayout.LayoutParams(widthPx, heightPx);
+    }
+
+    private void showInAppBrowserLoading(boolean show) {
+        if (inAppBrowserLoadingView == null) {
+            return;
+        }
+        inAppBrowserLoadingView.animate().cancel();
+        if (show) {
+            inAppBrowserLoadingView.setAlpha(1f);
+            inAppBrowserLoadingView.setVisibility(View.VISIBLE);
+            inAppBrowserLoadingView.bringToFront();
+            if (inAppBrowserHandleTouchTarget != null) {
+                inAppBrowserHandleTouchTarget.bringToFront();
+            }
+            startInAppBrowserSkeletonAnimation();
+            return;
+        }
+        inAppBrowserLoadingView.animate()
+                .alpha(0f)
+                .setDuration(160L)
+                .withEndAction(() -> {
+                    inAppBrowserLoadingView.setVisibility(View.GONE);
+                    inAppBrowserLoadingView.setAlpha(1f);
+                    stopInAppBrowserSkeletonAnimation();
+                })
+                .start();
+    }
+
+    private void startInAppBrowserSkeletonAnimation() {
+        if (inAppBrowserSkeletonAnimator != null && inAppBrowserSkeletonAnimator.isStarted()) {
+            return;
+        }
+        inAppBrowserSkeletonAnimator = ValueAnimator.ofFloat(0.58f, 1f);
+        inAppBrowserSkeletonAnimator.setDuration(860L);
+        inAppBrowserSkeletonAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        inAppBrowserSkeletonAnimator.setRepeatMode(ValueAnimator.REVERSE);
+        inAppBrowserSkeletonAnimator.addUpdateListener(animation -> {
+            float alpha = (float) animation.getAnimatedValue();
+            for (int index = 0; index < inAppBrowserSkeletonPulseViews.size(); index++) {
+                inAppBrowserSkeletonPulseViews.get(index).setAlpha(alpha);
+            }
+        });
+        inAppBrowserSkeletonAnimator.start();
+    }
+
+    private void stopInAppBrowserSkeletonAnimation() {
+        if (inAppBrowserSkeletonAnimator == null) {
+            return;
+        }
+        inAppBrowserSkeletonAnimator.cancel();
+        inAppBrowserSkeletonAnimator = null;
     }
 
     private void attachInAppBrowserSwipe(View view) {
@@ -7546,6 +7801,11 @@ public final class MainActivity extends Activity implements
 
     private LinearLayout.LayoutParams topMargin(LinearLayout.LayoutParams params, int topMargin) {
         params.topMargin = topMargin;
+        return params;
+    }
+
+    private LinearLayout.LayoutParams leftMargin(LinearLayout.LayoutParams params, int leftMargin) {
+        params.leftMargin = leftMargin;
         return params;
     }
 
