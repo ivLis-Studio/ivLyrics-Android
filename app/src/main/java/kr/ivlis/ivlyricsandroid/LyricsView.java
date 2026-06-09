@@ -45,32 +45,10 @@ public final class LyricsView extends View {
     private static final long INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long KARAOKE_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
     private static final long MANUAL_SCROLL_HOLD_MS = 4_000L;
-    private static final int NORMAL_ACTIVE_COLOR = Color.rgb(255, 255, 255);
     private static final int SPEAKER_B_COLOR = Color.rgb(139, 211, 255);
     private static final int SPEAKER_C_COLOR = Color.rgb(255, 209, 102);
     private static final int SPEAKER_D_COLOR = Color.rgb(196, 167, 255);
     private static final int SPEAKER_SFX_COLOR = Color.rgb(244, 166, 200);
-    private static final int[] MALE_SPEAKER_COLORS = {
-            Color.rgb(230, 242, 255),
-            Color.rgb(215, 236, 255),
-            Color.rgb(237, 247, 255),
-            Color.rgb(219, 231, 255),
-            Color.rgb(226, 248, 255)
-    };
-    private static final int[] FEMALE_SPEAKER_COLORS = {
-            Color.rgb(255, 231, 239),
-            Color.rgb(255, 224, 232),
-            Color.rgb(255, 240, 245),
-            Color.rgb(255, 223, 224),
-            Color.rgb(251, 229, 255)
-    };
-    private static final int[] DUET_SPEAKER_COLORS = {
-            Color.rgb(234, 223, 255),
-            Color.rgb(226, 210, 255),
-            Color.rgb(240, 232, 255),
-            Color.rgb(222, 201, 255),
-            Color.rgb(233, 220, 255)
-    };
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -83,6 +61,7 @@ public final class LyricsView extends View {
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
     private Typeface lyricTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
+    private AiLyricsSettings.SpeakerColorSettings speakerColorSettings = AiLyricsSettings.SpeakerColorSettings.defaults();
 
     private List<LyricsLine> lines = Collections.emptyList();
     private long positionMs;
@@ -244,6 +223,11 @@ public final class LyricsView extends View {
         typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
         rowLayoutCache.clear();
         requestLayout();
+        postInvalidateOnAnimation();
+    }
+
+    void setSpeakerColorSettings(AiLyricsSettings.SpeakerColorSettings settings) {
+        speakerColorSettings = settings == null ? AiLyricsSettings.SpeakerColorSettings.defaults() : settings;
         postInvalidateOnAnimation();
     }
 
@@ -712,8 +696,8 @@ public final class LyricsView extends View {
 
         int inactiveColor = inactiveColorForSpeaker(line.speaker, distance);
         int activeColor = karaoke
-                ? colorForSpeaker(line.speaker, "", NORMAL_ACTIVE_COLOR)
-                : Color.rgb(244, 246, 251);
+                ? colorForSpeaker(line.speaker, "", normalActiveColor())
+                : normalActiveColor();
         groups.add(buildGroup(
                 line.text,
                 japaneseFuriganaEnabled ? line.furiganaText : "",
@@ -759,7 +743,7 @@ public final class LyricsView extends View {
             LyricsLine.VocalPart part = parts.get(index);
             boolean partActive = active && positionMs >= part.startTimeMs;
             int inactiveColor = inactiveColorForSpeaker(part.speaker, distance + (partActive ? 0f : 0.45f));
-            int activeColor = colorForSpeaker(part.speaker, part.role, NORMAL_ACTIVE_COLOR);
+            int activeColor = colorForSpeaker(part.speaker, part.role, normalActiveColor());
             groups.add(buildGroup(
                     part.text,
                     japaneseFuriganaEnabled ? part.furiganaText : "",
@@ -2267,6 +2251,10 @@ public final class LyricsView extends View {
         return color != 0 ? color : fallback;
     }
 
+    private int normalActiveColor() {
+        return speakerColorSettings.color(AiLyricsSettings.SPEAKER_COLOR_NORMAL);
+    }
+
     private int inactiveColorForSpeaker(String speaker, float distance) {
         String key = normalizeSpeakerKey(speaker);
         int color = speakerActiveColor(key);
@@ -2297,15 +2285,15 @@ public final class LyricsView extends View {
             return SPEAKER_SFX_COLOR;
         }
 
-        int color = numberedSpeakerColor(key, "male", MALE_SPEAKER_COLORS);
+        int color = numberedSpeakerColor(key, "male");
         if (color != 0) {
             return color;
         }
-        color = numberedSpeakerColor(key, "female", FEMALE_SPEAKER_COLORS);
+        color = numberedSpeakerColor(key, "female");
         if (color != 0) {
             return color;
         }
-        color = numberedSpeakerColor(key, "duet", DUET_SPEAKER_COLORS);
+        color = numberedSpeakerColor(key, "duet");
         return color;
     }
 
@@ -2360,9 +2348,12 @@ public final class LyricsView extends View {
         return normalized.toString();
     }
 
-    private int numberedSpeakerColor(String key, String prefix, int[] colors) {
+    private int numberedSpeakerColor(String key, String prefix) {
         int index = speakerIndex(key, prefix);
-        return index >= 0 && index < colors.length ? colors[index] : 0;
+        if (index < 0 || index >= 5) {
+            return 0;
+        }
+        return speakerColorSettings.color(prefix + (index + 1));
     }
 
     private int speakerIndex(String key, String prefix) {

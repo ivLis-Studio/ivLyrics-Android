@@ -64,6 +64,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -116,6 +117,8 @@ public final class MainActivity extends Activity implements
     };
     private final List<String> logLines = new ArrayList<>();
     private final Map<String, String> creatorProfileUrlCache = Collections.synchronizedMap(new HashMap<>());
+    private final Map<String, EditText> speakerColorInputs = new LinkedHashMap<>();
+    private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
@@ -308,6 +311,7 @@ public final class MainActivity extends Activity implements
         applyKeepScreenOnSetting(settingsSnapshot);
         applyBackgroundSettings(settingsSnapshot);
         applyTypographySettings(settingsSnapshot);
+        applySpeakerColorSettings(settingsSnapshot);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
     }
@@ -2009,6 +2013,10 @@ public final class MainActivity extends Activity implements
         settingsDisplayPage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
         settingsDisplayPage.addView(buildTypographySettingsList(), topMargin(matchWrap(), dp(12)));
 
+        settingsDisplayPage.addView(sectionTitle(ui("section.speaker_colors")), topMargin(matchWrap(), dp(24)));
+        settingsDisplayPage.addView(sectionDescription(ui("section.speaker_colors_desc")), topMargin(matchWrap(), dp(8)));
+        settingsDisplayPage.addView(buildSpeakerColorSettingsList(), topMargin(matchWrap(), dp(12)));
+
         settingsDisplayPage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.background_desc")), topMargin(matchWrap(), dp(8)));
 
@@ -2667,6 +2675,7 @@ public final class MainActivity extends Activity implements
         applyKeepScreenOnSetting(settingsSnapshot);
         applyBackgroundSettings(settingsSnapshot);
         applyTypographySettings(settingsSnapshot);
+        applySpeakerColorSettings(settingsSnapshot);
         updatePermissionState();
 
         currentTrack = snapshot;
@@ -3093,6 +3102,172 @@ public final class MainActivity extends Activity implements
             list.addView(control, params);
         }
         return list;
+    }
+
+    private LinearLayout buildSpeakerColorSettingsList() {
+        speakerColorInputs.clear();
+        speakerColorSwatches.clear();
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(12)));
+        body.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+        AiLyricsSettings.SpeakerColorSettings settings = aiLyricsSettings == null
+                ? AiLyricsSettings.SpeakerColorSettings.defaults()
+                : aiLyricsSettings.snapshot().speakerColors;
+        for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
+            LinearLayout row = buildSpeakerColorRow(slot, settings.hex(slot.id));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            if (body.getChildCount() > 0) {
+                params.topMargin = dp(9);
+            }
+            body.addView(row, params);
+        }
+
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView resetButton = debugButton(ui("button.reset_colors"));
+        resetButton.setOnClickListener(view -> resetSpeakerColorSettingsFromUi());
+        actionRow.addView(resetButton, weightedButtonParams(1f, dp(4)));
+        TextView saveButton = primaryButton(ui("button.apply_colors"));
+        saveButton.setOnClickListener(view -> applySpeakerColorSettingsFromUi(true));
+        actionRow.addView(saveButton, weightedButtonParams(1f, dp(4)));
+        body.addView(actionRow, topMargin(matchWrap(), dp(14)));
+
+        return body;
+    }
+
+    private LinearLayout buildSpeakerColorRow(AiLyricsSettings.SpeakerColorSlot slot, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        View swatch = new View(this);
+        swatch.setBackground(roundDrawable(parseColor(value, slot.defaultColorInt()), dp(10)));
+        row.addView(swatch, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        speakerColorSwatches.put(slot.id, swatch);
+
+        TextView title = label(speakerColorSlotLabel(slot), 13f, Color.WHITE, AppFonts.semiBold(this));
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        titleParams.leftMargin = dp(10);
+        row.addView(title, titleParams);
+
+        EditText input = settingEditText(ui("speaker_color.hex_hint"), false, false);
+        input.setText(value);
+        input.setSelectAllOnFocus(true);
+        input.setOnFocusChangeListener((view, hasFocus) -> {
+            if (!hasFocus) {
+                updateSpeakerColorSwatch(slot.id, textOf(input));
+            }
+        });
+        row.addView(input, new LinearLayout.LayoutParams(dp(104), dp(42)));
+        speakerColorInputs.put(slot.id, input);
+        return row;
+    }
+
+    private void applySpeakerColorSettingsFromUi(boolean showToast) {
+        if (aiLyricsSettings == null) {
+            return;
+        }
+        Map<String, String> colors = new LinkedHashMap<>();
+        for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
+            EditText input = speakerColorInputs.get(slot.id);
+            String value = input == null ? "" : textOf(input);
+            if (value.isEmpty()) {
+                value = slot.defaultColor;
+            }
+            if (!AiLyricsSettings.isHexColor(value)) {
+                showSavedToast(uiFormat("toast.invalid_color_format", speakerColorSlotLabel(slot)));
+                return;
+            }
+            colors.put(slot.id, value);
+        }
+        aiLyricsSettings.setSpeakerColors(colors);
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        updateSpeakerColorSettingsUi(snapshot);
+        applySpeakerColorSettings(snapshot);
+        if (showToast) {
+            showSavedToast(ui("toast.speaker_colors_saved"));
+        }
+    }
+
+    private void resetSpeakerColorSettingsFromUi() {
+        if (aiLyricsSettings == null) {
+            return;
+        }
+        aiLyricsSettings.resetSpeakerColors();
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        updateSpeakerColorSettingsUi(snapshot);
+        applySpeakerColorSettings(snapshot);
+        showSavedToast(ui("toast.speaker_colors_reset"));
+    }
+
+    private void updateSpeakerColorSettingsUi(AiLyricsSettings.Snapshot snapshot) {
+        AiLyricsSettings.SpeakerColorSettings settings = snapshot == null
+                ? AiLyricsSettings.SpeakerColorSettings.defaults()
+                : snapshot.speakerColors;
+        for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
+            String color = settings.hex(slot.id);
+            EditText input = speakerColorInputs.get(slot.id);
+            if (input != null && !input.hasFocus()) {
+                input.setText(color);
+            }
+            updateSpeakerColorSwatch(slot.id, color);
+        }
+    }
+
+    private void updateSpeakerColorSwatch(String slotId, String color) {
+        View swatch = speakerColorSwatches.get(slotId);
+        if (swatch == null) {
+            return;
+        }
+        AiLyricsSettings.SpeakerColorSlot slot = AiLyricsSettings.speakerColorSlotById(slotId);
+        int parsed = parseColor(
+                AiLyricsSettings.isHexColor(color) ? color : slot.defaultColor,
+                slot.defaultColorInt()
+        );
+        swatch.setBackground(roundDrawable(parsed, dp(10)));
+    }
+
+    private String speakerColorSlotLabel(AiLyricsSettings.SpeakerColorSlot slot) {
+        if (slot == null) {
+            return "";
+        }
+        if (AiLyricsSettings.SPEAKER_COLOR_NORMAL.equals(slot.id)) {
+            return ui(slot.titleKey);
+        }
+        int number = trailingNumber(slot.id);
+        return number > 0 ? ui(slot.titleKey) + " " + number : ui(slot.titleKey);
+    }
+
+    private int trailingNumber(String value) {
+        String text = value == null ? "" : value.trim();
+        int end = text.length();
+        int start = end;
+        while (start > 0 && Character.isDigit(text.charAt(start - 1))) {
+            start--;
+        }
+        if (start >= end) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(text.substring(start, end));
+        } catch (Exception ignored) {
+            return -1;
+        }
+    }
+
+    private int parseColor(String color, int fallback) {
+        try {
+            return Color.parseColor(color);
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     private LinearLayout buildTypographySlotControl(AiLyricsSettings.TypographySlot slot) {
@@ -3551,6 +3726,19 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setTypographySettings(typography);
+        }
+    }
+
+    private void applySpeakerColorSettings(AiLyricsSettings.Snapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        AiLyricsSettings.SpeakerColorSettings speakerColors = snapshot.speakerColors;
+        if (lyricsView != null) {
+            lyricsView.setSpeakerColorSettings(speakerColors);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setSpeakerColorSettings(speakerColors);
         }
     }
 
@@ -4322,6 +4510,8 @@ public final class MainActivity extends Activity implements
         }
         updateBackgroundSettingsUi(snapshot, true);
         applyTypographySettings(snapshot);
+        updateSpeakerColorSettingsUi(snapshot);
+        applySpeakerColorSettings(snapshot);
         if (providerSummaryView != null) {
             providerSummaryView.setText(snapshot.provider.label + " · " + providerDescription(snapshot.provider)
                     + "\n" + snapshot.provider.defaultBaseUrl);

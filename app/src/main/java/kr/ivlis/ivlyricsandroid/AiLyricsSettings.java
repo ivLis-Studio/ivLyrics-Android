@@ -2,6 +2,7 @@ package kr.ivlis.ivlyricsandroid;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -49,6 +50,7 @@ final class AiLyricsSettings {
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
+    static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
 
     static final String DEFAULT_SOURCE_LANG = "default";
     static final String PREVIEW_MODE_ORIGINAL = "original";
@@ -75,6 +77,7 @@ final class AiLyricsSettings {
     static final String TYPO_WEIGHT_REGULAR = "regular";
     static final String TYPO_WEIGHT_SEMIBOLD = "semibold";
     static final String TYPO_WEIGHT_BOLD = "bold";
+    static final String SPEAKER_COLOR_NORMAL = "normal";
     private static final String DEFAULT_PROVIDER = "gemini";
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
@@ -155,6 +158,24 @@ final class AiLyricsSettings {
             new TypographySlot(TYPO_LYRICS_PRONUNCIATION, "typography.slot.lyrics_pronunciation", "typography.slot.lyrics_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
             new TypographySlot(TYPO_LYRICS_TRANSLATION, "typography.slot.lyrics_translation", "typography.slot.lyrics_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
     ));
+    static final List<SpeakerColorSlot> SPEAKER_COLOR_SLOTS = Collections.unmodifiableList(Arrays.asList(
+            new SpeakerColorSlot(SPEAKER_COLOR_NORMAL, "speaker_color.normal", "#ffffff"),
+            new SpeakerColorSlot("duet1", "speaker_color.duet", "#eadfff"),
+            new SpeakerColorSlot("duet2", "speaker_color.duet", "#e2d2ff"),
+            new SpeakerColorSlot("duet3", "speaker_color.duet", "#f0e8ff"),
+            new SpeakerColorSlot("duet4", "speaker_color.duet", "#dec9ff"),
+            new SpeakerColorSlot("duet5", "speaker_color.duet", "#e9dcff"),
+            new SpeakerColorSlot("male1", "speaker_color.male", "#e6f2ff"),
+            new SpeakerColorSlot("male2", "speaker_color.male", "#d7ecff"),
+            new SpeakerColorSlot("male3", "speaker_color.male", "#edf7ff"),
+            new SpeakerColorSlot("male4", "speaker_color.male", "#dbe7ff"),
+            new SpeakerColorSlot("male5", "speaker_color.male", "#e2f8ff"),
+            new SpeakerColorSlot("female1", "speaker_color.female", "#ffe7ef"),
+            new SpeakerColorSlot("female2", "speaker_color.female", "#ffe0e8"),
+            new SpeakerColorSlot("female3", "speaker_color.female", "#fff0f5"),
+            new SpeakerColorSlot("female4", "speaker_color.female", "#ffdfe0"),
+            new SpeakerColorSlot("female5", "speaker_color.female", "#fbe5ff")
+    ));
     static final List<Language> SUPPORTED_LANGUAGES = Collections.unmodifiableList(Arrays.asList(
             new Language("ko", "Korean", "한국어", "Korean Hangul pronunciation, e.g. こんにちは -> 콘니치와"),
             new Language("en", "English", "English", "English romanization"),
@@ -217,6 +238,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 typographySettings(),
+                speakerColorSettings(),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
@@ -247,6 +269,14 @@ final class AiLyricsSettings {
                 normalizeTypographyWeight(weight, slot.defaultWeight)
         ));
         saveTypographySettings(new TypographySettings(next));
+    }
+
+    void setSpeakerColors(Map<String, String> colors) {
+        saveSpeakerColorSettings(new SpeakerColorSettings(colors));
+    }
+
+    void resetSpeakerColors() {
+        prefs.edit().remove(KEY_SPEAKER_COLOR_SETTINGS).apply();
     }
 
     void setTranslationEnabled(boolean enabled) {
@@ -487,6 +517,23 @@ final class AiLyricsSettings {
         return new TypographySettings(styles);
     }
 
+    private SpeakerColorSettings speakerColorSettings() {
+        Map<String, String> colors = new LinkedHashMap<>();
+        String stored = prefs.getString(KEY_SPEAKER_COLOR_SETTINGS, "");
+        JSONObject object = null;
+        if (stored != null && !stored.trim().isEmpty()) {
+            try {
+                object = new JSONObject(stored);
+            } catch (JSONException ignored) {
+            }
+        }
+        for (SpeakerColorSlot slot : SPEAKER_COLOR_SLOTS) {
+            String color = object == null ? "" : object.optString(slot.id, "");
+            colors.put(slot.id, normalizeHexColor(color, slot.defaultColor));
+        }
+        return new SpeakerColorSettings(colors);
+    }
+
     private void saveTypographySettings(TypographySettings typography) {
         try {
             JSONObject object = new JSONObject();
@@ -499,6 +546,18 @@ final class AiLyricsSettings {
                 object.put(slot.id, slotObject);
             }
             prefs.edit().putString(KEY_TYPOGRAPHY_SETTINGS, object.toString()).apply();
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private void saveSpeakerColorSettings(SpeakerColorSettings settings) {
+        try {
+            JSONObject object = new JSONObject();
+            SpeakerColorSettings safe = settings == null ? SpeakerColorSettings.defaults() : settings;
+            for (SpeakerColorSlot slot : SPEAKER_COLOR_SLOTS) {
+                object.put(slot.id, safe.hex(slot.id));
+            }
+            prefs.edit().putString(KEY_SPEAKER_COLOR_SETTINGS, object.toString()).apply();
         } catch (JSONException ignored) {
         }
     }
@@ -837,9 +896,24 @@ final class AiLyricsSettings {
     private static String normalizeHexColor(String color, String fallback) {
         String value = color == null ? "" : color.trim();
         if (value.matches("^#?[0-9a-fA-F]{6}$")) {
-            return value.startsWith("#") ? value : "#" + value;
+            return (value.startsWith("#") ? value : "#" + value).toLowerCase(Locale.ROOT);
         }
         return fallback;
+    }
+
+    static boolean isHexColor(String color) {
+        String value = color == null ? "" : color.trim();
+        return value.matches("^#?[0-9a-fA-F]{6}$");
+    }
+
+    static SpeakerColorSlot speakerColorSlotById(String slotId) {
+        String normalized = slotId == null ? "" : slotId.trim();
+        for (SpeakerColorSlot slot : SPEAKER_COLOR_SLOTS) {
+            if (slot.id.equals(normalized)) {
+                return slot;
+            }
+        }
+        return SPEAKER_COLOR_SLOTS.get(0);
     }
 
     private static Map<String, Language> buildLanguageMap() {
@@ -1055,6 +1129,58 @@ final class AiLyricsSettings {
         }
     }
 
+    static final class SpeakerColorSlot {
+        final String id;
+        final String titleKey;
+        final String defaultColor;
+
+        SpeakerColorSlot(String id, String titleKey, String defaultColor) {
+            this.id = id == null ? "" : id;
+            this.titleKey = titleKey == null ? "" : titleKey;
+            this.defaultColor = normalizeHexColor(defaultColor, "#ffffff");
+        }
+
+        int defaultColorInt() {
+            return SpeakerColorSettings.colorInt(defaultColor, Color.WHITE);
+        }
+    }
+
+    static final class SpeakerColorSettings {
+        final Map<String, String> colors;
+
+        SpeakerColorSettings(Map<String, String> colors) {
+            Map<String, String> values = new LinkedHashMap<>();
+            for (SpeakerColorSlot slot : SPEAKER_COLOR_SLOTS) {
+                String color = colors == null ? "" : colors.get(slot.id);
+                values.put(slot.id, normalizeHexColor(color, slot.defaultColor));
+            }
+            this.colors = Collections.unmodifiableMap(values);
+        }
+
+        static SpeakerColorSettings defaults() {
+            return new SpeakerColorSettings(Collections.emptyMap());
+        }
+
+        String hex(String slotId) {
+            SpeakerColorSlot slot = speakerColorSlotById(slotId);
+            String color = colors.get(slot.id);
+            return normalizeHexColor(color, slot.defaultColor);
+        }
+
+        int color(String slotId) {
+            SpeakerColorSlot slot = speakerColorSlotById(slotId);
+            return colorInt(hex(slot.id), slot.defaultColorInt());
+        }
+
+        private static int colorInt(String hex, int fallback) {
+            try {
+                return Color.parseColor(normalizeHexColor(hex, "#ffffff"));
+            } catch (Exception ignored) {
+                return fallback;
+            }
+        }
+    }
+
     static final class Language {
         final String code;
         final String name;
@@ -1113,6 +1239,7 @@ final class AiLyricsSettings {
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
         final TypographySettings typography;
+        final SpeakerColorSettings speakerColors;
         final String spotifyClientId;
         final String spotifyClientSecret;
 
@@ -1138,6 +1265,7 @@ final class AiLyricsSettings {
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
                 TypographySettings typography,
+                SpeakerColorSettings speakerColors,
                 String spotifyClientId,
                 String spotifyClientSecret
         ) {
@@ -1166,6 +1294,7 @@ final class AiLyricsSettings {
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.typography = typography == null ? TypographySettings.defaults() : typography;
+            this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
         }

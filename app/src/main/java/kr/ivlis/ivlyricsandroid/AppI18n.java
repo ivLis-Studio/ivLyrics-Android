@@ -106,6 +106,7 @@ final class AppI18n {
         addUnifiedOutputLanguageStrings(languages);
         addFuriganaStrings(languages);
         addTypographyStrings(languages);
+        addSpeakerColorStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -1439,6 +1440,96 @@ final class AppI18n {
                 "typography.slot.lyrics_pronunciation_desc", slotDescription,
                 "typography.slot.lyrics_translation", lyricsTranslation,
                 "typography.slot.lyrics_translation_desc", slotDescription
+        };
+    }
+
+    private static void addSpeakerColorStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = speakerColorStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] speakerColorStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return speakerColorStringsValues("보컬 색상", "normal, duet, male, female 보컬 색상을 HEX 값으로 조절합니다.", "Normal", "Duet", "Male", "Female", "HEX 색상", "색상 저장", "기본값으로", "보컬 색상 저장됨", "보컬 색상 기본값 적용됨", "%s 색상 형식이 올바르지 않습니다.");
+            case "zh-CN":
+                return speakerColorStringsValues("人声颜色", "用 HEX 值调整 normal、duet、male、female 的歌词颜色。", "普通", "合唱", "男声", "女声", "HEX 颜色", "保存颜色", "恢复默认", "人声颜色已保存", "人声颜色已恢复默认", "%s 的颜色格式不正确。");
+            case "zh-TW":
+                return speakerColorStringsValues("人聲顏色", "用 HEX 值調整 normal、duet、male、female 的歌詞顏色。", "一般", "合唱", "男聲", "女聲", "HEX 色彩", "儲存色彩", "恢復預設", "人聲色彩已儲存", "人聲色彩已恢復預設", "%s 的色彩格式不正確。");
+            case "ja":
+                return speakerColorStringsValues("ボーカルカラー", "normal、duet、male、female の歌詞色を HEX 値で調整します。", "Normal", "Duet", "Male", "Female", "HEX カラー", "色を保存", "初期値に戻す", "ボーカルカラーを保存しました", "ボーカルカラーを初期値に戻しました", "%s の色形式が正しくありません。");
+            case "hi":
+                return speakerColorStringsValues("वोकल रंग", "normal, duet, male, female गीत रंगों को HEX मानों से बदलें।", "Normal", "Duet", "Male", "Female", "HEX रंग", "रंग सहेजें", "डिफॉल्ट", "वोकल रंग सहेजे गए", "वोकल रंग डिफॉल्ट पर लौटे", "%s रंग प्रारूप सही नहीं है।");
+            case "es":
+                return speakerColorStringsValues("Colores vocales", "Ajusta los colores normal, duet, male y female con valores HEX.", "Normal", "Dueto", "Masculino", "Femenino", "Color HEX", "Guardar colores", "Restablecer", "Colores vocales guardados", "Colores vocales restablecidos", "El formato de color de %s no es valido.");
+            case "fr":
+                return speakerColorStringsValues("Couleurs vocales", "Reglez les couleurs normal, duet, male et female avec des valeurs HEX.", "Normal", "Duo", "Homme", "Femme", "Couleur HEX", "Enregistrer", "Reinitialiser", "Couleurs vocales enregistrees", "Couleurs vocales reinitialisees", "Le format de couleur de %s est invalide.");
+            case "ar":
+                return speakerColorStringsValues("ألوان الأصوات", "اضبط ألوان normal وduet وmale وfemale بقيم HEX.", "Normal", "Duet", "Male", "Female", "لون HEX", "حفظ الألوان", "إعادة الضبط", "تم حفظ ألوان الأصوات", "تمت إعادة ألوان الأصوات", "تنسيق لون %s غير صحيح.");
+            case "fa":
+                return speakerColorStringsValues("رنگ‌های وکال", "رنگ normal، duet، male و female را با مقدار HEX تنظیم کنید.", "Normal", "Duet", "Male", "Female", "رنگ HEX", "ذخیره رنگ‌ها", "بازنشانی", "رنگ‌های وکال ذخیره شد", "رنگ‌های وکال بازنشانی شد", "قالب رنگ %s درست نیست.");
+            case "de":
+                return speakerColorStringsValues("Vokal-Farben", "Passe normal, duet, male und female Farben mit HEX-Werten an.", "Normal", "Duett", "Maennlich", "Weiblich", "HEX-Farbe", "Farben speichern", "Zuruecksetzen", "Vokal-Farben gespeichert", "Vokal-Farben zurueckgesetzt", "Das Farbformat von %s ist ungueltig.");
+            case "ru":
+                return speakerColorStringsValues("Цвета вокала", "Настройте цвета normal, duet, male и female через HEX.", "Normal", "Duet", "Male", "Female", "HEX-цвет", "Сохранить цвета", "Сбросить", "Цвета вокала сохранены", "Цвета вокала сброшены", "Неверный формат цвета для %s.");
+            case "sv":
+                return speakerColorStringsValues("Vokalfarger", "Justera normal, duet, male och female med HEX-varden.", "Normal", "Duett", "Manlig", "Kvinnlig", "HEX-farg", "Spara farger", "Aterstall", "Vokalfarger sparade", "Vokalfarger aterstallda", "Fargformatet for %s ar ogiltigt.");
+            case "pt":
+                return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, duet, male e female com valores HEX.", "Normal", "Dueto", "Masculino", "Feminino", "Cor HEX", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s e invalido.");
+            case "bn":
+                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্স রঙ HEX মান দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "HEX রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
+            case "it":
+                return speakerColorStringsValues("Colori vocali", "Regola i colori normal, duet, male e female con valori HEX.", "Normal", "Duetto", "Maschile", "Femminile", "Colore HEX", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non e valido.");
+            case "th":
+                return speakerColorStringsValues("สีเสียงร้อง", "ปรับสี normal, duet, male และ female ด้วยค่า HEX", "Normal", "Duet", "Male", "Female", "สี HEX", "บันทึกสี", "รีเซ็ต", "บันทึกสีเสียงร้องแล้ว", "รีเซ็ตสีเสียงร้องแล้ว", "รูปแบบสีของ %s ไม่ถูกต้อง");
+            case "vi":
+                return speakerColorStringsValues("Mau giong hat", "Chinh mau normal, duet, male va female bang gia tri HEX.", "Normal", "Duet", "Male", "Female", "Mau HEX", "Luu mau", "Dat lai", "Da luu mau giong hat", "Da dat lai mau giong hat", "Dinh dang mau cua %s khong hop le.");
+            case "id":
+                return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, male, dan female dengan nilai HEX.", "Normal", "Duet", "Male", "Female", "Warna HEX", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
+            case "ms":
+                return speakerColorStringsValues("Warna vokal", "Laraskan warna normal, duet, male dan female dengan nilai HEX.", "Normal", "Duet", "Male", "Female", "Warna HEX", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
+            default:
+                return speakerColorStringsValues("Vocal Colors", "Customize normal, duet, male, and female lyric colors with HEX values.", "Normal", "Duet", "Male", "Female", "HEX color", "Apply colors", "Reset", "Vocal colors saved", "Vocal colors reset", "%s color format is invalid.");
+        }
+    }
+
+    private static String[] speakerColorStringsValues(
+            String sectionTitle,
+            String sectionDescription,
+            String normal,
+            String duet,
+            String male,
+            String female,
+            String hexHint,
+            String apply,
+            String reset,
+            String saved,
+            String resetToast,
+            String invalidFormat
+    ) {
+        return new String[]{
+                "section.speaker_colors", sectionTitle,
+                "section.speaker_colors_desc", sectionDescription,
+                "speaker_color.normal", normal,
+                "speaker_color.duet", duet,
+                "speaker_color.male", male,
+                "speaker_color.female", female,
+                "speaker_color.hex_hint", hexHint,
+                "button.apply_colors", apply,
+                "button.reset_colors", reset,
+                "toast.speaker_colors_saved", saved,
+                "toast.speaker_colors_reset", resetToast,
+                "toast.invalid_color_format", invalidFormat
         };
     }
 
