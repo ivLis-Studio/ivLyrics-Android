@@ -5797,7 +5797,7 @@ public final class MainActivity extends Activity implements
         List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
         PreviewText original = originalPreviewText(line);
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_ORIGINAL)) {
-            addPreviewRow(rows, original.text, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
+            addPreviewRow(rows, original.text, original.rubyText, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION)) {
             addSupplementPreviewRow(
@@ -5805,6 +5805,7 @@ public final class MainActivity extends Activity implements
                     line.pronunciationText,
                     ui("loading.pronunciation"),
                     original.text,
+                    original.rubyText,
                     original.syllables,
                     original.kind,
                     isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION),
@@ -5817,6 +5818,7 @@ public final class MainActivity extends Activity implements
                     line.translationText,
                     ui("loading.translation"),
                     original.text,
+                    original.rubyText,
                     original.syllables,
                     original.kind,
                     isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION),
@@ -5824,7 +5826,7 @@ public final class MainActivity extends Activity implements
             );
         }
         if (rows.isEmpty()) {
-            addPreviewRow(rows, original.text, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
+            addPreviewRow(rows, original.text, original.rubyText, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
         return rows;
     }
@@ -5834,12 +5836,14 @@ public final class MainActivity extends Activity implements
             String text,
             String generatingText,
             String fallback,
+            String fallbackRubyText,
             List<LyricsLine.Syllable> fallbackSyllables,
             String fallbackKind,
             boolean generating,
             String slotId
     ) {
         String value = text == null ? "" : text.trim();
+        String rubyText = "";
         List<LyricsLine.Syllable> syllables = Collections.emptyList();
         String kind = "vocal";
         if (value.isEmpty()) {
@@ -5847,6 +5851,7 @@ public final class MainActivity extends Activity implements
                 value = generatingText;
             } else {
                 value = fallback;
+                rubyText = fallbackRubyText == null ? "" : fallbackRubyText.trim();
                 syllables = fallbackSyllables == null ? Collections.emptyList() : fallbackSyllables;
                 kind = fallbackKind;
             }
@@ -5854,7 +5859,7 @@ public final class MainActivity extends Activity implements
         if (samePreviewTextAlreadyShown(rows, value)) {
             return;
         }
-        addPreviewRow(rows, value, syllables, kind, slotId);
+        addPreviewRow(rows, value, rubyText, syllables, kind, slotId);
     }
 
     private void addPreviewRow(List<MainLyricPreviewView.PreviewLine> rows, String text) {
@@ -5887,11 +5892,22 @@ public final class MainActivity extends Activity implements
             String kind,
             String slotId
     ) {
+        addPreviewRow(rows, text, "", syllables, kind, slotId);
+    }
+
+    private void addPreviewRow(
+            List<MainLyricPreviewView.PreviewLine> rows,
+            String text,
+            String rubyText,
+            List<LyricsLine.Syllable> syllables,
+            String kind,
+            String slotId
+    ) {
         String value = text == null ? "" : text.trim();
         if (value.isEmpty()) {
             return;
         }
-        rows.add(new MainLyricPreviewView.PreviewLine(value, rows.isEmpty(), syllables, kind, slotId));
+        rows.add(new MainLyricPreviewView.PreviewLine(value, rubyText, rows.isEmpty(), syllables, kind, slotId));
     }
 
     private boolean samePreviewTextAlreadyShown(List<MainLyricPreviewView.PreviewLine> rows, String text) {
@@ -5972,9 +5988,10 @@ public final class MainActivity extends Activity implements
     private PreviewText originalPreviewText(LyricsLine line) {
         if (!hasMultiplePreviewVocalParts(line) && line.text != null && !line.text.trim().isEmpty()) {
             String text = line.text.trim();
-            return new PreviewText(text, karaokeSyllablesForText(text, line.syllables), line.kind);
+            return new PreviewText(text, previewLineRubyText(line), karaokeSyllablesForText(text, line.syllables), line.kind);
         }
         StringBuilder builder = new StringBuilder();
+        StringBuilder rubyBuilder = new StringBuilder();
         List<LyricsLine.Syllable> syllables = new ArrayList<>();
         boolean syllablesUsable = true;
         for (LyricsLine.VocalPart part : line.vocalParts) {
@@ -5983,10 +6000,12 @@ public final class MainActivity extends Activity implements
             }
             if (builder.length() > 0) {
                 builder.append(' ');
+                rubyBuilder.append(' ');
                 syllables.add(spaceSyllable(syllables, part));
             }
             String partText = part.text.trim();
             builder.append(partText);
+            rubyBuilder.append(previewPartRubyText(part, partText));
             List<LyricsLine.Syllable> partSyllables = karaokeSyllablesForText(partText, part.syllables);
             if (partSyllables.isEmpty()) {
                 syllablesUsable = false;
@@ -5994,9 +6013,33 @@ public final class MainActivity extends Activity implements
             syllables.addAll(partSyllables);
         }
         if (builder.length() == 0) {
-            return new PreviewText("♪", Collections.emptyList(), line.kind);
+            return new PreviewText("♪", "", Collections.emptyList(), line.kind);
         }
-        return new PreviewText(builder.toString(), syllablesUsable ? syllables : Collections.emptyList(), line.kind);
+        return new PreviewText(
+                builder.toString(),
+                rubyBuilder.toString(),
+                syllablesUsable ? syllables : Collections.emptyList(),
+                line.kind
+        );
+    }
+
+    private String previewLineRubyText(LyricsLine line) {
+        if (!previewJapaneseFuriganaEnabled() || line == null) {
+            return "";
+        }
+        return line.furiganaText == null ? "" : line.furiganaText.trim();
+    }
+
+    private String previewPartRubyText(LyricsLine.VocalPart part, String fallbackText) {
+        if (!previewJapaneseFuriganaEnabled() || part == null) {
+            return fallbackText == null ? "" : fallbackText;
+        }
+        String rubyText = part.furiganaText == null ? "" : part.furiganaText.trim();
+        return rubyText.isEmpty() ? (fallbackText == null ? "" : fallbackText) : rubyText;
+    }
+
+    private boolean previewJapaneseFuriganaEnabled() {
+        return aiLyricsSettings != null && aiLyricsSettings.snapshot().japaneseFuriganaEnabled;
     }
 
     private boolean hasMultiplePreviewVocalParts(LyricsLine line) {
@@ -6852,11 +6895,13 @@ public final class MainActivity extends Activity implements
 
     private static final class PreviewText {
         final String text;
+        final String rubyText;
         final List<LyricsLine.Syllable> syllables;
         final String kind;
 
-        PreviewText(String text, List<LyricsLine.Syllable> syllables, String kind) {
+        PreviewText(String text, String rubyText, List<LyricsLine.Syllable> syllables, String kind) {
             this.text = text == null ? "" : text;
+            this.rubyText = rubyText == null ? "" : rubyText;
             this.syllables = syllables == null ? Collections.emptyList() : new ArrayList<>(syllables);
             this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
         }

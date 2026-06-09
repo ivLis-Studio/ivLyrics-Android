@@ -28,6 +28,7 @@ final class MainLyricPreviewView extends View {
     private static final float SECONDARY_TEXT_SP = 14.5f;
     private static final float ROW_GAP_SP = 4f;
     private static final float EDGE_FADE_DP = 28f;
+    private static final float FURIGANA_TEXT_RATIO = 0.46f;
     private static final float SLIDE_START_HOLD = 0.3f;
     private static final float SLIDE_MOVE_DURATION = 0.4f;
     private static final int RESERVED_TEXT_ROWS = 3;
@@ -156,7 +157,10 @@ final class MainLyricPreviewView extends View {
 
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
             float rowHeight = rowHeight(line);
-            float baseline = top + (rowHeight - metrics.ascent - metrics.descent) * 0.5f;
+            float rubyExtraHeight = rubyExtraHeight(line, textSize);
+            float baseline = top
+                    + rubyExtraHeight
+                    + (rowHeight - rubyExtraHeight - metrics.ascent - metrics.descent) * 0.5f;
             float textWidth = measureLineWidth(line);
             float x = xForText(textWidth, width, left, progress);
             drawPreviewLine(canvas, line, x, baseline, textSize, alpha, position, left, width);
@@ -198,6 +202,7 @@ final class MainLyricPreviewView extends View {
         if (!line.hasKaraoke()) {
             textPaint.setColor(Color.argb(normalAlpha, 255, 255, 255));
             canvas.drawText(line.text, x, baseline, textPaint);
+            drawPlainRubyText(canvas, line, x, baseline, textSize, normalAlpha);
             return;
         }
 
@@ -423,7 +428,8 @@ final class MainLyricPreviewView extends View {
     }
 
     private float reservedContentHeight() {
-        float primaryRow = sp(textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL, PRIMARY_TEXT_SP) * 1.22f);
+        float primaryText = textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL, PRIMARY_TEXT_SP);
+        float primaryRow = sp(primaryText * 1.22f + primaryText * FURIGANA_TEXT_RATIO * 0.82f);
         float secondaryRow = sp(Math.max(
                 textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION, SECONDARY_TEXT_SP),
                 textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION, SECONDARY_TEXT_SP)
@@ -440,7 +446,15 @@ final class MainLyricPreviewView extends View {
         if (line.isAnimatedVisual()) {
             return sp((line.primary ? 24f : 21f) * textScale * typographyStyle(slotForLine(line)).scale());
         }
-        return sp(textSizeSp(line) * (line.primary ? 1.22f : 1.18f));
+        float textSize = sp(textSizeSp(line));
+        return textSize * (line.primary ? 1.22f : 1.18f) + rubyExtraHeight(line, textSize);
+    }
+
+    private float rubyExtraHeight(PreviewLine line, float textSize) {
+        if (line == null || !line.hasRuby()) {
+            return 0f;
+        }
+        return Math.max(sp(7f), textSize * FURIGANA_TEXT_RATIO * 0.82f);
     }
 
     private boolean sameLines(List<PreviewLine> nextLines) {
@@ -455,6 +469,7 @@ final class MainLyricPreviewView extends View {
                     || current.hasKaraoke() != next.hasKaraoke()
                     || !current.kind.equals(next.kind)
                     || !current.slotId.equals(next.slotId)
+                    || !current.rubyText.equals(next.rubyText)
                     || !current.text.equals(next.text)) {
                 return false;
             }
@@ -514,7 +529,7 @@ final class MainLyricPreviewView extends View {
     }
 
     private void drawKaraokeLine(Canvas canvas, PreviewLine line, float x, float baseline, float textSize, long positionMs) {
-        List<TextSegment> segments = buildSegments(line.syllables);
+        List<TextSegment> segments = buildSegments(line);
         if (segments.isEmpty()) {
             textPaint.setColor(Color.argb(line.primary ? 244 : 208, 255, 255, 255));
             canvas.drawText(line.text, x, baseline, textPaint);
@@ -548,6 +563,7 @@ final class MainLyricPreviewView extends View {
                 canvas.scale(bounce.scale, bounce.scale, pivotX, pivotY);
             }
 
+            drawRubyText(canvas, segment, cursor, baseline + offsetY, line.kind, textSize, fill, line.primary);
             configureTextPaint(inactiveColor, line.kind, textSize, false);
             canvas.drawText(segment.text, cursor, baseline + offsetY, textPaint);
             if (fill > 0f) {
@@ -605,27 +621,154 @@ final class MainLyricPreviewView extends View {
         canvas.restoreToCount(clipSave);
     }
 
-    private List<TextSegment> buildSegments(List<LyricsLine.Syllable> syllables) {
+    private void drawPlainRubyText(
+            Canvas canvas,
+            PreviewLine line,
+            float x,
+            float baseline,
+            float textSize,
+            int alpha
+    ) {
+        if (line == null || !line.hasRuby()) {
+            return;
+        }
+        List<RubyAnnotation> annotations = parseRubyAnnotations(line.text, line.rubyText);
+        if (annotations.isEmpty()) {
+            return;
+        }
+        String text = line.text == null ? "" : line.text;
+        float rubySize = Math.max(sp(7.4f), textSize * FURIGANA_TEXT_RATIO);
+        int rubyColor = Color.argb(Math.round(alpha * 0.82f), 255, 255, 255);
+        float rubyBaseline = baseline - textSize * 0.88f;
+        for (RubyAnnotation annotation : annotations) {
+            int startIndex = charIndexForCodePointOffset(text, annotation.start);
+            int endIndex = charIndexForCodePointOffset(text, annotation.end());
+            if (endIndex <= startIndex) {
+                continue;
+            }
+            textPaint.setTypeface(typefaceForLine(line));
+            textPaint.setTextSize(textSize);
+            float baseLeft = x + textPaint.measureText(text, 0, startIndex);
+            float baseWidth = textPaint.measureText(text, startIndex, endIndex);
+            configureTextPaint(rubyColor, line.kind, rubySize, false);
+            float rubyWidth = textPaint.measureText(annotation.reading);
+            canvas.drawText(annotation.reading, baseLeft + baseWidth * 0.5f - rubyWidth * 0.5f, rubyBaseline, textPaint);
+        }
+    }
+
+    private void drawRubyText(
+            Canvas canvas,
+            TextSegment segment,
+            float cursor,
+            float baseline,
+            String kind,
+            float textSize,
+            float fill,
+            boolean primary
+    ) {
+        if (segment == null || segment.rubyText == null || segment.rubyText.trim().isEmpty()) {
+            return;
+        }
+        float rubySize = Math.max(sp(7.4f), textSize * FURIGANA_TEXT_RATIO);
+        int alpha = primary ? 214 : 186;
+        int color = fill > 0f
+                ? Color.argb(alpha, 255, 255, 255)
+                : Color.argb(Math.round(alpha * 0.66f), 255, 255, 255);
+        configureTextPaint(color, kind, rubySize, fill > 0f);
+        float rubyWidth = textPaint.measureText(segment.rubyText);
+        float rubyLeft = cursor + segment.width * 0.5f - rubyWidth * 0.5f;
+        float rubyBaseline = baseline - textSize * 0.88f;
+        canvas.drawText(segment.rubyText, rubyLeft, rubyBaseline, textPaint);
+    }
+
+    private List<TextSegment> buildSegments(PreviewLine line) {
+        List<LyricsLine.Syllable> syllables = line == null ? Collections.emptyList() : line.syllables;
         if (syllables == null || syllables.isEmpty()) {
             return Collections.emptyList();
         }
+        List<RubyAnnotation> rubyAnnotations = parseRubyAnnotations(line.text, line.rubyText);
         List<TextSegment> segments = new ArrayList<>(syllables.size());
+        int charOffset = 0;
         for (int index = 0; index < syllables.size(); index++) {
             LyricsLine.Syllable syllable = syllables.get(index);
             if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
                 continue;
             }
             String value = syllable.text;
+            int charLength = Math.max(1, value.codePointCount(0, value.length()));
             segments.add(new TextSegment(
                     value,
                     textPaint.measureText(value),
                     syllable.startTimeMs,
                     syllable.endTimeMs,
                     index,
-                    Math.max(1, value.codePointCount(0, value.length()))
+                    charLength,
+                    rubyForRange(rubyAnnotations, charOffset, charLength)
             ));
+            charOffset += charLength;
         }
         return segments;
+    }
+
+    private List<RubyAnnotation> parseRubyAnnotations(String text, String rubyText) {
+        if (text == null || text.isEmpty() || rubyText == null || !rubyText.contains("<ruby>")) {
+            return Collections.emptyList();
+        }
+        List<RubyAnnotation> annotations = new ArrayList<>();
+        int currentChar = 0;
+        int cursor = 0;
+        while (cursor < rubyText.length()) {
+            int rubyStart = rubyText.indexOf("<ruby>", cursor);
+            if (rubyStart < 0) {
+                currentChar += codePointCount(rubyText.substring(cursor).replaceAll("<[^>]+>", ""));
+                break;
+            }
+            String before = rubyText.substring(cursor, rubyStart);
+            currentChar += codePointCount(before.replaceAll("<[^>]+>", ""));
+
+            int baseStart = rubyStart + "<ruby>".length();
+            int rtStart = rubyText.indexOf("<rt>", baseStart);
+            int rtEnd = rtStart < 0 ? -1 : rubyText.indexOf("</rt>", rtStart);
+            int rubyEnd = rtEnd < 0 ? -1 : rubyText.indexOf("</ruby>", rtEnd);
+            if (rtStart < 0 || rtEnd < 0 || rubyEnd < 0) {
+                return Collections.emptyList();
+            }
+
+            String base = rubyText.substring(baseStart, rtStart);
+            String reading = rubyText.substring(rtStart + "<rt>".length(), rtEnd).trim();
+            int length = codePointCount(base);
+            if (length > 0 && !reading.isEmpty()) {
+                annotations.add(new RubyAnnotation(currentChar, length, reading));
+            }
+            currentChar += length;
+            cursor = rubyEnd + "</ruby>".length();
+        }
+
+        return plainRubyText(rubyText).equals(text) ? annotations : Collections.emptyList();
+    }
+
+    private String rubyForRange(List<RubyAnnotation> annotations, int start, int length) {
+        if (annotations == null || annotations.isEmpty() || length <= 0) {
+            return "";
+        }
+        int end = start + length;
+        StringBuilder builder = new StringBuilder();
+        for (RubyAnnotation annotation : annotations) {
+            if (annotation.start >= end || annotation.end() <= start) {
+                continue;
+            }
+            int overlapStart = Math.max(start, annotation.start);
+            int overlapEnd = Math.min(end, annotation.end());
+            String reading = annotation.readingForRange(overlapStart, overlapEnd);
+            if (reading.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(reading);
+        }
+        return builder.toString();
     }
 
     private float segmentFillFraction(TextSegment segment, long positionMs) {
@@ -871,12 +1014,64 @@ final class MainLyricPreviewView extends View {
         return Math.max(0f, Math.min(1f, value));
     }
 
+    private int charIndexForCodePointOffset(String text, int codePointOffset) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        int safeOffset = Math.max(0, Math.min(codePointOffset, text.codePointCount(0, text.length())));
+        return text.offsetByCodePoints(0, safeOffset);
+    }
+
+    private static String plainRubyText(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        int cursor = 0;
+        while (cursor < value.length()) {
+            int rubyStart = value.indexOf("<ruby>", cursor);
+            if (rubyStart < 0) {
+                builder.append(value.substring(cursor).replaceAll("<[^>]+>", ""));
+                break;
+            }
+            builder.append(value.substring(cursor, rubyStart).replaceAll("<[^>]+>", ""));
+            int baseStart = rubyStart + "<ruby>".length();
+            int rtStart = value.indexOf("<rt>", baseStart);
+            int rtEnd = rtStart < 0 ? -1 : value.indexOf("</rt>", rtStart);
+            int rubyEnd = rtEnd < 0 ? -1 : value.indexOf("</ruby>", rtEnd);
+            if (rtStart < 0 || rtEnd < 0 || rubyEnd < 0) {
+                return value.replaceAll("<[^>]+>", "");
+            }
+            builder.append(value, baseStart, rtStart);
+            cursor = rubyEnd + "</ruby>".length();
+        }
+        return builder.toString();
+    }
+
+    private static int codePointCount(String value) {
+        return value == null || value.isEmpty() ? 0 : value.codePointCount(0, value.length());
+    }
+
+    private static List<String> splitChars(String value) {
+        if (value == null || value.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> chars = new ArrayList<>();
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            chars.add(new String(Character.toChars(codePoint)));
+            offset += Character.charCount(codePoint);
+        }
+        return chars;
+    }
+
     static final class PreviewLine {
         private static final int TYPE_TEXT = 0;
         private static final int TYPE_INTERLUDE = 1;
         private static final int TYPE_LOADING = 2;
 
         final String text;
+        final String rubyText;
         final boolean primary;
         final List<LyricsLine.Syllable> syllables;
         final String kind;
@@ -885,6 +1080,10 @@ final class MainLyricPreviewView extends View {
 
         PreviewLine(String text, boolean primary) {
             this(text, primary, Collections.emptyList());
+        }
+
+        PreviewLine(String text, String rubyText, boolean primary, List<LyricsLine.Syllable> syllables, String kind, String slotId) {
+            this(text, rubyText, primary, syllables, kind, TYPE_TEXT, slotId);
         }
 
         PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables) {
@@ -898,17 +1097,22 @@ final class MainLyricPreviewView extends View {
         }
 
         PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, String slotId) {
-            this(text, primary, syllables, kind, TYPE_TEXT, slotId);
+            this(text, "", primary, syllables, kind, TYPE_TEXT, slotId);
         }
 
         private PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type) {
-            this(text, primary, syllables, kind, type, primary
+            this(text, "", primary, syllables, kind, type, primary
                     ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL
                     : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION);
         }
 
         private PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type, String slotId) {
+            this(text, "", primary, syllables, kind, type, slotId);
+        }
+
+        private PreviewLine(String text, String rubyText, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type, String slotId) {
             this.text = text == null ? "" : text;
+            this.rubyText = rubyText == null ? "" : rubyText;
             this.primary = primary;
             this.syllables = syllables == null ? Collections.emptyList() : new ArrayList<>(syllables);
             this.kind = normalizeKind(kind);
@@ -928,6 +1132,10 @@ final class MainLyricPreviewView extends View {
             return type == TYPE_TEXT && !syllables.isEmpty();
         }
 
+        boolean hasRuby() {
+            return type == TYPE_TEXT && rubyText.contains("<ruby>") && plainRubyText(rubyText).equals(text);
+        }
+
         boolean isInterlude() {
             return type == TYPE_INTERLUDE;
         }
@@ -943,6 +1151,7 @@ final class MainLyricPreviewView extends View {
         int rowSeed() {
             int seed = 17;
             seed = seed * 31 + text.hashCode();
+            seed = seed * 31 + rubyText.hashCode();
             seed = seed * 31 + kind.hashCode();
             return Math.abs(seed);
         }
@@ -964,14 +1173,65 @@ final class MainLyricPreviewView extends View {
         final long endTimeMs;
         final int sourceIndex;
         final int sourceLength;
+        final String rubyText;
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength) {
+            this(text, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
+        }
+
+        TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength, String rubyText) {
             this.text = text == null ? "" : text;
             this.width = Math.max(0f, width);
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
             this.sourceIndex = Math.max(0, sourceIndex);
             this.sourceLength = Math.max(1, sourceLength);
+            this.rubyText = rubyText == null ? "" : rubyText.trim();
+        }
+    }
+
+    private static final class RubyAnnotation {
+        final int start;
+        final int length;
+        final String reading;
+        final List<String> readingChars;
+
+        RubyAnnotation(int start, int length, String reading) {
+            this.start = Math.max(0, start);
+            this.length = Math.max(1, length);
+            this.reading = reading == null ? "" : reading;
+            this.readingChars = splitChars(this.reading);
+        }
+
+        int end() {
+            return start + length;
+        }
+
+        String readingForRange(int overlapStart, int overlapEnd) {
+            int safeStart = Math.max(start, overlapStart);
+            int safeEnd = Math.min(end(), overlapEnd);
+            if (safeStart >= safeEnd || reading.isEmpty()) {
+                return "";
+            }
+            if (safeStart == start && safeEnd == end()) {
+                return reading;
+            }
+            if (length <= 1 || readingChars.isEmpty()) {
+                return reading;
+            }
+            int charsPerKanji = Math.max(1, readingChars.size() / length);
+            StringBuilder builder = new StringBuilder();
+            for (int sourceIndex = safeStart; sourceIndex < safeEnd; sourceIndex++) {
+                int relative = sourceIndex - start;
+                int readStart = Math.min(readingChars.size(), relative * charsPerKanji);
+                int readEnd = relative == length - 1
+                        ? readingChars.size()
+                        : Math.min(readingChars.size(), (relative + 1) * charsPerKanji);
+                for (int index = readStart; index < readEnd; index++) {
+                    builder.append(readingChars.get(index));
+                }
+            }
+            return builder.toString();
         }
     }
 
