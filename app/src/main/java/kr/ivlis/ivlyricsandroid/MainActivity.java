@@ -1,5 +1,6 @@
 package kr.ivlis.ivlyricsandroid;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.ClipData;
@@ -92,6 +93,9 @@ public final class MainActivity extends Activity implements
     private static final String UI_HINTS_PREFS = "ui_hints";
     private static final String KEY_LYRICS_META_MENU_TIP_SHOWN = "lyrics_meta_menu_tip_shown";
     private static final int ONBOARDING_STEP_COUNT = 3;
+    private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
+    private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
+    private static final int LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP = 120;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
             "ivLyrics에 오신 것을 환영합니다",
             "Welcome to ivLyrics",
@@ -162,6 +166,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout lyricsManualSearchResultsContainer;
     private LinearLayout lyricsSupplementLoadingIndicator;
     private LinearLayout landscapeLyricsSupplementLoadingIndicator;
+    private LinearLayout lyricsPageContent;
     private LinearLayout lyricPreviewContainer;
     private LinearLayout landscapeHeroContainer;
     private LinearLayout landscapeMetaContainer;
@@ -229,6 +234,8 @@ public final class MainActivity extends Activity implements
     private float pageDragStartTranslationY;
     private boolean pageDragging;
     private int lyricsPageCornerRadiusDp = -1;
+    private int lyricsPageContentTopPaddingPx = -1;
+    private ValueAnimator lyricsPageContentPaddingAnimator;
     private VelocityTracker pageVelocityTracker;
     private float artworkSwipeStartX;
     private float artworkSwipeStartY;
@@ -1346,7 +1353,9 @@ public final class MainActivity extends Activity implements
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(46), dp(24), dp(22));
+        lyricsPageContent = content;
+        lyricsPageContentTopPaddingPx = dp(LYRICS_PAGE_TOP_PADDING_EXPANDED_DP);
+        content.setPadding(dp(24), lyricsPageContentTopPaddingPx, dp(24), dp(22));
         page.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -5502,6 +5511,7 @@ public final class MainActivity extends Activity implements
         mainPage.animate().cancel();
 
         if (show) {
+            resetLyricsPageDragTopPadding(false);
             lyricsPage.setVisibility(View.VISIBLE);
             lyricsPage.bringToFront();
             setLyricsPageCornerRadius(28);
@@ -5514,6 +5524,7 @@ public final class MainActivity extends Activity implements
                     .setDuration(330L)
                     .withEndAction(() -> {
                         setLyricsPageCornerRadius(0);
+                        resetLyricsPageDragTopPadding(false);
                         maybeShowLyricsMetaTip();
                     })
                     .start();
@@ -5532,6 +5543,7 @@ public final class MainActivity extends Activity implements
                         lyricsPage.setVisibility(View.GONE);
                         lyricsPage.setTranslationY(0f);
                         setLyricsPageCornerRadius(0);
+                        resetLyricsPageDragTopPadding(false);
                     })
                     .start();
         }
@@ -5751,8 +5763,64 @@ public final class MainActivity extends Activity implements
         float boundedTranslation = Math.max(0f, Math.min(height, translationY));
         lyricsPage.setTranslationY(boundedTranslation);
         setLyricsPageCornerRadius(boundedTranslation > 1f ? 28 : 0);
+        applyLyricsPageDragTopPadding(boundedTranslation);
         float reveal = Math.max(0f, Math.min(1f, boundedTranslation / Math.max(1f, dp(120))));
         mainPage.setAlpha(reveal);
+    }
+
+    private void applyLyricsPageDragTopPadding(float translationY) {
+        if (lyricsPageContent == null) {
+            return;
+        }
+        if (lyricsPageContentPaddingAnimator != null) {
+            lyricsPageContentPaddingAnimator.cancel();
+            lyricsPageContentPaddingAnimator = null;
+        }
+        float progress = Math.max(0f, Math.min(1f,
+                translationY / Math.max(1f, dp(LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP))));
+        int expanded = dp(LYRICS_PAGE_TOP_PADDING_EXPANDED_DP);
+        int compact = dp(LYRICS_PAGE_TOP_PADDING_COMPACT_DP);
+        int topPadding = Math.round(expanded + ((compact - expanded) * progress));
+        setLyricsPageContentTopPadding(topPadding);
+    }
+
+    private void resetLyricsPageDragTopPadding(boolean animate) {
+        int expanded = dp(LYRICS_PAGE_TOP_PADDING_EXPANDED_DP);
+        if (!animate || lyricsPageContent == null) {
+            if (lyricsPageContentPaddingAnimator != null) {
+                lyricsPageContentPaddingAnimator.cancel();
+                lyricsPageContentPaddingAnimator = null;
+            }
+            setLyricsPageContentTopPadding(expanded);
+            return;
+        }
+        int start = lyricsPageContentTopPaddingPx >= 0
+                ? lyricsPageContentTopPaddingPx
+                : lyricsPageContent.getPaddingTop();
+        if (start == expanded) {
+            return;
+        }
+        if (lyricsPageContentPaddingAnimator != null) {
+            lyricsPageContentPaddingAnimator.cancel();
+        }
+        lyricsPageContentPaddingAnimator = ValueAnimator.ofInt(start, expanded);
+        lyricsPageContentPaddingAnimator.setDuration(210L);
+        lyricsPageContentPaddingAnimator.addUpdateListener(animator ->
+                setLyricsPageContentTopPadding((Integer) animator.getAnimatedValue()));
+        lyricsPageContentPaddingAnimator.start();
+    }
+
+    private void setLyricsPageContentTopPadding(int topPadding) {
+        if (lyricsPageContent == null || lyricsPageContentTopPaddingPx == topPadding) {
+            return;
+        }
+        lyricsPageContentTopPaddingPx = topPadding;
+        lyricsPageContent.setPadding(
+                lyricsPageContent.getPaddingLeft(),
+                topPadding,
+                lyricsPageContent.getPaddingRight(),
+                lyricsPageContent.getPaddingBottom()
+        );
     }
 
     private void settleLyricsDrag(float velocityY) {
@@ -5771,6 +5839,7 @@ public final class MainActivity extends Activity implements
                 .setDuration(210L)
                 .withEndAction(() -> setLyricsPageCornerRadius(0))
                 .start();
+        resetLyricsPageDragTopPadding(true);
         mainPage.animate()
                 .alpha(0f)
                 .setDuration(210L)
