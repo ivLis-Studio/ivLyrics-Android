@@ -1,8 +1,7 @@
 <resources>
     <style name="AppTheme.Splash" parent="@style/AppTheme">
         <item name="android:windowSplashScreenBackground">@color/iv_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/avd_splash_motion_mark</item>
-        <item name="android:windowSplashScreenAnimationDuration">900</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_ivlyrics_wordmark</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/iv_splash_background</item>
         <item name="android:statusBarColor">@color/iv_splash_background</item>
