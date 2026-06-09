@@ -25,7 +25,6 @@ final class YouTubeBackgroundRepository {
     private static final String YOUTUBE_ENDPOINT = "https://lyrics.api.ivl.is/lyrics/youtube";
     private static final String SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
-    private static final long CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L;
 
     private final Context appContext;
     private final SharedPreferences cachePrefs;
@@ -109,6 +108,17 @@ final class YouTubeBackgroundRepository {
         executor.shutdownNow();
     }
 
+    void clearCache() {
+        cachePrefs.edit().clear().apply();
+    }
+
+    void clearCacheForIsrc(String isrc) {
+        String key = TrackSnapshot.normalizeIsrc(isrc);
+        if (!key.isEmpty()) {
+            cachePrefs.edit().remove(key).apply();
+        }
+    }
+
     private VideoInfo readCache(String isrc) {
         String key = TrackSnapshot.normalizeIsrc(isrc);
         if (key.isEmpty()) {
@@ -120,11 +130,6 @@ final class YouTubeBackgroundRepository {
         }
         try {
             JSONObject object = new JSONObject(raw);
-            long cachedAt = object.optLong("cachedAt", 0L);
-            if (cachedAt <= 0L || System.currentTimeMillis() - cachedAt > CACHE_TTL_MS) {
-                cachePrefs.edit().remove(key).apply();
-                return null;
-            }
             return VideoInfo.fromJson(key, object);
         } catch (Exception ignored) {
             cachePrefs.edit().remove(key).apply();

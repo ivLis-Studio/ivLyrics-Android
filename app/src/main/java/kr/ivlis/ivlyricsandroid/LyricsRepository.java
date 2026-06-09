@@ -39,6 +39,7 @@ final class LyricsRepository {
     private static final String SYNC_DATA_BASE = "https://lyrics.api.ivl.is/lyrics/sync-data";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
+    private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v1";
     private static final String SPOTIFY_ACCOUNTS_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
     private static final String SPOTIFY_SEARCH_BASE = "https://api.spotify.com/v1/search";
     private static final String SPOTIFY_TRACK_BASE = "https://api.spotify.com/v1/tracks/";
@@ -62,6 +63,7 @@ final class LyricsRepository {
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
     private final LyricsDiskCache diskCache;
+    private final RawResponseDiskCache syncDataResponseCache;
     private String spotifyAccessToken = "";
     private String spotifyTokenSourceKey = "";
     private long spotifyTokenIssuedAtMs = 0L;
@@ -76,6 +78,9 @@ final class LyricsRepository {
         diskCache = appContext == null
                 ? null
                 : new LyricsDiskCache(appContext, "base_lyrics", 350);
+        syncDataResponseCache = appContext == null
+                ? null
+                : new RawResponseDiskCache(appContext, "sync_data_api", 700);
         restoreSpotifyToken();
     }
 
@@ -221,6 +226,9 @@ final class LyricsRepository {
         if (diskCache != null) {
             diskCache.clear();
         }
+        if (syncDataResponseCache != null) {
+            syncDataResponseCache.clear();
+        }
     }
 
     void clearCacheForTrack(String trackKey) {
@@ -231,6 +239,16 @@ final class LyricsRepository {
         cache.remove(key);
         if (diskCache != null) {
             diskCache.remove(key);
+        }
+    }
+
+    void clearSyncDataCacheForIsrc(String isrc) {
+        if (syncDataResponseCache == null) {
+            return;
+        }
+        String key = syncDataCacheKey(isrc);
+        if (!key.isEmpty()) {
+            syncDataResponseCache.remove(key);
         }
     }
 
@@ -944,6 +962,13 @@ final class LyricsRepository {
 
     private SyncDataResult fetchSyncData(String isrc, TrackSnapshot track, SpotifyTrackMatch spotifyMatch, LogSink log) {
         try {
+            String cacheKey = syncDataCacheKey(isrc);
+            String cachedResponse = syncDataResponseCache == null ? "" : syncDataResponseCache.get(cacheKey);
+            if (!cachedResponse.isEmpty()) {
+                log.write("sync-data cache hit: isrc=" + TrackSnapshot.normalizeIsrc(isrc));
+                return parseSyncDataResponse(cachedResponse, log, true);
+            }
+
             Map<String, String> params = new HashMap<>();
             params.put("isrc", isrc);
             params.put("provider", "lrclib");
@@ -960,45 +985,59 @@ final class LyricsRepository {
             Map<String, String> headers = syncDataHeaders();
             log.write("sync-data headers: Origin=" + headers.get("Origin"));
             String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers);
-            JSONObject root = new JSONObject(response);
-            JSONObject data = root.optJSONObject("data");
-            if (data == null) {
-                log.write("sync-data response: no data");
-                return null;
+            SyncDataResult result = parseSyncDataResponse(response, log, false);
+            if (syncDataResponseCache != null && !cacheKey.isEmpty()) {
+                syncDataResponseCache.put(cacheKey, response);
             }
-            JSONObject syncData = data.optJSONObject("syncData");
-            if (syncData != null) {
-                SyncDataResult result = new SyncDataResult(
-                        syncBodyWithDurationFallback(syncData, data),
-                        data.optString("provider", "lrclib"),
-                        parseSyncContributors(data, syncData)
-                );
-                log.write("sync-data response: provider=" + result.provider
-                        + " / lines=" + result.lineCharCounts().size()
-                        + " / lrclibId=" + result.lrclibId()
-                        + " / contributors=" + result.contributors.size()
-                        + syncDurationSuffix(result.syncBody));
-                return result;
-            }
-            if (data.optJSONArray("lines") != null) {
-                SyncDataResult result = new SyncDataResult(
-                        syncBodyWithDurationFallback(data, data),
-                        data.optString("provider", "lrclib"),
-                        parseSyncContributors(data, data)
-                );
-                log.write("sync-data response: legacy body / provider=" + result.provider
-                        + " / lines=" + result.lineCharCounts().size()
-                        + " / lrclibId=" + result.lrclibId()
-                        + " / contributors=" + result.contributors.size()
-                        + syncDurationSuffix(result.syncBody));
-                return result;
-            }
-            log.write("sync-data response: data without lines");
-            return null;
+            return result;
         } catch (Exception error) {
             log.write("sync-data error: " + error.getMessage());
             return null;
         }
+    }
+
+    private SyncDataResult parseSyncDataResponse(String response, LogSink log, boolean fromCache) throws Exception {
+        String prefix = fromCache ? "sync-data cached response" : "sync-data response";
+        JSONObject root = new JSONObject(response);
+        JSONObject data = root.optJSONObject("data");
+        if (data == null) {
+            log.write(prefix + ": no data");
+            return null;
+        }
+        JSONObject syncData = data.optJSONObject("syncData");
+        if (syncData != null) {
+            SyncDataResult result = new SyncDataResult(
+                    syncBodyWithDurationFallback(syncData, data),
+                    data.optString("provider", "lrclib"),
+                    parseSyncContributors(data, syncData)
+            );
+            log.write(prefix + ": provider=" + result.provider
+                    + " / lines=" + result.lineCharCounts().size()
+                    + " / lrclibId=" + result.lrclibId()
+                    + " / contributors=" + result.contributors.size()
+                    + syncDurationSuffix(result.syncBody));
+            return result;
+        }
+        if (data.optJSONArray("lines") != null) {
+            SyncDataResult result = new SyncDataResult(
+                    syncBodyWithDurationFallback(data, data),
+                    data.optString("provider", "lrclib"),
+                    parseSyncContributors(data, data)
+            );
+            log.write(prefix + ": legacy body / provider=" + result.provider
+                    + " / lines=" + result.lineCharCounts().size()
+                    + " / lrclibId=" + result.lrclibId()
+                    + " / contributors=" + result.contributors.size()
+                    + syncDurationSuffix(result.syncBody));
+            return result;
+        }
+        log.write(prefix + ": data without lines");
+        return null;
+    }
+
+    private String syncDataCacheKey(String isrc) {
+        String normalized = TrackSnapshot.normalizeIsrc(isrc);
+        return normalized.isEmpty() ? "" : SYNC_DATA_CACHE_SCHEMA + "|isrc:" + normalized + "|provider:" + LRCLIB_PROVIDER_ID;
     }
 
     private JSONObject syncBodyWithDurationFallback(JSONObject syncBody, JSONObject wrapper) {

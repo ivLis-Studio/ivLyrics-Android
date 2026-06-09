@@ -5227,6 +5227,16 @@ public final class MainActivity extends Activity implements
         String key = snapshot.stableKey();
         if (lyricsRepository != null) {
             lyricsRepository.clearCacheForTrack(key);
+            lyricsRepository.clearSyncDataCacheForIsrc(nonEmpty(
+                    currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc,
+                    snapshot.isrc
+            ));
+        }
+        if (youtubeBackgroundRepository != null) {
+            youtubeBackgroundRepository.clearCacheForIsrc(nonEmpty(
+                    currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc,
+                    snapshot.isrc
+            ));
         }
         if (aiLyricsRepository != null) {
             aiLyricsRepository.clearTrackCache(key);
@@ -5253,6 +5263,9 @@ public final class MainActivity extends Activity implements
         }
         if (furiganaRepository != null) {
             furiganaRepository.clearCache();
+        }
+        if (youtubeBackgroundRepository != null) {
+            youtubeBackgroundRepository.clearCache();
         }
         translatedTrackTitle = "";
         translatedTrackArtist = "";
