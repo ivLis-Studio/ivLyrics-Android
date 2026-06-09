@@ -34,6 +34,7 @@ final class AiLyricsSettings {
     static final String KEY_PREVIEW_MODE = "preview_mode";
     static final String KEY_PREVIEW_ITEMS = "preview_items";
     static final String KEY_AUTO_INSTRUMENTAL_BREAK = "auto_instrumental_break";
+    static final String KEY_INTERLUDE_LABELS_ENABLED = "interlude_labels_enabled";
     static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_KARAOKE_BOUNCE_EFFECT = "karaoke_bounce_effect";
     static final String KEY_BACKGROUND_MODE = "background_mode";
@@ -230,6 +231,7 @@ final class AiLyricsSettings {
                         ? prefs.getInt(KEY_PREVIEW_ITEMS, PREVIEW_ITEM_ORIGINAL)
                         : previewItemsForMode(prefs.getString(KEY_PREVIEW_MODE, PREVIEW_MODE_ORIGINAL))),
                 prefs.getBoolean(KEY_AUTO_INSTRUMENTAL_BREAK, true),
+                prefs.getBoolean(KEY_INTERLUDE_LABELS_ENABLED, true),
                 prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, true),
                 prefs.getBoolean(KEY_KARAOKE_BOUNCE_EFFECT, true),
                 backgroundSettings(),
@@ -390,6 +392,10 @@ final class AiLyricsSettings {
 
     void setAutoInstrumentalBreakEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_AUTO_INSTRUMENTAL_BREAK, enabled).apply();
+    }
+
+    void setInterludeLabelsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_INTERLUDE_LABELS_ENABLED, enabled).apply();
     }
 
     void setSyncedLyricsKaraokeAnimationEnabled(boolean enabled) {
@@ -1231,6 +1237,7 @@ final class AiLyricsSettings {
         final String previewMode;
         final int previewItems;
         final boolean autoInstrumentalBreakEnabled;
+        final boolean interludeLabelsEnabled;
         final boolean syncedLyricsKaraokeAnimationEnabled;
         final boolean karaokeBounceEffectEnabled;
         final BackgroundSettings background;
@@ -1257,6 +1264,7 @@ final class AiLyricsSettings {
                 String previewMode,
                 int previewItems,
                 boolean autoInstrumentalBreakEnabled,
+                boolean interludeLabelsEnabled,
                 boolean syncedLyricsKaraokeAnimationEnabled,
                 boolean karaokeBounceEffectEnabled,
                 BackgroundSettings background,
@@ -1284,6 +1292,7 @@ final class AiLyricsSettings {
             this.previewMode = normalizePreviewMode(previewMode);
             this.previewItems = normalizePreviewItems(previewItems);
             this.autoInstrumentalBreakEnabled = autoInstrumentalBreakEnabled;
+            this.interludeLabelsEnabled = interludeLabelsEnabled;
             this.syncedLyricsKaraokeAnimationEnabled = syncedLyricsKaraokeAnimationEnabled;
             this.karaokeBounceEffectEnabled = karaokeBounceEffectEnabled;
             this.background = background == null

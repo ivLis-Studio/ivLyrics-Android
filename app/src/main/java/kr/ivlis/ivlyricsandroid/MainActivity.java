@@ -193,6 +193,7 @@ public final class MainActivity extends Activity implements
     private Switch metadataTranslationSwitch;
     private Switch japaneseFuriganaSwitch;
     private Switch autoInstrumentalBreakSwitch;
+    private Switch interludeLabelsSwitch;
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
     private Switch landscapeAutoHideControlsSwitch;
@@ -1164,6 +1165,7 @@ public final class MainActivity extends Activity implements
         configureLyricsViewUiText(landscapeLyricsView);
         landscapeLyricsView.setVerticalCenterBias(0.50f);
         landscapeLyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
+        landscapeLyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
@@ -1516,6 +1518,7 @@ public final class MainActivity extends Activity implements
         configureLyricsViewUiText(lyricsView);
         lyricsView.setVerticalCenterBias(0.42f);
         lyricsView.setAutoInstrumentalBreakEnabled(aiLyricsSettings.snapshot().autoInstrumentalBreakEnabled);
+        lyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
@@ -1949,6 +1952,21 @@ public final class MainActivity extends Activity implements
             showSavedToast(isChecked ? ui("toast.auto_interlude_on") : ui("toast.auto_interlude_off"));
         });
         settingsLyricsPage.addView(autoInstrumentalBreakSwitch, topMargin(matchWrap(), dp(12)));
+
+        interludeLabelsSwitch = settingSwitch(
+                ui("setting.interlude_labels"),
+                ui("setting.interlude_labels_desc")
+        );
+        interludeLabelsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setInterludeLabelsEnabled(isChecked);
+            setInterludeLabelsOnViews(isChecked);
+            updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsLyricsPage.addView(interludeLabelsSwitch, topMargin(matchWrap(), dp(12)));
 
         syncedLyricsKaraokeSwitch = settingSwitch(
                 ui("setting.synced_karaoke_animation"),
@@ -4488,6 +4506,11 @@ public final class MainActivity extends Activity implements
             autoInstrumentalBreakSwitch.setChecked(snapshot.autoInstrumentalBreakEnabled);
             suppressSettingsEvents = false;
         }
+        if (interludeLabelsSwitch != null) {
+            suppressSettingsEvents = true;
+            interludeLabelsSwitch.setChecked(snapshot.interludeLabelsEnabled);
+            suppressSettingsEvents = false;
+        }
         if (syncedLyricsKaraokeSwitch != null) {
             suppressSettingsEvents = true;
             syncedLyricsKaraokeSwitch.setChecked(snapshot.syncedLyricsKaraokeAnimationEnabled);
@@ -5490,6 +5513,15 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void setInterludeLabelsOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setInterludeLabelsEnabled(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setInterludeLabelsEnabled(enabled);
+        }
+    }
+
     private void setSyncedLyricsKaraokeAnimationOnViews(boolean enabled) {
         if (lyricsView != null) {
             lyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
@@ -5921,6 +5953,9 @@ public final class MainActivity extends Activity implements
     }
 
     private String interludePreviewLabel(String kind) {
+        if (!interludeLabelsEnabled()) {
+            return "";
+        }
         if ("prelude".equals(kind)) {
             return ui("interlude.prelude");
         }
@@ -5928,6 +5963,10 @@ public final class MainActivity extends Activity implements
             return ui("interlude.postlude");
         }
         return ui("interlude.break");
+    }
+
+    private boolean interludeLabelsEnabled() {
+        return aiLyricsSettings == null || aiLyricsSettings.snapshot().interludeLabelsEnabled;
     }
 
     private String previewInterludeCandidateText(LyricsLine line) {

@@ -223,8 +223,10 @@ final class MainLyricPreviewView extends View {
         float barGap = dp(3.8f);
         float iconWidth = barWidth * 4f + barGap * 3f;
         float labelGap = dp(10f);
-        float labelWidth = textPaint.measureText(label);
-        float start = left + Math.max(0f, (width - iconWidth - labelGap - labelWidth) * 0.5f);
+        boolean showLabel = label != null && !label.trim().isEmpty();
+        float labelWidth = showLabel ? textPaint.measureText(label) : 0f;
+        float totalWidth = iconWidth + (showLabel ? labelGap + labelWidth : 0f);
+        float start = left + Math.max(0f, (width - totalWidth) * 0.5f);
         float centerY = baseline - textSize * 0.36f;
         float minHeight = dp(7f);
         float maxHeight = dp(22f);
@@ -240,8 +242,10 @@ final class MainLyricPreviewView extends View {
             canvas.drawRoundRect(x, centerY - height * 0.5f, x + barWidth, centerY + height * 0.5f, radius, radius, shapePaint);
         }
 
-        textPaint.setColor(Color.argb(alpha, 255, 255, 255));
-        canvas.drawText(label, start + iconWidth + labelGap, baseline, textPaint);
+        if (showLabel) {
+            textPaint.setColor(Color.argb(alpha, 255, 255, 255));
+            canvas.drawText(label, start + iconWidth + labelGap, baseline, textPaint);
+        }
     }
 
     private void drawLoadingLine(

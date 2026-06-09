@@ -79,6 +79,7 @@ public final class LyricsView extends View {
     private String postludeLabel = AppI18n.t("en", "interlude.postlude");
     private boolean karaoke;
     private boolean autoInstrumentalBreakEnabled = true;
+    private boolean interludeLabelsEnabled = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = true;
     private boolean karaokeBounceEffectEnabled = true;
     private boolean japaneseFuriganaEnabled;
@@ -192,6 +193,14 @@ public final class LyricsView extends View {
         }
         autoInstrumentalBreakEnabled = enabled;
         centerInitialized = false;
+        postInvalidateOnAnimation();
+    }
+
+    void setInterludeLabelsEnabled(boolean enabled) {
+        if (interludeLabelsEnabled == enabled) {
+            return;
+        }
+        interludeLabelsEnabled = enabled;
         postInvalidateOnAnimation();
     }
 
@@ -1066,6 +1075,10 @@ public final class LyricsView extends View {
             float height = minHeight + (maxHeight - minHeight) * (0.18f + phase * 0.82f);
             float x = left + index * (barWidth + gap);
             canvas.drawRoundRect(x, centerY - height * 0.5f, x + barWidth, centerY + height * 0.5f, radius, radius, interludePaint);
+        }
+
+        if (!interludeLabelsEnabled) {
+            return;
         }
 
         float labelTextSize = sp(15f);
