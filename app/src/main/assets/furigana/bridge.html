@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
+  <script>
+    (function () {
+      var tokenizer = null;
+      var initPromise = null;
+      var conversionCache = new Map();
+      var maxCacheSize = 1000;
+      var dictPaths = [
+        "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict",
+        "https://unpkg.com/kuromoji@0.1.2/dict"
+      ];
+
+      function log(message) {
+        if (window.AndroidFurigana && window.AndroidFurigana.onLog) {
+          window.AndroidFurigana.onLog(String(message || ""));
+        }
+      }
+
+      function reply(requestId, payload) {
+        if (window.AndroidFurigana && window.AndroidFurigana.onResult) {
+          window.AndroidFurigana.onResult(String(requestId || ""), JSON.stringify(payload || {}));
+        }
+      }
+
+      function buildTokenizer(dictPath) {
+        return new Promise(function (resolve, reject) {
+          if (!window.kuromoji) {
+            reject(new Error("Kuromoji library not loaded"));
+            return;
+          }
+          window.kuromoji.builder({ dicPath: dictPath }).build(function (error, builtTokenizer) {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(builtTokenizer);
+          });
+        });
+      }
+
+      function init() {
+        if (tokenizer) {
+          return Promise.resolve(tokenizer);
+        }
+        if (initPromise) {
+          return initPromise;
+        }
+        initPromise = (async function () {
+          var lastError = null;
+          for (var i = 0; i < dictPaths.length; i++) {
+            try {
+              tokenizer = await buildTokenizer(dictPaths[i]);
+              log("furigana js: kuromoji ready / dict=" + dictPaths[i]);
+              if (window.AndroidFurigana && window.AndroidFurigana.onReady) {
+                window.AndroidFurigana.onReady();
+              }
+              return tokenizer;
+            } catch (error) {
+              lastError = error;
+            }
+          }
+          throw lastError || new Error("Kuromoji dictionary load failed");
+        })();
+        return initPromise;
+      }
+
+      function containsKanji(text) {
+        return /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/.test(String(text || ""));
+      }
+
+      function katakanaToHiragana(value) {
+        return String(value || "").split("").map(function (char) {
+          var code = char.charCodeAt(0);
+          if (code >= 0x30a1 && code <= 0x30f6) {
+            return String.fromCharCode(code - 0x60);
+          }
+          return char;
+        }).join("");
+      }
+
+      function convertToFurigana(text) {
+        text = typeof text === "string" ? text : String(text || "");
+        if (!text || !containsKanji(text)) {
+          return text;
+        }
+        if (conversionCache.has(text)) {
+          return conversionCache.get(text);
+        }
+        if (!tokenizer) {
+          return text;
+        }
+
+        try {
+          var tokens = tokenizer.tokenize(text);
+          var result = "";
+          for (var tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+            var token = tokens[tokenIndex];
+            var surface = token.surface_form || "";
+            var reading = token.reading || token.pronunciation || "";
+            if (reading && containsKanji(surface)) {
+              var hiragana = katakanaToHiragana(reading);
+              var tokenResult = "";
+              var readingIndex = 0;
+              var i = 0;
+              while (i < surface.length) {
+                var char = surface[i];
+                if (containsKanji(char)) {
+                  var kanjiSequence = char;
+                  i++;
+                  while (i < surface.length && containsKanji(surface[i])) {
+                    kanjiSequence += surface[i];
+                    i++;
+                  }
+
+                  var nextKana = "";
+                  var tempI = i;
+                  while (tempI < surface.length && !containsKanji(surface[tempI])) {
+                    nextKana += surface[tempI];
+                    tempI++;
+                  }
+
+                  var kanjiReading = "";
+                  if (nextKana.length > 0) {
+                    var remainingReading = hiragana.substring(readingIndex);
+                    var kanaIndex = remainingReading.indexOf(nextKana);
+                    if (kanaIndex > 0) {
+                      kanjiReading = remainingReading.substring(0, kanaIndex);
+                    } else if (kanaIndex < 0) {
+                      kanjiReading = remainingReading;
+                    }
+                  } else {
+                    kanjiReading = hiragana.substring(readingIndex);
+                  }
+
+                  if (kanjiReading) {
+                    tokenResult += "<ruby>" + kanjiSequence + "<rt>" + kanjiReading + "</rt></ruby>";
+                    readingIndex += kanjiReading.length;
+                  } else {
+                    tokenResult += kanjiSequence;
+                  }
+                } else {
+                  tokenResult += char;
+                  readingIndex++;
+                  i++;
+                }
+              }
+              result += tokenResult;
+            } else {
+              result += surface;
+            }
+          }
+
+          if (conversionCache.size >= maxCacheSize) {
+            conversionCache.delete(conversionCache.keys().next().value);
+          }
+          conversionCache.set(text, result);
+          return result;
+        } catch (error) {
+          return text;
+        }
+      }
+
+      window.ivLyricsFurigana = {
+        request: async function (requestId, rawPayload) {
+          try {
+            var payload = typeof rawPayload === "string" ? JSON.parse(rawPayload) : (rawPayload || {});
+            var lines = Array.isArray(payload.lines) ? payload.lines : [];
+            await init();
+            reply(requestId, {
+              ok: true,
+              lines: lines.map(function (line) {
+                return convertToFurigana(line);
+              })
+            });
+          } catch (error) {
+            reply(requestId, {
+              ok: false,
+              error: String(error && error.message ? error.message : error)
+            });
+          }
+        }
+      };
+
+      init().catch(function (error) {
+        log("furigana js init failed: " + String(error && error.message ? error.message : error));
+      });
+    })();
+  </script>
+</head>
+<body></body>
+</html>

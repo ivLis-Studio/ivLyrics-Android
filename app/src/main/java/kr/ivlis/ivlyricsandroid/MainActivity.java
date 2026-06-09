@@ -74,7 +74,8 @@ public final class MainActivity extends Activity implements
         NowPlayingService.Listener,
         LyricsRepository.Callback,
         LyricsRepository.ManualLrclibCallback,
-        AiLyricsRepository.Callback {
+        AiLyricsRepository.Callback,
+        FuriganaRepository.Callback {
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
     private static final long META_SINGLE_TAP_DELAY_MS = 320L;
     private static final int MAX_LOG_LINES = 180;
@@ -118,6 +119,7 @@ public final class MainActivity extends Activity implements
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
+    private FuriganaRepository furiganaRepository;
     private AiLyricsSettings aiLyricsSettings;
 
     private LyricsView lyricsView;
@@ -290,6 +292,7 @@ public final class MainActivity extends Activity implements
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
         aiLyricsRepository = new AiLyricsRepository(this);
+        furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
         Window window = getWindow();
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
@@ -368,6 +371,9 @@ public final class MainActivity extends Activity implements
         }
         if (aiLyricsRepository != null) {
             aiLyricsRepository.shutdown();
+        }
+        if (furiganaRepository != null) {
+            furiganaRepository.shutdown();
         }
         seekExecutor.shutdownNow();
         super.onDestroy();
@@ -656,12 +662,13 @@ public final class MainActivity extends Activity implements
         aiLyricsGenerating = false;
         currentLyricsResult = result;
         setLyricsResultOnViews(result);
-        setLyricsSupplementLoading(false, false);
+        setLyricsSupplementLoading(false, false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         statusView.setText(result.detail);
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(ui("status.ai_applied"));
         }
+        requestJapaneseFurigana(false);
     }
 
     @Override
@@ -670,15 +677,46 @@ public final class MainActivity extends Activity implements
             return;
         }
         aiLyricsGenerating = false;
-        setLyricsSupplementLoading(false, false);
+        setLyricsSupplementLoading(false, false, lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(uiFormat("status.ai_failed_format", message));
         }
+        requestJapaneseFurigana(false);
     }
 
     @Override
     public void onAiLyricsLog(String trackKey, String message) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        appendLog(message);
+    }
+
+    @Override
+    public void onFuriganaLoaded(String trackKey, LyricsResult result) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        currentLyricsResult = result;
+        setLyricsResultOnViews(result);
+        setLyricsSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading, false);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        statusView.setText(result.detail);
+    }
+
+    @Override
+    public void onFuriganaError(String trackKey, String message) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        setLyricsSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading, false);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        appendLog("furigana js error: " + message);
+    }
+
+    @Override
+    public void onFuriganaLog(String trackKey, String message) {
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
@@ -1851,8 +1889,13 @@ public final class MainActivity extends Activity implements
             aiLyricsSettings.setJapaneseFuriganaEnabled(isChecked);
             setJapaneseFuriganaOnViews(isChecked);
             if (isChecked) {
-                requestAiLyrics(true);
+                requestJapaneseFurigana(false);
             } else {
+                setLyricsSupplementLoading(
+                        lyricsSupplementPronunciationLoading,
+                        lyricsSupplementTranslationLoading,
+                        false
+                );
                 updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
             }
             showSavedToast(isChecked ? ui("toast.furigana_on") : ui("toast.furigana_off"));
@@ -2121,6 +2164,9 @@ public final class MainActivity extends Activity implements
         clearCache.setOnClickListener(view -> {
             if (aiLyricsRepository != null) {
                 aiLyricsRepository.clearCache();
+            }
+            if (furiganaRepository != null) {
+                furiganaRepository.clearCache();
             }
             aiSettingsStatusView.setText(ui("status.ai_cache_cleared"));
             showSavedToast(ui("toast.ai_cache_cleared"));
@@ -4267,6 +4313,9 @@ public final class MainActivity extends Activity implements
         if (aiLyricsRepository != null) {
             aiLyricsRepository.clearTrackCache(key);
         }
+        if (furiganaRepository != null) {
+            furiganaRepository.clearTrackCache(key);
+        }
         translatedTrackTitle = "";
         translatedTrackArtist = "";
         appendLog("lyrics cache cleared: current track / title=\"" + snapshot.title + "\" / artist=\"" + snapshot.artist + "\"");
@@ -4283,6 +4332,9 @@ public final class MainActivity extends Activity implements
         }
         if (aiLyricsRepository != null) {
             aiLyricsRepository.clearCache();
+        }
+        if (furiganaRepository != null) {
+            furiganaRepository.clearCache();
         }
         translatedTrackTitle = "";
         translatedTrackArtist = "";
@@ -4529,41 +4581,105 @@ public final class MainActivity extends Activity implements
     private void requestAiLyrics(boolean clearCache) {
         if (currentTrack == null || currentBaseLyricsResult == null || currentBaseLyricsResult.lines.isEmpty()) {
             aiLyricsGenerating = false;
-            setLyricsSupplementLoading(false, false);
+            setLyricsSupplementLoading(false, false, false);
             if (aiSettingsStatusView != null) {
                 aiSettingsStatusView.setText(ui("status.no_lyrics_to_apply"));
             }
             return;
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        String source = effectiveSelectedSourceLang();
+        AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(source);
+        String target = snapshot.resolveTargetLanguage(source);
+        boolean translationSkipped = snapshot.shouldSkipTranslation(source, target);
+        boolean wantsAiTask = rule.pronunciationEnabled || (rule.translationEnabled && !translationSkipped);
         if (!snapshot.enabled()) {
             aiLyricsGenerating = false;
             currentLyricsResult = currentBaseLyricsResult;
             setLyricsResultOnViews(currentLyricsResult);
-            setLyricsSupplementLoading(false, false);
+            setLyricsSupplementLoading(false, false, false);
             updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
             if (aiSettingsStatusView != null) {
                 aiSettingsStatusView.setText(ui("status.ai_disabled"));
             }
+            requestJapaneseFurigana(clearCache);
+            return;
+        }
+        if (!wantsAiTask) {
+            aiLyricsGenerating = false;
+            currentLyricsResult = currentBaseLyricsResult;
+            setLyricsResultOnViews(currentLyricsResult);
+            setLyricsSupplementLoading(false, false, false);
+            updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
+            if (aiSettingsStatusView != null) {
+                aiSettingsStatusView.setText(ui("status.ai_applied"));
+            }
+            requestJapaneseFurigana(clearCache);
+            return;
+        }
+        if (!snapshot.hasApiKey()) {
+            aiLyricsGenerating = false;
+            currentLyricsResult = currentBaseLyricsResult;
+            setLyricsResultOnViews(currentLyricsResult);
+            setLyricsSupplementLoading(false, false, false);
+            updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
+            if (aiSettingsStatusView != null) {
+                aiSettingsStatusView.setText(ui("status.ai_key_needed"));
+            }
+            requestJapaneseFurigana(clearCache);
             return;
         }
         if (clearCache) {
             aiLyricsRepository.clearMemoryCache();
+            if (furiganaRepository != null) {
+                furiganaRepository.clearMemoryCache();
+            }
         }
         if (aiSettingsStatusView != null) {
-            aiSettingsStatusView.setText(snapshot.hasApiKey() ? ui("status.ai_generating") : ui("status.ai_key_needed"));
+            aiSettingsStatusView.setText(ui("status.ai_generating"));
         }
         aiLyricsGenerating = true;
-        String source = effectiveSelectedSourceLang();
-        AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(source);
-        String target = snapshot.resolveTargetLanguage(source);
         setLyricsSupplementLoading(
-                snapshot.hasApiKey() && rule.pronunciationEnabled,
-                snapshot.hasApiKey() && rule.translationEnabled && !snapshot.shouldSkipTranslation(source, target),
-                snapshot.hasApiKey() && shouldGenerateJapaneseFurigana(snapshot, source)
+                rule.pronunciationEnabled,
+                rule.translationEnabled && !translationSkipped,
+                shouldGenerateJapaneseFurigana(snapshot, source)
         );
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
         aiLyricsRepository.loadSupplements(currentTrack, currentBaseLyricsResult, snapshot, source, clearCache, this);
+    }
+
+    private void requestJapaneseFurigana(boolean clearCache) {
+        if (currentTrack == null
+                || currentLyricsResult == null
+                || currentLyricsResult.lines.isEmpty()
+                || furiganaRepository == null
+                || aiLyricsSettings == null) {
+            setLyricsSupplementLoading(
+                    lyricsSupplementPronunciationLoading,
+                    lyricsSupplementTranslationLoading,
+                    false
+            );
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        String source = effectiveSelectedSourceLang();
+        if (!shouldGenerateJapaneseFurigana(snapshot, source)) {
+            setLyricsSupplementLoading(
+                    lyricsSupplementPronunciationLoading,
+                    lyricsSupplementTranslationLoading,
+                    false
+            );
+            return;
+        }
+        if (clearCache) {
+            furiganaRepository.clearMemoryCache();
+        }
+        setLyricsSupplementLoading(
+                lyricsSupplementPronunciationLoading,
+                lyricsSupplementTranslationLoading,
+                true
+        );
+        furiganaRepository.loadFurigana(currentTrack, currentLyricsResult, clearCache, this);
     }
 
     private void setLyricsSupplementLoading(boolean pronunciation, boolean translation) {
