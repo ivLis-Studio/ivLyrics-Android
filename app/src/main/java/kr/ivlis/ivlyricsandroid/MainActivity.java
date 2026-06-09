@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -81,6 +82,8 @@ public final class MainActivity extends Activity implements
     private static final String CREATOR_PROFILE_ENDPOINT = "https://lyrics.api.ivl.is/user/creator-profile";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
+    private static final String UI_HINTS_PREFS = "ui_hints";
+    private static final String KEY_LYRICS_META_MENU_TIP_SHOWN = "lyrics_meta_menu_tip_shown";
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
             "ivLyrics에 오신 것을 환영합니다",
@@ -137,6 +140,7 @@ public final class MainActivity extends Activity implements
     private TextView lyricsSyncOffsetDescriptionView;
     private TextView lyricsLanguageButton;
     private TextView permissionButton;
+    private PopupWindow lyricsMetaTipPopup;
     private TransportButtonView playPauseButton;
     private View landscapeControlsContainer;
     private ImageButton landscapeMenuButton;
@@ -310,6 +314,7 @@ public final class MainActivity extends Activity implements
 
     @Override
     protected void onDestroy() {
+        dismissLyricsMetaTip();
         if (lyricsRepository != null) {
             lyricsRepository.shutdown();
         }
@@ -3316,6 +3321,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void handleLyricsMetaTap() {
+        dismissLyricsMetaTip();
         long now = SystemClock.uptimeMillis();
         if (now - lastLyricsMetaTapUptimeMs > 720L) {
             lyricsMetaTapCount = 0;
@@ -3721,6 +3727,87 @@ public final class MainActivity extends Activity implements
 
     private void showSavedToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void maybeShowLyricsMetaTip() {
+        if (isLandscapeLayout()
+                || !lyricsPageVisible
+                || lyricsTitleView == null
+                || lyricsArtistView == null
+                || lyricsMetaTipAlreadyShown()
+                || lyricsLanguageSettingsVisible) {
+            return;
+        }
+        handler.postDelayed(this::showLyricsMetaTipIfNeeded, 220L);
+    }
+
+    private void showLyricsMetaTipIfNeeded() {
+        if (isLandscapeLayout()
+                || !lyricsPageVisible
+                || lyricsArtistView == null
+                || !lyricsArtistView.isShown()
+                || lyricsMetaTipAlreadyShown()
+                || lyricsLanguageSettingsVisible
+                || (lyricsMetaTipPopup != null && lyricsMetaTipPopup.isShowing())) {
+            return;
+        }
+
+        TextView tip = label(ui("lyrics.menu_tip"), 12f, Color.WHITE, AppFonts.semiBold(this));
+        tip.setLineSpacing(dp(2), 1f);
+        tip.setPadding(dp(13), dp(10), dp(13), dp(10));
+        tip.setBackground(roundDrawable(Color.argb(232, 18, 20, 30), dp(13)));
+        tip.setOnClickListener(view -> dismissLyricsMetaTip());
+
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int popupWidth = Math.max(dp(210), Math.min(dp(278), screenWidth - dp(48)));
+        PopupWindow popup = new PopupWindow(
+                tip,
+                popupWidth,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                false
+        );
+        popup.setOutsideTouchable(false);
+        popup.setTouchable(true);
+        popup.setClippingEnabled(true);
+        popup.setBackgroundDrawable(roundDrawable(Color.TRANSPARENT, 0f));
+        popup.setOnDismissListener(() -> {
+            if (lyricsMetaTipPopup == popup) {
+                lyricsMetaTipPopup = null;
+            }
+        });
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            popup.setElevation(dp(10));
+        }
+
+        try {
+            lyricsMetaTipPopup = popup;
+            popup.showAsDropDown(lyricsArtistView, 0, dp(7), Gravity.START);
+            markLyricsMetaTipShown();
+            handler.postDelayed(() -> {
+                if (lyricsMetaTipPopup == popup && popup.isShowing()) {
+                    popup.dismiss();
+                }
+            }, 5_200L);
+        } catch (RuntimeException ignored) {
+            lyricsMetaTipPopup = null;
+        }
+    }
+
+    private boolean lyricsMetaTipAlreadyShown() {
+        return getSharedPreferences(UI_HINTS_PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_LYRICS_META_MENU_TIP_SHOWN, false);
+    }
+
+    private void markLyricsMetaTipShown() {
+        SharedPreferences prefs = getSharedPreferences(UI_HINTS_PREFS, MODE_PRIVATE);
+        prefs.edit().putBoolean(KEY_LYRICS_META_MENU_TIP_SHOWN, true).apply();
+    }
+
+    private void dismissLyricsMetaTip() {
+        if (lyricsMetaTipPopup != null) {
+            lyricsMetaTipPopup.dismiss();
+            lyricsMetaTipPopup = null;
+        }
     }
 
     private boolean isSettingsPanelVisible() {
@@ -4855,13 +4942,17 @@ public final class MainActivity extends Activity implements
             lyricsPage.animate()
                     .translationY(0f)
                     .setDuration(330L)
-                    .withEndAction(() -> setLyricsPageCornerRadius(0))
+                    .withEndAction(() -> {
+                        setLyricsPageCornerRadius(0);
+                        maybeShowLyricsMetaTip();
+                    })
                     .start();
             mainPage.animate()
                     .alpha(0f)
                     .setDuration(330L)
                     .start();
         } else {
+            dismissLyricsMetaTip();
             mainPage.setAlpha(1f);
             setLyricsPageCornerRadius(28);
             lyricsPage.animate()
