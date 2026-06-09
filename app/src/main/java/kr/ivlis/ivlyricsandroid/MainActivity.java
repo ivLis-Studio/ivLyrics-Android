@@ -69,6 +69,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity implements
         NowPlayingService.Listener,
         LyricsRepository.Callback,
+        LyricsRepository.ManualLrclibCallback,
         AiLyricsRepository.Callback {
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
@@ -79,6 +80,7 @@ public final class MainActivity extends Activity implements
     private static final String SETTINGS_TAB_TOOLS = "tools";
     private static final String LYRICS_POPUP_TAB_LANGUAGE = "language";
     private static final String LYRICS_POPUP_TAB_SYNC = "sync";
+    private static final String LYRICS_POPUP_TAB_LRCLIB = "lrclib";
     private static final String CREATOR_PROFILE_ENDPOINT = "https://lyrics.api.ivl.is/user/creator-profile";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
@@ -149,6 +151,8 @@ public final class MainActivity extends Activity implements
     private LinearLayout lyricsPopupTabButtonsContainer;
     private LinearLayout lyricsLanguageSettingsContent;
     private LinearLayout lyricsSyncSettingsContent;
+    private LinearLayout lyricsManualSearchContent;
+    private LinearLayout lyricsManualSearchResultsContainer;
     private LinearLayout lyricsSupplementLoadingIndicator;
     private LinearLayout landscapeLyricsSupplementLoadingIndicator;
     private LinearLayout lyricPreviewContainer;
@@ -190,7 +194,10 @@ public final class MainActivity extends Activity implements
     private EditText spotifyClientSecretInput;
     private EditText spotifySetupClientIdInput;
     private EditText spotifySetupClientSecretInput;
+    private EditText lyricsManualSearchTitleInput;
+    private EditText lyricsManualSearchArtistInput;
     private TextView spotifySetupStatusView;
+    private TextView lyricsManualSearchStatusView;
     private TextView onboardingWelcomeText;
     private TextView onboardingStepLabel;
     private TextView onboardingBackButton;
@@ -236,6 +243,7 @@ public final class MainActivity extends Activity implements
     private boolean lyricsSupplementTranslationLoading;
     private boolean spotifyCredentialsValidationInFlight;
     private boolean spotifySetupRequired;
+    private boolean manualLrclibSearchInFlight;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
@@ -401,6 +409,7 @@ public final class MainActivity extends Activity implements
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
             updateLyricsLanguageSettingsUi();
+            resetManualLrclibSearchForTrack(null);
             return;
         }
 
@@ -431,6 +440,7 @@ public final class MainActivity extends Activity implements
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
             updateLyricsLanguageSettingsUi();
+            resetManualLrclibSearchForTrack(snapshot);
             pendingSeekPositionMs = -1L;
             sourceView.setText(ui("status.lyrics_loading"));
             statusView.setText(snapshot.isrc.isEmpty()
@@ -489,6 +499,7 @@ public final class MainActivity extends Activity implements
         detectedLyricsSourceLang = "en";
         selectedRuleSourceLang = "auto";
         updateLyricsLanguageSettingsUi();
+        resetManualLrclibSearchForTrack(null);
     }
 
     @Override
@@ -544,6 +555,58 @@ public final class MainActivity extends Activity implements
         currentArtworkFromSpotify = true;
         updateArtwork(artwork, currentArtworkKey);
         appendLog("spotify artwork applied: " + artwork.getWidth() + "x" + artwork.getHeight());
+    }
+
+    @Override
+    public void onManualLrclibSearchResults(String trackKey, List<LyricsRepository.ManualLrclibCandidate> candidates) {
+        if (!isCurrentManualLrclibTrack(trackKey)) {
+            return;
+        }
+        manualLrclibSearchInFlight = false;
+        renderManualLrclibCandidates(candidates);
+    }
+
+    @Override
+    public void onManualLrclibLyricsLoaded(String trackKey, LyricsResult result) {
+        if (!isCurrentManualLrclibTrack(trackKey)) {
+            return;
+        }
+        manualLrclibSearchInFlight = false;
+        aiLyricsGenerating = false;
+        currentBaseLyricsResult = result;
+        currentLyricsResult = result;
+        setLyricsResultOnViews(result);
+        setLyricsSupplementLoading(false, false);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        sourceView.setText(result.providerLabel);
+        statusView.setText(result.detail);
+        updateDetectedLyricsSourceLanguage(result);
+        updateLyricsLanguageSettingsUi();
+        setManualLrclibStatus(ui("lyrics.lrclib_search.loaded"));
+        showSavedToast(ui("lyrics.lrclib_search.loaded"));
+        requestMetadataTranslation(false);
+        requestAiLyrics(false);
+    }
+
+    @Override
+    public void onManualLrclibError(String trackKey, String message) {
+        if (!isCurrentManualLrclibTrack(trackKey)) {
+            return;
+        }
+        manualLrclibSearchInFlight = false;
+        String detail = message == null || message.trim().isEmpty()
+                ? ui("repo.lyrics_not_found")
+                : message.trim();
+        setManualLrclibStatus(uiFormat("lyrics.lrclib_search.error_format", detail));
+        showSavedToast(detail);
+    }
+
+    @Override
+    public void onManualLrclibLog(String trackKey, String message) {
+        if (!isCurrentManualLrclibTrack(trackKey)) {
+            return;
+        }
+        appendLog(message);
     }
 
     @Override
@@ -1369,6 +1432,7 @@ public final class MainActivity extends Activity implements
         ));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_LANGUAGE, ui("lyrics.tab.language"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_SYNC, ui("lyrics.tab.sync"));
+        addLyricsPopupTabButton(LYRICS_POPUP_TAB_LRCLIB, "LRCLIB");
 
         lyricsLanguageSettingsContent = new LinearLayout(this);
         lyricsLanguageSettingsContent.setOrientation(LinearLayout.VERTICAL);
@@ -1435,6 +1499,9 @@ public final class MainActivity extends Activity implements
 
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
+
+        lyricsManualSearchContent = buildLyricsManualSearchContent();
+        panel.addView(lyricsManualSearchContent, topMargin(matchWrap(), dp(10)));
         switchLyricsPopupTab(activeLyricsPopupTab);
         return panel;
     }
@@ -1467,6 +1534,57 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(42)
         ), dp(8)));
+        return content;
+    }
+
+    private LinearLayout buildLyricsManualSearchContent() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = label(ui("lyrics.lrclib_search.title"), 14f, Color.WHITE, AppFonts.bold(this));
+        content.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView description = label(ui("lyrics.lrclib_search.desc"), 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+        description.setLineSpacing(dp(2), 1f);
+        content.addView(description, topMargin(matchWrap(), dp(5)));
+
+        lyricsManualSearchTitleInput = settingEditText(ui("lyrics.lrclib_search.title_hint"), false, false);
+        lyricsManualSearchArtistInput = settingEditText(ui("lyrics.lrclib_search.artist_hint"), false, false);
+        content.addView(settingField(ui("lyrics.lrclib_search.field_title"), "", lyricsManualSearchTitleInput), topMargin(matchWrap(), dp(10)));
+        content.addView(settingField(ui("lyrics.lrclib_search.field_artist"), "", lyricsManualSearchArtistInput), topMargin(matchWrap(), dp(8)));
+
+        TextView searchButton = primaryButton(ui("lyrics.lrclib_search.button"));
+        searchButton.setOnClickListener(view -> performManualLrclibSearch());
+        content.addView(searchButton, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+        ), dp(10)));
+
+        lyricsManualSearchStatusView = label("", 11f, Color.argb(170, 255, 255, 255), AppFonts.semiBold(this));
+        lyricsManualSearchStatusView.setLineSpacing(dp(2), 1f);
+        content.addView(lyricsManualSearchStatusView, topMargin(matchWrap(), dp(9)));
+
+        ScrollView resultsScroll = new ScrollView(this);
+        resultsScroll.setFillViewport(false);
+        resultsScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        resultsScroll.setBackground(roundDrawable(Color.argb(22, 255, 255, 255), dp(12)));
+        lyricsManualSearchResultsContainer = new LinearLayout(this);
+        lyricsManualSearchResultsContainer.setOrientation(LinearLayout.VERTICAL);
+        lyricsManualSearchResultsContainer.setPadding(dp(8), dp(8), dp(8), dp(8));
+        resultsScroll.addView(lyricsManualSearchResultsContainer, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        content.addView(resultsScroll, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(220)
+        ), dp(8)));
+
+        populateManualLrclibSearchDefaults(false);
+        setManualLrclibStatus(ui("lyrics.lrclib_search.ready"));
         return content;
     }
 
@@ -3108,6 +3226,14 @@ public final class MainActivity extends Activity implements
                     LYRICS_POPUP_TAB_SYNC.equals(activeLyricsPopupTab) ? View.VISIBLE : View.GONE
             );
         }
+        if (lyricsManualSearchContent != null) {
+            lyricsManualSearchContent.setVisibility(
+                    LYRICS_POPUP_TAB_LRCLIB.equals(activeLyricsPopupTab) ? View.VISIBLE : View.GONE
+            );
+            if (LYRICS_POPUP_TAB_LRCLIB.equals(activeLyricsPopupTab)) {
+                populateManualLrclibSearchDefaults(false);
+            }
+        }
         updateLyricsPopupTabButtons();
         updateLyricsSyncSettingsUi();
     }
@@ -3132,7 +3258,13 @@ public final class MainActivity extends Activity implements
     }
 
     private String normalizeLyricsPopupTab(String tabId) {
-        return LYRICS_POPUP_TAB_SYNC.equals(tabId) ? LYRICS_POPUP_TAB_SYNC : LYRICS_POPUP_TAB_LANGUAGE;
+        if (LYRICS_POPUP_TAB_SYNC.equals(tabId)) {
+            return LYRICS_POPUP_TAB_SYNC;
+        }
+        if (LYRICS_POPUP_TAB_LRCLIB.equals(tabId)) {
+            return LYRICS_POPUP_TAB_LRCLIB;
+        }
+        return LYRICS_POPUP_TAB_LANGUAGE;
     }
 
     private void updateLyricsSyncSettingsUi() {
@@ -3146,6 +3278,187 @@ public final class MainActivity extends Activity implements
             lyricsSyncOffsetDescriptionView.setText(trackText
                     + "\n" + ui("lyrics.sync.help"));
         }
+    }
+
+    private void populateManualLrclibSearchDefaults(boolean overwrite) {
+        if (currentTrack == null || !currentTrack.hasUsableMetadata()) {
+            return;
+        }
+        if (lyricsManualSearchTitleInput != null && (overwrite || textOf(lyricsManualSearchTitleInput).isEmpty())) {
+            lyricsManualSearchTitleInput.setText(currentTrack.title);
+        }
+        if (lyricsManualSearchArtistInput != null && (overwrite || textOf(lyricsManualSearchArtistInput).isEmpty())) {
+            lyricsManualSearchArtistInput.setText(currentTrack.artist);
+        }
+    }
+
+    private void resetManualLrclibSearchForTrack(TrackSnapshot snapshot) {
+        manualLrclibSearchInFlight = false;
+        if (lyricsManualSearchResultsContainer != null) {
+            lyricsManualSearchResultsContainer.removeAllViews();
+        }
+        if (snapshot != null && snapshot.hasUsableMetadata()) {
+            if (lyricsManualSearchTitleInput != null) {
+                lyricsManualSearchTitleInput.setText(snapshot.title);
+            }
+            if (lyricsManualSearchArtistInput != null) {
+                lyricsManualSearchArtistInput.setText(snapshot.artist);
+            }
+        } else {
+            if (lyricsManualSearchTitleInput != null) {
+                lyricsManualSearchTitleInput.setText("");
+            }
+            if (lyricsManualSearchArtistInput != null) {
+                lyricsManualSearchArtistInput.setText("");
+            }
+        }
+        setManualLrclibStatus(ui("lyrics.lrclib_search.ready"));
+    }
+
+    private void performManualLrclibSearch() {
+        if (manualLrclibSearchInFlight) {
+            return;
+        }
+        if (lyricsRepository == null) {
+            setManualLrclibStatus(ui("spotify.error.repository_unavailable"));
+            return;
+        }
+        populateManualLrclibSearchDefaults(false);
+        String title = textOf(lyricsManualSearchTitleInput);
+        String artist = textOf(lyricsManualSearchArtistInput);
+        if (title.isEmpty()) {
+            setManualLrclibStatus(ui("lyrics.lrclib_search.empty_title"));
+            return;
+        }
+        manualLrclibSearchInFlight = true;
+        setManualLrclibStatus(ui("lyrics.lrclib_search.loading"));
+        if (lyricsManualSearchResultsContainer != null) {
+            lyricsManualSearchResultsContainer.removeAllViews();
+        }
+        lyricsRepository.searchManualLrclib(currentTrack, title, artist, this);
+    }
+
+    private void renderManualLrclibCandidates(List<LyricsRepository.ManualLrclibCandidate> candidates) {
+        if (lyricsManualSearchResultsContainer == null) {
+            return;
+        }
+        lyricsManualSearchResultsContainer.removeAllViews();
+        if (candidates == null || candidates.isEmpty()) {
+            setManualLrclibStatus(ui("lyrics.lrclib_search.no_results"));
+            return;
+        }
+        setManualLrclibStatus(uiFormat("lyrics.lrclib_search.result_count_format", candidates.size()));
+        for (LyricsRepository.ManualLrclibCandidate candidate : candidates) {
+            View row = manualLrclibCandidateRow(candidate);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            if (lyricsManualSearchResultsContainer.getChildCount() > 0) {
+                params.topMargin = dp(8);
+            }
+            lyricsManualSearchResultsContainer.addView(row, params);
+        }
+    }
+
+    private View manualLrclibCandidateRow(LyricsRepository.ManualLrclibCandidate candidate) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(11), dp(10), dp(11), dp(10));
+        row.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(10)));
+        row.setClickable(true);
+        row.setOnClickListener(view -> selectManualLrclibCandidate(candidate));
+
+        TextView title = label(
+                candidate.trackName.isEmpty() ? "LRCLIB #" + candidate.id : candidate.trackName,
+                13f,
+                Color.WHITE,
+                AppFonts.bold(this)
+        );
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        String artistAlbum = manualLrclibArtistAlbumText(candidate);
+        if (!artistAlbum.isEmpty()) {
+            TextView artist = label(artistAlbum, 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+            artist.setSingleLine(true);
+            artist.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(artist, topMargin(matchWrap(), dp(4)));
+        }
+
+        TextView meta = label(manualLrclibMetaText(candidate), 10f, Color.argb(134, 255, 255, 255), AppFonts.semiBold(this));
+        meta.setSingleLine(true);
+        meta.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(meta, topMargin(matchWrap(), dp(6)));
+        return row;
+    }
+
+    private String manualLrclibArtistAlbumText(LyricsRepository.ManualLrclibCandidate candidate) {
+        if (candidate.albumName.isEmpty()) {
+            return candidate.artistName;
+        }
+        if (candidate.artistName.isEmpty()) {
+            return candidate.albumName;
+        }
+        return candidate.artistName + " · " + candidate.albumName;
+    }
+
+    private String manualLrclibMetaText(LyricsRepository.ManualLrclibCandidate candidate) {
+        List<String> pieces = new ArrayList<>();
+        pieces.add(manualLrclibKindLabel(candidate));
+        if (candidate.durationSeconds > 0.0) {
+            pieces.add(formatDurationSeconds(candidate.durationSeconds));
+        }
+        if (!candidate.isrc.isEmpty()) {
+            pieces.add(candidate.isrc);
+        }
+        if (candidate.id > 0L) {
+            pieces.add("#" + candidate.id);
+        }
+        return TextUtils.join(" · ", pieces);
+    }
+
+    private String manualLrclibKindLabel(LyricsRepository.ManualLrclibCandidate candidate) {
+        if (candidate.instrumental) {
+            return ui("lyrics.lrclib_search.instrumental");
+        }
+        if (candidate.synced) {
+            return ui("lyrics.lrclib_search.synced");
+        }
+        return ui("lyrics.lrclib_search.plain");
+    }
+
+    private String formatDurationSeconds(double seconds) {
+        return formatTime(Math.round(Math.max(0.0, seconds) * 1000.0));
+    }
+
+    private void selectManualLrclibCandidate(LyricsRepository.ManualLrclibCandidate candidate) {
+        if (lyricsRepository == null || candidate == null) {
+            return;
+        }
+        setManualLrclibStatus(ui("lyrics.lrclib_search.selecting"));
+        lyricsRepository.loadManualLrclibCandidate(currentTrack, candidate, this);
+    }
+
+    private void setManualLrclibStatus(String message) {
+        if (lyricsManualSearchStatusView != null) {
+            lyricsManualSearchStatusView.setText(message == null ? "" : message);
+        }
+    }
+
+    private boolean isCurrentManualLrclibTrack(String trackKey) {
+        String safeKey = trackKey == null ? "" : trackKey;
+        if (!currentLyricsKey.trim().isEmpty()) {
+            return currentLyricsKey.equals(safeKey);
+        }
+        String currentKey = currentTrack == null || !currentTrack.hasUsableMetadata()
+                ? ""
+                : currentTrack.stableKey();
+        return currentKey.equals(safeKey);
     }
 
     private void adjustCurrentTrackSyncOffset(int deltaMs) {

@@ -100,8 +100,259 @@ final class AppI18n {
         languages.put("vi", viStrings());
         languages.put("id", idStrings());
         languages.put("ms", msStrings());
+        addManualLrclibSearchStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addManualLrclibSearchStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = manualLrclibSearchStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] manualLrclibSearchStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "LRCLIB 수동 검색",
+                        "lyrics.lrclib_search.desc", "현재 곡에 맞지 않는 가사가 불러와졌을 때 LRCLIB에서 직접 검색해 적용합니다.",
+                        "lyrics.lrclib_search.title_hint", "곡 제목",
+                        "lyrics.lrclib_search.artist_hint", "아티스트",
+                        "lyrics.lrclib_search.field_title", "제목",
+                        "lyrics.lrclib_search.field_artist", "아티스트",
+                        "lyrics.lrclib_search.button", "LRCLIB 검색",
+                        "lyrics.lrclib_search.ready", "검색어를 확인한 뒤 LRCLIB를 검색하세요.",
+                        "lyrics.lrclib_search.empty_title", "검색할 곡 제목을 입력하세요.",
+                        "lyrics.lrclib_search.loading", "LRCLIB 검색 중...",
+                        "lyrics.lrclib_search.no_results", "LRCLIB 결과가 없습니다.",
+                        "lyrics.lrclib_search.result_count_format", "LRCLIB 결과 %d개",
+                        "lyrics.lrclib_search.selecting", "선택한 LRCLIB 가사를 불러오는 중...",
+                        "lyrics.lrclib_search.loaded", "LRCLIB 가사를 적용했습니다.",
+                        "lyrics.lrclib_search.error_format", "LRCLIB 검색 실패: %s",
+                        "lyrics.lrclib_search.instrumental", "연주곡",
+                        "lyrics.lrclib_search.synced", "싱크",
+                        "lyrics.lrclib_search.plain", "일반",
+                        "repo.detail.manual_lrclib", "수동으로 선택한 LRCLIB 가사입니다."
+                };
+            case "zh-CN":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "手动搜索 LRCLIB",
+                        "lyrics.lrclib_search.desc", "当加载的歌词不匹配当前歌曲时，可在 LRCLIB 中手动搜索并应用。",
+                        "lyrics.lrclib_search.title_hint", "歌曲标题",
+                        "lyrics.lrclib_search.artist_hint", "艺人",
+                        "lyrics.lrclib_search.field_title", "标题",
+                        "lyrics.lrclib_search.field_artist", "艺人",
+                        "lyrics.lrclib_search.button", "搜索 LRCLIB",
+                        "lyrics.lrclib_search.ready", "确认关键词后搜索 LRCLIB。",
+                        "lyrics.lrclib_search.empty_title", "请输入要搜索的歌曲标题。",
+                        "lyrics.lrclib_search.loading", "正在搜索 LRCLIB...",
+                        "lyrics.lrclib_search.no_results", "没有 LRCLIB 结果。",
+                        "lyrics.lrclib_search.result_count_format", "%d 个 LRCLIB 结果",
+                        "lyrics.lrclib_search.selecting", "正在加载所选 LRCLIB 歌词...",
+                        "lyrics.lrclib_search.loaded", "已应用 LRCLIB 歌词。",
+                        "lyrics.lrclib_search.error_format", "LRCLIB 搜索失败：%s",
+                        "lyrics.lrclib_search.instrumental", "纯音乐",
+                        "lyrics.lrclib_search.synced", "同步",
+                        "lyrics.lrclib_search.plain", "纯文本",
+                        "repo.detail.manual_lrclib", "这是手动选择的 LRCLIB 歌词。"
+                };
+            case "zh-TW":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "手動搜尋 LRCLIB",
+                        "lyrics.lrclib_search.desc", "載入的歌詞不符合目前歌曲時，可在 LRCLIB 中手動搜尋並套用。",
+                        "lyrics.lrclib_search.title_hint", "歌曲標題",
+                        "lyrics.lrclib_search.artist_hint", "藝人",
+                        "lyrics.lrclib_search.field_title", "標題",
+                        "lyrics.lrclib_search.field_artist", "藝人",
+                        "lyrics.lrclib_search.button", "搜尋 LRCLIB",
+                        "lyrics.lrclib_search.ready", "確認關鍵字後搜尋 LRCLIB。",
+                        "lyrics.lrclib_search.empty_title", "請輸入要搜尋的歌曲標題。",
+                        "lyrics.lrclib_search.loading", "正在搜尋 LRCLIB...",
+                        "lyrics.lrclib_search.no_results", "沒有 LRCLIB 結果。",
+                        "lyrics.lrclib_search.result_count_format", "%d 個 LRCLIB 結果",
+                        "lyrics.lrclib_search.selecting", "正在載入所選 LRCLIB 歌詞...",
+                        "lyrics.lrclib_search.loaded", "已套用 LRCLIB 歌詞。",
+                        "lyrics.lrclib_search.error_format", "LRCLIB 搜尋失敗：%s",
+                        "lyrics.lrclib_search.instrumental", "純音樂",
+                        "lyrics.lrclib_search.synced", "同步",
+                        "lyrics.lrclib_search.plain", "純文字",
+                        "repo.detail.manual_lrclib", "這是手動選取的 LRCLIB 歌詞。"
+                };
+            case "ja":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "LRCLIBを手動検索",
+                        "lyrics.lrclib_search.desc", "現在の曲と違う歌詞が読み込まれたとき、LRCLIBで直接検索して適用します。",
+                        "lyrics.lrclib_search.title_hint", "曲名",
+                        "lyrics.lrclib_search.artist_hint", "アーティスト",
+                        "lyrics.lrclib_search.field_title", "曲名",
+                        "lyrics.lrclib_search.field_artist", "アーティスト",
+                        "lyrics.lrclib_search.button", "LRCLIBを検索",
+                        "lyrics.lrclib_search.ready", "検索語を確認してLRCLIBを検索してください。",
+                        "lyrics.lrclib_search.empty_title", "検索する曲名を入力してください。",
+                        "lyrics.lrclib_search.loading", "LRCLIBを検索中...",
+                        "lyrics.lrclib_search.no_results", "LRCLIBの結果がありません。",
+                        "lyrics.lrclib_search.result_count_format", "LRCLIB結果 %d件",
+                        "lyrics.lrclib_search.selecting", "選択したLRCLIB歌詞を読み込み中...",
+                        "lyrics.lrclib_search.loaded", "LRCLIB歌詞を適用しました。",
+                        "lyrics.lrclib_search.error_format", "LRCLIB検索失敗: %s",
+                        "lyrics.lrclib_search.instrumental", "インスト",
+                        "lyrics.lrclib_search.synced", "同期",
+                        "lyrics.lrclib_search.plain", "通常",
+                        "repo.detail.manual_lrclib", "手動で選択したLRCLIB歌詞です。"
+                };
+            case "hi":
+                return manualLrclibSearchStringsEn(
+                        "Manual LRCLIB Search",
+                        "Search LRCLIB directly and apply a result when the loaded lyrics do not match this song."
+                );
+            case "es":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "Buscar LRCLIB manualmente",
+                        "lyrics.lrclib_search.desc", "Si la letra cargada no coincide con la canción actual, busca en LRCLIB y aplícala.",
+                        "lyrics.lrclib_search.title_hint", "Título",
+                        "lyrics.lrclib_search.artist_hint", "Artista",
+                        "lyrics.lrclib_search.field_title", "Título",
+                        "lyrics.lrclib_search.field_artist", "Artista",
+                        "lyrics.lrclib_search.button", "Buscar en LRCLIB",
+                        "lyrics.lrclib_search.ready", "Revisa la búsqueda y busca en LRCLIB.",
+                        "lyrics.lrclib_search.empty_title", "Introduce el título de la canción.",
+                        "lyrics.lrclib_search.loading", "Buscando en LRCLIB...",
+                        "lyrics.lrclib_search.no_results", "No hay resultados de LRCLIB.",
+                        "lyrics.lrclib_search.result_count_format", "%d resultados de LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Cargando la letra LRCLIB seleccionada...",
+                        "lyrics.lrclib_search.loaded", "Letra LRCLIB aplicada.",
+                        "lyrics.lrclib_search.error_format", "Error al buscar en LRCLIB: %s",
+                        "lyrics.lrclib_search.instrumental", "Instrumental",
+                        "lyrics.lrclib_search.synced", "Sincronizada",
+                        "lyrics.lrclib_search.plain", "Simple",
+                        "repo.detail.manual_lrclib", "Letra LRCLIB seleccionada manualmente."
+                };
+            case "fr":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "Recherche LRCLIB manuelle",
+                        "lyrics.lrclib_search.desc", "Si les paroles chargees ne correspondent pas, cherchez LRCLIB et appliquez le bon resultat.",
+                        "lyrics.lrclib_search.title_hint", "Titre",
+                        "lyrics.lrclib_search.artist_hint", "Artiste",
+                        "lyrics.lrclib_search.field_title", "Titre",
+                        "lyrics.lrclib_search.field_artist", "Artiste",
+                        "lyrics.lrclib_search.button", "Rechercher LRCLIB",
+                        "lyrics.lrclib_search.ready", "Verifiez les termes puis recherchez LRCLIB.",
+                        "lyrics.lrclib_search.empty_title", "Saisissez le titre a rechercher.",
+                        "lyrics.lrclib_search.loading", "Recherche LRCLIB...",
+                        "lyrics.lrclib_search.no_results", "Aucun resultat LRCLIB.",
+                        "lyrics.lrclib_search.result_count_format", "%d resultats LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Chargement des paroles LRCLIB choisies...",
+                        "lyrics.lrclib_search.loaded", "Paroles LRCLIB appliquees.",
+                        "lyrics.lrclib_search.error_format", "Echec de la recherche LRCLIB : %s",
+                        "lyrics.lrclib_search.instrumental", "Instrumental",
+                        "lyrics.lrclib_search.synced", "Synchronise",
+                        "lyrics.lrclib_search.plain", "Simple",
+                        "repo.detail.manual_lrclib", "Paroles LRCLIB choisies manuellement."
+                };
+            case "ar":
+                return manualLrclibSearchStringsEn("بحث LRCLIB يدوي", "ابحث في LRCLIB مباشرة وطبّق النتيجة المناسبة لهذه الأغنية.");
+            case "fa":
+                return manualLrclibSearchStringsEn("جستجوی دستی LRCLIB", "اگر متن بارگذاری‌شده درست نیست، مستقیماً در LRCLIB جستجو و اعمال کنید.");
+            case "de":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "LRCLIB manuell suchen",
+                        "lyrics.lrclib_search.desc", "Wenn die geladenen Lyrics nicht passen, suchen Sie direkt in LRCLIB und wenden ein Ergebnis an.",
+                        "lyrics.lrclib_search.title_hint", "Titel",
+                        "lyrics.lrclib_search.artist_hint", "Kuenstler",
+                        "lyrics.lrclib_search.field_title", "Titel",
+                        "lyrics.lrclib_search.field_artist", "Kuenstler",
+                        "lyrics.lrclib_search.button", "LRCLIB suchen",
+                        "lyrics.lrclib_search.ready", "Suchbegriffe pruefen und LRCLIB suchen.",
+                        "lyrics.lrclib_search.empty_title", "Geben Sie den Songtitel ein.",
+                        "lyrics.lrclib_search.loading", "LRCLIB wird gesucht...",
+                        "lyrics.lrclib_search.no_results", "Keine LRCLIB-Ergebnisse.",
+                        "lyrics.lrclib_search.result_count_format", "%d LRCLIB-Ergebnisse",
+                        "lyrics.lrclib_search.selecting", "Ausgewaehlte LRCLIB-Lyrics werden geladen...",
+                        "lyrics.lrclib_search.loaded", "LRCLIB-Lyrics angewendet.",
+                        "lyrics.lrclib_search.error_format", "LRCLIB-Suche fehlgeschlagen: %s",
+                        "lyrics.lrclib_search.instrumental", "Instrumental",
+                        "lyrics.lrclib_search.synced", "Synchron",
+                        "lyrics.lrclib_search.plain", "Normal",
+                        "repo.detail.manual_lrclib", "Manuell ausgewaehlte LRCLIB-Lyrics."
+                };
+            case "ru":
+                return manualLrclibSearchStringsEn("Ручной поиск LRCLIB", "Если загруженный текст не подходит, найдите его в LRCLIB и примените вручную.");
+            case "sv":
+                return manualLrclibSearchStringsEn("Manuell LRCLIB-sokning", "Sok direkt i LRCLIB och anvand ratt resultat nar texten inte passar laten.");
+            case "pt":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "Busca manual no LRCLIB",
+                        "lyrics.lrclib_search.desc", "Quando a letra carregada nao combina, pesquise no LRCLIB e aplique o resultado correto.",
+                        "lyrics.lrclib_search.title_hint", "Titulo",
+                        "lyrics.lrclib_search.artist_hint", "Artista",
+                        "lyrics.lrclib_search.field_title", "Titulo",
+                        "lyrics.lrclib_search.field_artist", "Artista",
+                        "lyrics.lrclib_search.button", "Buscar no LRCLIB",
+                        "lyrics.lrclib_search.ready", "Confira os termos e busque no LRCLIB.",
+                        "lyrics.lrclib_search.empty_title", "Digite o titulo da musica.",
+                        "lyrics.lrclib_search.loading", "Buscando no LRCLIB...",
+                        "lyrics.lrclib_search.no_results", "Nenhum resultado do LRCLIB.",
+                        "lyrics.lrclib_search.result_count_format", "%d resultados do LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Carregando a letra LRCLIB escolhida...",
+                        "lyrics.lrclib_search.loaded", "Letra LRCLIB aplicada.",
+                        "lyrics.lrclib_search.error_format", "Falha na busca LRCLIB: %s",
+                        "lyrics.lrclib_search.instrumental", "Instrumental",
+                        "lyrics.lrclib_search.synced", "Sincronizada",
+                        "lyrics.lrclib_search.plain", "Simples",
+                        "repo.detail.manual_lrclib", "Letra LRCLIB selecionada manualmente."
+                };
+            case "bn":
+                return manualLrclibSearchStringsEn("Manual LRCLIB Search", "Search LRCLIB directly and apply a result when the loaded lyrics do not match this song.");
+            case "it":
+                return manualLrclibSearchStringsEn("Ricerca LRCLIB manuale", "Cerca direttamente in LRCLIB e applica il risultato quando il testo non corrisponde al brano.");
+            case "th":
+                return manualLrclibSearchStringsEn("ค้นหา LRCLIB ด้วยตนเอง", "ค้นหาใน LRCLIB โดยตรงและใช้ผลลัพธ์เมื่อเนื้อเพลงไม่ตรงกับเพลงนี้");
+            case "vi":
+                return manualLrclibSearchStringsEn("Tim LRCLIB thu cong", "Tim truc tiep trong LRCLIB va ap dung ket qua khi loi bai hat khong dung voi bai nay.");
+            case "id":
+                return manualLrclibSearchStringsEn("Pencarian LRCLIB manual", "Cari langsung di LRCLIB dan terapkan hasil saat lirik tidak cocok dengan lagu ini.");
+            case "ms":
+                return manualLrclibSearchStringsEn("Carian LRCLIB manual", "Cari terus dalam LRCLIB dan guna keputusan apabila lirik tidak sepadan dengan lagu ini.");
+            default:
+                return manualLrclibSearchStringsEn(
+                        "Manual LRCLIB Search",
+                        "Search LRCLIB directly and apply a result when the loaded lyrics do not match this song."
+                );
+        }
+    }
+
+    private static String[] manualLrclibSearchStringsEn(String title, String desc) {
+        return new String[]{
+                "lyrics.lrclib_search.title", title,
+                "lyrics.lrclib_search.desc", desc,
+                "lyrics.lrclib_search.title_hint", "Song title",
+                "lyrics.lrclib_search.artist_hint", "Artist",
+                "lyrics.lrclib_search.field_title", "Title",
+                "lyrics.lrclib_search.field_artist", "Artist",
+                "lyrics.lrclib_search.button", "Search LRCLIB",
+                "lyrics.lrclib_search.ready", "Check the search terms, then search LRCLIB.",
+                "lyrics.lrclib_search.empty_title", "Enter a song title to search.",
+                "lyrics.lrclib_search.loading", "Searching LRCLIB...",
+                "lyrics.lrclib_search.no_results", "No LRCLIB results.",
+                "lyrics.lrclib_search.result_count_format", "%d LRCLIB results",
+                "lyrics.lrclib_search.selecting", "Loading the selected LRCLIB lyrics...",
+                "lyrics.lrclib_search.loaded", "LRCLIB lyrics applied.",
+                "lyrics.lrclib_search.error_format", "LRCLIB search failed: %s",
+                "lyrics.lrclib_search.instrumental", "Instrumental",
+                "lyrics.lrclib_search.synced", "Synced",
+                "lyrics.lrclib_search.plain", "Plain",
+                "repo.detail.manual_lrclib", "Manually selected LRCLIB lyrics."
+        };
     }
 
     private static Map<String, String> koStrings() {

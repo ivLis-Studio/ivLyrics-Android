@@ -88,6 +88,68 @@ final class LyricsRepository {
         void onLyricsArtworkLoaded(String trackKey, Bitmap artwork, String artworkKey);
     }
 
+    interface ManualLrclibCallback {
+        void onManualLrclibSearchResults(String trackKey, List<ManualLrclibCandidate> candidates);
+
+        void onManualLrclibLyricsLoaded(String trackKey, LyricsResult result);
+
+        void onManualLrclibError(String trackKey, String message);
+
+        void onManualLrclibLog(String trackKey, String message);
+    }
+
+    static final class ManualLrclibCandidate {
+        final long id;
+        final String trackName;
+        final String artistName;
+        final String albumName;
+        final double durationSeconds;
+        final boolean synced;
+        final boolean plain;
+        final boolean instrumental;
+        final String isrc;
+        final double score;
+
+        ManualLrclibCandidate(
+                long id,
+                String trackName,
+                String artistName,
+                String albumName,
+                double durationSeconds,
+                boolean synced,
+                boolean plain,
+                boolean instrumental,
+                String isrc,
+                double score
+        ) {
+            this.id = id;
+            this.trackName = trackName == null ? "" : trackName;
+            this.artistName = artistName == null ? "" : artistName;
+            this.albumName = albumName == null ? "" : albumName;
+            this.durationSeconds = Math.max(0.0, durationSeconds);
+            this.synced = synced;
+            this.plain = plain;
+            this.instrumental = instrumental;
+            this.isrc = TrackSnapshot.normalizeIsrc(isrc);
+            this.score = score;
+        }
+
+        static ManualLrclibCandidate from(LrclibCandidate candidate) {
+            return new ManualLrclibCandidate(
+                    candidate.id,
+                    candidate.trackName,
+                    candidate.artistName,
+                    candidate.albumName,
+                    candidate.durationSeconds,
+                    candidate.syncedLyrics != null,
+                    candidate.plainLyrics != null,
+                    candidate.instrumental,
+                    candidate.isrc,
+                    candidate.score
+            );
+        }
+    }
+
     interface SpotifyTokenValidationCallback {
         void onSpotifyTokenValidated(long expiresInSeconds);
 
@@ -173,6 +235,90 @@ final class LyricsRepository {
 
     void clearSpotifyTokenCache() {
         invalidateSpotifyToken();
+    }
+
+    void searchManualLrclib(
+            TrackSnapshot track,
+            String title,
+            String artist,
+            ManualLrclibCallback callback
+    ) {
+        String key = manualTrackKey(track);
+        String queryTitle = firstNonEmpty(title, track == null ? "" : track.title);
+        String queryArtist = firstNonEmpty(artist, track == null ? "" : track.artist);
+        if (queryTitle.isEmpty()) {
+            postManualError(key, callback, ui("lyrics.lrclib_search.empty_title"));
+            return;
+        }
+
+        executor.execute(() -> {
+            LogSink log = message -> emitManualLog(key, callback, message);
+            try {
+                log.write("manual lrclib search: title=\"" + queryTitle + "\""
+                        + (queryArtist.isEmpty() ? "" : " / artist=\"" + queryArtist + "\""));
+                List<LrclibCandidate> candidates = searchManualLrclibCandidates(queryTitle, queryArtist, log);
+                TrackSnapshot scoringTrack = manualScoringTrack(track, queryTitle, queryArtist);
+                for (LrclibCandidate candidate : candidates) {
+                    candidate.score = scoringTrack == null ? 0.0 : scoreCandidate(scoringTrack, candidate, null);
+                }
+                candidates.sort(this::compareLrclibCandidates);
+                List<ManualLrclibCandidate> result = new ArrayList<>();
+                for (int index = 0; index < Math.min(14, candidates.size()); index++) {
+                    result.add(ManualLrclibCandidate.from(candidates.get(index)));
+                }
+                log.write("manual lrclib search: results=" + result.size());
+                mainHandler.post(() -> {
+                    if (callback != null) {
+                        callback.onManualLrclibSearchResults(key, result);
+                    }
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                log.write("manual lrclib search error: " + message);
+                postManualError(key, callback, message);
+            }
+        });
+    }
+
+    void loadManualLrclibCandidate(
+            TrackSnapshot track,
+            ManualLrclibCandidate selected,
+            ManualLrclibCallback callback
+    ) {
+        String key = manualTrackKey(track);
+        if (selected == null || selected.id <= 0L) {
+            postManualError(key, callback, ui("repo.lyrics_not_found"));
+            return;
+        }
+
+        executor.execute(() -> {
+            LogSink log = message -> emitManualLog(key, callback, message);
+            try {
+                log.write("manual lrclib load: id=" + selected.id);
+                LrclibCandidate candidate = fetchLrclibCandidateById(selected.id, log);
+                if (candidate == null) {
+                    throw new IOException(ui("repo.lyrics_not_found"));
+                }
+                LyricsResult result = lyricsResultFromManualCandidate(candidate, track);
+                if (!key.isEmpty()) {
+                    cache.put(key, result);
+                    if (diskCache != null) {
+                        diskCache.put(key, result);
+                    }
+                }
+                log.write("manual lrclib applied: " + describeLrclibCandidate(candidate)
+                        + (key.isEmpty() ? "" : " / cacheKey=" + key));
+                mainHandler.post(() -> {
+                    if (callback != null) {
+                        callback.onManualLrclibLyricsLoaded(key, result);
+                    }
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                log.write("manual lrclib load error: " + message);
+                postManualError(key, callback, message);
+            }
+        });
     }
 
     void validateSpotifyCredentials(
@@ -320,6 +466,36 @@ final class LyricsRepository {
         );
     }
 
+    private LyricsResult lyricsResultFromManualCandidate(LrclibCandidate candidate, TrackSnapshot track) {
+        boolean lineSynced = candidate.useSyncedLyrics();
+        List<LyricsLine> lines = lineSynced
+                ? LrcParser.parseSynced(candidate.syncedLyrics, secondsToMs(
+                candidate.durationSeconds,
+                track == null ? 0L : track.durationMs
+        ))
+                : LrcParser.parsePlain(candidate.plainLyrics);
+        if (lines.isEmpty()) {
+            return new LyricsResult(
+                    Collections.emptyList(),
+                    "LRCLIB",
+                    candidate.instrumental ? ui("repo.instrumental") : ui("repo.no_renderable_lyrics"),
+                    false,
+                    firstNonEmpty(candidate.isrc, track == null ? "" : track.isrc),
+                    track == null ? "" : track.trackId,
+                    Collections.emptyList()
+            );
+        }
+        return new LyricsResult(
+                lines,
+                lineSynced ? "LRCLIB synced" : "LRCLIB plain",
+                ui("repo.detail.manual_lrclib"),
+                false,
+                firstNonEmpty(candidate.isrc, track == null ? "" : track.isrc),
+                track == null ? "" : track.trackId,
+                Collections.emptyList()
+        );
+    }
+
     private void publishSpotifyArtwork(String trackKey, SpotifyTrackMatch match, Callback callback, LogSink log) {
         if (callback == null || match == null || match.artworkUrl.isEmpty()) {
             return;
@@ -395,6 +571,56 @@ final class LyricsRepository {
             return null;
         }
         return best;
+    }
+
+    private List<LrclibCandidate> searchManualLrclibCandidates(String title, String artist, LogSink log) throws Exception {
+        List<LrclibCandidate> candidates = new ArrayList<>();
+        Map<String, String> structured = new LinkedHashMap<>();
+        structured.put("track_name", title);
+        if (artist != null && !artist.trim().isEmpty()) {
+            structured.put("artist_name", artist.trim());
+        }
+        appendUniqueCandidates(candidates, searchLrclib(structured, "manual:structured", log));
+
+        if (artist != null && !artist.trim().isEmpty()) {
+            appendUniqueCandidates(candidates, searchLrclib(
+                    Collections.singletonMap("q", title + " " + artist.trim()),
+                    "manual:q:title+artist",
+                    log
+            ));
+        }
+        appendUniqueCandidates(candidates, searchLrclib(
+                Collections.singletonMap("q", title),
+                "manual:q:title",
+                log
+        ));
+        return candidates;
+    }
+
+    private TrackSnapshot manualScoringTrack(TrackSnapshot track, String title, String artist) {
+        if ((title == null || title.trim().isEmpty()) && (track == null || track.title.isEmpty())) {
+            return null;
+        }
+        String scoreTitle = firstNonEmpty(title, track == null ? "" : track.title);
+        String scoreArtist = firstNonEmpty(artist, track == null ? "" : track.artist);
+        if (scoreTitle.isEmpty() || scoreArtist.isEmpty()) {
+            return null;
+        }
+        return new TrackSnapshot(
+                scoreTitle,
+                scoreArtist,
+                track == null ? "" : track.album,
+                track == null ? "" : track.packageName,
+                track == null ? "" : track.mediaId,
+                track == null ? "" : track.isrc,
+                track == null ? 0L : track.durationMs,
+                track == null ? 0L : track.positionMs,
+                track == null ? 0L : track.lastPositionUpdateElapsedMs,
+                track == null ? 1f : track.playbackSpeed,
+                track != null && track.playing,
+                track == null ? null : track.artwork,
+                track == null ? "" : track.artworkUri
+        );
     }
 
     private boolean needsLegacySyncLineShapeMatch(SyncDataResult syncData, List<LrclibCandidate> candidates) {
@@ -1205,6 +1431,24 @@ final class LyricsRepository {
         String safeMessage = message == null ? "" : message;
         Log.d(TAG, safeMessage);
         mainHandler.post(() -> callback.onLyricsLog(trackKey, safeMessage));
+    }
+
+    private void emitManualLog(String trackKey, ManualLrclibCallback callback, String message) {
+        String safeMessage = message == null ? "" : message;
+        Log.d(TAG, safeMessage);
+        if (callback != null) {
+            mainHandler.post(() -> callback.onManualLrclibLog(trackKey, safeMessage));
+        }
+    }
+
+    private void postManualError(String trackKey, ManualLrclibCallback callback, String message) {
+        if (callback != null) {
+            mainHandler.post(() -> callback.onManualLrclibError(trackKey, message == null ? "" : message));
+        }
+    }
+
+    private String manualTrackKey(TrackSnapshot track) {
+        return track == null || !track.hasUsableMetadata() ? "" : track.stableKey();
     }
 
     private String describeParams(Map<String, String> params) {
