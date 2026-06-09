@@ -46,6 +46,7 @@ final class AiLyricsSettings {
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
     static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
+    static final String KEY_TRACK_VIDEO_SYNC_OFFSETS = "track_video_sync_offsets_v1";
     static final String KEY_SPOTIFY_CLIENT_ID = "spotify_client_id";
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
@@ -448,33 +449,49 @@ final class AiLyricsSettings {
     }
 
     int trackSyncOffsetMs(String trackKey) {
+        return trackOffsetMs(KEY_TRACK_SYNC_OFFSETS, trackKey);
+    }
+
+    void setTrackSyncOffsetMs(String trackKey, int offsetMs) {
+        setTrackOffsetMs(KEY_TRACK_SYNC_OFFSETS, trackKey, offsetMs);
+    }
+
+    int trackVideoSyncOffsetMs(String trackKey) {
+        return trackOffsetMs(KEY_TRACK_VIDEO_SYNC_OFFSETS, trackKey);
+    }
+
+    void setTrackVideoSyncOffsetMs(String trackKey, int offsetMs) {
+        setTrackOffsetMs(KEY_TRACK_VIDEO_SYNC_OFFSETS, trackKey, offsetMs);
+    }
+
+    private int trackOffsetMs(String prefsKey, String trackKey) {
         String key = trackKey == null ? "" : trackKey.trim();
         if (key.isEmpty()) {
             return 0;
         }
         try {
-            JSONObject object = new JSONObject(prefs.getString(KEY_TRACK_SYNC_OFFSETS, "{}"));
+            JSONObject object = new JSONObject(prefs.getString(prefsKey, "{}"));
             return clampInt(object.optInt(key, 0), -10000, 10000);
         } catch (JSONException ignored) {
-            prefs.edit().remove(KEY_TRACK_SYNC_OFFSETS).apply();
+            prefs.edit().remove(prefsKey).apply();
             return 0;
         }
     }
 
-    void setTrackSyncOffsetMs(String trackKey, int offsetMs) {
+    private void setTrackOffsetMs(String prefsKey, String trackKey, int offsetMs) {
         String key = trackKey == null ? "" : trackKey.trim();
         if (key.isEmpty()) {
             return;
         }
         int safeOffset = clampInt(offsetMs, -10000, 10000);
         try {
-            JSONObject object = new JSONObject(prefs.getString(KEY_TRACK_SYNC_OFFSETS, "{}"));
+            JSONObject object = new JSONObject(prefs.getString(prefsKey, "{}"));
             if (safeOffset == 0) {
                 object.remove(key);
             } else {
                 object.put(key, safeOffset);
             }
-            prefs.edit().putString(KEY_TRACK_SYNC_OFFSETS, object.toString()).apply();
+            prefs.edit().putString(prefsKey, object.toString()).apply();
         } catch (JSONException ignored) {
             JSONObject object = new JSONObject();
             try {
@@ -483,7 +500,7 @@ final class AiLyricsSettings {
                 }
             } catch (JSONException ignoredAgain) {
             }
-            prefs.edit().putString(KEY_TRACK_SYNC_OFFSETS, object.toString()).apply();
+            prefs.edit().putString(prefsKey, object.toString()).apply();
         }
     }
 

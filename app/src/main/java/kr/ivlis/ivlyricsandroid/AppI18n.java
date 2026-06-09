@@ -109,6 +109,7 @@ final class AppI18n {
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
+        addVideoSyncOffsetStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -1813,6 +1814,78 @@ final class AppI18n {
                 "section.background_desc", sectionDesc,
                 "background.mode.video", label,
                 "background.mode.video_desc", desc
+        };
+    }
+
+    private static void addVideoSyncOffsetStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = videoSyncOffsetStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] videoSyncOffsetStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return videoSyncOffsetStringsValues("영상", "영상 싱크 오프셋", "%s 영상 보정", "현재 곡이 없습니다.", "+값은 영상을 더 뒤쪽 시간으로 이동하고, -값은 이전 시간으로 늦춥니다. 가사 싱크 오프셋 위에 추가로 적용됩니다.", "영상 오프셋 초기화", "영상 오프셋 %s");
+            case "zh-CN":
+                return videoSyncOffsetStringsValues("视频", "视频同步偏移", "%s 视频校正", "没有当前歌曲。", "+ 值让视频跳到更靠后的时间，- 值让视频回到更早的时间。它会叠加在歌词同步偏移上。", "重置视频偏移", "视频偏移 %s");
+            case "zh-TW":
+                return videoSyncOffsetStringsValues("影片", "影片同步偏移", "%s 影片校正", "沒有目前歌曲。", "+ 值會讓影片移到較後的時間，- 值會讓影片回到較早的時間。它會疊加在歌詞同步偏移上。", "重設影片偏移", "影片偏移 %s");
+            case "ja":
+                return videoSyncOffsetStringsValues("動画", "動画同期オフセット", "%s の動画補正", "現在の曲がありません。", "+値は動画を先の時刻へ進め、-値は前の時刻へ戻します。歌詞同期オフセットに追加で適用されます。", "動画オフセットをリセット", "動画オフセット %s");
+            case "hi":
+                return videoSyncOffsetStringsValues("वीडियो", "वीडियो सिंक ऑफसेट", "%s वीडियो सुधार", "कोई वर्तमान गीत नहीं है।", "+ मान वीडियो को आगे के समय पर ले जाता है, - मान पीछे के समय पर ले जाता है। यह लिरिक्स सिंक ऑफसेट के ऊपर लागू होता है।", "वीडियो ऑफसेट रीसेट करें", "वीडियो ऑफसेट %s");
+            case "es":
+                return videoSyncOffsetStringsValues("Video", "Desplazamiento de video", "Ajuste de video de %s", "No hay canción actual.", "Un valor + mueve el video a un tiempo posterior; un valor - lo retrasa. Se suma al desplazamiento de la letra.", "Restablecer video", "Desplazamiento de video %s");
+            case "fr":
+                return videoSyncOffsetStringsValues("Vidéo", "Décalage vidéo", "Correction vidéo de %s", "Aucun morceau en cours.", "Une valeur + avance la vidéo dans le temps, une valeur - la recule. Elle s'ajoute au décalage des paroles.", "Réinitialiser la vidéo", "Décalage vidéo %s");
+            case "ar":
+                return videoSyncOffsetStringsValues("فيديو", "إزاحة مزامنة الفيديو", "تصحيح فيديو %s", "لا توجد أغنية حالية.", "القيمة + تنقل الفيديو إلى وقت لاحق، والقيمة - تعيده إلى وقت سابق. تُضاف فوق إزاحة مزامنة الكلمات.", "إعادة ضبط إزاحة الفيديو", "إزاحة الفيديو %s");
+            case "fa":
+                return videoSyncOffsetStringsValues("ویدیو", "افست همگام سازی ویدیو", "اصلاح ویدیوی %s", "آهنگ فعلی وجود ندارد.", "مقدار + ویدیو را به زمان جلوتر می برد و مقدار - آن را عقب می برد. این روی افست همگام سازی متن افزوده می شود.", "بازنشانی افست ویدیو", "افست ویدیو %s");
+            case "de":
+                return videoSyncOffsetStringsValues("Video", "Video-Sync-Offset", "%s Videokorrektur", "Kein aktueller Song.", "+ verschiebt das Video zu einer späteren Zeit, - zu einer früheren Zeit. Es wird zusätzlich zum Lyrics-Sync-Offset angewendet.", "Video-Offset zurücksetzen", "Video-Offset %s");
+            case "ru":
+                return videoSyncOffsetStringsValues("Видео", "Смещение синхронизации видео", "Коррекция видео %s", "Нет текущей песни.", "+ переносит видео на более позднее время, - на более раннее. Значение добавляется к смещению текста.", "Сбросить смещение видео", "Смещение видео %s");
+            case "sv":
+                return videoSyncOffsetStringsValues("Video", "Videosynkförskjutning", "%s videokorrigering", "Ingen aktuell låt.", "+ flyttar videon till en senare tid, - till en tidigare tid. Det läggs ovanpå textens synkförskjutning.", "Återställ videooffset", "Videooffset %s");
+            case "pt":
+                return videoSyncOffsetStringsValues("Vídeo", "Deslocamento de vídeo", "Correção de vídeo de %s", "Nenhuma música atual.", "Um valor + move o vídeo para um tempo posterior; um valor - o atrasa. Ele é somado ao deslocamento da letra.", "Redefinir vídeo", "Deslocamento de vídeo %s");
+            case "bn":
+                return videoSyncOffsetStringsValues("ভিডিও", "ভিডিও সিঙ্ক অফসেট", "%s ভিডিও সংশোধন", "বর্তমান গান নেই।", "+ মান ভিডিওকে পরের সময়ে নেয়, - মান আগের সময়ে নেয়। এটি লিরিক্স সিঙ্ক অফসেটের ওপর যোগ হয়।", "ভিডিও অফসেট রিসেট", "ভিডিও অফসেট %s");
+            case "it":
+                return videoSyncOffsetStringsValues("Video", "Offset sincronizzazione video", "Correzione video di %s", "Nessun brano corrente.", "Un valore + porta il video a un tempo successivo, un valore - a un tempo precedente. Si aggiunge all'offset delle parole.", "Reimposta offset video", "Offset video %s");
+            case "th":
+                return videoSyncOffsetStringsValues("วิดีโอ", "ออฟเซ็ตซิงค์วิดีโอ", "ปรับวิดีโอของ %s", "ไม่มีเพลงปัจจุบัน", "ค่า + เลื่อนวิดีโอไปเวลาถัดไป ค่า - เลื่อนกลับไปเวลาก่อนหน้า และจะบวกเพิ่มจากออฟเซ็ตเนื้อเพลง", "รีเซ็ตออฟเซ็ตวิดีโอ", "ออฟเซ็ตวิดีโอ %s");
+            case "vi":
+                return videoSyncOffsetStringsValues("Video", "Bù đồng bộ video", "Chỉnh video cho %s", "Không có bài hát hiện tại.", "Giá trị + đưa video tới thời điểm muộn hơn, giá trị - đưa về sớm hơn. Nó được cộng thêm vào bù đồng bộ lời.", "Đặt lại bù video", "Bù video %s");
+            case "id":
+                return videoSyncOffsetStringsValues("Video", "Offset sinkronisasi video", "Koreksi video %s", "Tidak ada lagu saat ini.", "Nilai + memindahkan video ke waktu yang lebih maju, nilai - ke waktu sebelumnya. Ini ditambahkan di atas offset sinkronisasi lirik.", "Reset offset video", "Offset video %s");
+            case "ms":
+                return videoSyncOffsetStringsValues("Video", "Offset penyegerakan video", "Pembetulan video %s", "Tiada lagu semasa.", "Nilai + mengalihkan video ke masa lebih lewat, nilai - ke masa lebih awal. Ia ditambah pada offset penyegerakan lirik.", "Tetapkan semula offset video", "Offset video %s");
+            default:
+                return videoSyncOffsetStringsValues("Video", "Video Sync Offset", "%s video adjustment", "No current song.", "+ values move the video to a later timestamp, while - values move it earlier. This is added on top of the lyric sync offset.", "Reset Video Offset", "Video offset %s");
+        }
+    }
+
+    private static String[] videoSyncOffsetStringsValues(String tab, String title, String trackScope, String noTrack, String help, String reset, String toast) {
+        return new String[]{
+                "lyrics.tab.video", tab,
+                "lyrics.video_sync.title", title,
+                "lyrics.video_sync.track_scope", trackScope,
+                "lyrics.video_sync.no_track", noTrack,
+                "lyrics.video_sync.help", help,
+                "lyrics.video_sync.reset", reset,
+                "toast.video_sync_offset_format", toast
         };
     }
 

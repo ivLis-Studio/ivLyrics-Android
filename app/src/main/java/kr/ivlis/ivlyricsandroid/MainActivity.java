@@ -101,6 +101,7 @@ public final class MainActivity extends Activity implements
     private static final String SETTINGS_TAB_TOOLS = "tools";
     private static final String LYRICS_POPUP_TAB_LANGUAGE = "language";
     private static final String LYRICS_POPUP_TAB_SYNC = "sync";
+    private static final String LYRICS_POPUP_TAB_VIDEO = "video";
     private static final String LYRICS_POPUP_TAB_LRCLIB = "lrclib";
     private static final String CREATOR_PROFILE_ENDPOINT = "https://lyrics.api.ivl.is/user/creator-profile";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
@@ -181,6 +182,8 @@ public final class MainActivity extends Activity implements
     private TextView selectedLanguageRuleView;
     private TextView lyricsSyncOffsetValueView;
     private TextView lyricsSyncOffsetDescriptionView;
+    private TextView videoSyncOffsetValueView;
+    private TextView videoSyncOffsetDescriptionView;
     private TextView lyricsLanguageButton;
     private TextView permissionButton;
     private PopupWindow lyricsMetaTipPopup;
@@ -192,6 +195,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout lyricsPopupTabButtonsContainer;
     private LinearLayout lyricsLanguageSettingsContent;
     private LinearLayout lyricsSyncSettingsContent;
+    private LinearLayout videoSyncSettingsContent;
     private LinearLayout lyricsManualSearchContent;
     private LinearLayout lyricsManualSearchResultsContainer;
     private LinearLayout lyricsSupplementLoadingIndicator;
@@ -294,6 +298,7 @@ public final class MainActivity extends Activity implements
     private String selectedRuleSourceLang = "auto";
     private String activeLyricsPopupTab = LYRICS_POPUP_TAB_LANGUAGE;
     private int currentTrackSyncOffsetMs;
+    private int currentVideoSyncOffsetMs;
     private boolean lyricsLanguageSettingsVisible;
     private boolean suppressLanguageRuleEvents;
     private boolean suppressSettingsEvents;
@@ -526,6 +531,7 @@ public final class MainActivity extends Activity implements
             currentArtworkKey = "";
             currentArtworkFromSpotify = false;
             currentTrackSyncOffsetMs = 0;
+            currentVideoSyncOffsetMs = 0;
             aiLyricsGenerating = false;
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
@@ -542,6 +548,7 @@ public final class MainActivity extends Activity implements
             translatedTrackTitle = "";
             translatedTrackArtist = "";
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(nextKey);
+            currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(nextKey);
         }
         updateTrackMetadataTextViews(snapshot);
         String artworkKey = snapshot.artworkKey();
@@ -558,6 +565,7 @@ public final class MainActivity extends Activity implements
         if (trackChanged) {
             currentLyricsKey = nextKey;
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
+            currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(currentLyricsKey);
             aiLyricsGenerating = false;
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
@@ -623,6 +631,7 @@ public final class MainActivity extends Activity implements
         currentArtworkKey = "";
         currentArtworkFromSpotify = false;
         currentTrackSyncOffsetMs = 0;
+        currentVideoSyncOffsetMs = 0;
         aiLyricsGenerating = false;
         detectedLyricsSourceLang = "en";
         selectedRuleSourceLang = "auto";
@@ -1785,6 +1794,7 @@ public final class MainActivity extends Activity implements
         ));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_LANGUAGE, ui("lyrics.tab.language"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_SYNC, ui("lyrics.tab.sync"));
+        addLyricsPopupTabButton(LYRICS_POPUP_TAB_VIDEO, ui("lyrics.tab.video"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_LRCLIB, "LRCLIB");
 
         lyricsLanguageSettingsContent = new LinearLayout(this);
@@ -1853,6 +1863,9 @@ public final class MainActivity extends Activity implements
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
 
+        videoSyncSettingsContent = buildVideoSyncSettingsContent();
+        panel.addView(videoSyncSettingsContent, topMargin(matchWrap(), dp(10)));
+
         lyricsManualSearchContent = buildLyricsManualSearchContent();
         panel.addView(lyricsManualSearchContent, topMargin(matchWrap(), dp(10)));
         switchLyricsPopupTab(activeLyricsPopupTab);
@@ -1883,6 +1896,37 @@ public final class MainActivity extends Activity implements
 
         TextView resetButton = languageButton(ui("lyrics.sync.reset"), false);
         resetButton.setOnClickListener(view -> setCurrentTrackSyncOffset(0, true));
+        content.addView(resetButton, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+        ), dp(8)));
+        return content;
+    }
+
+    private LinearLayout buildVideoSyncSettingsContent() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = label(ui("lyrics.video_sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
+        content.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        videoSyncOffsetDescriptionView = label("", 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+        videoSyncOffsetDescriptionView.setLineSpacing(dp(2), 1f);
+        content.addView(videoSyncOffsetDescriptionView, topMargin(matchWrap(), dp(5)));
+
+        videoSyncOffsetValueView = label("", 25f, Color.WHITE, AppFonts.bold(this));
+        videoSyncOffsetValueView.setGravity(Gravity.CENTER);
+        videoSyncOffsetValueView.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(14)));
+        content.addView(videoSyncOffsetValueView, topMargin(matchWrap(), dp(12)));
+
+        content.addView(buildVideoOffsetButtonRow(-100, -50, -10), topMargin(matchWrap(), dp(10)));
+        content.addView(buildVideoOffsetButtonRow(10, 50, 100), topMargin(matchWrap(), dp(8)));
+
+        TextView resetButton = languageButton(ui("lyrics.video_sync.reset"), false);
+        resetButton.setOnClickListener(view -> setCurrentVideoSyncOffset(0, true));
         content.addView(resetButton, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(42)
@@ -1950,6 +1994,24 @@ public final class MainActivity extends Activity implements
             int delta = values[index];
             TextView button = languageButton(offsetDeltaLabel(delta), false);
             button.setOnClickListener(view -> adjustCurrentTrackSyncOffset(delta));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            if (index > 0) {
+                params.leftMargin = dp(8);
+            }
+            row.addView(button, params);
+        }
+        return row;
+    }
+
+    private LinearLayout buildVideoOffsetButtonRow(int first, int second, int third) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int[] values = {first, second, third};
+        for (int index = 0; index < values.length; index++) {
+            int delta = values[index];
+            TextView button = languageButton(offsetDeltaLabel(delta), false);
+            button.setOnClickListener(view -> adjustCurrentVideoSyncOffset(delta));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
             if (index > 0) {
                 params.leftMargin = dp(8);
@@ -3019,6 +3081,7 @@ public final class MainActivity extends Activity implements
         playPauseButton.setPlaying(currentTrack.playing);
         updateLyricsLanguageSettingsUi();
         updateLyricsSyncSettingsUi();
+        updateVideoSyncSettingsUi();
     }
 
     private List<LanguageChoice> languageChoices(boolean includeAuto) {
@@ -4194,7 +4257,7 @@ public final class MainActivity extends Activity implements
                 position,
                 currentTrack.playing,
                 firstLyricTimeMs(currentBaseLyricsResult),
-                currentTrackSyncOffsetMs
+                currentTrackSyncOffsetMs + currentVideoSyncOffsetMs
         );
     }
 
@@ -4319,6 +4382,11 @@ public final class MainActivity extends Activity implements
                     LYRICS_POPUP_TAB_SYNC.equals(activeLyricsPopupTab) ? View.VISIBLE : View.GONE
             );
         }
+        if (videoSyncSettingsContent != null) {
+            videoSyncSettingsContent.setVisibility(
+                    LYRICS_POPUP_TAB_VIDEO.equals(activeLyricsPopupTab) ? View.VISIBLE : View.GONE
+            );
+        }
         if (lyricsManualSearchContent != null) {
             lyricsManualSearchContent.setVisibility(
                     LYRICS_POPUP_TAB_LRCLIB.equals(activeLyricsPopupTab) ? View.VISIBLE : View.GONE
@@ -4329,6 +4397,7 @@ public final class MainActivity extends Activity implements
         }
         updateLyricsPopupTabButtons();
         updateLyricsSyncSettingsUi();
+        updateVideoSyncSettingsUi();
     }
 
     private void updateLyricsPopupTabButtons() {
@@ -4354,6 +4423,9 @@ public final class MainActivity extends Activity implements
         if (LYRICS_POPUP_TAB_SYNC.equals(tabId)) {
             return LYRICS_POPUP_TAB_SYNC;
         }
+        if (LYRICS_POPUP_TAB_VIDEO.equals(tabId)) {
+            return LYRICS_POPUP_TAB_VIDEO;
+        }
         if (LYRICS_POPUP_TAB_LRCLIB.equals(tabId)) {
             return LYRICS_POPUP_TAB_LRCLIB;
         }
@@ -4370,6 +4442,19 @@ public final class MainActivity extends Activity implements
                     : uiFormat("lyrics.sync.track_scope", currentTrack.title);
             lyricsSyncOffsetDescriptionView.setText(trackText
                     + "\n" + ui("lyrics.sync.help"));
+        }
+    }
+
+    private void updateVideoSyncSettingsUi() {
+        if (videoSyncOffsetValueView != null) {
+            videoSyncOffsetValueView.setText(formatSignedMs(currentVideoSyncOffsetMs));
+        }
+        if (videoSyncOffsetDescriptionView != null) {
+            String trackText = currentTrack == null || !currentTrack.hasUsableMetadata()
+                    ? ui("lyrics.video_sync.no_track")
+                    : uiFormat("lyrics.video_sync.track_scope", currentTrack.title);
+            videoSyncOffsetDescriptionView.setText(trackText
+                    + "\n" + ui("lyrics.video_sync.help"));
         }
     }
 
@@ -4558,6 +4643,10 @@ public final class MainActivity extends Activity implements
         setCurrentTrackSyncOffset(currentTrackSyncOffsetMs + deltaMs, true);
     }
 
+    private void adjustCurrentVideoSyncOffset(int deltaMs) {
+        setCurrentVideoSyncOffset(currentVideoSyncOffsetMs + deltaMs, true);
+    }
+
     private void setCurrentTrackSyncOffset(int offsetMs, boolean notify) {
         int nextOffset = clampSyncOffset(offsetMs);
         currentTrackSyncOffsetMs = nextOffset;
@@ -4571,6 +4660,22 @@ public final class MainActivity extends Activity implements
         updateLyricsOffsetSensitiveViews();
         if (notify) {
             showSavedToast(uiFormat("toast.sync_offset_format", formatSignedMs(nextOffset)));
+        }
+    }
+
+    private void setCurrentVideoSyncOffset(int offsetMs, boolean notify) {
+        int nextOffset = clampSyncOffset(offsetMs);
+        currentVideoSyncOffsetMs = nextOffset;
+        String key = currentLyricsKey == null || currentLyricsKey.trim().isEmpty()
+                ? currentTrack == null ? "" : currentTrack.stableKey()
+                : currentLyricsKey;
+        if (aiLyricsSettings != null && !key.trim().isEmpty()) {
+            aiLyricsSettings.setTrackVideoSyncOffsetMs(key, nextOffset);
+        }
+        updateVideoSyncSettingsUi();
+        updateYouTubeBackgroundPlaybackState();
+        if (notify) {
+            showSavedToast(uiFormat("toast.video_sync_offset_format", formatSignedMs(nextOffset)));
         }
     }
 
@@ -4915,6 +5020,7 @@ public final class MainActivity extends Activity implements
         updateLyricsLanguageButtonState();
         switchLyricsPopupTab(activeLyricsPopupTab);
         updateLyricsSyncSettingsUi();
+        updateVideoSyncSettingsUi();
     }
 
     private void updateLyricsLanguageButtonState() {
@@ -5288,6 +5394,9 @@ public final class MainActivity extends Activity implements
         currentTrackSyncOffsetMs = snapshot == null || aiLyricsSettings == null
                 ? 0
                 : aiLyricsSettings.trackSyncOffsetMs(snapshot.stableKey());
+        currentVideoSyncOffsetMs = snapshot == null || aiLyricsSettings == null
+                ? 0
+                : aiLyricsSettings.trackVideoSyncOffsetMs(snapshot.stableKey());
         sourceView.setText(ui("status.lyrics_loading"));
         statusView.setText(ui("status.reload_after_spotify"));
         setLyricsTrackDurationOnViews(snapshot == null ? 0L : snapshot.durationMs);
