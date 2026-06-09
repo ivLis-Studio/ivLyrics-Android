@@ -92,6 +92,8 @@ final class LyricsRepository {
         void onLyricsLog(String trackKey, String message);
 
         void onLyricsArtworkLoaded(String trackKey, Bitmap artwork, String artworkKey);
+
+        void onLyricsMetadataResolved(String trackKey, String isrc, String spotifyTrackId);
     }
 
     interface ManualLrclibCallback {
@@ -166,6 +168,10 @@ final class LyricsRepository {
 
     private interface LogSink {
         void write(String message);
+    }
+
+    private interface SpotifyMetadataSink {
+        void onResolved(SpotifyTrackMatch match);
     }
 
     private String ui(String key) {
@@ -380,7 +386,11 @@ final class LyricsRepository {
 
     private LyricsResult loadLyricsBlocking(TrackSnapshot track, String trackKey, Callback callback, LogSink log) throws Exception {
         log.write("flow: Spotify Web API search -> sync-data -> LRCLIB source/search");
-        SpotifyTrackMatch spotifyMatch = fetchSpotifyIsrc(track, log);
+        SpotifyTrackMatch spotifyMatch = fetchSpotifyIsrc(
+                track,
+                log,
+                match -> publishResolvedSpotifyMetadata(trackKey, match, callback)
+        );
         publishSpotifyArtwork(trackKey, spotifyMatch, callback, log);
         boolean isrcFromSpotify = spotifyMatch != null && !spotifyMatch.isrc.isEmpty();
         String isrc = firstNonEmpty(
@@ -397,6 +407,9 @@ final class LyricsRepository {
         log.write(isrc.isEmpty()
                 ? "isrc: unavailable after Spotify lookup"
                 : "isrc: " + isrc + " (" + isrcSource + ")");
+        if (!isrc.isEmpty()) {
+            publishResolvedMetadata(trackKey, isrc, spotifyTrackId, callback);
+        }
 
         SyncDataResult syncData = isrc.isEmpty() ? null : fetchSyncData(isrc, track, spotifyMatch, log);
         LrclibCandidate candidate = null;
@@ -541,6 +554,25 @@ final class LyricsRepository {
         } catch (Exception error) {
             log.write("spotify artwork error: " + error.getMessage());
         }
+    }
+
+    private void publishResolvedSpotifyMetadata(String trackKey, SpotifyTrackMatch match, Callback callback) {
+        if (match == null) {
+            return;
+        }
+        publishResolvedMetadata(trackKey, match.isrc, match.spotifyId, callback);
+    }
+
+    private void publishResolvedMetadata(String trackKey, String isrc, String spotifyTrackId, Callback callback) {
+        if (callback == null) {
+            return;
+        }
+        String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
+        String safeSpotifyTrackId = spotifyTrackId == null ? "" : spotifyTrackId.trim();
+        if (normalizedIsrc.isEmpty() && safeSpotifyTrackId.isEmpty()) {
+            return;
+        }
+        mainHandler.post(() -> callback.onLyricsMetadataResolved(trackKey, normalizedIsrc, safeSpotifyTrackId));
     }
 
     private int countVocalParts(List<LyricsLine> lines) {
@@ -1106,7 +1138,7 @@ final class LyricsRepository {
         return 0L;
     }
 
-    private SpotifyTrackMatch fetchSpotifyIsrc(TrackSnapshot track, LogSink log) {
+    private SpotifyTrackMatch fetchSpotifyIsrc(TrackSnapshot track, LogSink log, SpotifyMetadataSink metadataSink) {
         if (track == null || track.title.trim().isEmpty() || track.artist.trim().isEmpty()) {
             log.write("spotify search: missing title or artist metadata");
             return null;
@@ -1124,6 +1156,7 @@ final class LyricsRepository {
                     SpotifyTrackMatch direct = fetchSpotifyTrackById(token, track.trackId, log);
                     if (direct != null && !direct.isrc.isEmpty()) {
                         if (isSpotifyDurationCompatible(track, direct)) {
+                            publishSpotifyMetadata(metadataSink, direct);
                             direct = attachSpotifyEnglishMetadata(token, direct, log);
                             log.write("spotify selected ISRC: direct track metadata " + describeSpotifyMatch(direct));
                             return direct;
@@ -1142,6 +1175,7 @@ final class LyricsRepository {
                         SpotifyTrackMatch direct = fetchSpotifyTrackById(token, track.trackId, log);
                         if (direct != null && !direct.isrc.isEmpty()) {
                             if (isSpotifyDurationCompatible(track, direct)) {
+                                publishSpotifyMetadata(metadataSink, direct);
                                 direct = attachSpotifyEnglishMetadata(token, direct, log);
                                 log.write("spotify selected ISRC: direct track metadata after refresh "
                                         + describeSpotifyMatch(direct));
@@ -1176,10 +1210,17 @@ final class LyricsRepository {
             }
 
             SpotifyTrackMatch selected = selectSpotifyMatchByApiOrder(track, matches, log);
+            publishSpotifyMetadata(metadataSink, selected);
             return attachSpotifyEnglishMetadata(token, selected, log);
         } catch (Exception error) {
             log.write("spotify search error: " + error.getMessage());
             return null;
+        }
+    }
+
+    private void publishSpotifyMetadata(SpotifyMetadataSink metadataSink, SpotifyTrackMatch match) {
+        if (metadataSink != null && match != null && !match.isrc.isEmpty()) {
+            metadataSink.onResolved(match);
         }
     }
 

@@ -269,6 +269,8 @@ public final class MainActivity extends Activity implements
     private String currentLyricsKey = "";
     private String currentArtworkKey = "";
     private String currentYouTubeBackgroundRequestKey = "";
+    private String currentResolvedIsrc = "";
+    private String currentResolvedSpotifyTrackId = "";
     private Bitmap currentArtworkBitmap;
     private boolean currentArtworkFromSpotify;
     private String translatedTrackTitle = "";
@@ -540,6 +542,8 @@ public final class MainActivity extends Activity implements
             updateLyricPreview(0L);
             currentLyricsKey = "";
             currentArtworkKey = "";
+            currentResolvedIsrc = "";
+            currentResolvedSpotifyTrackId = "";
             currentArtworkFromSpotify = false;
             currentTrackSyncOffsetMs = 0;
             currentVideoSyncOffsetMs = 0;
@@ -558,6 +562,8 @@ public final class MainActivity extends Activity implements
             currentArtworkFromSpotify = false;
             translatedTrackTitle = "";
             translatedTrackArtist = "";
+            currentResolvedIsrc = snapshot.isrc;
+            currentResolvedSpotifyTrackId = snapshot.trackId;
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(nextKey);
             currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(nextKey);
         }
@@ -599,6 +605,9 @@ public final class MainActivity extends Activity implements
             currentFuriganaResult = null;
             currentFuriganaKey = "";
             resetYouTubeBackgroundForTrack();
+            if (!currentResolvedIsrc.isEmpty()) {
+                syncYouTubeBackgroundState();
+            }
             setLyricsTrackDurationOnViews(snapshot.durationMs);
             setLyricsResultOnViews(currentLyricsResult);
             setLyricsSupplementLoading(false, false);
@@ -640,6 +649,8 @@ public final class MainActivity extends Activity implements
         updateLyricPreview(0L);
         currentLyricsKey = "";
         currentArtworkKey = "";
+        currentResolvedIsrc = "";
+        currentResolvedSpotifyTrackId = "";
         currentArtworkFromSpotify = false;
         currentTrackSyncOffsetMs = 0;
         currentVideoSyncOffsetMs = 0;
@@ -659,6 +670,10 @@ public final class MainActivity extends Activity implements
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
+        if (result != null) {
+            currentResolvedIsrc = nonEmpty(result.isrc, currentResolvedIsrc);
+            currentResolvedSpotifyTrackId = nonEmpty(result.spotifyTrackId, currentResolvedSpotifyTrackId);
+        }
         currentFuriganaResult = null;
         currentFuriganaKey = "";
         setLyricsResultOnViews(result);
@@ -710,6 +725,30 @@ public final class MainActivity extends Activity implements
         currentArtworkFromSpotify = true;
         updateArtwork(artwork, currentArtworkKey);
         appendLog("spotify artwork applied: " + artwork.getWidth() + "x" + artwork.getHeight());
+    }
+
+    @Override
+    public void onLyricsMetadataResolved(String trackKey, String isrc, String spotifyTrackId) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
+        String safeSpotifyTrackId = spotifyTrackId == null ? "" : spotifyTrackId.trim();
+        boolean changed = false;
+        if (!normalizedIsrc.isEmpty() && !normalizedIsrc.equals(currentResolvedIsrc)) {
+            currentResolvedIsrc = normalizedIsrc;
+            changed = true;
+        }
+        if (!safeSpotifyTrackId.isEmpty() && !safeSpotifyTrackId.equals(currentResolvedSpotifyTrackId)) {
+            currentResolvedSpotifyTrackId = safeSpotifyTrackId;
+            changed = true;
+        }
+        if (changed && !currentResolvedIsrc.isEmpty()) {
+            appendLog("youtube background: metadata ready, preloading video isrc="
+                    + currentResolvedIsrc
+                    + (currentResolvedSpotifyTrackId.isEmpty() ? "" : " / trackId=" + currentResolvedSpotifyTrackId));
+            syncYouTubeBackgroundState();
+        }
     }
 
     @Override
@@ -4317,20 +4356,39 @@ public final class MainActivity extends Activity implements
             return;
         }
         LyricsResult lyricsResult = currentBaseLyricsResult == null ? LyricsResult.empty("") : currentBaseLyricsResult;
-        String isrc = nonEmpty(lyricsResult.isrc, currentTrack.isrc);
+        String isrc = nonEmpty(lyricsResult.isrc, nonEmpty(currentResolvedIsrc, currentTrack.isrc));
         if (isrc.isEmpty()) {
             appendLog("youtube background: waiting for ISRC");
             return;
         }
-        String trackId = nonEmpty(lyricsResult.spotifyTrackId, currentTrack.trackId);
-        String requestKey = isrc + "|" + trackId + "|" + currentTrack.title + "|" + currentTrack.artist + "|" + currentTrack.album;
+        String trackId = nonEmpty(lyricsResult.spotifyTrackId, nonEmpty(currentResolvedSpotifyTrackId, currentTrack.trackId));
+        String requestKey = "isrc:" + isrc;
         if (requestKey.equals(currentYouTubeBackgroundRequestKey)
                 && (currentYouTubeBackgroundLoading || currentYouTubeBackgroundInfo != null)) {
             return;
         }
         currentYouTubeBackgroundRequestKey = requestKey;
         currentYouTubeBackgroundLoading = true;
-        youtubeBackgroundRepository.load(requestKey, currentTrack, lyricsResult, this);
+        youtubeBackgroundRepository.load(requestKey, currentTrack, youtubeMetadataResult(lyricsResult, isrc, trackId), this);
+    }
+
+    private LyricsResult youtubeMetadataResult(LyricsResult source, String isrc, String spotifyTrackId) {
+        LyricsResult safeSource = source == null ? LyricsResult.empty("") : source;
+        String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
+        String safeSpotifyTrackId = spotifyTrackId == null ? "" : spotifyTrackId.trim();
+        if (normalizedIsrc.equals(safeSource.isrc)
+                && safeSpotifyTrackId.equals(safeSource.spotifyTrackId)) {
+            return safeSource;
+        }
+        return new LyricsResult(
+                safeSource.lines,
+                safeSource.providerLabel,
+                safeSource.detail,
+                safeSource.karaoke,
+                normalizedIsrc,
+                safeSpotifyTrackId,
+                safeSource.contributors
+        );
     }
 
     private boolean isCurrentYouTubeBackgroundRequest(String requestKey) {
@@ -5437,13 +5495,13 @@ public final class MainActivity extends Activity implements
             lyricsRepository.clearCacheForTrack(key);
             lyricsRepository.clearSyncDataCacheForIsrc(nonEmpty(
                     currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc,
-                    snapshot.isrc
+                    nonEmpty(currentResolvedIsrc, snapshot.isrc)
             ));
         }
         if (youtubeBackgroundRepository != null) {
             youtubeBackgroundRepository.clearCacheForIsrc(nonEmpty(
                     currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc,
-                    snapshot.isrc
+                    nonEmpty(currentResolvedIsrc, snapshot.isrc)
             ));
         }
         if (aiLyricsRepository != null) {
