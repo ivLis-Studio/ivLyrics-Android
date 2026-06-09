@@ -1,7 +1,6 @@
-# ivLyrics Android
-
 <img width="1122" height="1402" alt="image" src="https://github.com/user-attachments/assets/93f24505-a80d-4636-a622-2d8a8ba5f1f8" />
 
+# ivLyrics Android
 
 한국어 | [English](README_EN.md)
 
