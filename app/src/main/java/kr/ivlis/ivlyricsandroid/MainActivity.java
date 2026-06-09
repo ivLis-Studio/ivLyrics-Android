@@ -1045,17 +1045,13 @@ public final class MainActivity extends Activity implements
         attachArtworkSwipe(artworkView);
         clipRound(artworkView, 20);
 
-        int artworkSize = Math.min(
-                Math.round(getResources().getDisplayMetrics().heightPixels * 0.45f),
-                Math.round(getResources().getDisplayMetrics().widthPixels * 0.23f)
-        );
-        artworkSize = Math.max(dp(132), artworkSize);
+        int artworkSize = landscapeArtworkSize();
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
-        player.addView(flexSpacer(0.25f), new LinearLayout.LayoutParams(
+        player.addView(flexSpacer(landscapeTopSpacerWeight()), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                0.25f
+                landscapeTopSpacerWeight()
         ));
 
         landscapeHeroContainer = new LinearLayout(this);
@@ -1175,10 +1171,10 @@ public final class MainActivity extends Activity implements
         nextButton.setOnClickListener(view -> runTransportCommand(() -> NowPlayingService.skipToNext()));
         controls.addView(nextButton, fixedControlParams(54, 10));
 
-        player.addView(flexSpacer(0.35f), new LinearLayout.LayoutParams(
+        player.addView(flexSpacer(landscapeBottomSpacerWeight()), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                0.35f
+                landscapeBottomSpacerWeight()
         ));
 
         FrameLayout lyricsPane = new FrameLayout(this);
@@ -1239,6 +1235,23 @@ public final class MainActivity extends Activity implements
 
     private boolean isLandscapeLayout() {
         return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    private boolean isLandscapeTabletLayout() {
+        Configuration configuration = getResources().getConfiguration();
+        return isLandscapeLayout() && configuration.smallestScreenWidthDp >= 600;
+    }
+
+    private int landscapeArtworkSize() {
+        android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+        boolean tablet = isLandscapeTabletLayout();
+        float heightFraction = tablet ? 0.53f : 0.45f;
+        float widthFraction = tablet ? 0.28f : 0.23f;
+        int size = Math.min(
+                Math.round(metrics.heightPixels * heightFraction),
+                Math.round(metrics.widthPixels * widthFraction)
+        );
+        return Math.max(dp(tablet ? 190 : 132), size);
     }
 
     @SuppressWarnings("deprecation")
@@ -1384,7 +1397,18 @@ public final class MainActivity extends Activity implements
     }
 
     private int landscapeMetadataTopMargin(boolean controlsVisible) {
+        if (isLandscapeTabletLayout()) {
+            return dp(controlsVisible ? 24 : 34);
+        }
         return dp(controlsVisible ? 12 : 24);
+    }
+
+    private float landscapeTopSpacerWeight() {
+        return isLandscapeTabletLayout() ? 0.42f : 0.38f;
+    }
+
+    private float landscapeBottomSpacerWeight() {
+        return isLandscapeTabletLayout() ? 0.26f : 0.24f;
     }
 
     private void updateLandscapeMetadataGap(boolean controlsVisible) {
