@@ -137,6 +137,7 @@ public final class MainActivity extends Activity implements
     private FrameLayout mainPage;
     private FrameLayout lyricsPage;
     private FrameLayout inAppBrowserPage;
+    private FrameLayout inAppBrowserSheet;
     private FrameLayout settingsPanel;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
@@ -1560,7 +1561,18 @@ public final class MainActivity extends Activity implements
 
     private FrameLayout buildInAppBrowserPage() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.rgb(12, 13, 17));
+        page.setBackgroundColor(Color.TRANSPARENT);
+        page.setClickable(true);
+
+        inAppBrowserSheet = new FrameLayout(this);
+        inAppBrowserSheet.setBackground(topRoundDrawable(Color.rgb(12, 13, 17), dp(24)));
+        clipTopRoundView(inAppBrowserSheet, 24);
+        FrameLayout.LayoutParams sheetParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        sheetParams.topMargin = inAppBrowserSheetTopMarginPx();
+        page.addView(inAppBrowserSheet, sheetParams);
 
         inAppBrowserWebView = new WebView(this);
         inAppBrowserWebView.setBackgroundColor(Color.rgb(12, 13, 17));
@@ -1583,8 +1595,13 @@ public final class MainActivity extends Activity implements
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return shouldOpenBrowserNavigationExternally(url);
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                injectInAppBrowserProfileCss(view, url);
+            }
         });
-        page.addView(inAppBrowserWebView, new FrameLayout.LayoutParams(
+        inAppBrowserSheet.addView(inAppBrowserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
@@ -1596,11 +1613,11 @@ public final class MainActivity extends Activity implements
                 dp(58),
                 Gravity.TOP
         );
-        page.addView(dragZone, dragZoneParams);
+        inAppBrowserSheet.addView(dragZone, dragZoneParams);
         attachInAppBrowserSwipe(dragZone);
 
         View handle = new View(this);
-        handle.setBackground(roundDrawable(Color.argb(72, 255, 255, 255), dp(1.5f)));
+        handle.setBackground(roundDrawable(Color.argb(82, 255, 255, 255), dp(1.5f)));
         FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(dp(42), dp(3), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         handleParams.topMargin = dp(12);
         dragZone.addView(handle, handleParams);
@@ -6623,6 +6640,7 @@ public final class MainActivity extends Activity implements
         int height = getResources().getDisplayMetrics().heightPixels;
         inAppBrowserPage.animate().cancel();
         if (show) {
+            updateInAppBrowserSheetLayout();
             inAppBrowserPage.setVisibility(View.VISIBLE);
             inAppBrowserPage.bringToFront();
             inAppBrowserPage.setTranslationY(height);
@@ -6640,6 +6658,79 @@ public final class MainActivity extends Activity implements
                     inAppBrowserPage.setTranslationY(0f);
                 })
                 .start();
+    }
+
+    private void updateInAppBrowserSheetLayout() {
+        if (inAppBrowserSheet == null) {
+            return;
+        }
+        ViewGroup.LayoutParams rawParams = inAppBrowserSheet.getLayoutParams();
+        if (!(rawParams instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) rawParams;
+        int topMargin = inAppBrowserSheetTopMarginPx();
+        if (params.topMargin == topMargin) {
+            return;
+        }
+        params.topMargin = topMargin;
+        inAppBrowserSheet.setLayoutParams(params);
+    }
+
+    private int inAppBrowserSheetTopMarginPx() {
+        int topInset = statusBarInsetPx();
+        int margin = topInset + dp(10);
+        return Math.max(dp(isLandscapeLayout() ? 12 : 28), margin);
+    }
+
+    @SuppressWarnings("deprecation")
+    private int statusBarInsetPx() {
+        Window window = getWindow();
+        View decor = window == null ? null : window.getDecorView();
+        if (decor != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            WindowInsets insets = decor.getRootWindowInsets();
+            if (insets != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    return insets.getInsets(WindowInsets.Type.statusBars()).top;
+                }
+                return insets.getSystemWindowInsetTop();
+            }
+        }
+        if (isLandscapeLayout()) {
+            return 0;
+        }
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return resourceId > 0 ? getResources().getDimensionPixelSize(resourceId) : 0;
+    }
+
+    private void injectInAppBrowserProfileCss(WebView view, String url) {
+        if (view == null || !isLyricsProfileUrl(url)) {
+            return;
+        }
+        String css = ".login-btn,"
+                + ".credit[href*=\"github.com/ivLis-Studio/ivLyrics\"]{display:none!important;}"
+                + ".page{padding-bottom:28px!important;}";
+        String js = "(function(){"
+                + "var id='ivlyrics-android-profile-style';"
+                + "var old=document.getElementById(id);"
+                + "if(old){old.remove();}"
+                + "var style=document.createElement('style');"
+                + "style.id=id;"
+                + "style.textContent=" + JSONObject.quote(css) + ";"
+                + "(document.head||document.documentElement).appendChild(style);"
+                + "})();";
+        view.evaluateJavascript(js, null);
+    }
+
+    private boolean isLyricsProfileUrl(String url) {
+        try {
+            Uri uri = Uri.parse(url == null ? "" : url.trim());
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            return "lyrics.ivl.is".equals(host) && path.startsWith("/@");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void attachInAppBrowserSwipe(View view) {
@@ -7327,6 +7418,17 @@ public final class MainActivity extends Activity implements
             @Override
             public void getOutline(View view, Outline outline) {
                 outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(radiusDp));
+            }
+        });
+        target.setClipToOutline(true);
+    }
+
+    private void clipTopRoundView(View target, int radiusDp) {
+        target.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                int radius = dp(radiusDp);
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + radius, radius);
             }
         });
         target.setClipToOutline(true);
