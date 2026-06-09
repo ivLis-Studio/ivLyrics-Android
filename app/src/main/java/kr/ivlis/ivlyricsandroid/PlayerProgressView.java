@@ -9,9 +9,9 @@ import android.view.MotionEvent;
 import android.view.View;
 
 public final class PlayerProgressView extends View {
-    private static final int TRACK_COLOR = 0x3A000000;
-    private static final int PROGRESS_COLOR = 0x78000000;
-    private static final int THUMB_COLOR = 0xA8000000;
+    private static final int TRACK_COLOR = 0x42FFFFFF;
+    private static final int PROGRESS_COLOR = 0xD9FFFFFF;
+    private static final int THUMB_COLOR = 0xF2FFFFFF;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private long positionMs;
