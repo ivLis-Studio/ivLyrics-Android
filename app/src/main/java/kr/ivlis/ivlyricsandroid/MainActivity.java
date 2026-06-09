@@ -3,10 +3,16 @@ package kr.ivlis.ivlyricsandroid;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.AlertDialog;
+import android.app.DownloadManager;
+import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -17,6 +23,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -97,7 +104,10 @@ public final class MainActivity extends Activity implements
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
     private static final String UI_HINTS_PREFS = "ui_hints";
+    private static final String UPDATE_PREFS = "app_updates";
     private static final String KEY_LYRICS_META_MENU_TIP_SHOWN = "lyrics_meta_menu_tip_shown";
+    private static final String KEY_LAST_AUTO_UPDATE_CHECK_MS = "last_auto_update_check_ms";
+    private static final long AUTO_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L;
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
@@ -127,6 +137,7 @@ public final class MainActivity extends Activity implements
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
     private FuriganaRepository furiganaRepository;
+    private UpdateChecker updateChecker;
     private AiLyricsSettings aiLyricsSettings;
 
     private LyricsView lyricsView;
@@ -229,6 +240,7 @@ public final class MainActivity extends Activity implements
     private EditText lyricsManualSearchArtistInput;
     private TextView spotifySetupStatusView;
     private TextView lyricsManualSearchStatusView;
+    private TextView updateStatusView;
     private TextView onboardingWelcomeText;
     private TextView onboardingStepLabel;
     private TextView onboardingBackButton;
@@ -283,6 +295,9 @@ public final class MainActivity extends Activity implements
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
     private boolean spotifyCredentialsValidationInFlight;
+    private boolean updateCheckInFlight;
+    private boolean automaticUpdateCheckStarted;
+    private boolean updateDownloadReceiverRegistered;
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
     private int onboardingStep;
@@ -293,11 +308,25 @@ public final class MainActivity extends Activity implements
     private boolean pendingOpenLyricsPageFromIntent;
     private int lyricsMetaTapCount;
     private long lastLyricsMetaTapUptimeMs;
+    private long updateDownloadId = -1L;
+    private UpdateChecker.UpdateInfo pendingUpdateInfo;
 
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
     private final Runnable lyricsMetaSingleTapRunnable = () -> {
         lyricsMetaTapCount = 0;
         openSpotifyForCurrentTrack();
+    };
+    private final BroadcastReceiver updateDownloadReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null || !DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) {
+                return;
+            }
+            long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L);
+            if (downloadId == updateDownloadId) {
+                openDownloadedUpdate(downloadId);
+            }
+        }
     };
 
     private final Runnable ticker = new Runnable() {
@@ -317,6 +346,7 @@ public final class MainActivity extends Activity implements
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
+        updateChecker = new UpdateChecker(this);
         Window window = getWindow();
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
@@ -356,6 +386,7 @@ public final class MainActivity extends Activity implements
         applyLandscapeControlsAutoHideSetting();
         handler.post(ticker);
         consumeOpenLyricsPageRequest();
+        maybeStartAutomaticUpdateCheck();
     }
 
     @Override
@@ -400,6 +431,10 @@ public final class MainActivity extends Activity implements
         if (furiganaRepository != null) {
             furiganaRepository.shutdown();
         }
+        if (updateChecker != null) {
+            updateChecker.shutdown();
+        }
+        unregisterUpdateDownloadReceiver();
         destroyInAppBrowserWebView();
         seekExecutor.shutdownNow();
         super.onDestroy();
@@ -2297,6 +2332,35 @@ public final class MainActivity extends Activity implements
 
         settingsToolsPage.addView(sectionTitle(ui("section.tools")));
         settingsToolsPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
+
+        updateStatusView = label(ui("update.status_idle"), 12f, Color.argb(180, 255, 255, 255), AppFonts.regular(this));
+        updateStatusView.setLineSpacing(dp(2), 1f);
+
+        LinearLayout updateActions = new LinearLayout(this);
+        updateActions.setOrientation(LinearLayout.VERTICAL);
+        updateActions.addView(updateStatusView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout updateButtonRow = new LinearLayout(this);
+        updateButtonRow.setOrientation(LinearLayout.HORIZONTAL);
+        updateButtonRow.setGravity(Gravity.CENTER_VERTICAL);
+        updateActions.addView(updateButtonRow, topMargin(matchWrap(), dp(10)));
+
+        TextView checkUpdatesButton = primaryButton(ui("button.check_updates"));
+        checkUpdatesButton.setOnClickListener(view -> checkForUpdates(true));
+        updateButtonRow.addView(checkUpdatesButton, weightedButtonParams(1.2f, dp(4)));
+
+        TextView releasePageButton = debugButton(ui("button.open_release_page"));
+        releasePageButton.setOnClickListener(view -> openExternalUrl("https://github.com/ivLis-Studio/ivLyrics-Android/releases"));
+        updateButtonRow.addView(releasePageButton, weightedButtonParams(1f, dp(4)));
+
+        settingsToolsPage.addView(settingGroup(
+                ui("section.app_update"),
+                ui("section.app_update_desc"),
+                updateActions
+        ), topMargin(matchWrap(), dp(16)));
 
         LinearLayout spotifyShortcutPermissions = new LinearLayout(this);
         spotifyShortcutPermissions.setOrientation(LinearLayout.VERTICAL);
@@ -5025,6 +5089,222 @@ public final class MainActivity extends Activity implements
 
     private void showSavedToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void maybeStartAutomaticUpdateCheck() {
+        if (automaticUpdateCheckStarted || !isInitialSetupComplete()) {
+            return;
+        }
+        SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long last = prefs.getLong(KEY_LAST_AUTO_UPDATE_CHECK_MS, 0L);
+        if (now - last < AUTO_UPDATE_CHECK_INTERVAL_MS) {
+            return;
+        }
+        automaticUpdateCheckStarted = true;
+        prefs.edit().putLong(KEY_LAST_AUTO_UPDATE_CHECK_MS, now).apply();
+        handler.postDelayed(() -> checkForUpdates(false), 1_600L);
+    }
+
+    private void checkForUpdates(boolean manual) {
+        if (updateChecker == null) {
+            setUpdateStatus(uiFormat("update.status_failed_format", ui("spotify.error.repository_unavailable")));
+            return;
+        }
+        if (updateCheckInFlight) {
+            if (manual) {
+                showSavedToast(ui("toast.update_checking"));
+            }
+            return;
+        }
+        updateCheckInFlight = true;
+        setUpdateStatus(ui("update.status_checking"));
+        if (manual) {
+            showSavedToast(ui("toast.update_checking"));
+        }
+        updateChecker.checkLatest(new UpdateChecker.Callback() {
+            @Override
+            public void onUpdateChecked(UpdateChecker.UpdateInfo info) {
+                updateCheckInFlight = false;
+                if (info == null) {
+                    onUpdateCheckFailed("empty response");
+                    return;
+                }
+                pendingUpdateInfo = info;
+                if (info.updateAvailable) {
+                    String version = info.latestDisplayVersion();
+                    setUpdateStatus(uiFormat("update.status_available_format", version));
+                    if (manual) {
+                        showSavedToast(uiFormat("toast.update_available_format", version));
+                    }
+                    showUpdateAvailableDialog(info);
+                    return;
+                }
+                setUpdateStatus(uiFormat("update.status_latest_format", info.currentVersionName));
+                if (manual) {
+                    showSavedToast(ui("toast.update_latest"));
+                }
+            }
+
+            @Override
+            public void onUpdateCheckFailed(String message) {
+                updateCheckInFlight = false;
+                String detail = message == null || message.trim().isEmpty() ? "unknown error" : message.trim();
+                setUpdateStatus(uiFormat("update.status_failed_format", detail));
+                appendLog("update check failed: " + detail);
+                if (manual) {
+                    showSavedToast(ui("toast.update_failed"));
+                }
+            }
+        });
+    }
+
+    private void setUpdateStatus(String message) {
+        if (updateStatusView != null) {
+            updateStatusView.setText(message == null ? "" : message);
+        }
+        if (aiSettingsStatusView != null && message != null && !message.trim().isEmpty()) {
+            aiSettingsStatusView.setText(message);
+        }
+    }
+
+    private void showUpdateAvailableDialog(UpdateChecker.UpdateInfo info) {
+        if (isFinishing() || info == null) {
+            return;
+        }
+        String version = info.latestDisplayVersion();
+        String notes = compactReleaseNotes(info.releaseNotes);
+        if (notes.isEmpty()) {
+            notes = ui("update.dialog_message_no_notes");
+        }
+        String message = uiFormat(
+                "update.dialog_message_format",
+                info.currentVersionName,
+                info.currentVersionCode,
+                version,
+                info.latestVersionCode,
+                notes
+        );
+        new AlertDialog.Builder(this)
+                .setTitle(ui("update.dialog_title"))
+                .setMessage(message)
+                .setPositiveButton(ui("update.download"), (dialog, which) -> downloadUpdateApk(info))
+                .setNegativeButton(ui("update.later"), null)
+                .setNeutralButton(ui("update.open_release"), (dialog, which) -> openUpdateReleasePage(info))
+                .show();
+    }
+
+    private String compactReleaseNotes(String notes) {
+        if (notes == null) {
+            return "";
+        }
+        String value = notes.trim();
+        if (value.length() <= 700) {
+            return value;
+        }
+        return value.substring(0, 700).trim() + "\n...";
+    }
+
+    private void downloadUpdateApk(UpdateChecker.UpdateInfo info) {
+        if (info == null || info.apkDownloadUrl.isEmpty()) {
+            openUpdateReleasePage(info);
+            return;
+        }
+        try {
+            registerUpdateDownloadReceiver();
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(info.apkDownloadUrl));
+            String fileName = info.apkName.isEmpty()
+                    ? "ivLyrics-Android-" + info.latestDisplayVersion() + ".apk"
+                    : info.apkName;
+            request.setTitle(fileName);
+            request.setDescription(ui("update.download_starting"));
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setMimeType("application/vnd.android.package-archive");
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(true);
+            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            if (manager == null) {
+                openUpdateReleasePage(info);
+                return;
+            }
+            updateDownloadId = manager.enqueue(request);
+            pendingUpdateInfo = info;
+            setUpdateStatus(uiFormat("update.download_started_format", fileName));
+            showSavedToast(uiFormat("update.download_started_format", fileName));
+        } catch (Exception error) {
+            appendLog("update download failed: " + error.getMessage());
+            setUpdateStatus(ui("update.install_failed"));
+            openUpdateReleasePage(info);
+        }
+    }
+
+    private void openDownloadedUpdate(long downloadId) {
+        DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (manager == null) {
+            openUpdateReleasePage(pendingUpdateInfo);
+            return;
+        }
+        Uri uri = manager.getUriForDownloadedFile(downloadId);
+        if (uri == null) {
+            setUpdateStatus(ui("update.install_failed"));
+            openUpdateReleasePage(pendingUpdateInfo);
+            return;
+        }
+        try {
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            setUpdateStatus(ui("update.download_complete"));
+            startActivity(install);
+        } catch (ActivityNotFoundException error) {
+            setUpdateStatus(ui("update.install_failed"));
+            openUpdateReleasePage(pendingUpdateInfo);
+        }
+    }
+
+    private void openUpdateReleasePage(UpdateChecker.UpdateInfo info) {
+        String url = info == null || info.releaseUrl.isEmpty()
+                ? "https://github.com/ivLis-Studio/ivLyrics-Android/releases"
+                : info.releaseUrl;
+        openExternalUrl(url);
+    }
+
+    private void openExternalUrl(String url) {
+        String safeUrl = url == null ? "" : url.trim();
+        if (safeUrl.isEmpty()) {
+            return;
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)));
+        } catch (ActivityNotFoundException error) {
+            showSavedToast(ui("update.install_failed"));
+        }
+    }
+
+    private void registerUpdateDownloadReceiver() {
+        if (updateDownloadReceiverRegistered) {
+            return;
+        }
+        IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(updateDownloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(updateDownloadReceiver, filter);
+        }
+        updateDownloadReceiverRegistered = true;
+    }
+
+    private void unregisterUpdateDownloadReceiver() {
+        if (!updateDownloadReceiverRegistered) {
+            return;
+        }
+        try {
+            unregisterReceiver(updateDownloadReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        updateDownloadReceiverRegistered = false;
     }
 
     private void maybeShowLyricsMetaTip() {
