@@ -26,10 +26,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 final class AiLyricsRepository {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 70_000;
+    private static final String SUPPLEMENT_PROMPT_VERSION = "v2-id-aligned";
+    private static final Pattern TAGGED_OUTPUT_PATTERN = Pattern.compile(
+            "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -106,6 +113,16 @@ final class AiLyricsRepository {
         }
     }
 
+    private static final class TaggedOutputLine {
+        final int index;
+        final String value;
+
+        TaggedOutputLine(int index, String value) {
+            this.index = index;
+            this.value = value == null ? "" : value;
+        }
+    }
+
     void loadSupplements(
             TrackSnapshot track,
             LyricsResult baseResult,
@@ -159,6 +176,7 @@ final class AiLyricsRepository {
         String cacheKey = trackKey
                 + "|source=" + sourceLang
                 + "|detected=" + detectedSourceLang
+                + "|prompt=" + SUPPLEMENT_PROMPT_VERSION
                 + "|" + settings.cacheKey()
                 + "|text=" + sha256(textPayload);
         if (!bypassCache) {
@@ -364,8 +382,8 @@ final class AiLyricsRepository {
 
         if (rule.pronunciationEnabled) {
             log.write("ai pronunciation request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
-            String raw = callProviderRaw(buildPhoneticPrompt(textPayload, pronunciationLang), settings);
-            pronunciation = parseTextLines(raw, expectedLineCount);
+            String raw = callProviderRaw(buildPhoneticPrompt(requests, pronunciationLang), settings);
+            pronunciation = parseTaggedTextLines(raw, requests, "pronunciation", log);
             log.write("ai pronunciation response: lines=" + pronunciation.size());
         }
 
@@ -374,8 +392,8 @@ final class AiLyricsRepository {
             log.write("ai translation skipped: source language matches target (" + sourceLang + " -> " + targetLang + ")");
         } else if (rule.translationEnabled) {
             log.write("ai translation request: lines=" + expectedLineCount);
-            String raw = callProviderRaw(buildTranslationPrompt(textPayload, targetLang), settings);
-            translation = parseTextLines(raw, expectedLineCount);
+            String raw = callProviderRaw(buildTranslationPrompt(requests, targetLang), settings);
+            translation = parseTaggedTextLines(raw, requests, "translation", log);
             log.write("ai translation response: lines=" + translation.size());
         }
 
@@ -712,33 +730,37 @@ final class AiLyricsRepository {
         return "HTTP " + statusCode;
     }
 
-    private String buildTranslationPrompt(String text, String lang) {
+    private String buildTranslationPrompt(List<SupplementRequest> requests, String lang) {
         AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(lang);
-        int lineCount = countLines(text);
+        int lineCount = requests == null ? 0 : requests.size();
         return "You are a lyrics translator. Translate these " + lineCount
-                + " lines of song lyrics into " + langInfo.name + " (" + langInfo.nativeName + ").\n\n"
+                + " indexed rows of song lyrics into " + langInfo.name + " (" + langInfo.nativeName + ").\n\n"
                 + "CRITICAL RULES:\n"
                 + "- This is a TRANSLATION task - translate the MEANING of each line\n"
                 + "- Output must be written in " + langInfo.name + " (" + langInfo.nativeName + ") only\n"
                 + "- Do NOT output the original lyrics unchanged\n"
                 + "- Do NOT output romanization or pronunciation instead of translation\n"
-                + "- Output EXACTLY " + lineCount + " lines, one translation per line\n"
-                + "- Preserve the original line breaks exactly\n"
-                + "- Never merge multiple input lines into a single output line\n"
-                + "- Never split a single input line into multiple output lines\n"
-                + "- Line N in the output must translate only line N from the input\n"
-                + "- If an input line contains \" / \" between simultaneous vocal parts, preserve \" / \" and translate each part separately\n"
-                + "- Keep empty lines as empty\n"
+                + "- Input rows are ID-tagged as L0001, L0002, etc. Treat each ID as an immutable timing anchor\n"
+                + "- Output EXACTLY " + lineCount + " rows, one output row for every input row\n"
+                + "- Preserve every row ID exactly and keep the same order\n"
+                + "- Output format must be: L0001<TAB>translated text\n"
+                + "- Row L000N in the output must translate ONLY row L000N from the input\n"
+                + "- Never merge adjacent rows, even if the sentence continues across rows\n"
+                + "- Never split one row into multiple rows, even if the translation is long\n"
+                + "- Never move a translation to the previous or next row\n"
+                + "- If an input row is a short fragment, translate that fragment on the same ID; do not complete it using neighboring rows\n"
+                + "- If an input row contains \" / \" between simultaneous vocal parts, preserve \" / \" and translate each part separately\n"
+                + "- If an input row is empty or untranslatable, output the same ID followed by a tab and nothing else\n"
                 + "- Keep music symbols and markers like [Chorus], (Yeah) as-is\n"
-                + "- Do NOT add line numbers, prefixes, or explanations\n"
+                + "- Do NOT add extra row IDs, line numbers, prefixes, or explanations\n"
                 + "- Do NOT use JSON or code blocks\n"
-                + "- Just output the translated lines, nothing else\n\n"
-                + "INPUT:\n" + text + "\n\n"
-                + "Example:\n"
-                + "Input:\nHello mr my\nyesterday\n\n"
-                + "Correct output:\n안녕 나의\n어제여\n\n"
-                + "Wrong output:\n안녕 나의 어제여\n\n"
-                + "OUTPUT (" + lineCount + " lines in " + langInfo.nativeName + "):";
+                + "- Just output the ID-tagged translated rows, nothing else\n\n"
+                + "INPUT_ROWS (tab-separated ID and source text):\n" + buildTaggedPayload(requests) + "\n\n"
+                + "ID alignment example (format only; use the target language above for the real output):\n"
+                + "Input:\nL0001\t生きていることとは\nL0002\t変わり続けることだ\n\n"
+                + "Correct output:\nL0001\t살아 있다는 것은\nL0002\t계속 변해 가는 것이다\n\n"
+                + "Wrong output:\nL0001\t살아 있다는 것은 계속 변해 가는 것이다\nL0002\t\n\n"
+                + "OUTPUT_ROWS (" + lineCount + " rows, same IDs, tab-separated):";
     }
 
     private String buildMetadataTranslationPrompt(String title, String artist, String lang) {
@@ -791,15 +813,15 @@ final class AiLyricsRepository {
         return cleaned.trim();
     }
 
-    private String buildPhoneticPrompt(String text, String lang) {
+    private String buildPhoneticPrompt(List<SupplementRequest> requests, String lang) {
         AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(lang);
         String normalizedLang = AiLyricsSettings.normalizeLanguageCode(lang);
-        int lineCount = countLines(text);
+        int lineCount = requests == null ? 0 : requests.size();
         String scriptInstruction = phoneticScriptInstruction(normalizedLang, langInfo);
         String outputScript = pronunciationOutputScript(normalizedLang, langInfo);
 
         return "You are a pronunciation converter. Convert these " + lineCount
-                + " lines of lyrics into how they SOUND (pronunciation) for "
+                + " indexed rows of lyrics into how they SOUND (pronunciation) for "
                 + langInfo.name + " speakers.\n"
                 + scriptInstruction + "\n\n"
                 + "CRITICAL RULES:\n"
@@ -808,15 +830,27 @@ final class AiLyricsRepository {
                 + "- Never use the input language's original script unless it is also " + outputScript + "\n"
                 + "- Do NOT translate the meaning of the lyrics\n"
                 + "- Do NOT output the original lyrics unchanged\n"
-                + "- Output EXACTLY " + lineCount + " lines, one pronunciation per line\n"
-                + "- If an input line contains \" / \" between simultaneous vocal parts, preserve \" / \" and convert each part separately\n"
-                + "- Keep empty lines as empty\n"
+                + "- Input rows are ID-tagged as L0001, L0002, etc. Treat each ID as an immutable timing anchor\n"
+                + "- Output EXACTLY " + lineCount + " rows, one output row for every input row\n"
+                + "- Preserve every row ID exactly and keep the same order\n"
+                + "- Output format must be: L0001<TAB>pronunciation text\n"
+                + "- Row L000N in the output must convert ONLY row L000N from the input\n"
+                + "- Never merge adjacent rows, even if the phrase continues across rows\n"
+                + "- Never split one row into multiple rows\n"
+                + "- Never move pronunciation to the previous or next row\n"
+                + "- If an input row is a short fragment, convert that fragment on the same ID; do not complete it using neighboring rows\n"
+                + "- If an input row contains \" / \" between simultaneous vocal parts, preserve \" / \" and convert each part separately\n"
+                + "- If an input row is empty or unpronounceable, output the same ID followed by a tab and nothing else\n"
                 + "- Keep music symbols and markers like [Chorus], (Yeah) as-is\n"
-                + "- Do NOT add line numbers, prefixes, or explanations\n"
+                + "- Do NOT add extra row IDs, line numbers, prefixes, or explanations\n"
                 + "- Do NOT use JSON or code blocks\n"
-                + "- Just output the pronunciations, nothing else\n\n"
-                + "INPUT:\n" + text + "\n\n"
-                + "OUTPUT (" + lineCount + " lines of pronunciation only):";
+                + "- Just output the ID-tagged pronunciation rows, nothing else\n\n"
+                + "INPUT_ROWS (tab-separated ID and source text):\n" + buildTaggedPayload(requests) + "\n\n"
+                + "ID alignment example (format only; use the requested pronunciation script above for the real output):\n"
+                + "Input:\nL0001\t生きていることとは\nL0002\t変わり続けることだ\n\n"
+                + "Correct output for Korean pronunciation:\nL0001\t이키테이루 코토토와\nL0002\t카와리 츠즈케루 코토다\n\n"
+                + "Wrong output:\nL0001\t이키테이루 코토토와 카와리 츠즈케루 코토다\nL0002\t\n\n"
+                + "OUTPUT_ROWS (" + lineCount + " rows, same IDs, tab-separated pronunciation only):";
     }
 
     private String phoneticScriptInstruction(String lang, AiLyricsSettings.Language langInfo) {
@@ -901,8 +935,156 @@ final class AiLyricsRepository {
         return lines;
     }
 
+    private List<String> parseTaggedTextLines(
+            String text,
+            List<SupplementRequest> requests,
+            String taskName,
+            LogSink log
+    ) {
+        int expectedLineCount = requests == null ? 0 : requests.size();
+        List<String> values = emptySupplementList(expectedLineCount);
+        if (expectedLineCount <= 0) {
+            return values;
+        }
+
+        String cleaned = stripCodeFences(text == null ? "" : text);
+        String[] rawLines = cleaned.split("\\r?\\n", -1);
+        boolean[] seen = new boolean[expectedLineCount];
+        int matched = 0;
+        int duplicate = 0;
+        for (String rawLine : rawLines) {
+            TaggedOutputLine tagged = parseTaggedOutputLine(rawLine);
+            if (tagged == null || tagged.index < 0 || tagged.index >= expectedLineCount) {
+                continue;
+            }
+            String value = cleanSupplementOutput(tagged.value);
+            if (seen[tagged.index]) {
+                duplicate++;
+                if (values.get(tagged.index).trim().isEmpty() && !value.isEmpty()) {
+                    values.set(tagged.index, value);
+                }
+                continue;
+            }
+            seen[tagged.index] = true;
+            matched++;
+            values.set(tagged.index, value);
+        }
+
+        if (matched == expectedLineCount) {
+            if (duplicate > 0 && log != null) {
+                log.write("ai " + taskName + " alignment: duplicate IDs ignored=" + duplicate);
+            }
+            return values;
+        }
+
+        if (matched > 0) {
+            if (log != null) {
+                log.write("ai " + taskName + " alignment: matched=" + matched
+                        + "/" + expectedLineCount + ", missing rows left empty");
+            }
+            return values;
+        }
+
+        if (log != null) {
+            log.write("ai " + taskName + " alignment: no row IDs in response, using line-count fallback");
+        }
+        return parseTextLines(text, expectedLineCount);
+    }
+
+    private static List<String> emptySupplementList(int size) {
+        List<String> values = new ArrayList<>();
+        for (int index = 0; index < size; index++) {
+            values.add("");
+        }
+        return values;
+    }
+
+    private static TaggedOutputLine parseTaggedOutputLine(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        Matcher matcher = TAGGED_OUTPUT_PATTERN.matcher(value);
+        if (!matcher.matches()) {
+            return null;
+        }
+        String rawNumber = firstNonEmpty(matcher.group(1), matcher.group(2), matcher.group(3));
+        int number;
+        try {
+            number = Integer.parseInt(rawNumber);
+        } catch (Exception ignored) {
+            return null;
+        }
+        if (number <= 0) {
+            return null;
+        }
+        return new TaggedOutputLine(number - 1, matcher.group(4));
+    }
+
+    private static String cleanSupplementOutput(String value) {
+        String cleaned = value == null ? "" : value.trim();
+        cleaned = cleaned.replaceFirst("(?i)^\\s*(translation|translated text|pronunciation|pronunciation text|romanization|번역|발음)\\s*[:：\\-]\\s*", "");
+        if ((cleaned.startsWith("\"") && cleaned.endsWith("\""))
+                || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
+        }
+        String lower = cleaned.toLowerCase(Locale.ROOT);
+        if (lower.equals("<empty>")
+                || lower.equals("[empty]")
+                || lower.equals("(empty)")
+                || lower.equals("empty")
+                || cleaned.equals("∅")) {
+            return "";
+        }
+        return cleaned;
+    }
+
+    private static String stripCodeFences(String value) {
+        return (value == null ? "" : value)
+                .replaceAll("(?i)```[a-z]*\\s*", "")
+                .replace("```", "");
+    }
+
     static String buildPayloadText(List<LyricsLine> lines) {
         return payloadTextForRequests(buildSupplementRequests(lines));
+    }
+
+    private static String buildTaggedPayload(List<SupplementRequest> requests) {
+        StringBuilder builder = new StringBuilder();
+        if (requests == null) {
+            return "";
+        }
+        for (int index = 0; index < requests.size(); index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            builder.append(rowId(index))
+                    .append('\t')
+                    .append(promptRowText(requests.get(index).text));
+        }
+        return builder.toString();
+    }
+
+    private static String rowId(int index) {
+        return String.format(Locale.ROOT, "L%04d", index + 1);
+    }
+
+    private static String promptRowText(String value) {
+        return (value == null ? "" : value)
+                .replace('\r', ' ')
+                .replace('\n', ' ')
+                .trim();
+    }
+
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private static String payloadTextForRequests(List<SupplementRequest> requests) {
@@ -1163,19 +1345,6 @@ final class AiLyricsRepository {
         } catch (Exception ignored) {
             return value == null ? "" : value;
         }
-    }
-
-    private int countLines(String value) {
-        if (value == null || value.isEmpty()) {
-            return 1;
-        }
-        int count = 1;
-        for (int index = 0; index < value.length(); index++) {
-            if (value.charAt(index) == '\n') {
-                count++;
-            }
-        }
-        return count;
     }
 
     private String sha256(String value) {
