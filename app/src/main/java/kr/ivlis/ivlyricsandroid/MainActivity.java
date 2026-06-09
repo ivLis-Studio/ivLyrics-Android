@@ -1,8 +1,10 @@
 package kr.ivlis.ivlyricsandroid;
 
 import android.app.Activity;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
@@ -31,6 +33,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.accessibility.AccessibilityManager;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -137,6 +140,7 @@ public final class MainActivity extends Activity implements
     private TextView elapsedView;
     private TextView remainingView;
     private TextView overlayPermissionButton;
+    private TextView spotifyDetectionPermissionButton;
     private TextView logView;
     private TextView aiSettingsStatusView;
     private TextView providerSummaryView;
@@ -2019,13 +2023,29 @@ public final class MainActivity extends Activity implements
         settingsToolsPage.addView(sectionTitle(ui("section.tools")));
         settingsToolsPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
 
+        LinearLayout spotifyShortcutPermissions = new LinearLayout(this);
+        spotifyShortcutPermissions.setOrientation(LinearLayout.VERTICAL);
+
+        spotifyDetectionPermissionButton = debugButton("");
+        spotifyDetectionPermissionButton.setOnClickListener(view -> openSpotifyDetectionPermissionSettings());
+        spotifyShortcutPermissions.addView(spotifyDetectionPermissionButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(44)
+        ));
+
         overlayPermissionButton = debugButton("");
         overlayPermissionButton.setOnClickListener(view -> openOverlayPermissionSettings());
+        LinearLayout.LayoutParams overlayParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(44)
+        );
+        overlayParams.topMargin = dp(8);
+        spotifyShortcutPermissions.addView(overlayPermissionButton, overlayParams);
         updateOverlayPermissionButton();
         settingsToolsPage.addView(settingGroup(
                 ui("section.spotify_shortcut"),
                 ui("section.spotify_shortcut_desc"),
-                overlayPermissionButton
+                spotifyShortcutPermissions
         ), topMargin(matchWrap(), dp(16)));
 
         settingsToolsPage.addView(sectionTitle(ui("section.spotify_api")), topMargin(matchWrap(), dp(24)));
@@ -3812,6 +3832,13 @@ public final class MainActivity extends Activity implements
                 return;
             }
         }
+        Intent launcherIntent = new Intent(Intent.ACTION_MAIN);
+        launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        launcherIntent.setPackage(packageName);
+        launcherIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (tryStartActivity(launcherIntent)) {
+            return;
+        }
         showSavedToast(ui("toast.spotify_open_failed"));
     }
 
@@ -4845,14 +4872,44 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateOverlayPermissionButton() {
-        if (overlayPermissionButton == null) {
-            return;
+        if (spotifyDetectionPermissionButton != null) {
+            boolean enabled = isSpotifyDetectionAccessEnabled();
+            spotifyDetectionPermissionButton.setText(enabled
+                    ? ui("button.accessibility_permission_enabled")
+                    : ui("button.open_accessibility_permission"));
+            spotifyDetectionPermissionButton.setAlpha(enabled ? 0.72f : 1f);
         }
-        boolean enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
-        overlayPermissionButton.setText(enabled
-                ? ui("button.overlay_permission_enabled")
-                : ui("button.open_overlay_permission"));
-        overlayPermissionButton.setAlpha(enabled ? 0.72f : 1f);
+        if (overlayPermissionButton != null) {
+            boolean enabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+            overlayPermissionButton.setText(enabled
+                    ? ui("button.overlay_permission_enabled")
+                    : ui("button.open_overlay_permission"));
+            overlayPermissionButton.setAlpha(enabled ? 0.72f : 1f);
+        }
+    }
+
+    private boolean isSpotifyDetectionAccessEnabled() {
+        AccessibilityManager manager = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+        if (manager == null) {
+            return false;
+        }
+        ComponentName expected = new ComponentName(this, SpotifyForegroundAccessibilityService.class);
+        List<AccessibilityServiceInfo> services = manager.getEnabledAccessibilityServiceList(
+                AccessibilityServiceInfo.FEEDBACK_GENERIC
+        );
+        if (services == null) {
+            return false;
+        }
+        for (AccessibilityServiceInfo service : services) {
+            if (service == null || service.getId() == null) {
+                continue;
+            }
+            ComponentName componentName = ComponentName.unflattenFromString(service.getId());
+            if (expected.equals(componentName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void openOverlayPermissionSettings() {
@@ -4862,6 +4919,13 @@ public final class MainActivity extends Activity implements
         );
         if (!tryStartActivity(intent)) {
             showSavedToast(ui("toast.overlay_permission_needed"));
+        }
+    }
+
+    private void openSpotifyDetectionPermissionSettings() {
+        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        if (!tryStartActivity(intent)) {
+            showSavedToast(ui("toast.accessibility_permission_needed"));
         }
     }
 

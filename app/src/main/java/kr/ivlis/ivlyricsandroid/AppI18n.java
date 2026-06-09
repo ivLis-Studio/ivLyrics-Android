@@ -377,9 +377,12 @@ final class AppI18n {
             case "ko":
                 return new String[]{
                         "section.spotify_shortcut", "Spotify 바로가기",
-                        "section.spotify_shortcut_desc", "Spotify 재생이 감지될 때 다른 앱 위에 작은 이동식 아이콘을 띄웁니다. 누르면 ivLyrics 가사 페이지로 이동합니다.",
+                        "section.spotify_shortcut_desc", "Spotify 앱 안에서만 작은 이동식 아이콘을 띄웁니다. 누르면 ivLyrics 가사 페이지로 이동합니다.",
+                        "button.open_accessibility_permission", "Spotify 감지 권한 열기",
+                        "button.accessibility_permission_enabled", "Spotify 감지 권한 허용됨",
                         "button.open_overlay_permission", "플로팅 아이콘 권한 열기",
                         "button.overlay_permission_enabled", "플로팅 아이콘 권한 허용됨",
+                        "toast.accessibility_permission_needed", "Spotify 감지 권한이 필요합니다",
                         "toast.overlay_permission_needed", "다른 앱 위에 표시 권한이 필요합니다",
                         "toast.spotify_open_failed", "Spotify를 열 수 없습니다",
                         "onboarding.preview.line4", "제목이나 아티스트를 탭하면 Spotify로 돌아갑니다",
@@ -388,56 +391,56 @@ final class AppI18n {
             case "zh-CN":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
-                        "检测到 Spotify 播放时，在其他应用上显示一个可移动的小图标。点按会打开 ivLyrics 歌词页。",
+                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
                         "点按标题或艺人即可返回 Spotify。",
                         "点按一次打开 Spotify；快速点按 3 次打开翻译和发音设置。"
                 );
             case "zh-TW":
                 return spotifyShortcutStringsEn(
                         "Spotify 快捷入口",
-                        "偵測到 Spotify 播放時，在其他應用上顯示可移動的小圖示。點按會開啟 ivLyrics 歌詞頁。",
+                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
                         "點按標題或藝人即可返回 Spotify。",
                         "點按一次開啟 Spotify；快速點按 3 次開啟翻譯與發音設定。"
                 );
             case "ja":
                 return spotifyShortcutStringsEn(
                         "Spotifyショートカット",
-                        "Spotify再生を検出すると、他のアプリの上に移動できる小さなアイコンを表示します。タップするとivLyricsの歌詞ページを開きます。",
+                        "Spotifyアプリを開いている間だけ、小さな移動アイコンを表示します。タップするとivLyricsの歌詞ページを開きます。",
                         "タイトルまたはアーティストをタップするとSpotifyに戻ります。",
                         "1回タップでSpotifyを開き、素早く3回タップで翻訳・発音設定を開きます。"
                 );
             case "es":
                 return spotifyShortcutStringsEn(
                         "Acceso directo de Spotify",
-                        "Muestra un icono pequeño y movible sobre otras apps cuando se detecta reproducción de Spotify. Al tocarlo abre la página de letras de ivLyrics.",
+                        "Solo muestra un icono pequeño y movible mientras Spotify esta abierto. Al tocarlo abre la pagina de letras de ivLyrics.",
                         "Toca el título o artista para volver a Spotify.",
                         "Toca una vez para abrir Spotify; toca 3 veces rápido para abrir traducción y pronunciación."
                 );
             case "fr":
                 return spotifyShortcutStringsEn(
                         "Raccourci Spotify",
-                        "Affiche une petite icone deplacable au-dessus des autres apps quand Spotify est detecte. Un toucher ouvre la page de paroles ivLyrics.",
+                        "Affiche une petite icone deplacable uniquement quand Spotify est ouvert. Un toucher ouvre la page de paroles ivLyrics.",
                         "Touchez le titre ou l'artiste pour revenir a Spotify.",
                         "Touchez une fois pour ouvrir Spotify ; touchez 3 fois vite pour ouvrir traduction et prononciation."
                 );
             case "de":
                 return spotifyShortcutStringsEn(
                         "Spotify-Verknuepfung",
-                        "Zeigt bei erkannter Spotify-Wiedergabe ein kleines verschiebbares Symbol ueber anderen Apps. Antippen oeffnet die ivLyrics-Lyrics-Seite.",
+                        "Zeigt nur bei geoeffneter Spotify-App ein kleines verschiebbares Symbol. Antippen oeffnet die ivLyrics-Lyrics-Seite.",
                         "Titel oder Kuenstler antippen, um zu Spotify zurueckzukehren.",
                         "Einmal tippen oeffnet Spotify, dreimal schnell tippen oeffnet Uebersetzung und Aussprache."
                 );
             case "pt":
                 return spotifyShortcutStringsEn(
                         "Atalho do Spotify",
-                        "Mostra um pequeno icone movel sobre outros apps quando a reproducao do Spotify e detectada. Tocar abre a pagina de letras do ivLyrics.",
+                        "Mostra um pequeno icone movel somente quando o Spotify esta aberto. Tocar abre a pagina de letras do ivLyrics.",
                         "Toque no titulo ou artista para voltar ao Spotify.",
                         "Toque uma vez para abrir o Spotify; toque 3 vezes rapido para abrir traducao e pronuncia."
                 );
             default:
                 return spotifyShortcutStringsEn(
                         "Spotify Shortcut",
-                        "Shows a small movable icon over other apps while Spotify playback is detected. Tapping opens the ivLyrics lyrics page.",
+                        "Only shows a small movable icon while the Spotify app is open. Tapping opens the ivLyrics lyrics page.",
                         "Tap the title or artist to jump back to Spotify.",
                         "Tap once to open Spotify; tap 3 times quickly to open translation and pronunciation settings."
                 );
@@ -448,8 +451,11 @@ final class AppI18n {
         return new String[]{
                 "section.spotify_shortcut", title,
                 "section.spotify_shortcut_desc", desc,
+                "button.open_accessibility_permission", "Open Spotify Detection Permission",
+                "button.accessibility_permission_enabled", "Spotify Detection Permission Enabled",
                 "button.open_overlay_permission", "Open Floating Icon Permission",
                 "button.overlay_permission_enabled", "Floating Icon Permission Enabled",
+                "toast.accessibility_permission_needed", "Spotify detection permission is required",
                 "toast.overlay_permission_needed", "Draw over other apps permission is required",
                 "toast.spotify_open_failed", "Could not open Spotify",
                 "onboarding.preview.line4", previewTip,

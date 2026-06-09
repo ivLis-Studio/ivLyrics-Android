@@ -1,18 +1,11 @@
 package kr.ivlis.ivlyricsandroid;
 
-import android.app.ActivityManager;
-import android.app.AppOpsManager;
-import android.app.usage.UsageEvents;
-import android.app.usage.UsageStatsManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Process;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -22,10 +15,8 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import java.lang.ref.WeakReference;
-import java.util.List;
 import java.util.Locale;
 
-@SuppressWarnings("deprecation")
 final class SpotifyShortcutOverlayController {
     private static final String PREFS_NAME = "spotify_shortcut_overlay";
     private static final String KEY_X = "x";
@@ -34,24 +25,14 @@ final class SpotifyShortcutOverlayController {
     private static final int DEFAULT_Y_DP = 180;
     private static final int BUBBLE_SIZE_DP = 48;
     private static final int CLICK_SLOP_DP = 8;
-    private static final long FOREGROUND_POLL_MS = 600L;
-    private static final long USAGE_LOOKBACK_MS = 5_000L;
 
     private static volatile boolean appForeground;
+    private static volatile boolean spotifyForeground;
     private static WeakReference<SpotifyShortcutOverlayController> activeController = new WeakReference<>(null);
 
     private final Context context;
     private final WindowManager windowManager;
     private final SharedPreferences prefs;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable foregroundPoller = new Runnable() {
-        @Override
-        public void run() {
-            pollingForeground = false;
-            refreshOverlayState();
-            updateForegroundPolling();
-        }
-    };
     private final int bubbleSizePx;
     private final int clickSlopPx;
     private TrackSnapshot lastSnapshot;
@@ -62,7 +43,6 @@ final class SpotifyShortcutOverlayController {
     private int downX;
     private int downY;
     private boolean dragging;
-    private boolean pollingForeground;
 
     SpotifyShortcutOverlayController(Context context) {
         this.context = context.getApplicationContext();
@@ -78,18 +58,23 @@ final class SpotifyShortcutOverlayController {
         SpotifyShortcutOverlayController controller = activeController.get();
         if (controller != null) {
             controller.refreshOverlayState();
-            controller.updateForegroundPolling();
+        }
+    }
+
+    static void setSpotifyForeground(boolean foreground) {
+        spotifyForeground = foreground;
+        SpotifyShortcutOverlayController controller = activeController.get();
+        if (controller != null) {
+            controller.refreshOverlayState();
         }
     }
 
     void update(TrackSnapshot snapshot) {
         lastSnapshot = snapshot;
         refreshOverlayState();
-        updateForegroundPolling();
     }
 
     void destroy() {
-        handler.removeCallbacks(foregroundPoller);
         hide();
         if (activeController.get() == this) {
             activeController = new WeakReference<>(null);
@@ -104,21 +89,8 @@ final class SpotifyShortcutOverlayController {
         }
     }
 
-    private void updateForegroundPolling() {
-        if (!shouldPollForeground()) {
-            handler.removeCallbacks(foregroundPoller);
-            pollingForeground = false;
-            return;
-        }
-        if (!pollingForeground) {
-            pollingForeground = true;
-            handler.postDelayed(foregroundPoller, FOREGROUND_POLL_MS);
-        }
-    }
-
     private boolean shouldShow() {
-        return shouldPollForeground()
-                && isSpotifyForeground();
+        return shouldPollForeground() && spotifyForeground;
     }
 
     private boolean shouldPollForeground() {
@@ -263,109 +235,6 @@ final class SpotifyShortcutOverlayController {
         } catch (RuntimeException ignored) {
             appForeground = false;
         }
-    }
-
-    private boolean isSpotifyForeground() {
-        String foregroundPackage = currentForegroundPackage();
-        return isSpotifyPackage(foregroundPackage);
-    }
-
-    private String currentForegroundPackage() {
-        String usageStatsPackage = currentForegroundPackageFromUsageStats();
-        if (!usageStatsPackage.isEmpty()) {
-            return usageStatsPackage;
-        }
-        return currentForegroundPackageFromProcesses();
-    }
-
-    private String currentForegroundPackageFromUsageStats() {
-        if (!hasUsageStatsAccess()) {
-            return "";
-        }
-        UsageStatsManager manager = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
-        if (manager == null) {
-            return "";
-        }
-
-        long endTime = System.currentTimeMillis();
-        UsageEvents events;
-        try {
-            events = manager.queryEvents(endTime - USAGE_LOOKBACK_MS, endTime);
-        } catch (RuntimeException ignored) {
-            return "";
-        }
-        if (events == null) {
-            return "";
-        }
-
-        String foregroundPackage = "";
-        UsageEvents.Event event = new UsageEvents.Event();
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event);
-            int eventType = event.getEventType();
-            boolean resumed = eventType == UsageEvents.Event.MOVE_TO_FOREGROUND
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-                    && eventType == UsageEvents.Event.ACTIVITY_RESUMED);
-            if (resumed) {
-                foregroundPackage = event.getPackageName() == null ? "" : event.getPackageName();
-            }
-        }
-        return foregroundPackage;
-    }
-
-    private boolean hasUsageStatsAccess() {
-        AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-        if (appOps == null) {
-            return false;
-        }
-        int mode;
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                mode = appOps.unsafeCheckOpNoThrow(
-                        AppOpsManager.OPSTR_GET_USAGE_STATS,
-                        Process.myUid(),
-                        context.getPackageName()
-                );
-            } else {
-                mode = appOps.checkOpNoThrow(
-                        AppOpsManager.OPSTR_GET_USAGE_STATS,
-                        Process.myUid(),
-                        context.getPackageName()
-                );
-            }
-        } catch (RuntimeException ignored) {
-            return false;
-        }
-        return mode == AppOpsManager.MODE_ALLOWED;
-    }
-
-    private String currentForegroundPackageFromProcesses() {
-        ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-        if (manager == null) {
-            return "";
-        }
-        List<ActivityManager.RunningAppProcessInfo> processes;
-        try {
-            processes = manager.getRunningAppProcesses();
-        } catch (RuntimeException ignored) {
-            return "";
-        }
-        if (processes == null) {
-            return "";
-        }
-        for (ActivityManager.RunningAppProcessInfo process : processes) {
-            if (process == null
-                    || process.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
-                    || process.pkgList == null) {
-                continue;
-            }
-            for (String packageName : process.pkgList) {
-                if (isSpotifyPackage(packageName)) {
-                    return packageName;
-                }
-            }
-        }
-        return "";
     }
 
     private boolean isSpotifyPackage(String packageName) {

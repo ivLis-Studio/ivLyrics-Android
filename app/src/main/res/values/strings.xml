@@ -1,0 +1,3 @@
+<resources>
+    <string name="accessibility_service_description">Detects when Spotify is open so ivLyrics can show its shortcut only inside Spotify.</string>
+</resources>
