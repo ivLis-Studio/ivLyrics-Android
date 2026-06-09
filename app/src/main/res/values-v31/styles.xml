@@ -1,10 +1,10 @@
 <resources>
     <style name="AppTheme.Splash" parent="@style/AppTheme">
-        <item name="android:windowSplashScreenBackground">@color/iv_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_ivlyrics_wordmark</item>
+        <item name="android:windowSplashScreenBackground">@color/iv_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent_icon</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@color/iv_splash_background</item>
-        <item name="android:statusBarColor">@color/iv_splash_background</item>
+        <item name="android:navigationBarColor">@color/iv_background</item>
+        <item name="android:statusBarColor">@color/iv_background</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
