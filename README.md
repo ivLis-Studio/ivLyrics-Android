@@ -1,5 +1,8 @@
 # ivLyrics Android
 
+<img width="1122" height="1402" alt="image" src="https://github.com/user-attachments/assets/93f24505-a80d-4636-a622-2d8a8ba5f1f8" />
+
+
 한국어 | [English](README_EN.md)
 
 Spotify에서 재생 중인 곡을 감지하고, ivLyrics 커뮤니티 싱크 데이터와 LRCLIB 가사를 이용해 Android에서 노래방 스타일 가사를 보여주는 앱입니다.
