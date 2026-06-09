@@ -355,13 +355,15 @@ final class LyricsRepository {
 
     private LrclibCandidate searchBestCandidate(TrackSnapshot track, SyncDataResult syncData, LogSink log) throws Exception {
         List<LrclibCandidate> candidates = new ArrayList<>();
-        candidates.addAll(searchLrclib(buildStructuredQuery(track), "structured", log));
+        appendUniqueCandidates(candidates, searchLrclib(buildStructuredQuery(track), "structured", log));
 
-        if (candidates.isEmpty()) {
-            candidates.addAll(searchLrclib(Collections.singletonMap("q", track.title + " " + track.artist), "q:title+artist", log));
+        boolean needsLegacyShapeMatch = needsLegacySyncLineShapeMatch(syncData, candidates);
+        if (candidates.isEmpty() || needsLegacyShapeMatch) {
+            appendUniqueCandidates(candidates, searchLrclib(Collections.singletonMap("q", track.title + " " + track.artist), "q:title+artist", log));
+            needsLegacyShapeMatch = needsLegacySyncLineShapeMatch(syncData, candidates);
         }
-        if (candidates.isEmpty()) {
-            candidates.addAll(searchLrclib(Collections.singletonMap("q", track.title), "q:title", log));
+        if (candidates.isEmpty() || needsLegacyShapeMatch) {
+            appendUniqueCandidates(candidates, searchLrclib(Collections.singletonMap("q", track.title), "q:title", log));
         }
         if (candidates.isEmpty()) {
             log.write("lrclib search: no candidates");
@@ -373,6 +375,10 @@ final class LyricsRepository {
             candidate.score = scoreCandidate(track, candidate, syncData);
         }
         candidates.sort(this::compareLrclibCandidates);
+        if (syncData != null && !syncData.lineCharCounts().isEmpty()) {
+            log.write("lrclib sync-data exact line-shape candidates="
+                    + countSyncLineExactCandidates(candidates));
+        }
         log.write("lrclib ranked candidates:");
         for (int index = 0; index < Math.min(5, candidates.size()); index++) {
             LrclibCandidate candidate = candidates.get(index);
@@ -389,6 +395,82 @@ final class LyricsRepository {
             return null;
         }
         return best;
+    }
+
+    private boolean needsLegacySyncLineShapeMatch(SyncDataResult syncData, List<LrclibCandidate> candidates) {
+        if (syncData == null || syncData.lineCharCounts().isEmpty()) {
+            return false;
+        }
+        if (!syncData.sourceLineCharCounts().isEmpty()) {
+            return false;
+        }
+        return !hasSyncLineExactCandidate(candidates, syncData);
+    }
+
+    private boolean hasSyncLineExactCandidate(List<LrclibCandidate> candidates, SyncDataResult syncData) {
+        if (candidates == null || candidates.isEmpty() || syncData == null) {
+            return false;
+        }
+        for (LrclibCandidate candidate : candidates) {
+            decorateCandidateForSyncData(candidate, syncData);
+            if (candidate.syncLineExactMatch) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countSyncLineExactCandidates(List<LrclibCandidate> candidates) {
+        int count = 0;
+        if (candidates == null) {
+            return count;
+        }
+        for (LrclibCandidate candidate : candidates) {
+            if (candidate != null && candidate.syncLineExactMatch) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void appendUniqueCandidates(List<LrclibCandidate> target, List<LrclibCandidate> next) {
+        if (target == null || next == null || next.isEmpty()) {
+            return;
+        }
+        for (LrclibCandidate candidate : next) {
+            if (candidate == null || containsCandidate(target, candidate)) {
+                continue;
+            }
+            target.add(candidate);
+        }
+    }
+
+    private boolean containsCandidate(List<LrclibCandidate> candidates, LrclibCandidate candidate) {
+        for (LrclibCandidate existing : candidates) {
+            if (existing == null) {
+                continue;
+            }
+            if (existing.id > 0L && candidate.id > 0L && existing.id == candidate.id) {
+                return true;
+            }
+            if (existing.id <= 0L || candidate.id <= 0L) {
+                String existingKey = lrclibCandidateKey(existing);
+                String nextKey = lrclibCandidateKey(candidate);
+                if (!existingKey.isEmpty() && existingKey.equals(nextKey)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private String lrclibCandidateKey(LrclibCandidate candidate) {
+        if (candidate == null) {
+            return "";
+        }
+        return (candidate.trackName + "\n" + candidate.artistName + "\n" + candidate.albumName)
+                .toLowerCase(Locale.ROOT)
+                .trim();
     }
 
     private int compareLrclibCandidates(LrclibCandidate left, LrclibCandidate right) {
