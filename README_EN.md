@@ -166,13 +166,25 @@ You can customize:
 - The shortcut appears only on Spotify's now playing screen.
 - It may not appear while Spotify is in the background or on another Spotify screen.
 
-## Data and Copyright
+## Disclaimer
 
-ivLyrics Android is not officially affiliated with Spotify or LRCLIB.
-
-Lyrics, translations, pronunciation text, artwork, and sync data belong to their original copyright holders and data providers. The app displays publicly available API and community data for the track currently playing on your device.
-
-When using this app, follow Spotify API terms, LRCLIB terms, and the copyright laws that apply in your region.
+> ⚠️ Disclaimer
+>
+> **Unofficial Project Notice**
+>
+> This project and its contributors are not affiliated with, authorized by, endorsed by, or officially connected to Spotify, its affiliates, or its subsidiaries. **This project is an independent, non-profit, unofficial extension developed by a volunteer team to provide a desktop experience.**
+>
+> **Trademark Notice**
+>
+> The name "Spotify" and all related names, marks, emblems, and images are registered trademarks of their respective owners. These trademarks are used only for identification and reference, and their use does not imply any association with the trademark owner. This project does not intend to infringe those trademarks or harm their owners.
+>
+> **Limitation of Liability**
+>
+> This application (extension) is provided "as is" and is used entirely at your own risk. The developers and contributors are not liable for any claims, damages, legal consequences, or other liability arising from the use of this software or related dealings. You are solely responsible for all consequences resulting from your use of this software.
+>
+> **Copyright and Terms Compliance**
+>
+> This project does not claim ownership of, or grant licenses for, lyrics, translations, videos, or any other third-party content. You are responsible for checking and complying with applicable copyright laws, platform policies, API terms of service, and local regulations. You are solely responsible for any storage, reproduction, distribution, transmission, or commercial use made through this project.
 
 ## Credits
 
