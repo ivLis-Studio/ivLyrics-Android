@@ -795,8 +795,8 @@ public final class MainActivity extends Activity implements
         ));
 
         int artworkSize = Math.min(
-                getResources().getDisplayMetrics().widthPixels - dp(48),
-                Math.round(getResources().getDisplayMetrics().heightPixels * 0.43f)
+                getResources().getDisplayMetrics().widthPixels - dp(40),
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.44f)
         );
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
