@@ -341,6 +341,18 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            body = ""
+        if len(body) > 1200:
+            body = body[:1200] + "...(truncated)"
+        detail = f"HTTP {exc.code}: {exc.reason or ''}".strip()
+        if body:
+            detail += f" / {body}"
+        print(f"AI release note generation failed: {detail}", file=sys.stderr)
+        return {}
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"AI release note generation failed: {exc}", file=sys.stderr)
         return {}
