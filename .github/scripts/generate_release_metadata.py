@@ -139,10 +139,20 @@ def asset_downloads(assets, lang):
     for asset in assets:
         name = asset["name"]
         if lang == "ko":
-            note = "서명되지 않은 릴리즈 APK입니다." if "unsigned" in name else "설치 테스트용 디버그 APK입니다."
+            if "unsigned" in name:
+                note = "서명되지 않은 릴리즈 APK입니다."
+            elif "debug" in name:
+                note = "설치 테스트용 디버그 APK입니다."
+            else:
+                note = "서명된 릴리즈 APK입니다."
             lines.append(f"`{name}`: {note}")
         else:
-            note = "Unsigned release APK." if "unsigned" in name else "Debug APK for install testing."
+            if "unsigned" in name:
+                note = "Unsigned release APK."
+            elif "debug" in name:
+                note = "Debug APK for install testing."
+            else:
+                note = "Signed release APK."
             lines.append(f"`{name}`: {note}")
     return lines
 
@@ -304,7 +314,7 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
         - Keep each bullet short and concrete.
         - Put major user-facing changes in highlights.
         - Put smaller polish, fixes, and maintenance changes in fixes.
-        - Mention APK assets and clarify that release APK is unsigned if its filename says unsigned.
+        - Mention APK assets and clarify whether release APK assets are signed or unsigned based on their filenames.
         - Do not invent changes not supported by the commit list.
         - Do not mention secrets, private URLs, or internal token endpoints.
         - Do not include a Full Changelog link; the template adds it.

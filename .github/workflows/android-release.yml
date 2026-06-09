@@ -42,6 +42,35 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Restore release signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing repository secret: ${name}"
+              missing=1
+            fi
+          done
+          if [[ "${missing}" != "0" ]]; then
+            exit 1
+          fi
+
+          keystore_path="${RUNNER_TEMP}/ivlyrics-release.jks"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+          {
+            echo "IVLYRICS_RELEASE_STORE_FILE=${keystore_path}"
+            echo "IVLYRICS_RELEASE_STORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "IVLYRICS_RELEASE_KEY_ALIAS=${ANDROID_KEY_ALIAS}"
+            echo "IVLYRICS_RELEASE_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
+          } >> "${GITHUB_ENV}"
+
       - name: Build all APK variants
         run: ./gradlew :app:assembleDebug :app:assembleRelease
 
@@ -57,6 +86,10 @@ jobs:
           release_target="$(git rev-parse --verify "${release_tag}^{commit}" 2>/dev/null || git rev-parse HEAD)"
           mkdir -p release-apks
           while IFS= read -r apk; do
+            if [[ "${apk}" == *"/release/"* && "${apk}" == *"unsigned"* ]]; then
+              echo "::error::Release APK is unsigned: ${apk}"
+              exit 1
+            fi
             variant="$(basename "$(dirname "${apk}")")"
             name="ivLyrics-Android-${release_tag}-${variant}.apk"
             if [[ "${apk}" == *"unsigned"* ]]; then

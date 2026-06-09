@@ -2,6 +2,45 @@ plugins {
     id "com.android.application"
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
+def signingValue = { String name ->
+    def projectValue = project.findProperty(name)
+    if (projectValue != null && projectValue.toString().trim()) {
+        return projectValue.toString().trim()
+    }
+    def localValue = localProperties.getProperty(name)
+    if (localValue != null && localValue.trim()) {
+        return localValue.trim()
+    }
+    def envValue = System.getenv(name)
+    return envValue == null ? "" : envValue.trim()
+}
+
+def releaseStoreFilePath = signingValue("IVLYRICS_RELEASE_STORE_FILE")
+def releaseStorePassword = signingValue("IVLYRICS_RELEASE_STORE_PASSWORD")
+def releaseKeyAlias = signingValue("IVLYRICS_RELEASE_KEY_ALIAS")
+def releaseKeyPassword = signingValue("IVLYRICS_RELEASE_KEY_PASSWORD")
+def releaseSigningValues = [
+        releaseStoreFilePath,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword
+]
+def releaseSigningValueCount = releaseSigningValues.count { it != null && it.trim() }
+if (releaseSigningValueCount > 0 && releaseSigningValueCount < releaseSigningValues.size()) {
+    throw new GradleException("Incomplete release signing config. Set IVLYRICS_RELEASE_STORE_FILE, IVLYRICS_RELEASE_STORE_PASSWORD, IVLYRICS_RELEASE_KEY_ALIAS, and IVLYRICS_RELEASE_KEY_PASSWORD.")
+}
+def releaseSigningConfigured = releaseSigningValueCount == releaseSigningValues.size()
+def releaseStoreFile = { String path ->
+    def candidate = new File(path)
+    return candidate.isAbsolute() ? candidate : rootProject.file(path)
+}
+
 android {
     namespace "kr.ivlis.ivlyricsandroid"
     compileSdk {
@@ -16,6 +55,25 @@ android {
         targetSdk 35
         versionCode 3
         versionName "1.0.2"
+    }
+
+    signingConfigs {
+        release {
+            if (releaseSigningConfigured) {
+                storeFile releaseStoreFile(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     compileOptions {

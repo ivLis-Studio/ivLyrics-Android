@@ -26,3 +26,37 @@ For sync-data requests, the app keeps the Spotify desktop client style request h
 ## Build
 
 Open this folder in Android Studio and let Gradle sync the project. The project targets the Android 16 QPR2 SDK package currently installed as `platforms/android-36.1`, so it uses the Android Gradle Plugin 8.13+ minor API `compileSdk` syntax.
+
+### Release signing
+
+Release signing is optional for local builds and required for GitHub release builds.
+
+Create a release keystore outside Git:
+
+```bash
+keytool -genkeypair \
+  -v \
+  -keystore ivlyrics-release.jks \
+  -alias ivlyrics \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000
+```
+
+For local signed release builds, add these ignored values to `local.properties`:
+
+```properties
+IVLYRICS_RELEASE_STORE_FILE=/absolute/path/ivlyrics-release.jks
+IVLYRICS_RELEASE_STORE_PASSWORD=...
+IVLYRICS_RELEASE_KEY_ALIAS=ivlyrics
+IVLYRICS_RELEASE_KEY_PASSWORD=...
+```
+
+GitHub Actions release builds require these repository secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: `base64 -i ivlyrics-release.jks`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Keep the keystore and passwords backed up. Losing the keystore prevents installing signed updates over earlier signed APKs.

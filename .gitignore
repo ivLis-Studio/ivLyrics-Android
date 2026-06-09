@@ -37,6 +37,8 @@ google-services.json
 # Kotlin / Java local caches
 .kotlin/
 *.class
+__pycache__/
+*.pyc
 
 # Logs
 *.log
