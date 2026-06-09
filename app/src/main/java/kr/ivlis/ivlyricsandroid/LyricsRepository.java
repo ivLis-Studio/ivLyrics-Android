@@ -42,6 +42,7 @@ final class LyricsRepository {
     private static final String SPOTIFY_ACCOUNTS_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
     private static final String SPOTIFY_SEARCH_BASE = "https://api.spotify.com/v1/search";
     private static final String SPOTIFY_TRACK_BASE = "https://api.spotify.com/v1/tracks/";
+    private static final String SPOTIFY_ENGLISH_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
     private static final String SPOTIFY_TOKEN_PREFS = "spotify_token_cache";
     private static final String KEY_SPOTIFY_ACCESS_TOKEN = "access_token";
     private static final String KEY_SPOTIFY_TOKEN_ISSUED_AT_MS = "issued_at_ms";
@@ -397,7 +398,7 @@ final class LyricsRepository {
         }
 
         if (candidate == null) {
-            candidate = searchBestCandidate(track, syncData, log);
+            candidate = searchBestCandidate(track, spotifyMatch, syncData, log);
         }
 
         if (candidate == null) {
@@ -532,9 +533,19 @@ final class LyricsRepository {
         return count;
     }
 
-    private LrclibCandidate searchBestCandidate(TrackSnapshot track, SyncDataResult syncData, LogSink log) throws Exception {
+    private LrclibCandidate searchBestCandidate(
+            TrackSnapshot track,
+            SpotifyTrackMatch spotifyMatch,
+            SyncDataResult syncData,
+            LogSink log
+    ) throws Exception {
         List<LrclibCandidate> candidates = new ArrayList<>();
+        TrackSnapshot spotifySearchTrack = buildSpotifyLrclibSearchTrack(track, spotifyMatch, log);
+        String spotifySearchLabelPrefix = spotifyMatch != null && spotifyMatch.hasEnglishMetadata() ? "spotify-en" : "spotify";
         appendUniqueCandidates(candidates, searchLrclib(buildStructuredQuery(track), "structured", log));
+        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "structured", log);
+        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "q:title+artist", log);
+        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "q:title", log);
 
         boolean needsLegacyShapeMatch = needsLegacySyncLineShapeMatch(syncData, candidates);
         if (candidates.isEmpty() || needsLegacyShapeMatch) {
@@ -552,6 +563,9 @@ final class LyricsRepository {
         for (LrclibCandidate candidate : candidates) {
             decorateCandidateForSyncData(candidate, syncData);
             candidate.score = scoreCandidate(track, candidate, syncData);
+            if (spotifySearchTrack != null) {
+                candidate.score = Math.max(candidate.score, scoreCandidate(spotifySearchTrack, candidate, syncData));
+            }
         }
         candidates.sort(this::compareLrclibCandidates);
         if (syncData != null && !syncData.lineCharCounts().isEmpty()) {
@@ -581,6 +595,82 @@ final class LyricsRepository {
             return null;
         }
         return best;
+    }
+
+    private void appendSpotifyLrclibSearchCandidates(
+            List<LrclibCandidate> candidates,
+            TrackSnapshot spotifySearchTrack,
+            String labelPrefix,
+            String mode,
+            LogSink log
+    ) throws Exception {
+        if (spotifySearchTrack == null || spotifySearchTrack.title.isEmpty() || spotifySearchTrack.artist.isEmpty()) {
+            return;
+        }
+        String label = (labelPrefix == null || labelPrefix.trim().isEmpty() ? "spotify" : labelPrefix.trim()) + ":" + mode;
+        if ("structured".equals(mode)) {
+            appendUniqueCandidates(candidates, searchLrclib(buildStructuredQuery(spotifySearchTrack, false), label, log));
+            return;
+        }
+        if ("q:title+artist".equals(mode)) {
+            appendUniqueCandidates(candidates, searchLrclib(
+                    Collections.singletonMap("q", spotifySearchTrack.title + " " + spotifySearchTrack.artist),
+                    label,
+                    log
+            ));
+            return;
+        }
+        if ("q:title".equals(mode)) {
+            appendUniqueCandidates(candidates, searchLrclib(
+                    Collections.singletonMap("q", spotifySearchTrack.title),
+                    label,
+                    log
+            ));
+        }
+    }
+
+    private TrackSnapshot buildSpotifyLrclibSearchTrack(
+            TrackSnapshot track,
+            SpotifyTrackMatch spotifyMatch,
+            LogSink log
+    ) {
+        if (track == null || spotifyMatch == null) {
+            return null;
+        }
+
+        String spotifyTitle = firstNonEmpty(spotifyMatch.englishTitle, spotifyMatch.title);
+        String spotifyArtist = firstNonEmpty(spotifyMatch.englishArtist, spotifyMatch.artist);
+        String spotifyAlbum = firstNonEmpty(spotifyMatch.englishAlbum, spotifyMatch.album);
+        if (spotifyTitle.isEmpty() || spotifyArtist.isEmpty()) {
+            return null;
+        }
+        if (sameSearchMetadata(track.title, spotifyTitle)
+                && sameSearchMetadata(track.artist, spotifyArtist)
+                && (spotifyAlbum.isEmpty() || sameSearchMetadata(track.album, spotifyAlbum))) {
+            return null;
+        }
+
+        boolean englishMetadata = spotifyMatch.hasEnglishMetadata();
+        log.write("lrclib spotify metadata search enabled"
+                + " / english=" + englishMetadata
+                + " / title=\"" + spotifyTitle + "\""
+                + " / artist=\"" + spotifyArtist + "\""
+                + (spotifyAlbum.isEmpty() || englishMetadata ? "" : " / album=\"" + spotifyAlbum + "\""));
+        return new TrackSnapshot(
+                spotifyTitle,
+                spotifyArtist,
+                englishMetadata ? "" : spotifyAlbum,
+                track.packageName,
+                track.mediaId,
+                firstNonEmpty(spotifyMatch.isrc, track.isrc),
+                spotifyMatch.durationMs > 0L ? spotifyMatch.durationMs : track.durationMs,
+                track.positionMs,
+                track.lastPositionUpdateElapsedMs,
+                track.playbackSpeed,
+                track.playing,
+                track.artwork,
+                track.artworkUri
+        );
     }
 
     private List<LrclibCandidate> searchManualLrclibCandidates(String title, String artist, LogSink log) throws Exception {
@@ -799,10 +889,14 @@ final class LyricsRepository {
     }
 
     private Map<String, String> buildStructuredQuery(TrackSnapshot track) {
+        return buildStructuredQuery(track, true);
+    }
+
+    private Map<String, String> buildStructuredQuery(TrackSnapshot track, boolean includeAlbum) {
         Map<String, String> params = new HashMap<>();
         params.put("track_name", track.title);
         params.put("artist_name", track.artist);
-        if (!track.album.isEmpty()) {
+        if (includeAlbum && !track.album.isEmpty()) {
             params.put("album_name", track.album);
         }
         return params;
@@ -989,6 +1083,7 @@ final class LyricsRepository {
                     SpotifyTrackMatch direct = fetchSpotifyTrackById(token, track.trackId, log);
                     if (direct != null && !direct.isrc.isEmpty()) {
                         if (isSpotifyDurationCompatible(track, direct)) {
+                            direct = attachSpotifyEnglishMetadata(token, direct, log);
                             log.write("spotify selected ISRC: direct track metadata " + describeSpotifyMatch(direct));
                             return direct;
                         }
@@ -1006,6 +1101,7 @@ final class LyricsRepository {
                         SpotifyTrackMatch direct = fetchSpotifyTrackById(token, track.trackId, log);
                         if (direct != null && !direct.isrc.isEmpty()) {
                             if (isSpotifyDurationCompatible(track, direct)) {
+                                direct = attachSpotifyEnglishMetadata(token, direct, log);
                                 log.write("spotify selected ISRC: direct track metadata after refresh "
                                         + describeSpotifyMatch(direct));
                                 return direct;
@@ -1038,7 +1134,8 @@ final class LyricsRepository {
                 return null;
             }
 
-            return selectSpotifyMatchByApiOrder(track, matches, log);
+            SpotifyTrackMatch selected = selectSpotifyMatchByApiOrder(track, matches, log);
+            return attachSpotifyEnglishMetadata(token, selected, log);
         } catch (Exception error) {
             log.write("spotify search error: " + error.getMessage());
             return null;
@@ -1046,21 +1143,77 @@ final class LyricsRepository {
     }
 
     private SpotifyTrackMatch fetchSpotifyTrackById(String token, String trackId, LogSink log) throws Exception {
+        return fetchSpotifyTrackById(
+                token,
+                trackId,
+                "direct metadata",
+                Collections.singletonMap("Authorization", "Bearer " + token),
+                true,
+                log
+        );
+    }
+
+    private SpotifyTrackMatch fetchSpotifyTrackById(
+            String token,
+            String trackId,
+            String label,
+            Map<String, String> headers,
+            boolean requireIsrc,
+            LogSink log
+    ) throws Exception {
         if (trackId == null || trackId.trim().isEmpty()) {
             return null;
         }
-        log.write("spotify track: direct metadata lookup id=" + trackId);
+        String safeLabel = label == null || label.trim().isEmpty() ? "metadata" : label.trim();
+        log.write("spotify track: " + safeLabel + " lookup id=" + trackId);
         String response = get(
                 SPOTIFY_TRACK_BASE + urlEncode(trackId.trim()),
-                Collections.singletonMap("Authorization", "Bearer " + token)
+                headers == null ? Collections.emptyMap() : headers
         );
-        SpotifyTrackMatch match = SpotifyTrackMatch.fromJson(new JSONObject(response));
+        SpotifyTrackMatch match = SpotifyTrackMatch.fromJson(new JSONObject(response), requireIsrc);
         if (match == null) {
-            log.write("spotify track: no ISRC in direct metadata");
+            log.write("spotify track: no usable " + safeLabel);
             return null;
         }
-        log.write("spotify track: direct metadata ready " + describeSpotifyMatch(match));
+        log.write("spotify track: " + safeLabel + " ready " + describeSpotifyMatch(match));
         return match;
+    }
+
+    private SpotifyTrackMatch attachSpotifyEnglishMetadata(String token, SpotifyTrackMatch match, LogSink log) {
+        if (match == null || match.spotifyId.isEmpty() || token == null || token.trim().isEmpty()) {
+            return match;
+        }
+        try {
+            SpotifyTrackMatch english = fetchSpotifyTrackById(
+                    token,
+                    match.spotifyId,
+                    "english metadata",
+                    spotifyEnglishHeaders(token),
+                    false,
+                    log
+            );
+            if (english == null || english.title.isEmpty() || english.artist.isEmpty()) {
+                return match;
+            }
+            SpotifyTrackMatch merged = match.withEnglishMetadata(english);
+            if (merged.hasEnglishMetadata()) {
+                log.write("spotify english metadata: title=\"" + merged.englishTitle
+                        + "\" / artist=\"" + merged.englishArtist + "\"");
+            } else {
+                log.write("spotify english metadata: same as selected metadata");
+            }
+            return merged;
+        } catch (Exception error) {
+            log.write("spotify english metadata error: " + error.getMessage());
+            return match;
+        }
+    }
+
+    private Map<String, String> spotifyEnglishHeaders(String token) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Authorization", "Bearer " + token);
+        headers.put("Accept-Language", SPOTIFY_ENGLISH_ACCEPT_LANGUAGE);
+        return headers;
     }
 
     private List<SpotifyTrackMatch> searchSpotifyCandidates(TrackSnapshot track, String token, LogSink log) throws Exception {
@@ -2125,6 +2278,12 @@ final class LyricsRepository {
                 .replaceAll("\\s+", " ");
     }
 
+    private static boolean sameSearchMetadata(String left, String right) {
+        String normalizedLeft = normalizeComparable(left);
+        String normalizedRight = normalizeComparable(right);
+        return !normalizedLeft.isEmpty() && normalizedLeft.equals(normalizedRight);
+    }
+
     private static double jaroWinkler(String rawLeft, String rawRight) {
         String left = normalizeComparable(rawLeft);
         String right = normalizeComparable(rawRight);
@@ -2365,6 +2524,9 @@ final class LyricsRepository {
         final String artworkUrl;
         final int artworkWidth;
         final int artworkHeight;
+        final String englishTitle;
+        final String englishArtist;
+        final String englishAlbum;
 
         SpotifyTrackMatch(
                 String spotifyId,
@@ -2377,6 +2539,36 @@ final class LyricsRepository {
                 int artworkWidth,
                 int artworkHeight
         ) {
+            this(
+                    spotifyId,
+                    title,
+                    artist,
+                    album,
+                    durationMs,
+                    isrc,
+                    artworkUrl,
+                    artworkWidth,
+                    artworkHeight,
+                    "",
+                    "",
+                    ""
+            );
+        }
+
+        SpotifyTrackMatch(
+                String spotifyId,
+                String title,
+                String artist,
+                String album,
+                long durationMs,
+                String isrc,
+                String artworkUrl,
+                int artworkWidth,
+                int artworkHeight,
+                String englishTitle,
+                String englishArtist,
+                String englishAlbum
+        ) {
             this.spotifyId = spotifyId == null ? "" : spotifyId;
             this.title = title == null ? "" : title;
             this.artist = artist == null ? "" : artist;
@@ -2386,6 +2578,9 @@ final class LyricsRepository {
             this.artworkUrl = artworkUrl == null ? "" : artworkUrl;
             this.artworkWidth = Math.max(0, artworkWidth);
             this.artworkHeight = Math.max(0, artworkHeight);
+            this.englishTitle = englishTitle == null ? "" : englishTitle.trim();
+            this.englishArtist = englishArtist == null ? "" : englishArtist.trim();
+            this.englishAlbum = englishAlbum == null ? "" : englishAlbum.trim();
         }
 
         static SpotifyTrackMatch fromJson(JSONObject item) {
@@ -2416,6 +2611,37 @@ final class LyricsRepository {
                     artwork.width,
                     artwork.height
             );
+        }
+
+        SpotifyTrackMatch withEnglishMetadata(SpotifyTrackMatch english) {
+            if (english == null || english.title.trim().isEmpty() || english.artist.trim().isEmpty()) {
+                return this;
+            }
+            String nextTitle = sameSearchMetadata(title, english.title) ? "" : english.title;
+            String nextArtist = sameSearchMetadata(artist, english.artist) ? "" : english.artist;
+            String nextAlbum = sameSearchMetadata(album, english.album) ? "" : english.album;
+            if (nextTitle.isEmpty() && nextArtist.isEmpty()) {
+                return this;
+            }
+            return new SpotifyTrackMatch(
+                    spotifyId,
+                    title,
+                    artist,
+                    album,
+                    durationMs,
+                    isrc,
+                    artworkUrl,
+                    artworkWidth,
+                    artworkHeight,
+                    firstNonEmpty(nextTitle, title),
+                    firstNonEmpty(nextArtist, artist),
+                    nextAlbum
+            );
+        }
+
+        boolean hasEnglishMetadata() {
+            return (!englishTitle.isEmpty() && !sameSearchMetadata(title, englishTitle))
+                    || (!englishArtist.isEmpty() && !sameSearchMetadata(artist, englishArtist));
         }
 
         private static String artistText(JSONArray artists) {
