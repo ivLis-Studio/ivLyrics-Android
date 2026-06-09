@@ -48,6 +48,7 @@ final class AiLyricsSettings {
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
+    static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
 
     static final String DEFAULT_SOURCE_LANG = "default";
     static final String PREVIEW_MODE_ORIGINAL = "original";
@@ -61,6 +62,19 @@ final class AiLyricsSettings {
     static final int PREVIEW_ITEM_ORIGINAL = 1;
     static final int PREVIEW_ITEM_PRONUNCIATION = 1 << 1;
     static final int PREVIEW_ITEM_TRANSLATION = 1 << 2;
+    static final String TYPO_MAIN_TITLE = "main_title";
+    static final String TYPO_MAIN_ARTIST = "main_artist";
+    static final String TYPO_MAIN_PREVIEW_ORIGINAL = "main_preview_original";
+    static final String TYPO_MAIN_PREVIEW_PRONUNCIATION = "main_preview_pronunciation";
+    static final String TYPO_MAIN_PREVIEW_TRANSLATION = "main_preview_translation";
+    static final String TYPO_LYRICS_HEADER_TITLE = "lyrics_header_title";
+    static final String TYPO_LYRICS_HEADER_ARTIST = "lyrics_header_artist";
+    static final String TYPO_LYRICS_ORIGINAL = "lyrics_original";
+    static final String TYPO_LYRICS_PRONUNCIATION = "lyrics_pronunciation";
+    static final String TYPO_LYRICS_TRANSLATION = "lyrics_translation";
+    static final String TYPO_WEIGHT_REGULAR = "regular";
+    static final String TYPO_WEIGHT_SEMIBOLD = "semibold";
+    static final String TYPO_WEIGHT_BOLD = "bold";
     private static final String DEFAULT_PROVIDER = "gemini";
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
@@ -129,6 +143,18 @@ final class AiLyricsSettings {
             new BackgroundMode(BACKGROUND_MODE_BLUR_GRADIENT, "블러 그라데이션", "앨범 색상을 추출해 움직이는 블러 그라데이션을 만듭니다."),
             new BackgroundMode(BACKGROUND_MODE_SOLID, "단색", "사용자 지정 단색 배경을 사용합니다.")
     ));
+    static final List<TypographySlot> TYPOGRAPHY_SLOTS = Collections.unmodifiableList(Arrays.asList(
+            new TypographySlot(TYPO_MAIN_TITLE, "typography.slot.main_title", "typography.slot.main_title_desc", 100, TYPO_WEIGHT_BOLD),
+            new TypographySlot(TYPO_MAIN_ARTIST, "typography.slot.main_artist", "typography.slot.main_artist_desc", 100, TYPO_WEIGHT_REGULAR),
+            new TypographySlot(TYPO_MAIN_PREVIEW_ORIGINAL, "typography.slot.main_preview_original", "typography.slot.main_preview_original_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_MAIN_PREVIEW_PRONUNCIATION, "typography.slot.main_preview_pronunciation", "typography.slot.main_preview_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_MAIN_PREVIEW_TRANSLATION, "typography.slot.main_preview_translation", "typography.slot.main_preview_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_LYRICS_HEADER_TITLE, "typography.slot.lyrics_header_title", "typography.slot.lyrics_header_title_desc", 100, TYPO_WEIGHT_BOLD),
+            new TypographySlot(TYPO_LYRICS_HEADER_ARTIST, "typography.slot.lyrics_header_artist", "typography.slot.lyrics_header_artist_desc", 100, TYPO_WEIGHT_REGULAR),
+            new TypographySlot(TYPO_LYRICS_ORIGINAL, "typography.slot.lyrics_original", "typography.slot.lyrics_original_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_LYRICS_PRONUNCIATION, "typography.slot.lyrics_pronunciation", "typography.slot.lyrics_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_LYRICS_TRANSLATION, "typography.slot.lyrics_translation", "typography.slot.lyrics_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
+    ));
     static final List<Language> SUPPORTED_LANGUAGES = Collections.unmodifiableList(Arrays.asList(
             new Language("ko", "Korean", "한국어", "Korean Hangul pronunciation, e.g. こんにちは -> 콘니치와"),
             new Language("en", "English", "English", "English romanization"),
@@ -190,6 +216,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
+                typographySettings(),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
@@ -209,6 +236,17 @@ final class AiLyricsSettings {
 
     void setJapaneseFuriganaEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_JAPANESE_FURIGANA_ENABLED, enabled).apply();
+    }
+
+    void setTypographyStyle(String slotId, int sizePercent, String weight) {
+        TypographySettings current = typographySettings();
+        Map<String, TypographyStyle> next = new LinkedHashMap<>(current.styles);
+        TypographySlot slot = typographySlotById(slotId);
+        next.put(slot.id, new TypographyStyle(
+                clampInt(sizePercent, 70, 160),
+                normalizeTypographyWeight(weight, slot.defaultWeight)
+        ));
+        saveTypographySettings(new TypographySettings(next));
     }
 
     void setTranslationEnabled(boolean enabled) {
@@ -420,6 +458,49 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_BACKGROUND_REDUCE_MOTION, false),
                 normalizeHexColor(prefs.getString(KEY_BACKGROUND_SOLID_COLOR, DEFAULT_SOLID_BACKGROUND_COLOR), DEFAULT_SOLID_BACKGROUND_COLOR)
         );
+    }
+
+    private TypographySettings typographySettings() {
+        Map<String, TypographyStyle> styles = new LinkedHashMap<>();
+        String stored = prefs.getString(KEY_TYPOGRAPHY_SETTINGS, "");
+        JSONObject object = null;
+        if (stored != null && !stored.trim().isEmpty()) {
+            try {
+                object = new JSONObject(stored);
+            } catch (JSONException ignored) {
+            }
+        }
+        for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+            TypographyStyle style = null;
+            if (object != null) {
+                JSONObject slotObject = object.optJSONObject(slot.id);
+                if (slotObject != null) {
+                    style = new TypographyStyle(
+                            slotObject.optInt("size", slot.defaultSizePercent),
+                            slotObject.optString("weight", slot.defaultWeight),
+                            slot
+                    );
+                }
+            }
+            styles.put(slot.id, style == null ? slot.defaultStyle() : style);
+        }
+        return new TypographySettings(styles);
+    }
+
+    private void saveTypographySettings(TypographySettings typography) {
+        try {
+            JSONObject object = new JSONObject();
+            TypographySettings safe = typography == null ? TypographySettings.defaults() : typography;
+            for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+                TypographyStyle style = safe.style(slot.id);
+                JSONObject slotObject = new JSONObject();
+                slotObject.put("size", style.sizePercent);
+                slotObject.put("weight", style.weight);
+                object.put(slot.id, slotObject);
+            }
+            prefs.edit().putString(KEY_TYPOGRAPHY_SETTINGS, object.toString()).apply();
+        } catch (JSONException ignored) {
+        }
     }
 
     private RuleConfig loadRuleConfig() {
@@ -643,6 +724,32 @@ final class AiLyricsSettings {
 
     static boolean previewItemEnabled(int previewItems, int item) {
         return (normalizePreviewItems(previewItems) & item) == item;
+    }
+
+    static String normalizeTypographyWeight(String weight) {
+        return normalizeTypographyWeight(weight, TYPO_WEIGHT_SEMIBOLD);
+    }
+
+    static String normalizeTypographyWeight(String weight, String fallback) {
+        String value = weight == null ? "" : weight.trim().toLowerCase(Locale.ROOT);
+        if (TYPO_WEIGHT_REGULAR.equals(value) || TYPO_WEIGHT_SEMIBOLD.equals(value) || TYPO_WEIGHT_BOLD.equals(value)) {
+            return value;
+        }
+        String safeFallback = fallback == null ? "" : fallback.trim().toLowerCase(Locale.ROOT);
+        if (TYPO_WEIGHT_REGULAR.equals(safeFallback) || TYPO_WEIGHT_BOLD.equals(safeFallback)) {
+            return safeFallback;
+        }
+        return TYPO_WEIGHT_SEMIBOLD;
+    }
+
+    static TypographySlot typographySlotById(String slotId) {
+        String normalized = slotId == null ? "" : slotId.trim();
+        for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+            if (slot.id.equals(normalized)) {
+                return slot;
+            }
+        }
+        return TYPOGRAPHY_SLOTS.get(0);
     }
 
     static String normalizeBackgroundMode(String mode) {
@@ -885,6 +992,69 @@ final class AiLyricsSettings {
         }
     }
 
+    static final class TypographySlot {
+        final String id;
+        final String titleKey;
+        final String descriptionKey;
+        final int defaultSizePercent;
+        final String defaultWeight;
+
+        TypographySlot(String id, String titleKey, String descriptionKey, int defaultSizePercent, String defaultWeight) {
+            this.id = id == null ? "" : id;
+            this.titleKey = titleKey == null ? "" : titleKey;
+            this.descriptionKey = descriptionKey == null ? "" : descriptionKey;
+            this.defaultSizePercent = clampInt(defaultSizePercent, 70, 160);
+            this.defaultWeight = normalizeTypographyWeight(defaultWeight, TYPO_WEIGHT_SEMIBOLD);
+        }
+
+        TypographyStyle defaultStyle() {
+            return new TypographyStyle(defaultSizePercent, defaultWeight, this);
+        }
+    }
+
+    static final class TypographyStyle {
+        final int sizePercent;
+        final String weight;
+
+        TypographyStyle(int sizePercent, String weight) {
+            this(sizePercent, weight, null);
+        }
+
+        TypographyStyle(int sizePercent, String weight, TypographySlot slot) {
+            int fallbackSize = slot == null ? 100 : slot.defaultSizePercent;
+            String fallbackWeight = slot == null ? TYPO_WEIGHT_SEMIBOLD : slot.defaultWeight;
+            this.sizePercent = clampInt(sizePercent <= 0 ? fallbackSize : sizePercent, 70, 160);
+            this.weight = normalizeTypographyWeight(weight, fallbackWeight);
+        }
+
+        float scale() {
+            return sizePercent / 100f;
+        }
+    }
+
+    static final class TypographySettings {
+        final Map<String, TypographyStyle> styles;
+
+        TypographySettings(Map<String, TypographyStyle> styles) {
+            Map<String, TypographyStyle> values = new LinkedHashMap<>();
+            for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+                TypographyStyle style = styles == null ? null : styles.get(slot.id);
+                values.put(slot.id, style == null ? slot.defaultStyle() : new TypographyStyle(style.sizePercent, style.weight, slot));
+            }
+            this.styles = Collections.unmodifiableMap(values);
+        }
+
+        static TypographySettings defaults() {
+            return new TypographySettings(Collections.emptyMap());
+        }
+
+        TypographyStyle style(String slotId) {
+            TypographySlot slot = typographySlotById(slotId);
+            TypographyStyle style = styles.get(slot.id);
+            return style == null ? slot.defaultStyle() : style;
+        }
+    }
+
     static final class Language {
         final String code;
         final String name;
@@ -942,6 +1112,7 @@ final class AiLyricsSettings {
         final boolean keepScreenOn;
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
+        final TypographySettings typography;
         final String spotifyClientId;
         final String spotifyClientSecret;
 
@@ -966,6 +1137,7 @@ final class AiLyricsSettings {
                 boolean keepScreenOn,
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
+                TypographySettings typography,
                 String spotifyClientId,
                 String spotifyClientSecret
         ) {
@@ -993,6 +1165,7 @@ final class AiLyricsSettings {
             this.keepScreenOn = keepScreenOn;
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
+            this.typography = typography == null ? TypographySettings.defaults() : typography;
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
         }

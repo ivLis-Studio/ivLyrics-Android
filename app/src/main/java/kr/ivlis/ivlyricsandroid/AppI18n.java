@@ -105,6 +105,7 @@ final class AppI18n {
         addDisplayPowerStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
         addFuriganaStrings(languages);
+        addTypographyStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -925,6 +926,189 @@ final class AppI18n {
                 "lyrics.furigana", label,
                 "toast.furigana_on", enabled,
                 "toast.furigana_off", disabled
+        };
+    }
+
+    private static void addTypographyStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = typographyStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] typographyStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return typographyStringsValues(
+                        "타이포그래피",
+                        "메인 화면과 가사 페이지의 글자 크기와 두께를 항목별로 조절합니다.",
+                        "크기",
+                        "두께",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "글자 설정 저장됨",
+                        "메인 제목",
+                        "메인 아티스트",
+                        "메인 하단 원어 가사",
+                        "메인 하단 발음",
+                        "메인 하단 번역",
+                        "가사페이지 제목",
+                        "가사페이지 아티스트",
+                        "가사페이지 원어",
+                        "가사페이지 발음",
+                        "가사페이지 번역",
+                        "이 항목의 크기와 두께를 조절합니다."
+                );
+            case "zh-CN":
+                return typographyStringsValues(
+                        "字体排版",
+                        "分别调整主屏幕和歌词页面的字号与字重。",
+                        "大小",
+                        "字重",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "文字设置已保存",
+                        "主屏标题",
+                        "主屏艺人",
+                        "主屏底部原文歌词",
+                        "主屏底部发音",
+                        "主屏底部翻译",
+                        "歌词页标题",
+                        "歌词页艺人",
+                        "歌词页原文",
+                        "歌词页发音",
+                        "歌词页翻译",
+                        "调整此项目的大小和字重。"
+                );
+            case "zh-TW":
+                return typographyStringsValues(
+                        "字體排版",
+                        "分別調整主畫面與歌詞頁面的字級與字重。",
+                        "大小",
+                        "字重",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "文字設定已儲存",
+                        "主畫面標題",
+                        "主畫面藝人",
+                        "主畫面底部原文歌詞",
+                        "主畫面底部發音",
+                        "主畫面底部翻譯",
+                        "歌詞頁標題",
+                        "歌詞頁藝人",
+                        "歌詞頁原文",
+                        "歌詞頁發音",
+                        "歌詞頁翻譯",
+                        "調整此項目的大小與字重。"
+                );
+            case "ja":
+                return typographyStringsValues(
+                        "タイポグラフィ",
+                        "メイン画面と歌詞ページの文字サイズと太さを項目ごとに調整します。",
+                        "サイズ",
+                        "太さ",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "文字設定を保存しました",
+                        "メインタイトル",
+                        "メインアーティスト",
+                        "メイン下部の原文歌詞",
+                        "メイン下部の発音",
+                        "メイン下部の翻訳",
+                        "歌詞ページタイトル",
+                        "歌詞ページアーティスト",
+                        "歌詞ページ原文",
+                        "歌詞ページ発音",
+                        "歌詞ページ翻訳",
+                        "この項目のサイズと太さを調整します。"
+                );
+            default:
+                return typographyStringsValues(
+                        "Typography",
+                        "Customize text size and weight for the main player and lyrics page.",
+                        "Size",
+                        "Weight",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "Typography saved",
+                        "Main Title",
+                        "Main Artist",
+                        "Main Bottom Original",
+                        "Main Bottom Pronunciation",
+                        "Main Bottom Translation",
+                        "Lyrics Page Title",
+                        "Lyrics Page Artist",
+                        "Lyrics Page Original",
+                        "Lyrics Page Pronunciation",
+                        "Lyrics Page Translation",
+                        "Adjust size and weight for this item."
+                );
+        }
+    }
+
+    private static String[] typographyStringsValues(
+            String sectionTitle,
+            String sectionDescription,
+            String size,
+            String weight,
+            String regular,
+            String semibold,
+            String bold,
+            String saved,
+            String mainTitle,
+            String mainArtist,
+            String mainPreviewOriginal,
+            String mainPreviewPronunciation,
+            String mainPreviewTranslation,
+            String lyricsHeaderTitle,
+            String lyricsHeaderArtist,
+            String lyricsOriginal,
+            String lyricsPronunciation,
+            String lyricsTranslation,
+            String slotDescription
+    ) {
+        return new String[]{
+                "section.typography", sectionTitle,
+                "section.typography_desc", sectionDescription,
+                "typography.size", size,
+                "typography.weight", weight,
+                "typography.weight.regular", regular,
+                "typography.weight.semibold", semibold,
+                "typography.weight.bold", bold,
+                "toast.typography_saved", saved,
+                "typography.slot.main_title", mainTitle,
+                "typography.slot.main_title_desc", slotDescription,
+                "typography.slot.main_artist", mainArtist,
+                "typography.slot.main_artist_desc", slotDescription,
+                "typography.slot.main_preview_original", mainPreviewOriginal,
+                "typography.slot.main_preview_original_desc", slotDescription,
+                "typography.slot.main_preview_pronunciation", mainPreviewPronunciation,
+                "typography.slot.main_preview_pronunciation_desc", slotDescription,
+                "typography.slot.main_preview_translation", mainPreviewTranslation,
+                "typography.slot.main_preview_translation_desc", slotDescription,
+                "typography.slot.lyrics_header_title", lyricsHeaderTitle,
+                "typography.slot.lyrics_header_title_desc", slotDescription,
+                "typography.slot.lyrics_header_artist", lyricsHeaderArtist,
+                "typography.slot.lyrics_header_artist_desc", slotDescription,
+                "typography.slot.lyrics_original", lyricsOriginal,
+                "typography.slot.lyrics_original_desc", slotDescription,
+                "typography.slot.lyrics_pronunciation", lyricsPronunciation,
+                "typography.slot.lyrics_pronunciation_desc", slotDescription,
+                "typography.slot.lyrics_translation", lyricsTranslation,
+                "typography.slot.lyrics_translation_desc", slotDescription
         };
     }
 

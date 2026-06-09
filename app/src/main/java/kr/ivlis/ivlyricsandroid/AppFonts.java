@@ -32,6 +32,17 @@ final class AppFonts {
         return bold;
     }
 
+    static Typeface byWeight(Context context, String weight) {
+        String normalized = AiLyricsSettings.normalizeTypographyWeight(weight);
+        if (AiLyricsSettings.TYPO_WEIGHT_REGULAR.equals(normalized)) {
+            return regular(context);
+        }
+        if (AiLyricsSettings.TYPO_WEIGHT_BOLD.equals(normalized)) {
+            return bold(context);
+        }
+        return semiBold(context);
+    }
+
     private static Typeface load(Context context, String assetPath, int style) {
         try {
             return Typeface.createFromAsset(context.getAssets(), assetPath);

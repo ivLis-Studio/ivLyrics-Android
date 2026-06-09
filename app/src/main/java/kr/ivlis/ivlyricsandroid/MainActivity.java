@@ -305,6 +305,7 @@ public final class MainActivity extends Activity implements
         AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
         applyKeepScreenOnSetting(settingsSnapshot);
         applyBackgroundSettings(settingsSnapshot);
+        applyTypographySettings(settingsSnapshot);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
     }
@@ -948,6 +949,7 @@ public final class MainActivity extends Activity implements
         attachPageSwipe(lyricPreviewContainer, true, true);
         lyricPreviewView = new MainLyricPreviewView(this);
         lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        lyricPreviewView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         lyricPreviewContainer.addView(lyricPreviewView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1147,6 +1149,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
+        landscapeLyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
         landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
         landscapeLyricsView.setResult(currentLyricsResult);
@@ -1498,6 +1501,7 @@ public final class MainActivity extends Activity implements
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
+        lyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         lyricsView.setOnSeekListener(this::seekToPosition);
         LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1986,6 +1990,10 @@ public final class MainActivity extends Activity implements
             showSavedToast(isChecked ? ui("toast.landscape_auto_hide_on") : ui("toast.landscape_auto_hide_off"));
         });
         settingsDisplayPage.addView(landscapeAutoHideControlsSwitch, topMargin(matchWrap(), dp(12)));
+
+        settingsDisplayPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
+        settingsDisplayPage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
+        settingsDisplayPage.addView(buildTypographySettingsList(), topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.background_desc")), topMargin(matchWrap(), dp(8)));
@@ -2644,6 +2652,7 @@ public final class MainActivity extends Activity implements
         AiLyricsSettings.Snapshot settingsSnapshot = aiLyricsSettings.snapshot();
         applyKeepScreenOnSetting(settingsSnapshot);
         applyBackgroundSettings(settingsSnapshot);
+        applyTypographySettings(settingsSnapshot);
         updatePermissionState();
 
         currentTrack = snapshot;
@@ -3055,6 +3064,112 @@ public final class MainActivity extends Activity implements
         return container;
     }
 
+    private LinearLayout buildTypographySettingsList() {
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        for (AiLyricsSettings.TypographySlot slot : AiLyricsSettings.TYPOGRAPHY_SLOTS) {
+            View control = buildTypographySlotControl(slot);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            if (list.getChildCount() > 0) {
+                params.topMargin = dp(10);
+            }
+            list.addView(control, params);
+        }
+        return list;
+    }
+
+    private LinearLayout buildTypographySlotControl(AiLyricsSettings.TypographySlot slot) {
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+
+        TextView sizeValue = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        SeekBar sizeSeekBar = new SeekBar(this);
+        sizeSeekBar.setMax(90);
+        AiLyricsSettings.TypographyStyle initial = aiLyricsSettings.snapshot().typography.style(slot.id);
+        sizeSeekBar.setProgress(initial.sizePercent - 70);
+        sizeValue.setText(initial.sizePercent + "%");
+        sizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                AiLyricsSettings.TypographyStyle current = aiLyricsSettings.snapshot().typography.style(slot.id);
+                int sizePercent = progress + 70;
+                aiLyricsSettings.setTypographyStyle(slot.id, sizePercent, current.weight);
+                sizeValue.setText(sizePercent + "%");
+                applyTypographySettings(aiLyricsSettings.snapshot());
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                showSavedToast(ui("toast.typography_saved"));
+            }
+        });
+
+        body.addView(settingSubLabel(ui("typography.size")), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        body.addView(buildSliderRow(sizeSeekBar, sizeValue), topMargin(matchWrap(), dp(4)));
+
+        TextView weightLabel = settingSubLabel(ui("typography.weight"));
+        body.addView(weightLabel, topMargin(matchWrap(), dp(10)));
+        LinearLayout weightButtons = new LinearLayout(this);
+        weightButtons.setOrientation(LinearLayout.HORIZONTAL);
+        body.addView(weightButtons, topMargin(matchWrap(), dp(7)));
+        rebuildTypographyWeightButtons(weightButtons, slot);
+
+        return settingGroup(ui(slot.titleKey), ui(slot.descriptionKey), body);
+    }
+
+    private TextView settingSubLabel(String text) {
+        return label(text, 11f, Color.argb(155, 255, 255, 255), AppFonts.semiBold(this));
+    }
+
+    private void rebuildTypographyWeightButtons(LinearLayout container, AiLyricsSettings.TypographySlot slot) {
+        if (container == null || aiLyricsSettings == null) {
+            return;
+        }
+        container.removeAllViews();
+        String selected = aiLyricsSettings.snapshot().typography.style(slot.id).weight;
+        String[] weights = {
+                AiLyricsSettings.TYPO_WEIGHT_REGULAR,
+                AiLyricsSettings.TYPO_WEIGHT_SEMIBOLD,
+                AiLyricsSettings.TYPO_WEIGHT_BOLD
+        };
+        for (int index = 0; index < weights.length; index++) {
+            String weight = weights[index];
+            TextView button = languageButton(typographyWeightLabel(weight), weight.equals(selected));
+            button.setOnClickListener(view -> {
+                AiLyricsSettings.TypographyStyle current = aiLyricsSettings.snapshot().typography.style(slot.id);
+                aiLyricsSettings.setTypographyStyle(slot.id, current.sizePercent, weight);
+                applyTypographySettings(aiLyricsSettings.snapshot());
+                rebuildTypographyWeightButtons(container, slot);
+                showSavedToast(ui("toast.typography_saved"));
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            if (index > 0) {
+                params.leftMargin = dp(7);
+            }
+            container.addView(button, params);
+        }
+    }
+
+    private String typographyWeightLabel(String weight) {
+        String normalized = AiLyricsSettings.normalizeTypographyWeight(weight);
+        if (AiLyricsSettings.TYPO_WEIGHT_REGULAR.equals(normalized)) {
+            return ui("typography.weight.regular");
+        }
+        if (AiLyricsSettings.TYPO_WEIGHT_BOLD.equals(normalized)) {
+            return ui("typography.weight.bold");
+        }
+        return ui("typography.weight.semibold");
+    }
+
     private EditText settingEditText(String hint, boolean multiLine, boolean secret) {
         EditText input = new EditText(this);
         input.setHint(hint);
@@ -3402,6 +3517,44 @@ public final class MainActivity extends Activity implements
             lyricsBackgroundView.setBackgroundSettings(settings);
             lyricsBackgroundView.setVisibility(View.VISIBLE);
         }
+    }
+
+    private void applyTypographySettings(AiLyricsSettings.Snapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        AiLyricsSettings.TypographySettings typography = snapshot.typography;
+        boolean landscape = isLandscapeLayout();
+        applyTypographyToTextView(titleView, typography, AiLyricsSettings.TYPO_MAIN_TITLE, landscape ? 23f : 28f);
+        applyTypographyToTextView(artistView, typography, AiLyricsSettings.TYPO_MAIN_ARTIST, landscape ? 15f : 18f);
+        applyTypographyToTextView(lyricsTitleView, typography, AiLyricsSettings.TYPO_LYRICS_HEADER_TITLE, 19f);
+        applyTypographyToTextView(lyricsArtistView, typography, AiLyricsSettings.TYPO_LYRICS_HEADER_ARTIST, 14f);
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setTypographySettings(typography);
+        }
+        if (lyricsView != null) {
+            lyricsView.setTypographySettings(typography);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setTypographySettings(typography);
+        }
+    }
+
+    private void applyTypographyToTextView(
+            TextView view,
+            AiLyricsSettings.TypographySettings typography,
+            String slotId,
+            float baseSizeSp
+    ) {
+        if (view == null) {
+            return;
+        }
+        AiLyricsSettings.TypographyStyle style = typography == null
+                ? AiLyricsSettings.TypographySettings.defaults().style(slotId)
+                : typography.style(slotId);
+        view.setTextSize(Math.max(8f, baseSizeSp * style.scale()));
+        view.setTypeface(AppFonts.byWeight(this, style.weight));
+        view.invalidate();
     }
 
     private void applyKeepScreenOnSetting(AiLyricsSettings.Snapshot snapshot) {
@@ -4154,6 +4307,7 @@ public final class MainActivity extends Activity implements
             suppressSettingsEvents = false;
         }
         updateBackgroundSettingsUi(snapshot, true);
+        applyTypographySettings(snapshot);
         if (providerSummaryView != null) {
             providerSummaryView.setText(snapshot.provider.label + " · " + providerDescription(snapshot.provider)
                     + "\n" + snapshot.provider.defaultBaseUrl);
@@ -5536,7 +5690,7 @@ public final class MainActivity extends Activity implements
         List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
         PreviewText original = originalPreviewText(line);
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_ORIGINAL)) {
-            addPreviewRow(rows, original.text, original.syllables, original.kind);
+            addPreviewRow(rows, original.text, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION)) {
             addSupplementPreviewRow(
@@ -5546,7 +5700,8 @@ public final class MainActivity extends Activity implements
                     original.text,
                     original.syllables,
                     original.kind,
-                    isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION)
+                    isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION),
+                    AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION
             );
         }
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_TRANSLATION)) {
@@ -5557,11 +5712,12 @@ public final class MainActivity extends Activity implements
                     original.text,
                     original.syllables,
                     original.kind,
-                    isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION)
+                    isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION),
+                    AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION
             );
         }
         if (rows.isEmpty()) {
-            addPreviewRow(rows, original.text, original.syllables, original.kind);
+            addPreviewRow(rows, original.text, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
         return rows;
     }
@@ -5573,7 +5729,8 @@ public final class MainActivity extends Activity implements
             String fallback,
             List<LyricsLine.Syllable> fallbackSyllables,
             String fallbackKind,
-            boolean generating
+            boolean generating,
+            String slotId
     ) {
         String value = text == null ? "" : text.trim();
         List<LyricsLine.Syllable> syllables = Collections.emptyList();
@@ -5590,7 +5747,7 @@ public final class MainActivity extends Activity implements
         if (samePreviewTextAlreadyShown(rows, value)) {
             return;
         }
-        addPreviewRow(rows, value, syllables, kind);
+        addPreviewRow(rows, value, syllables, kind, slotId);
     }
 
     private void addPreviewRow(List<MainLyricPreviewView.PreviewLine> rows, String text) {
@@ -5611,11 +5768,23 @@ public final class MainActivity extends Activity implements
             List<LyricsLine.Syllable> syllables,
             String kind
     ) {
+        addPreviewRow(rows, text, syllables, kind, rows.isEmpty()
+                ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL
+                : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION);
+    }
+
+    private void addPreviewRow(
+            List<MainLyricPreviewView.PreviewLine> rows,
+            String text,
+            List<LyricsLine.Syllable> syllables,
+            String kind,
+            String slotId
+    ) {
         String value = text == null ? "" : text.trim();
         if (value.isEmpty()) {
             return;
         }
-        rows.add(new MainLyricPreviewView.PreviewLine(value, rows.isEmpty(), syllables, kind));
+        rows.add(new MainLyricPreviewView.PreviewLine(value, rows.isEmpty(), syllables, kind, slotId));
     }
 
     private boolean samePreviewTextAlreadyShown(List<MainLyricPreviewView.PreviewLine> rows, String text) {

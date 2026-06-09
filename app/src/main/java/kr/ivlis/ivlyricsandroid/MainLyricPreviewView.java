@@ -45,6 +45,7 @@ final class MainLyricPreviewView extends View {
     private final Set<String> completedBounceKeys = new HashSet<>();
     private Typeface primaryTypeface;
     private Typeface secondaryTypeface;
+    private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
     private long basePositionMs;
     private long baseUptimeMs;
     private long lineStartMs;
@@ -105,6 +106,12 @@ final class MainLyricPreviewView extends View {
         postInvalidateOnAnimation();
     }
 
+    void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
+        typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
+        requestLayout();
+        postInvalidateOnAnimation();
+    }
+
     private void init() {
         primaryTypeface = AppFonts.semiBold(getContext());
         secondaryTypeface = AppFonts.semiBold(getContext());
@@ -141,8 +148,8 @@ final class MainLyricPreviewView extends View {
         canvas.clipRect(left, 0f, left + width, getHeight());
         for (int index = 0; index < lines.size(); index++) {
             PreviewLine line = lines.get(index);
-            float textSize = sp(line.primary ? primaryTextSp() : secondaryTextSp());
-            textPaint.setTypeface(line.primary ? primaryTypeface : secondaryTypeface);
+            float textSize = sp(textSizeSp(line));
+            textPaint.setTypeface(typefaceForLine(line));
             textPaint.setTextSize(textSize);
             int alpha = line.primary ? 244 : 208;
             textPaint.setColor(Color.argb(alpha, 255, 255, 255));
@@ -358,8 +365,8 @@ final class MainLyricPreviewView extends View {
             if (line.isAnimatedVisual()) {
                 continue;
             }
-            textPaint.setTypeface(line.primary ? primaryTypeface : secondaryTypeface);
-            textPaint.setTextSize(sp(line.primary ? primaryTextSp() : secondaryTextSp()));
+            textPaint.setTypeface(typefaceForLine(line));
+            textPaint.setTextSize(sp(textSizeSp(line)));
             if (measureLineWidth(line) > width) {
                 return true;
             }
@@ -416,8 +423,11 @@ final class MainLyricPreviewView extends View {
     }
 
     private float reservedContentHeight() {
-        float primaryRow = sp(primaryTextSp() * 1.22f);
-        float secondaryRow = sp(secondaryTextSp() * 1.18f);
+        float primaryRow = sp(textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL, PRIMARY_TEXT_SP) * 1.22f);
+        float secondaryRow = sp(Math.max(
+                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION, SECONDARY_TEXT_SP),
+                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION, SECONDARY_TEXT_SP)
+        ) * 1.18f);
         float gap = sp(rowGapSp());
         float height = primaryRow;
         for (int index = 1; index < RESERVED_TEXT_ROWS; index++) {
@@ -428,9 +438,9 @@ final class MainLyricPreviewView extends View {
 
     private float rowHeight(PreviewLine line) {
         if (line.isAnimatedVisual()) {
-            return sp((line.primary ? 24f : 21f) * textScale);
+            return sp((line.primary ? 24f : 21f) * textScale * typographyStyle(slotForLine(line)).scale());
         }
-        return sp(line.primary ? primaryTextSp() * 1.22f : secondaryTextSp() * 1.18f);
+        return sp(textSizeSp(line) * (line.primary ? 1.22f : 1.18f));
     }
 
     private boolean sameLines(List<PreviewLine> nextLines) {
@@ -444,6 +454,7 @@ final class MainLyricPreviewView extends View {
                     || current.type != next.type
                     || current.hasKaraoke() != next.hasKaraoke()
                     || !current.kind.equals(next.kind)
+                    || !current.slotId.equals(next.slotId)
                     || !current.text.equals(next.text)) {
                 return false;
             }
@@ -456,15 +467,50 @@ final class MainLyricPreviewView extends View {
     }
 
     private float primaryTextSp() {
-        return PRIMARY_TEXT_SP * textScale;
+        return textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL, PRIMARY_TEXT_SP);
     }
 
     private float secondaryTextSp() {
-        return SECONDARY_TEXT_SP * textScale;
+        return Math.max(
+                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION, SECONDARY_TEXT_SP),
+                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION, SECONDARY_TEXT_SP)
+        );
     }
 
     private float rowGapSp() {
         return ROW_GAP_SP * Math.min(1.25f, textScale);
+    }
+
+    private float textSizeSp(PreviewLine line) {
+        return textSizeSp(slotForLine(line), line != null && line.primary ? PRIMARY_TEXT_SP : SECONDARY_TEXT_SP);
+    }
+
+    private float textSizeSp(String slotId, float baseSizeSp) {
+        return Math.max(8f, baseSizeSp * textScale * typographyStyle(slotId).scale());
+    }
+
+    private Typeface typefaceForLine(PreviewLine line) {
+        return AppFonts.byWeight(getContext(), typographyStyle(slotForLine(line)).weight);
+    }
+
+    private AiLyricsSettings.TypographyStyle typographyStyle(String slotId) {
+        AiLyricsSettings.TypographySettings settings = typographySettings == null
+                ? AiLyricsSettings.TypographySettings.defaults()
+                : typographySettings;
+        return settings.style(slotId);
+    }
+
+    private String slotForLine(PreviewLine line) {
+        if (line == null) {
+            return AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL;
+        }
+        String normalized = AiLyricsSettings.typographySlotById(line.slotId).id;
+        if (AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION.equals(normalized)
+                || AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION.equals(normalized)
+                || AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL.equals(normalized)) {
+            return normalized;
+        }
+        return line.primary ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION;
     }
 
     private void drawKaraokeLine(Canvas canvas, PreviewLine line, float x, float baseline, float textSize, long positionMs) {
@@ -835,6 +881,7 @@ final class MainLyricPreviewView extends View {
         final List<LyricsLine.Syllable> syllables;
         final String kind;
         final int type;
+        final String slotId;
 
         PreviewLine(String text, boolean primary) {
             this(text, primary, Collections.emptyList());
@@ -845,23 +892,36 @@ final class MainLyricPreviewView extends View {
         }
 
         PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind) {
-            this(text, primary, syllables, kind, TYPE_TEXT);
+            this(text, primary, syllables, kind, primary
+                    ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL
+                    : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION);
+        }
+
+        PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, String slotId) {
+            this(text, primary, syllables, kind, TYPE_TEXT, slotId);
         }
 
         private PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type) {
+            this(text, primary, syllables, kind, type, primary
+                    ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL
+                    : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION);
+        }
+
+        private PreviewLine(String text, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type, String slotId) {
             this.text = text == null ? "" : text;
             this.primary = primary;
             this.syllables = syllables == null ? Collections.emptyList() : new ArrayList<>(syllables);
             this.kind = normalizeKind(kind);
             this.type = type;
+            this.slotId = AiLyricsSettings.typographySlotById(slotId).id;
         }
 
         static PreviewLine interlude(String text) {
-            return new PreviewLine(text, true, Collections.emptyList(), "vocal", TYPE_INTERLUDE);
+            return new PreviewLine(text, true, Collections.emptyList(), "vocal", TYPE_INTERLUDE, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
 
         static PreviewLine loading(String text) {
-            return new PreviewLine(text, true, Collections.emptyList(), "vocal", TYPE_LOADING);
+            return new PreviewLine(text, true, Collections.emptyList(), "vocal", TYPE_LOADING, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
 
         boolean hasKaraoke() {

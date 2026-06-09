@@ -82,6 +82,7 @@ public final class LyricsView extends View {
     private final Set<String> completedBounceKeys = new HashSet<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
     private Typeface lyricTypeface;
+    private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
 
     private List<LyricsLine> lines = Collections.emptyList();
     private long positionMs;
@@ -236,6 +237,13 @@ public final class LyricsView extends View {
         }
         japaneseFuriganaEnabled = enabled;
         rowLayoutCache.clear();
+        postInvalidateOnAnimation();
+    }
+
+    void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
+        typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
+        rowLayoutCache.clear();
+        requestLayout();
         postInvalidateOnAnimation();
     }
 
@@ -610,7 +618,7 @@ public final class LyricsView extends View {
         }
 
         long start = SystemClock.uptimeMillis();
-        float textSize = sp(MAIN_TEXT_SP);
+        float textSize = sp(typographyTextSizeSp(AiLyricsSettings.TYPO_LYRICS_ORIGINAL, MAIN_TEXT_SP));
         int warmed = 0;
         while (rowPrewarmIndex < lines.size()
                 && warmed < 18
@@ -634,7 +642,7 @@ public final class LyricsView extends View {
             for (int index = 0; index < parts.size(); index++) {
                 LyricsLine.VocalPart part = parts.get(index);
                 cachedRows(
-                        "line:" + lineIndex + ":part:" + partKey(part, index),
+                        "line:" + lineIndex + ":part:" + partKey(part, index) + typographyCacheKey(AiLyricsSettings.TYPO_LYRICS_ORIGINAL),
                         part.text,
                         japaneseFuriganaEnabled ? part.furiganaText : "",
                         part.syllables,
@@ -645,7 +653,7 @@ public final class LyricsView extends View {
             }
             return;
         }
-        cachedRows("line:" + lineIndex, line.text, japaneseFuriganaEnabled ? line.furiganaText : "", line.syllables, line.startTimeMs, line.endTimeMs, textSize);
+        cachedRows("line:" + lineIndex + typographyCacheKey(AiLyricsSettings.TYPO_LYRICS_ORIGINAL), line.text, japaneseFuriganaEnabled ? line.furiganaText : "", line.syllables, line.startTimeMs, line.endTimeMs, textSize);
     }
 
     private boolean hasTimedKaraokeData(List<LyricsLine> lyricLines) {
@@ -719,7 +727,8 @@ public final class LyricsView extends View {
                 active,
                 0,
                 "line:" + lineIndex,
-                "line:" + lineIndex
+                "line:" + lineIndex,
+                AiLyricsSettings.TYPO_LYRICS_ORIGINAL
         ));
         addSupplementGroups(groups, lineIndex, line, active, distance);
         return groups;
@@ -738,7 +747,8 @@ public final class LyricsView extends View {
                 inactiveColor,
                 activeColor,
                 active,
-                info == null ? InterludeInfo.none() : info
+                info == null ? InterludeInfo.none() : info,
+                typographyTypeface(AiLyricsSettings.TYPO_LYRICS_ORIGINAL)
         );
     }
 
@@ -763,7 +773,8 @@ public final class LyricsView extends View {
                     partActive,
                     index,
                     "line:" + lineIndex + ":part:" + partKey(part, index),
-                    "line:" + lineIndex + ":part:" + partKey(part, index)
+                    "line:" + lineIndex + ":part:" + partKey(part, index),
+                    AiLyricsSettings.TYPO_LYRICS_ORIGINAL
             ));
             addVocalPartSupplementGroups(groups, lineIndex, part, index, partActive, distance);
         }
@@ -794,7 +805,8 @@ public final class LyricsView extends View {
                     active ? activePronunciationColor : inactiveColor,
                     lineIndex,
                     "part:" + key + ":pron",
-                    groups.size()
+                    groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION
             ));
         }
         if (!translation.isEmpty()) {
@@ -803,7 +815,8 @@ public final class LyricsView extends View {
                     active ? activeTranslationColor : inactiveColor,
                     lineIndex,
                     "part:" + key + ":trans",
-                    groups.size()
+                    groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_TRANSLATION
             ));
         }
     }
@@ -841,7 +854,8 @@ public final class LyricsView extends View {
                     active ? activePronunciationColor : inactiveColor,
                     lineIndex,
                     "pron",
-                    groups.size()
+                    groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION
             ));
         }
         if (!translation.isEmpty()) {
@@ -850,12 +864,13 @@ public final class LyricsView extends View {
                     active ? activeTranslationColor : inactiveColor,
                     lineIndex,
                     "trans",
-                    groups.size()
+                    groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_TRANSLATION
             ));
         }
     }
 
-    private DrawGroup buildSupplementGroup(String text, int color, int lineIndex, String type, int rowSeed) {
+    private DrawGroup buildSupplementGroup(String text, int color, int lineIndex, String type, int rowSeed, String typographySlotId) {
         return buildGroup(
                 text,
                 "",
@@ -869,7 +884,8 @@ public final class LyricsView extends View {
                 false,
                 rowSeed,
                 "line:" + lineIndex + ":supp:" + type + ":" + text.hashCode(),
-                "line:" + lineIndex + ":supp:" + type
+                "line:" + lineIndex + ":supp:" + type,
+                typographySlotId
         );
     }
 
@@ -886,10 +902,12 @@ public final class LyricsView extends View {
             boolean active,
             int rowSeed,
             String rowCacheKey,
-            String bounceKeyPrefix
+            String bounceKeyPrefix,
+            String typographySlotId
     ) {
-        float textSize = sp(textSizeSp);
-        List<TextRow> rows = cachedRows(rowCacheKey, text, rubyText, syllables, startTimeMs, endTimeMs, textSize);
+        String slotId = AiLyricsSettings.typographySlotById(typographySlotId).id;
+        float textSize = sp(typographyTextSizeSp(slotId, textSizeSp));
+        List<TextRow> rows = cachedRows(rowCacheKey + typographyCacheKey(slotId), text, rubyText, syllables, startTimeMs, endTimeMs, textSize);
         return new DrawGroup(
                 rows,
                 textSize,
@@ -899,8 +917,37 @@ public final class LyricsView extends View {
                 active,
                 rowSeed,
                 bounceKeyPrefix,
-                active ? findActiveSegmentIndex(rows) : -1
+                active ? findActiveSegmentIndex(rows) : -1,
+                typographyTypeface(slotId),
+                isSupplementTypographySlot(slotId)
         );
+    }
+
+    private float typographyTextSizeSp(String slotId, float baseSizeSp) {
+        return Math.max(8f, baseSizeSp * typographyStyle(slotId).scale());
+    }
+
+    private Typeface typographyTypeface(String slotId) {
+        return AppFonts.byWeight(getContext(), typographyStyle(slotId).weight);
+    }
+
+    private AiLyricsSettings.TypographyStyle typographyStyle(String slotId) {
+        AiLyricsSettings.TypographySettings settings = typographySettings == null
+                ? AiLyricsSettings.TypographySettings.defaults()
+                : typographySettings;
+        return settings.style(slotId);
+    }
+
+    private String typographyCacheKey(String slotId) {
+        AiLyricsSettings.TypographySlot slot = AiLyricsSettings.typographySlotById(slotId);
+        AiLyricsSettings.TypographyStyle style = typographyStyle(slot.id);
+        return ":typo:" + slot.id + ":" + style.sizePercent + ":" + style.weight;
+    }
+
+    private boolean isSupplementTypographySlot(String slotId) {
+        String normalized = AiLyricsSettings.typographySlotById(slotId).id;
+        return AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION.equals(normalized)
+                || AiLyricsSettings.TYPO_LYRICS_TRANSLATION.equals(normalized);
     }
 
     private List<TextRow> cachedRows(
@@ -984,8 +1031,8 @@ public final class LyricsView extends View {
             }
             top += group.height();
             if (groupIndex + 1 < groups.size()) {
-                boolean currentSupplement = group.textSize <= sp(SUPPLEMENT_TEXT_SP + 0.5f);
-                boolean nextSupplement = groups.get(groupIndex + 1).textSize <= sp(SUPPLEMENT_TEXT_SP + 0.5f);
+                boolean currentSupplement = group.supplement;
+                boolean nextSupplement = groups.get(groupIndex + 1).supplement;
                 top += currentSupplement || nextSupplement ? sp(SUPPLEMENT_GAP_SP) : sp(PART_GAP_SP);
             }
         }
@@ -995,8 +1042,8 @@ public final class LyricsView extends View {
         float totalHeight = 0f;
         for (int index = 0; index < groups.size(); index++) {
             if (index > 0) {
-                boolean previousSupplement = groups.get(index - 1).textSize <= sp(SUPPLEMENT_TEXT_SP + 0.5f);
-                boolean currentSupplement = groups.get(index).textSize <= sp(SUPPLEMENT_TEXT_SP + 0.5f);
+                boolean previousSupplement = groups.get(index - 1).supplement;
+                boolean currentSupplement = groups.get(index).supplement;
                 totalHeight += previousSupplement || currentSupplement ? sp(SUPPLEMENT_GAP_SP) : sp(PART_GAP_SP);
             }
             DrawGroup group = groups.get(index);
@@ -1029,7 +1076,7 @@ public final class LyricsView extends View {
         }
 
         float labelTextSize = sp(15f);
-        configurePaint(color, "vocal", false, labelTextSize, false);
+        configurePaint(color, "vocal", false, labelTextSize, false, group.typeface);
         Paint.FontMetrics metrics = textPaint.getFontMetrics();
         float baseline = centerY - (metrics.ascent + metrics.descent) * 0.5f;
         float labelLeft = left + 4f * barWidth + 3f * gap + sp(11f);
@@ -1101,7 +1148,7 @@ public final class LyricsView extends View {
         );
 
         if (!group.active && !row.hasRuby()) {
-            configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, false, group.textSize, false);
+            configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, false, group.textSize, false, group.typeface);
             canvas.drawText(row.text, left, baseline, textPaint);
             canvas.restoreToCount(canvasSave);
             resetPaintEffects();
@@ -1126,7 +1173,7 @@ public final class LyricsView extends View {
             float fill = group.active ? segmentFillFraction(segment) : 0f;
             drawRubyText(canvas, segment, cursor, baseline + offsetY, group, fill, fadeAlpha);
 
-            configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, group.active, group.textSize, false);
+            configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, group.active, group.textSize, false, group.typeface);
             canvas.drawText(segment.text, cursor, baseline + offsetY, textPaint);
 
             if (fill > 0f) {
@@ -1149,13 +1196,12 @@ public final class LyricsView extends View {
             float fill,
             float fadeAlpha
     ) {
-        if (segment.rubyText == null || segment.rubyText.trim().isEmpty() || group.textSize <= sp(SUPPLEMENT_TEXT_SP + 0.5f)) {
+        if (segment.rubyText == null || segment.rubyText.trim().isEmpty() || group.supplement) {
             return;
         }
         float rubySize = Math.max(sp(9f), group.textSize * FURIGANA_TEXT_RATIO);
         int color = fill > 0f ? group.activeColor : group.inactiveColor;
-        configurePaint(scaleAlpha(color, fadeAlpha * 0.84f), group.kind, false, rubySize, false);
-        textPaint.setTypeface(lyricTypeface);
+        configurePaint(scaleAlpha(color, fadeAlpha * 0.84f), group.kind, false, rubySize, false, group.typeface);
         float rubyWidth = textPaint.measureText(segment.rubyText);
         float rubyLeft = cursor + segment.width * 0.5f - rubyWidth * 0.5f;
         float rubyBaseline = baseline - group.textSize * 0.90f;
@@ -1184,7 +1230,7 @@ public final class LyricsView extends View {
 
         int clipSave = canvas.save();
         canvas.clipRect(cursor, top, clipRight, bottom);
-        configurePaint(activeColor, group.kind, group.active, group.textSize, true);
+        configurePaint(activeColor, group.kind, group.active, group.textSize, true, group.typeface);
 
         if (safeFill < 0.995f && softWidth > 1f && clipRight > cursor) {
             float softStart = Math.max(cursor, fillRight - softWidth * 0.42f);
@@ -1817,8 +1863,12 @@ public final class LyricsView extends View {
     }
 
     private void configurePaint(int color, String kind, boolean animate, float textSize, boolean activeFill) {
+        configurePaint(color, kind, animate, textSize, activeFill, lyricTypeface);
+    }
+
+    private void configurePaint(int color, String kind, boolean animate, float textSize, boolean activeFill, Typeface typeface) {
         resetPaintEffects();
-        textPaint.setTypeface(lyricTypeface);
+        textPaint.setTypeface(typeface == null ? lyricTypeface : typeface);
         textPaint.setTextSize(textSize);
         textPaint.setColor(color);
         textPaint.setAlpha(Color.alpha(color));
@@ -2490,6 +2540,8 @@ public final class LyricsView extends View {
         final String bounceKeyPrefix;
         final int activeSegmentIndex;
         final InterludeInfo interludeInfo;
+        final Typeface typeface;
+        final boolean supplement;
 
         DrawGroup(
                 List<TextRow> rows,
@@ -2500,7 +2552,9 @@ public final class LyricsView extends View {
                 boolean active,
                 int rowSeed,
                 String bounceKeyPrefix,
-                int activeSegmentIndex
+                int activeSegmentIndex,
+                Typeface typeface,
+                boolean supplement
         ) {
             this.rows = rows == null || rows.isEmpty() ? Collections.emptyList() : rows;
             this.textSize = textSize;
@@ -2512,9 +2566,11 @@ public final class LyricsView extends View {
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
             this.activeSegmentIndex = activeSegmentIndex;
             this.interludeInfo = InterludeInfo.none();
+            this.typeface = typeface;
+            this.supplement = supplement;
         }
 
-        static DrawGroup interlude(float textSize, int inactiveColor, int activeColor, boolean active, InterludeInfo info) {
+        static DrawGroup interlude(float textSize, int inactiveColor, int activeColor, boolean active, InterludeInfo info, Typeface typeface) {
             return new DrawGroup(
                     Collections.emptyList(),
                     textSize,
@@ -2525,7 +2581,9 @@ public final class LyricsView extends View {
                     0,
                     "",
                     -1,
-                    info == null ? InterludeInfo.none() : info
+                    info == null ? InterludeInfo.none() : info,
+                    typeface,
+                    false
             );
         }
 
@@ -2539,7 +2597,9 @@ public final class LyricsView extends View {
                 int rowSeed,
                 String bounceKeyPrefix,
                 int activeSegmentIndex,
-                InterludeInfo interludeInfo
+                InterludeInfo interludeInfo,
+                Typeface typeface,
+                boolean supplement
         ) {
             this.rows = rows == null || rows.isEmpty() ? Collections.emptyList() : rows;
             this.textSize = textSize;
@@ -2551,6 +2611,8 @@ public final class LyricsView extends View {
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
             this.activeSegmentIndex = activeSegmentIndex;
             this.interludeInfo = interludeInfo == null ? InterludeInfo.none() : interludeInfo;
+            this.typeface = typeface;
+            this.supplement = supplement;
         }
 
         float lineHeight() {
