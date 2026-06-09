@@ -17,7 +17,11 @@ public final class SpotifyForegroundAccessibilityService extends AccessibilitySe
         if (packageName == null) {
             return;
         }
-        SpotifyShortcutOverlayController.setSpotifyForeground(isSpotifyPackage(packageName.toString()));
+        String packageValue = packageName.toString();
+        if (isIgnoredPackage(packageValue)) {
+            return;
+        }
+        SpotifyShortcutOverlayController.setSpotifyForeground(isSpotifyPackage(packageValue));
     }
 
     @Override
@@ -33,5 +37,18 @@ public final class SpotifyForegroundAccessibilityService extends AccessibilitySe
     static boolean isSpotifyPackage(String packageName) {
         String value = packageName == null ? "" : packageName.trim().toLowerCase(Locale.ROOT);
         return SPOTIFY_PACKAGE.equals(value) || value.startsWith("com.spotify.");
+    }
+
+    private boolean isIgnoredPackage(String packageName) {
+        String value = packageName == null ? "" : packageName.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return true;
+        }
+        String ownPackage = getPackageName() == null ? "" : getPackageName().toLowerCase(Locale.ROOT);
+        return value.equals(ownPackage)
+                || value.equals("android")
+                || value.startsWith("android.")
+                || value.equals("com.android.systemui")
+                || value.startsWith("com.android.systemui.");
     }
 }
