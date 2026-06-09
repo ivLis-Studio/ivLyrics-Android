@@ -147,7 +147,6 @@ public final class MainActivity extends Activity implements
     private TextView lyricsTitleView;
     private TextView lyricsArtistView;
     private TextView lyricsContributorView;
-    private TextView inAppBrowserTitleView;
     private WebView inAppBrowserWebView;
     private MainLyricPreviewView lyricPreviewView;
     private TextView sourceView;
@@ -404,10 +403,6 @@ public final class MainActivity extends Activity implements
     public void onBackPressed() {
         if (isInAppBrowserVisible()) {
             lastBackPressElapsedMs = 0L;
-            if (inAppBrowserWebView != null && inAppBrowserWebView.canGoBack()) {
-                inAppBrowserWebView.goBack();
-                return;
-            }
             showInAppBrowser(false);
             return;
         }
@@ -1567,47 +1562,6 @@ public final class MainActivity extends Activity implements
         FrameLayout page = new FrameLayout(this);
         page.setBackgroundColor(Color.rgb(12, 13, 17));
 
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(18), dp(30), dp(18), 0);
-        page.addView(content, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        View handle = new View(this);
-        handle.setBackground(roundDrawable(Color.argb(78, 255, 255, 255), dp(1.5f)));
-        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(dp(42), dp(3));
-        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
-        content.addView(handle, handleParams);
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(58)
-        );
-        content.addView(header, headerParams);
-
-        ImageButton closeButton = iconButton(
-                R.drawable.ic_chevron_down,
-                44,
-                22,
-                Color.WHITE,
-                Color.TRANSPARENT,
-                ui("button.close")
-        );
-        closeButton.setOnClickListener(view -> showInAppBrowser(false));
-        header.addView(closeButton, new LinearLayout.LayoutParams(dp(44), dp(44)));
-
-        inAppBrowserTitleView = label("lyrics.ivl.is", 14f, Color.WHITE, AppFonts.semiBold(this));
-        inAppBrowserTitleView.setSingleLine(true);
-        inAppBrowserTitleView.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        titleParams.leftMargin = dp(10);
-        header.addView(inAppBrowserTitleView, titleParams);
-
         inAppBrowserWebView = new WebView(this);
         inAppBrowserWebView.setBackgroundColor(Color.rgb(12, 13, 17));
         WebSettings settings = inAppBrowserWebView.getSettings();
@@ -1630,11 +1584,26 @@ public final class MainActivity extends Activity implements
                 return shouldOpenBrowserNavigationExternally(url);
             }
         });
-        content.addView(inAppBrowserWebView, new LinearLayout.LayoutParams(
+        page.addView(inAppBrowserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
+        FrameLayout dragZone = new FrameLayout(this);
+        dragZone.setBackgroundColor(Color.TRANSPARENT);
+        FrameLayout.LayoutParams dragZoneParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(58),
+                Gravity.TOP
+        );
+        page.addView(dragZone, dragZoneParams);
+        attachInAppBrowserSwipe(dragZone);
+
+        View handle = new View(this);
+        handle.setBackground(roundDrawable(Color.argb(72, 255, 255, 255), dp(1.5f)));
+        FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(dp(42), dp(3), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        handleParams.topMargin = dp(12);
+        dragZone.addView(handle, handleParams);
         return page;
     }
 
@@ -6639,15 +6608,6 @@ public final class MainActivity extends Activity implements
             return;
         }
         inAppBrowserInitialUrl = safeUrl;
-        if (inAppBrowserTitleView != null) {
-            Uri uri = Uri.parse(safeUrl);
-            String title = uri.getHost() == null ? safeUrl : uri.getHost();
-            String path = uri.getPath() == null ? "" : uri.getPath();
-            if (!path.isEmpty() && !"/".equals(path)) {
-                title += path;
-            }
-            inAppBrowserTitleView.setText(title);
-        }
         inAppBrowserWebView.stopLoading();
         inAppBrowserWebView.clearHistory();
         inAppBrowserWebView.loadUrl(safeUrl);
@@ -6679,6 +6639,82 @@ public final class MainActivity extends Activity implements
                     inAppBrowserPage.setVisibility(View.GONE);
                     inAppBrowserPage.setTranslationY(0f);
                 })
+                .start();
+    }
+
+    private void attachInAppBrowserSwipe(View view) {
+        view.setClickable(true);
+        view.setOnTouchListener((target, event) -> {
+            if (pageVelocityTracker != null) {
+                pageVelocityTracker.addMovement(event);
+            }
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    recyclePageVelocityTracker();
+                    pageVelocityTracker = VelocityTracker.obtain();
+                    pageVelocityTracker.addMovement(event);
+                    pageDragStartY = event.getRawY();
+                    pageDragStartTranslationY = inAppBrowserPage == null ? 0f : inAppBrowserPage.getTranslationY();
+                    pageDragging = false;
+                    if (inAppBrowserPage != null) {
+                        inAppBrowserPage.animate().cancel();
+                    }
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    float dy = event.getRawY() - pageDragStartY;
+                    if (Math.abs(dy) > dp(10)) {
+                        pageDragging = true;
+                    }
+                    if (inAppBrowserVisible) {
+                        applyInAppBrowserDragTranslation(Math.max(0f, pageDragStartTranslationY + dy));
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_UP: {
+                    float releaseVelocityY = pageVelocityY();
+                    if (pageDragging && inAppBrowserVisible) {
+                        settleInAppBrowserDrag(releaseVelocityY);
+                    } else {
+                        target.performClick();
+                    }
+                    recyclePageVelocityTracker();
+                    return true;
+                }
+                case MotionEvent.ACTION_CANCEL:
+                    pageDragging = false;
+                    if (inAppBrowserVisible) {
+                        settleInAppBrowserDrag(0f);
+                    }
+                    recyclePageVelocityTracker();
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void applyInAppBrowserDragTranslation(float translationY) {
+        if (inAppBrowserPage == null) {
+            return;
+        }
+        int height = getResources().getDisplayMetrics().heightPixels;
+        inAppBrowserPage.setTranslationY(Math.max(0f, Math.min(height, translationY)));
+    }
+
+    private void settleInAppBrowserDrag(float velocityY) {
+        if (inAppBrowserPage == null) {
+            return;
+        }
+        int height = getResources().getDisplayMetrics().heightPixels;
+        float translationY = Math.max(0f, inAppBrowserPage.getTranslationY());
+        boolean shouldClose = translationY > height * 0.24f || (velocityY > dp(1100) && translationY > dp(36));
+        if (shouldClose) {
+            showInAppBrowser(false);
+            return;
+        }
+        inAppBrowserPage.animate()
+                .translationY(0f)
+                .setDuration(210L)
                 .start();
     }
 
