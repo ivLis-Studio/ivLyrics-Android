@@ -1630,8 +1630,10 @@ public final class MainActivity extends Activity implements
 
     private FrameLayout buildLyricsPage() {
         FrameLayout page = new FrameLayout(this);
+        page.setBackgroundColor(Color.rgb(6, 7, 12));
 
         lyricsBackgroundView = new PlayerBackgroundView(this);
+        lyricsBackgroundView.setAlpha(1f);
         page.addView(lyricsBackgroundView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -7528,6 +7530,10 @@ public final class MainActivity extends Activity implements
                 debugPanel.bringToFront();
             }
             lyricsPage.setTranslationY(height);
+            lyricsPage.setAlpha(1f);
+            if (lyricsBackgroundView != null) {
+                lyricsBackgroundView.setAlpha(1f);
+            }
             lyricsPage.animate()
                     .translationY(0f)
                     .setDuration(330L)
@@ -7545,6 +7551,10 @@ public final class MainActivity extends Activity implements
             dismissLyricsMetaTip();
             mainPage.setAlpha(1f);
             setLyricsPageCornerRadius(28);
+            lyricsPage.setAlpha(1f);
+            if (lyricsBackgroundView != null) {
+                lyricsBackgroundView.setAlpha(1f);
+            }
             lyricsPage.animate()
                     .translationY(height)
                     .setDuration(280L)
@@ -8367,6 +8377,10 @@ public final class MainActivity extends Activity implements
         }
         int height = getResources().getDisplayMetrics().heightPixels;
         float boundedTranslation = Math.max(0f, Math.min(height, translationY));
+        lyricsPage.setAlpha(1f);
+        if (lyricsBackgroundView != null) {
+            lyricsBackgroundView.setAlpha(1f);
+        }
         lyricsPage.setTranslationY(boundedTranslation);
         setLyricsPageCornerRadius(boundedTranslation > 1f ? 28 : 0);
         applyLyricsPageDragTopPadding(boundedTranslation);
