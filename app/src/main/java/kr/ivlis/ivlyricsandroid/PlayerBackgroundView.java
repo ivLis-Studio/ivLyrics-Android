@@ -27,7 +27,7 @@ public final class PlayerBackgroundView extends View {
     private Bitmap noiseBitmap;
     private String sourceArtworkKey = "";
     private AiLyricsSettings.BackgroundSettings backgroundSettings =
-            new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a");
+            new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a", 100);
     private int paletteBackground = Color.rgb(20, 23, 32);
     private int palettePrimary = Color.rgb(72, 64, 124);
     private int paletteSecondary = Color.rgb(145, 83, 131);
@@ -83,7 +83,7 @@ public final class PlayerBackgroundView extends View {
 
     void setBackgroundSettings(AiLyricsSettings.BackgroundSettings settings) {
         AiLyricsSettings.BackgroundSettings safeSettings = settings == null
-                ? new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a")
+                ? new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a", 100)
                 : settings;
         boolean blurChanged = backgroundSettings.blur != safeSettings.blur;
         backgroundSettings = safeSettings;

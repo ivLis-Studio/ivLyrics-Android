@@ -238,8 +238,10 @@ public final class MainActivity extends Activity implements
     private Switch backgroundReduceMotionSwitch;
     private SeekBar backgroundBrightnessSeekBar;
     private SeekBar backgroundBlurSeekBar;
+    private SeekBar backgroundVideoScaleSeekBar;
     private TextView backgroundBrightnessValueView;
     private TextView backgroundBlurValueView;
+    private TextView backgroundVideoScaleValueView;
     private EditText apiKeysInput;
     private EditText modelInput;
     private EditText baseUrlInput;
@@ -247,6 +249,8 @@ public final class MainActivity extends Activity implements
     private EditText temperatureInput;
     private TextView backgroundSolidColorValueView;
     private View backgroundSolidColorSwatch;
+    private View backgroundSolidColorGroup;
+    private View backgroundVideoScaleGroup;
     private EditText spotifyClientIdInput;
     private EditText spotifyClientSecretInput;
     private EditText spotifySetupClientIdInput;
@@ -2405,9 +2409,20 @@ public final class MainActivity extends Activity implements
                 if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) {
                     return;
                 }
-                aiLyricsSettings.setBackgroundBrightness(progress);
-                updateBackgroundSettingsUi(aiLyricsSettings.snapshot(), false);
-                applyBackgroundSettings(aiLyricsSettings.snapshot());
+                if (backgroundBrightnessValueView != null) {
+                    backgroundBrightnessValueView.setText(progress + "%");
+                }
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                aiLyricsSettings.setBackgroundBrightness(seekBar.getProgress());
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                updateBackgroundSettingsUi(snapshot, false);
+                applyBackgroundSettings(snapshot);
             }
         });
         settingsDisplayPage.addView(settingGroup(ui("setting.brightness"), ui("setting.brightness_desc"), buildSliderRow(backgroundBrightnessSeekBar, backgroundBrightnessValueView)), topMargin(matchWrap(), dp(12)));
@@ -2421,12 +2436,51 @@ public final class MainActivity extends Activity implements
                 if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) {
                     return;
                 }
-                aiLyricsSettings.setBackgroundBlur(progress);
-                updateBackgroundSettingsUi(aiLyricsSettings.snapshot(), false);
-                applyBackgroundSettings(aiLyricsSettings.snapshot());
+                if (backgroundBlurValueView != null) {
+                    backgroundBlurValueView.setText(progress + "%");
+                }
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                aiLyricsSettings.setBackgroundBlur(seekBar.getProgress());
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                updateBackgroundSettingsUi(snapshot, false);
+                applyBackgroundSettings(snapshot);
             }
         });
         settingsDisplayPage.addView(settingGroup(ui("setting.blur"), ui("setting.blur_desc"), buildSliderRow(backgroundBlurSeekBar, backgroundBlurValueView)), topMargin(matchWrap(), dp(12)));
+
+        backgroundVideoScaleSeekBar = new SeekBar(this);
+        backgroundVideoScaleSeekBar.setMax(80);
+        backgroundVideoScaleValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        backgroundVideoScaleSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                if (backgroundVideoScaleValueView != null) {
+                    backgroundVideoScaleValueView.setText((100 + progress) + "%");
+                }
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                aiLyricsSettings.setBackgroundVideoScale(100 + seekBar.getProgress());
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                updateBackgroundSettingsUi(snapshot, false);
+                applyBackgroundSettings(snapshot);
+            }
+        });
+        backgroundVideoScaleGroup = settingGroup(ui("setting.video_scale"), ui("setting.video_scale_desc"), buildSliderRow(backgroundVideoScaleSeekBar, backgroundVideoScaleValueView));
+        settingsDisplayPage.addView(backgroundVideoScaleGroup, topMargin(matchWrap(), dp(12)));
 
         backgroundNoiseSwitch = settingSwitch(ui("setting.noise"), ui("setting.noise_desc"));
         backgroundNoiseSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -2450,11 +2504,12 @@ public final class MainActivity extends Activity implements
         });
         settingsDisplayPage.addView(backgroundReduceMotionSwitch, topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(settingGroup(
+        backgroundSolidColorGroup = settingGroup(
                 ui("field.solid_color"),
                 ui("field.solid_color_desc"),
                 buildBackgroundSolidColorControl()
-        ), topMargin(matchWrap(), dp(12)));
+        );
+        settingsDisplayPage.addView(backgroundSolidColorGroup, topMargin(matchWrap(), dp(12)));
 
         settingsAiPage.addView(sectionTitle(ui("section.ai_lyrics")));
         settingsAiPage.addView(sectionDescription(ui("section.ai_lyrics_desc")), topMargin(matchWrap(), dp(8)));
@@ -4271,6 +4326,9 @@ public final class MainActivity extends Activity implements
         if (backgroundBlurSeekBar != null) {
             backgroundBlurSeekBar.setProgress(background.blur);
         }
+        if (backgroundVideoScaleSeekBar != null) {
+            backgroundVideoScaleSeekBar.setProgress(background.videoScale - 100);
+        }
         if (backgroundNoiseSwitch != null) {
             backgroundNoiseSwitch.setChecked(background.noise);
         }
@@ -4284,11 +4342,24 @@ public final class MainActivity extends Activity implements
             backgroundSolidColorSwatch.setBackground(roundDrawable(parseColor(background.solidColor, Color.rgb(30, 58, 138)), dp(10)));
         }
         suppressSettingsEvents = false;
+        boolean videoMode = AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(background.mode);
+        boolean solidMode = AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(background.mode);
+        setBackgroundOptionVisibility(backgroundVideoScaleGroup, videoMode);
+        setBackgroundOptionVisibility(backgroundSolidColorGroup, solidMode);
         if (backgroundBrightnessValueView != null) {
             backgroundBrightnessValueView.setText(background.brightness + "%");
         }
         if (backgroundBlurValueView != null) {
             backgroundBlurValueView.setText(background.blur + "%");
+        }
+        if (backgroundVideoScaleValueView != null) {
+            backgroundVideoScaleValueView.setText(background.videoScale + "%");
+        }
+    }
+
+    private void setBackgroundOptionVisibility(View view, boolean visible) {
+        if (view != null) {
+            view.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 

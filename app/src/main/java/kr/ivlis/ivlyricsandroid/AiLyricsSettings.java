@@ -43,6 +43,7 @@ final class AiLyricsSettings {
     static final String KEY_BACKGROUND_NOISE = "background_noise";
     static final String KEY_BACKGROUND_REDUCE_MOTION = "background_reduce_motion";
     static final String KEY_BACKGROUND_SOLID_COLOR = "background_solid_color";
+    static final String KEY_BACKGROUND_VIDEO_SCALE = "background_video_scale";
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
     static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
@@ -421,6 +422,10 @@ final class AiLyricsSettings {
         prefs.edit().putInt(KEY_BACKGROUND_BLUR, clampInt(blur, 0, 100)).apply();
     }
 
+    void setBackgroundVideoScale(int scalePercent) {
+        prefs.edit().putInt(KEY_BACKGROUND_VIDEO_SCALE, clampInt(scalePercent, 100, 180)).apply();
+    }
+
     void setBackgroundNoise(boolean enabled) {
         prefs.edit().putBoolean(KEY_BACKGROUND_NOISE, enabled).apply();
     }
@@ -511,7 +516,8 @@ final class AiLyricsSettings {
                 clampInt(prefs.getInt(KEY_BACKGROUND_BLUR, 20), 0, 100),
                 prefs.getBoolean(KEY_BACKGROUND_NOISE, false),
                 prefs.getBoolean(KEY_BACKGROUND_REDUCE_MOTION, false),
-                normalizeHexColor(prefs.getString(KEY_BACKGROUND_SOLID_COLOR, DEFAULT_SOLID_BACKGROUND_COLOR), DEFAULT_SOLID_BACKGROUND_COLOR)
+                normalizeHexColor(prefs.getString(KEY_BACKGROUND_SOLID_COLOR, DEFAULT_SOLID_BACKGROUND_COLOR), DEFAULT_SOLID_BACKGROUND_COLOR),
+                clampInt(prefs.getInt(KEY_BACKGROUND_VIDEO_SCALE, 100), 100, 180)
         );
     }
 
@@ -1080,14 +1086,16 @@ final class AiLyricsSettings {
         final boolean noise;
         final boolean reduceMotion;
         final String solidColor;
+        final int videoScale;
 
-        BackgroundSettings(String mode, int brightness, int blur, boolean noise, boolean reduceMotion, String solidColor) {
+        BackgroundSettings(String mode, int brightness, int blur, boolean noise, boolean reduceMotion, String solidColor, int videoScale) {
             this.mode = normalizeBackgroundMode(mode);
             this.brightness = clampInt(brightness, 0, 100);
             this.blur = clampInt(blur, 0, 100);
             this.noise = noise;
             this.reduceMotion = reduceMotion;
             this.solidColor = normalizeHexColor(solidColor, DEFAULT_SOLID_BACKGROUND_COLOR);
+            this.videoScale = clampInt(videoScale, 100, 180);
         }
     }
 
@@ -1315,7 +1323,7 @@ final class AiLyricsSettings {
             this.syncedLyricsKaraokeAnimationEnabled = syncedLyricsKaraokeAnimationEnabled;
             this.karaokeBounceEffectEnabled = karaokeBounceEffectEnabled;
             this.background = background == null
-                    ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR)
+                    ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR, 100)
                     : background;
             this.landscapeAutoHideControls = landscapeAutoHideControls;
             this.keepScreenOn = keepScreenOn;

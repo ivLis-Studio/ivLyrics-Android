@@ -81,6 +81,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private boolean syncLoopStarted;
     private boolean lastVisibleState;
     private long suppressHardSyncUntilElapsedMs;
+    private int videoScalePercent = 100;
 
     public YouTubeBackgroundView(Context context) {
         super(context);
@@ -145,16 +146,38 @@ public final class YouTubeBackgroundView extends FrameLayout {
 
     void setBackgroundSettings(AiLyricsSettings.BackgroundSettings settings) {
         AiLyricsSettings.BackgroundSettings safeSettings = settings == null
-                ? new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a")
+                ? new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a", 100)
                 : settings;
         int dimAlpha = Math.max(42, Math.min(220, Math.round(214f - safeSettings.brightness * 1.28f)));
         dimView.setBackgroundColor(Color.argb(dimAlpha, 0, 0, 0));
+        setVideoScalePercent(safeSettings.videoScale);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            float radius = safeSettings.blur <= 0 ? 0f : Math.min(18f, Math.max(0f, safeSettings.blur * 0.16f));
+            int effectiveBlur = Math.min(200, Math.max(0, safeSettings.blur * 2));
+            float radius = effectiveBlur <= 0 ? 0f : Math.min(36f, Math.max(0f, effectiveBlur * 0.16f));
             webView.setRenderEffect(radius <= 0f
                     ? null
                     : RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
         }
+    }
+
+    private void setVideoScalePercent(int scalePercent) {
+        int safeScale = Math.max(100, Math.min(180, scalePercent));
+        if (videoScalePercent == safeScale) {
+            return;
+        }
+        videoScalePercent = safeScale;
+        applyVideoScaleToWebView();
+    }
+
+    private void applyVideoScaleToWebView() {
+        if (webView == null) {
+            return;
+        }
+        String scale = String.format(Locale.US, "%.3f", videoScalePercent / 100f);
+        webView.evaluateJavascript(
+                "document.documentElement.style.setProperty('--video-scale','" + scale + "');",
+                null
+        );
     }
 
     void setVideoBackgroundEnabled(boolean enabled) {
@@ -196,6 +219,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 "UTF-8",
                 null
         );
+        applyVideoScaleToWebView();
         ensureSyncLoop();
     }
 
@@ -337,10 +361,12 @@ public final class YouTubeBackgroundView extends FrameLayout {
 
     private String buildHtml(String videoId) {
         String safeVideoId = videoId == null ? "" : videoId.replace("\\", "").replace("'", "");
+        String initialScale = String.format(Locale.US, "%.3f", videoScalePercent / 100f);
         return "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;}"
+                + ":root{--video-scale:" + initialScale + ";}"
                 + "#wrap{position:fixed;inset:0;overflow:hidden;background:transparent;}"
-                + "#stage{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.7778vh;min-height:100vh;transform:translate3d(-50%,-50%,0);overflow:hidden;background:transparent;transition:opacity .18s ease,filter .18s ease;will-change:opacity,filter;}"
+                + "#stage{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.7778vh;min-height:100vh;transform:translate3d(-50%,-50%,0) scale(var(--video-scale));overflow:hidden;background:transparent;transition:opacity .18s ease,filter .18s ease,transform .18s ease;will-change:opacity,filter,transform;}"
                 + "#player,#stage iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;transform:none!important;pointer-events:none!important;border:0!important;outline:0!important;}"
                 + "*{-webkit-tap-highlight-color:transparent!important;user-select:none!important;-webkit-user-select:none!important;}</style></head>"
                 + "<body><div id=\"wrap\"><div id=\"stage\"><div id=\"player\"></div></div></div>"
