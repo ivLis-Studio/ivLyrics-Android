@@ -292,6 +292,8 @@ public final class MainActivity extends Activity implements
     private float pageDragStartY;
     private float pageDragStartTranslationY;
     private boolean pageDragging;
+    private float mainMetaTouchStartX;
+    private float mainMetaTouchStartY;
     private int lyricsPageCornerRadiusDp = -1;
     private int lyricsPageContentTopPaddingPx = -1;
     private ValueAnimator lyricsPageContentPaddingAnimator;
@@ -5080,6 +5082,46 @@ public final class MainActivity extends Activity implements
             return;
         }
         view.setClickable(true);
+        view.setOnTouchListener((target, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    mainMetaTouchStartX = event.getRawX();
+                    mainMetaTouchStartY = event.getRawY();
+                    scheduleMainMetaLongPress(target);
+                    if (target.getParent() != null) {
+                        target.getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = event.getRawX() - mainMetaTouchStartX;
+                    float dy = event.getRawY() - mainMetaTouchStartY;
+                    if (Math.hypot(dx, dy) > dp(12)) {
+                        cancelLyricsMetaLongPress();
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                    cancelLyricsMetaLongPress();
+                    if (target.getParent() != null) {
+                        target.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    if (lyricsMetaLongPressTriggered) {
+                        lyricsMetaLongPressTriggered = false;
+                    } else {
+                        target.performClick();
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    cancelLyricsMetaLongPress();
+                    lyricsMetaLongPressTriggered = false;
+                    if (target.getParent() != null) {
+                        target.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        });
         view.setOnClickListener(target -> openSpotifyForCurrentTrack());
     }
 
@@ -5107,10 +5149,47 @@ public final class MainActivity extends Activity implements
         handler.postDelayed(lyricsMetaLongPressRunnable, ViewConfiguration.getLongPressTimeout());
     }
 
+    private void scheduleMainMetaLongPress(View target) {
+        cancelLyricsMetaLongPress();
+        lyricsMetaLongPressTriggered = false;
+        lyricsMetaLongPressRunnable = () -> {
+            lyricsMetaLongPressRunnable = null;
+            lyricsMetaLongPressTriggered = true;
+            openLyricsMetaMenuFromMain(target);
+        };
+        handler.postDelayed(lyricsMetaLongPressRunnable, ViewConfiguration.getLongPressTimeout());
+    }
+
+    private void openLyricsMetaMenuFromMain(View target) {
+        dismissLyricsMetaTip();
+        if (target != null) {
+            target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        }
+        if (isLandscapeLayout() || lyricsLanguageSettingsPanel == null) {
+            return;
+        }
+        if (lyricsPageVisible) {
+            showLyricsLanguageSettingsPanel();
+            return;
+        }
+        showLyricsPage(true);
+        handler.postDelayed(() -> {
+            if (!isLandscapeLayout() && lyricsPageVisible) {
+                showLyricsLanguageSettingsPanel();
+            }
+        }, 360L);
+    }
+
     private void cancelLyricsMetaLongPress() {
         if (lyricsMetaLongPressRunnable != null) {
             handler.removeCallbacks(lyricsMetaLongPressRunnable);
             lyricsMetaLongPressRunnable = null;
+        }
+    }
+
+    private void showLyricsLanguageSettingsPanel() {
+        if (!lyricsLanguageSettingsVisible) {
+            toggleLyricsLanguageSettings();
         }
     }
 
