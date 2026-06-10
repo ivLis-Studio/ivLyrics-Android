@@ -1760,6 +1760,10 @@ final class AppI18n {
             for (int index = 0; index + 1 < values.length; index += 2) {
                 copy.put(values[index], values[index + 1]);
             }
+            String[] scaleValues = videoBackgroundScaleStrings(language.code);
+            for (int index = 0; index + 1 < scaleValues.length; index += 2) {
+                copy.put(scaleValues[index], scaleValues[index + 1]);
+            }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
@@ -1814,6 +1818,58 @@ final class AppI18n {
                 "section.background_desc", sectionDesc,
                 "background.mode.video", label,
                 "background.mode.video_desc", desc
+        };
+    }
+
+    private static String[] videoBackgroundScaleStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return videoBackgroundScaleStringsValues("영상 확대", "영상에 검은 여백이 있거나 화면을 더 채워야 할 때 배경 영상을 확대합니다.");
+            case "zh-CN":
+                return videoBackgroundScaleStringsValues("视频缩放", "当视频带有黑边或需要更充满屏幕时，放大背景视频。");
+            case "zh-TW":
+                return videoBackgroundScaleStringsValues("影片縮放", "當影片有黑邊或需要更填滿畫面時，放大背景影片。");
+            case "ja":
+                return videoBackgroundScaleStringsValues("動画の拡大", "映像に黒帯がある場合や画面をより埋めたい場合に背景動画を拡大します。");
+            case "hi":
+                return videoBackgroundScaleStringsValues("वीडियो ज़ूम", "वीडियो में काली पट्टियां हों या स्क्रीन को अधिक भरना हो तो पृष्ठभूमि वीडियो को बड़ा करें।");
+            case "es":
+                return videoBackgroundScaleStringsValues("Zoom de video", "Amplia el video de fondo cuando la fuente tiene barras negras o necesita llenar más la pantalla.");
+            case "fr":
+                return videoBackgroundScaleStringsValues("Zoom vidéo", "Agrandit la vidéo d'arrière-plan si la source a des bandes noires ou doit mieux remplir l'écran.");
+            case "ar":
+                return videoBackgroundScaleStringsValues("تكبير الفيديو", "يكبر فيديو الخلفية عندما يحتوي المصدر على أشرطة سوداء أو يحتاج إلى ملء الشاشة أكثر.");
+            case "fa":
+                return videoBackgroundScaleStringsValues("بزرگ‌نمایی ویدیو", "وقتی منبع نوار سیاه دارد یا باید صفحه را بیشتر پر کند، ویدیوی پس‌زمینه را بزرگ می‌کند.");
+            case "de":
+                return videoBackgroundScaleStringsValues("Video-Zoom", "Vergroessert das Hintergrundvideo, wenn die Quelle schwarze Balken hat oder den Bildschirm staerker fuellen soll.");
+            case "ru":
+                return videoBackgroundScaleStringsValues("Масштаб видео", "Увеличивает фоновое видео, если в источнике есть черные поля или нужно лучше заполнить экран.");
+            case "sv":
+                return videoBackgroundScaleStringsValues("Videozoom", "Zoomar bakgrundsvideon nar kallan har svarta kanter eller behover fylla mer av skarmen.");
+            case "pt":
+                return videoBackgroundScaleStringsValues("Zoom do vídeo", "Amplia o vídeo de fundo quando a origem tem faixas pretas ou precisa preencher mais a tela.");
+            case "bn":
+                return videoBackgroundScaleStringsValues("ভিডিও জুম", "ভিডিওতে কালো বার থাকলে বা স্ক্রিন আরও ভরাট করতে হলে ব্যাকগ্রাউন্ড ভিডিও বড় করে।");
+            case "it":
+                return videoBackgroundScaleStringsValues("Zoom video", "Ingrandisce il video di sfondo quando la sorgente ha bande nere o deve riempire meglio lo schermo.");
+            case "th":
+                return videoBackgroundScaleStringsValues("ซูมวิดีโอ", "ขยายวิดีโอพื้นหลังเมื่อแหล่งวิดีโอมีขอบดำหรือต้องการให้เต็มหน้าจอมากขึ้น");
+            case "vi":
+                return videoBackgroundScaleStringsValues("Thu phóng video", "Phóng to video nền khi nguồn có viền đen hoặc cần lấp đầy màn hình hơn.");
+            case "id":
+                return videoBackgroundScaleStringsValues("Zoom video", "Memperbesar video latar saat sumber memiliki bilah hitam atau perlu memenuhi layar lebih banyak.");
+            case "ms":
+                return videoBackgroundScaleStringsValues("Zum video", "Membesarkan video latar apabila sumber mempunyai jalur hitam atau perlu memenuhi skrin dengan lebih baik.");
+            default:
+                return videoBackgroundScaleStringsValues("Video zoom", "Zoom the video background when the source has letterboxing or needs to fill more of the screen.");
+        }
+    }
+
+    private static String[] videoBackgroundScaleStringsValues(String label, String desc) {
+        return new String[]{
+                "setting.video_scale", label,
+                "setting.video_scale_desc", desc
         };
     }
 
