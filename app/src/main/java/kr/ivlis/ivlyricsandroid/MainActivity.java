@@ -17,6 +17,7 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -140,6 +141,7 @@ public final class MainActivity extends Activity implements
     private final Map<String, String> creatorProfileUrlCache = Collections.synchronizedMap(new HashMap<>());
     private final Map<String, TextView> speakerColorValueViews = new LinkedHashMap<>();
     private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
+    private final Rect mainPageRevealClip = new Rect();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private LyricsRepository lyricsRepository;
@@ -153,7 +155,6 @@ public final class MainActivity extends Activity implements
     private LyricsView landscapeLyricsView;
     private PlayerProgressView playerProgressView;
     private PlayerBackgroundView backgroundView;
-    private PlayerBackgroundView lyricsBackgroundView;
     private YouTubeBackgroundView youtubeBackgroundView;
     private FrameLayout rootView;
     private FrameLayout mainPage;
@@ -1630,14 +1631,6 @@ public final class MainActivity extends Activity implements
 
     private FrameLayout buildLyricsPage() {
         FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.rgb(6, 7, 12));
-
-        lyricsBackgroundView = new PlayerBackgroundView(this);
-        lyricsBackgroundView.setAlpha(1f);
-        page.addView(lyricsBackgroundView, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
 
         View lyricsShade = new View(this);
         lyricsShade.setBackgroundColor(Color.argb(54, 6, 7, 12));
@@ -4307,11 +4300,6 @@ public final class MainActivity extends Activity implements
         if (backgroundView != null) {
             backgroundView.setBackgroundSettings(settings);
         }
-        boolean videoMode = AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(settings.mode);
-        if (lyricsBackgroundView != null) {
-            lyricsBackgroundView.setBackgroundSettings(settings);
-            lyricsBackgroundView.setVisibility(videoMode ? View.GONE : View.VISIBLE);
-        }
         if (youtubeBackgroundView != null) {
             youtubeBackgroundView.setBackgroundSettings(settings);
         }
@@ -6111,7 +6099,7 @@ public final class MainActivity extends Activity implements
         }
         if (mainPage != null) {
             mainPage.animate().cancel();
-            mainPage.setAlpha(1f);
+            clearMainPageRevealClip();
         }
         if (spotifySetupPanel.getVisibility() != View.VISIBLE) {
             populateSpotifyCredentialInputs(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
@@ -7507,7 +7495,7 @@ public final class MainActivity extends Activity implements
                 lyricsPage.setTranslationY(0f);
             }
             if (mainPage != null) {
-                mainPage.setAlpha(1f);
+                clearMainPageRevealClip();
             }
             lyricsPageVisible = false;
             return;
@@ -7531,36 +7519,31 @@ public final class MainActivity extends Activity implements
             }
             lyricsPage.setTranslationY(height);
             lyricsPage.setAlpha(1f);
-            if (lyricsBackgroundView != null) {
-                lyricsBackgroundView.setAlpha(1f);
-            }
+            applyMainPageRevealClip(height);
             lyricsPage.animate()
                     .translationY(0f)
+                    .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                     .setDuration(330L)
                     .withEndAction(() -> {
+                        applyMainPageRevealClip(0f);
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
                         maybeShowLyricsMetaTip();
                     })
                     .start();
-            mainPage.animate()
-                    .alpha(0f)
-                    .setDuration(330L)
-                    .start();
         } else {
             dismissLyricsMetaTip();
-            mainPage.setAlpha(1f);
             setLyricsPageCornerRadius(28);
             lyricsPage.setAlpha(1f);
-            if (lyricsBackgroundView != null) {
-                lyricsBackgroundView.setAlpha(1f);
-            }
+            applyMainPageRevealClip(lyricsPage.getTranslationY());
             lyricsPage.animate()
                     .translationY(height)
+                    .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                     .setDuration(280L)
                     .withEndAction(() -> {
                         lyricsPage.setVisibility(View.GONE);
                         lyricsPage.setTranslationY(0f);
+                        clearMainPageRevealClip();
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
                     })
@@ -8378,14 +8361,10 @@ public final class MainActivity extends Activity implements
         int height = getResources().getDisplayMetrics().heightPixels;
         float boundedTranslation = Math.max(0f, Math.min(height, translationY));
         lyricsPage.setAlpha(1f);
-        if (lyricsBackgroundView != null) {
-            lyricsBackgroundView.setAlpha(1f);
-        }
         lyricsPage.setTranslationY(boundedTranslation);
         setLyricsPageCornerRadius(boundedTranslation > 1f ? 28 : 0);
         applyLyricsPageDragTopPadding(boundedTranslation);
-        float reveal = Math.max(0f, Math.min(1f, boundedTranslation / Math.max(1f, dp(120))));
-        mainPage.setAlpha(reveal);
+        applyMainPageRevealClip(boundedTranslation);
     }
 
     private void applyLyricsPageDragTopPadding(float translationY) {
@@ -8456,14 +8435,40 @@ public final class MainActivity extends Activity implements
         }
         lyricsPage.animate()
                 .translationY(0f)
+                .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                 .setDuration(210L)
-                .withEndAction(() -> setLyricsPageCornerRadius(0))
+                .withEndAction(() -> {
+                    applyMainPageRevealClip(0f);
+                    setLyricsPageCornerRadius(0);
+                })
                 .start();
         resetLyricsPageDragTopPadding(true);
-        mainPage.animate()
-                .alpha(0f)
-                .setDuration(210L)
-                .start();
+    }
+
+    private void applyMainPageRevealClip(float translationY) {
+        if (mainPage == null) {
+            return;
+        }
+        int width = mainPage.getWidth() > 0
+                ? mainPage.getWidth()
+                : getResources().getDisplayMetrics().widthPixels;
+        int height = getResources().getDisplayMetrics().heightPixels;
+        int revealHeight = Math.max(0, Math.min(height, Math.round(translationY)));
+        mainPage.setAlpha(1f);
+        if (revealHeight >= height - 1) {
+            mainPage.setClipBounds(null);
+            return;
+        }
+        mainPageRevealClip.set(0, 0, width, revealHeight);
+        mainPage.setClipBounds(mainPageRevealClip);
+    }
+
+    private void clearMainPageRevealClip() {
+        if (mainPage == null) {
+            return;
+        }
+        mainPage.setAlpha(1f);
+        mainPage.setClipBounds(null);
     }
 
     private float pageVelocityY() {
@@ -8562,9 +8567,6 @@ public final class MainActivity extends Activity implements
         currentArtworkBitmap = artwork;
         if (backgroundView != null) {
             backgroundView.setArtwork(artwork, artworkKey);
-        }
-        if (lyricsBackgroundView != null) {
-            lyricsBackgroundView.setArtwork(artwork, artworkKey);
         }
         if (artwork != null) {
             if (artworkView != null) {
