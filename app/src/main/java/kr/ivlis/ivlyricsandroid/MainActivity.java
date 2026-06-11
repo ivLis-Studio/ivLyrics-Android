@@ -1897,7 +1897,7 @@ public final class MainActivity extends Activity implements
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(14), dp(12), dp(14), dp(12));
-        panel.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(14)));
+        panel.setBackground(lyricsLanguageSettingsPanelBackground(false));
 
         lyricsPopupTabButtonsContainer = new LinearLayout(this);
         lyricsPopupTabButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
@@ -1967,6 +1967,13 @@ public final class MainActivity extends Activity implements
         panel.addView(lyricsManualSearchContent, topMargin(matchWrap(), dp(10)));
         switchLyricsPopupTab(activeLyricsPopupTab);
         return panel;
+    }
+
+    private GradientDrawable lyricsLanguageSettingsPanelBackground(boolean popup) {
+        int color = popup
+                ? Color.argb(236, 18, 20, 30)
+                : Color.argb(38, 255, 255, 255);
+        return roundDrawable(color, dp(14));
     }
 
     private LinearLayout buildLyricsSyncSettingsContent() {
@@ -5175,6 +5182,7 @@ public final class MainActivity extends Activity implements
 
         lyricsLanguageSettingsVisible = true;
         lyricsLanguageSettingsPanel.animate().cancel();
+        lyricsLanguageSettingsPanel.setBackground(lyricsLanguageSettingsPanelBackground(true));
         lyricsLanguageSettingsPanel.setVisibility(View.VISIBLE);
         lyricsLanguageSettingsPanel.setAlpha(1f);
         lyricsLanguageSettingsPanel.setTranslationY(0f);
@@ -5237,6 +5245,7 @@ public final class MainActivity extends Activity implements
         lyricsLanguageSettingsPanel.setVisibility(View.GONE);
         lyricsLanguageSettingsPanel.setAlpha(1f);
         lyricsLanguageSettingsPanel.setTranslationY(0f);
+        lyricsLanguageSettingsPanel.setBackground(lyricsLanguageSettingsPanelBackground(false));
         lyricsLanguageSettingsVisible = false;
         lyricsLanguageSettingsOriginalParent = null;
         lyricsLanguageSettingsOriginalLayoutParams = null;
