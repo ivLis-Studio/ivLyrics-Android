@@ -194,6 +194,7 @@ public final class MainActivity extends Activity implements
     private TextView lyricsLanguageButton;
     private TextView permissionButton;
     private PopupWindow lyricsMetaTipPopup;
+    private PopupWindow lyricsMetaMenuPopup;
     private TransportButtonView playPauseButton;
     private View landscapeControlsContainer;
     private ImageButton landscapeMenuButton;
@@ -315,6 +316,9 @@ public final class MainActivity extends Activity implements
     private int currentTrackSyncOffsetMs;
     private int currentVideoSyncOffsetMs;
     private boolean lyricsLanguageSettingsVisible;
+    private ViewGroup lyricsLanguageSettingsOriginalParent;
+    private ViewGroup.LayoutParams lyricsLanguageSettingsOriginalLayoutParams;
+    private int lyricsLanguageSettingsOriginalIndex = -1;
     private boolean suppressLanguageRuleEvents;
     private boolean suppressSettingsEvents;
     private boolean aiLyricsGenerating;
@@ -434,6 +438,7 @@ public final class MainActivity extends Activity implements
         handler.removeCallbacks(ticker);
         handler.removeCallbacks(landscapeControlsAutoHideRunnable);
         cancelLyricsMetaLongPress();
+        dismissLyricsMetaMenuPopup();
         handler.removeCallbacks(onboardingWelcomeTicker);
         super.onPause();
     }
@@ -441,6 +446,7 @@ public final class MainActivity extends Activity implements
     @Override
     protected void onDestroy() {
         dismissLyricsMetaTip();
+        dismissLyricsMetaMenuPopup();
         if (lyricsRepository != null) {
             lyricsRepository.shutdown();
         }
@@ -469,6 +475,11 @@ public final class MainActivity extends Activity implements
         if (isInAppBrowserVisible()) {
             lastBackPressElapsedMs = 0L;
             showInAppBrowser(false);
+            return;
+        }
+        if (isLyricsMetaMenuPopupVisible()) {
+            lastBackPressElapsedMs = 0L;
+            dismissLyricsMetaMenuPopup();
             return;
         }
         if (isSpotifySetupPanelVisible()) {
@@ -5202,19 +5213,120 @@ public final class MainActivity extends Activity implements
         if (target != null) {
             target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         }
-        if (isLandscapeLayout() || lyricsLanguageSettingsPanel == null) {
+        showLyricsMetaMenuPopup(target);
+    }
+
+    private boolean isLyricsMetaMenuPopupVisible() {
+        return lyricsMetaMenuPopup != null && lyricsMetaMenuPopup.isShowing();
+    }
+
+    private void showLyricsMetaMenuPopup(View anchor) {
+        if (rootView == null || lyricsLanguageSettingsPanel == null) {
             return;
         }
-        if (lyricsPageVisible) {
-            showLyricsLanguageSettingsPanel();
-            return;
+        dismissLyricsMetaMenuPopup();
+        updateLyricsLanguageSettingsUi();
+        rememberLyricsLanguageSettingsParent();
+        detachFromParent(lyricsLanguageSettingsPanel);
+
+        FrameLayout popupContent = new FrameLayout(this);
+        popupContent.setPadding(dp(16), dp(10), dp(16), dp(10));
+        popupContent.setClipChildren(false);
+        popupContent.setClipToPadding(false);
+        popupContent.addView(lyricsLanguageSettingsPanel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        int width = Math.min(
+                getResources().getDisplayMetrics().widthPixels - dp(isLandscapeLayout() ? 56 : 32),
+                dp(isLandscapeLayout() ? 480 : 430)
+        );
+        lyricsMetaMenuPopup = new PopupWindow(
+                popupContent,
+                Math.max(dp(280), width),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                false
+        );
+        lyricsMetaMenuPopup.setOutsideTouchable(true);
+        lyricsMetaMenuPopup.setBackgroundDrawable(roundDrawable(Color.TRANSPARENT, dp(18)));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            lyricsMetaMenuPopup.setElevation(dp(14));
         }
-        showLyricsPage(true);
-        handler.postDelayed(() -> {
-            if (!isLandscapeLayout() && lyricsPageVisible) {
-                showLyricsLanguageSettingsPanel();
+        lyricsMetaMenuPopup.setOnDismissListener(() -> {
+            restoreLyricsLanguageSettingsPanelFromPopup();
+            lyricsMetaMenuPopup = null;
+        });
+
+        lyricsLanguageSettingsVisible = true;
+        lyricsLanguageSettingsPanel.animate().cancel();
+        lyricsLanguageSettingsPanel.setVisibility(View.VISIBLE);
+        lyricsLanguageSettingsPanel.setAlpha(1f);
+        lyricsLanguageSettingsPanel.setTranslationY(0f);
+        updateLyricsLanguageButtonState();
+        lyricsMetaMenuPopup.showAtLocation(rootView, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, lyricsMetaMenuPopupTop(anchor));
+    }
+
+    private int lyricsMetaMenuPopupTop(View anchor) {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int top = isLandscapeLayout() ? dp(20) : statusBarInsetPx() + dp(24);
+        if (anchor != null && anchor.getWindowToken() != null) {
+            int[] location = new int[2];
+            anchor.getLocationOnScreen(location);
+            top = location[1] + anchor.getHeight() + dp(10);
+        }
+        int maxTop = Math.max(dp(12), screenHeight - dp(isLandscapeLayout() ? 390 : 470));
+        return Math.max(dp(12), Math.min(top, maxTop));
+    }
+
+    private void rememberLyricsLanguageSettingsParent() {
+        ViewParent parent = lyricsLanguageSettingsPanel.getParent();
+        lyricsLanguageSettingsOriginalParent = parent instanceof ViewGroup ? (ViewGroup) parent : null;
+        lyricsLanguageSettingsOriginalLayoutParams = lyricsLanguageSettingsPanel.getLayoutParams();
+        lyricsLanguageSettingsOriginalIndex = -1;
+        if (lyricsLanguageSettingsOriginalParent != null) {
+            for (int index = 0; index < lyricsLanguageSettingsOriginalParent.getChildCount(); index++) {
+                if (lyricsLanguageSettingsOriginalParent.getChildAt(index) == lyricsLanguageSettingsPanel) {
+                    lyricsLanguageSettingsOriginalIndex = index;
+                    break;
+                }
             }
-        }, 360L);
+        }
+    }
+
+    private void dismissLyricsMetaMenuPopup() {
+        if (lyricsMetaMenuPopup != null) {
+            lyricsMetaMenuPopup.dismiss();
+            return;
+        }
+        if (lyricsLanguageSettingsOriginalParent != null) {
+            restoreLyricsLanguageSettingsPanelFromPopup();
+        }
+    }
+
+    private void restoreLyricsLanguageSettingsPanelFromPopup() {
+        if (lyricsLanguageSettingsPanel == null) {
+            return;
+        }
+        lyricsLanguageSettingsPanel.animate().cancel();
+        detachFromParent(lyricsLanguageSettingsPanel);
+        if (lyricsLanguageSettingsOriginalParent != null) {
+            int index = lyricsLanguageSettingsOriginalIndex >= 0
+                    ? Math.min(lyricsLanguageSettingsOriginalIndex, lyricsLanguageSettingsOriginalParent.getChildCount())
+                    : lyricsLanguageSettingsOriginalParent.getChildCount();
+            ViewGroup.LayoutParams params = lyricsLanguageSettingsOriginalLayoutParams == null
+                    ? new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    : lyricsLanguageSettingsOriginalLayoutParams;
+            lyricsLanguageSettingsOriginalParent.addView(lyricsLanguageSettingsPanel, index, params);
+        }
+        lyricsLanguageSettingsPanel.setVisibility(View.GONE);
+        lyricsLanguageSettingsPanel.setAlpha(1f);
+        lyricsLanguageSettingsPanel.setTranslationY(0f);
+        lyricsLanguageSettingsVisible = false;
+        lyricsLanguageSettingsOriginalParent = null;
+        lyricsLanguageSettingsOriginalLayoutParams = null;
+        lyricsLanguageSettingsOriginalIndex = -1;
+        updateLyricsLanguageButtonState();
     }
 
     private void cancelLyricsMetaLongPress() {
