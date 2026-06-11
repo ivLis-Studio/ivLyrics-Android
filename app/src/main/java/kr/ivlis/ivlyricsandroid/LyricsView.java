@@ -2532,15 +2532,6 @@ public final class LyricsView extends View {
         return value.codePoints().allMatch(Character::isWhitespace);
     }
 
-    private int mix(int left, int right, float amount) {
-        float t = clamp(amount);
-        return Color.rgb(
-                Math.round(Color.red(left) * (1f - t) + Color.red(right) * t),
-                Math.round(Color.green(left) * (1f - t) + Color.green(right) * t),
-                Math.round(Color.blue(left) * (1f - t) + Color.blue(right) * t)
-        );
-    }
-
     private int withAlpha(int color, int alpha) {
         return Color.argb(Math.max(0, Math.min(255, alpha)), Color.red(color), Color.green(color), Color.blue(color));
     }

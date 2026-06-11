@@ -485,17 +485,6 @@ final class MainLyricPreviewView extends View {
         return (float) ((Math.sin((timeMs % periodMs) / (double) periodMs * Math.PI * 2.0) + 1.0) * 0.5);
     }
 
-    private float primaryTextSp() {
-        return textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL, PRIMARY_TEXT_SP);
-    }
-
-    private float secondaryTextSp() {
-        return Math.max(
-                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION, SECONDARY_TEXT_SP),
-                textSizeSp(AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION, SECONDARY_TEXT_SP)
-        );
-    }
-
     private float rowGapSp() {
         return ROW_GAP_SP * Math.min(1.25f, textScale);
     }

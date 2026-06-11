@@ -453,7 +453,4 @@ public final class PlayerBackgroundView extends View {
         return Math.max(0, Math.min(255, value));
     }
 
-    private float dp(float value) {
-        return value * getResources().getDisplayMetrics().density;
-    }
 }

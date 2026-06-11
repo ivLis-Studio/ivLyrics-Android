@@ -1988,8 +1988,8 @@ public final class MainActivity extends Activity implements
         lyricsSyncOffsetValueView.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(14)));
         content.addView(lyricsSyncOffsetValueView, topMargin(matchWrap(), dp(12)));
 
-        content.addView(buildOffsetButtonRow(-100, -50, -10), topMargin(matchWrap(), dp(10)));
-        content.addView(buildOffsetButtonRow(10, 50, 100), topMargin(matchWrap(), dp(8)));
+        content.addView(buildOffsetButtonRow(-100, -50, -10, this::adjustCurrentTrackSyncOffset), topMargin(matchWrap(), dp(10)));
+        content.addView(buildOffsetButtonRow(10, 50, 100, this::adjustCurrentTrackSyncOffset), topMargin(matchWrap(), dp(8)));
 
         TextView resetButton = languageButton(ui("lyrics.sync.reset"), false);
         resetButton.setOnClickListener(view -> setCurrentTrackSyncOffset(0, true));
@@ -2019,8 +2019,8 @@ public final class MainActivity extends Activity implements
         videoSyncOffsetValueView.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(14)));
         content.addView(videoSyncOffsetValueView, topMargin(matchWrap(), dp(12)));
 
-        content.addView(buildVideoOffsetButtonRow(-100, -50, -10), topMargin(matchWrap(), dp(10)));
-        content.addView(buildVideoOffsetButtonRow(10, 50, 100), topMargin(matchWrap(), dp(8)));
+        content.addView(buildOffsetButtonRow(-100, -50, -10, this::adjustCurrentVideoSyncOffset), topMargin(matchWrap(), dp(10)));
+        content.addView(buildOffsetButtonRow(10, 50, 100, this::adjustCurrentVideoSyncOffset), topMargin(matchWrap(), dp(8)));
 
         TextView resetButton = languageButton(ui("lyrics.video_sync.reset"), false);
         resetButton.setOnClickListener(view -> setCurrentVideoSyncOffset(0, true));
@@ -2082,7 +2082,7 @@ public final class MainActivity extends Activity implements
         return content;
     }
 
-    private LinearLayout buildOffsetButtonRow(int first, int second, int third) {
+    private LinearLayout buildOffsetButtonRow(int first, int second, int third, OffsetAdjuster adjuster) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -2090,25 +2090,7 @@ public final class MainActivity extends Activity implements
         for (int index = 0; index < values.length; index++) {
             int delta = values[index];
             TextView button = languageButton(offsetDeltaLabel(delta), false);
-            button.setOnClickListener(view -> adjustCurrentTrackSyncOffset(delta));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
-            if (index > 0) {
-                params.leftMargin = dp(8);
-            }
-            row.addView(button, params);
-        }
-        return row;
-    }
-
-    private LinearLayout buildVideoOffsetButtonRow(int first, int second, int third) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        int[] values = {first, second, third};
-        for (int index = 0; index < values.length; index++) {
-            int delta = values[index];
-            TextView button = languageButton(offsetDeltaLabel(delta), false);
-            button.setOnClickListener(view -> adjustCurrentVideoSyncOffset(delta));
+            button.setOnClickListener(view -> adjuster.adjust(delta));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
             if (index > 0) {
                 params.leftMargin = dp(8);
@@ -3304,17 +3286,6 @@ public final class MainActivity extends Activity implements
         updateVideoSyncSettingsUi();
     }
 
-    private List<LanguageChoice> languageChoices(boolean includeAuto) {
-        List<LanguageChoice> choices = new ArrayList<>();
-        if (includeAuto) {
-            choices.add(new LanguageChoice("auto", ui("label.auto")));
-        }
-        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
-            choices.add(new LanguageChoice(language.code, language.nativeName));
-        }
-        return choices;
-    }
-
     private List<LanguageChoice> uiLanguageChoices() {
         List<LanguageChoice> choices = new ArrayList<>();
         for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
@@ -4195,7 +4166,7 @@ public final class MainActivity extends Activity implements
         updateUiLanguageSelect(snapshot.uiLang);
         updateOutputLanguageSelect(snapshot.outputLang);
         rebuildPreviewModeButtons(snapshot.previewItems);
-        rebuildSourceLanguageButtons();
+        updateSourceLanguageSelect();
         populateSelectedLanguageRule(snapshot);
     }
 
@@ -4966,7 +4937,7 @@ public final class MainActivity extends Activity implements
         return offsetMs > 0 ? "+" + offsetMs + "ms" : offsetMs + "ms";
     }
 
-    private void rebuildSourceLanguageButtons() {
+    private void updateSourceLanguageSelect() {
         if (sourceLanguageSelectButton == null) {
             return;
         }
@@ -4982,7 +4953,7 @@ public final class MainActivity extends Activity implements
                     ? "auto"
                     : AiLyricsSettings.normalizeSourceLanguageKey(code);
             populateSelectedLanguageRule(aiLyricsSettings.snapshot());
-            rebuildSourceLanguageButtons();
+            updateSourceLanguageSelect();
             requestAiLyrics(true);
         });
     }
@@ -4994,32 +4965,6 @@ public final class MainActivity extends Activity implements
             choices.add(new LanguageChoice(language.code, language.nativeName + " · " + language.name));
         }
         return choices;
-    }
-
-    private void rebuildChoiceButtons(LinearLayout container, List<LanguageChoice> choices, String selectedCode, ChoiceHandler handler) {
-        container.removeAllViews();
-        LinearLayout row = null;
-        for (int index = 0; index < choices.size(); index++) {
-            if (index % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-                if (container.getChildCount() > 0) {
-                    rowParams.topMargin = dp(8);
-                }
-                container.addView(row, rowParams);
-            }
-            LanguageChoice choice = choices.get(index);
-            boolean selected = sameChoice(choice.code, selectedCode);
-            TextView button = languageButton(choice.label, selected);
-            button.setOnClickListener(view -> handler.onChoice(choice.code));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
-            params.leftMargin = index % 2 == 0 ? 0 : dp(8);
-            row.addView(button, params);
-        }
     }
 
     private TextView languageButton(String text, boolean selected) {
@@ -5336,12 +5281,6 @@ public final class MainActivity extends Activity implements
         }
     }
 
-    private void showLyricsLanguageSettingsPanel() {
-        if (!lyricsLanguageSettingsVisible) {
-            toggleLyricsLanguageSettings();
-        }
-    }
-
     private void toggleLyricsLanguageSettings() {
         if (lyricsLanguageSettingsPanel == null) {
             return;
@@ -5460,7 +5399,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        rebuildSourceLanguageButtons();
+        updateSourceLanguageSelect();
         populateSelectedLanguageRule(snapshot);
         updateLyricsLanguageButtonState();
         switchLyricsPopupTab(activeLyricsPopupTab);
@@ -9072,17 +9011,6 @@ public final class MainActivity extends Activity implements
         return view;
     }
 
-    private ImageView inlineIcon(int drawableRes, int sizeDp, int iconSizeDp, int iconColor, String description) {
-        ImageView view = new ImageView(this);
-        view.setImageResource(drawableRes);
-        view.setColorFilter(iconColor);
-        view.setScaleType(ImageView.ScaleType.CENTER);
-        view.setContentDescription(description);
-        int padding = Math.max(0, Math.round((dp(sizeDp) - dp(iconSizeDp)) * 0.5f));
-        view.setPadding(padding, padding, padding, padding);
-        return view;
-    }
-
     private TextView pillButton(String label) {
         TextView view = label(label, 13f, Color.WHITE, AppFonts.semiBold(this));
         view.setGravity(Gravity.CENTER);
@@ -9239,6 +9167,10 @@ public final class MainActivity extends Activity implements
             return "-0:00";
         }
         return "-" + formatTime(Math.max(0L, duration - position));
+    }
+
+    private interface OffsetAdjuster {
+        void adjust(int deltaMs);
     }
 
     private interface ChoiceHandler {
