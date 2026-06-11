@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
@@ -59,8 +60,11 @@ public final class LyricsView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint interludePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint skeletonPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint emptyIconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path emptyIconPath = new Path();
     private final RectF edgeFadeBounds = new RectF();
+    private final RectF emptyIconOval = new RectF();
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
@@ -1792,11 +1796,71 @@ public final class LyricsView extends View {
             postInvalidateOnAnimation();
             return;
         }
-        textPaint.setTextSize(sp(EMPTY_TEXT_SP));
-        textPaint.setTypeface(lyricTypeface);
-        configurePaint(Color.rgb(174, 181, 195), "vocal", false, sp(EMPTY_TEXT_SP), false);
-        canvas.drawText(emptyMessage, contentLeft(), getHeight() * 0.5f, textPaint);
+        float centerX = getWidth() * 0.5f;
+        float centerY = getHeight() * verticalCenterBias;
+        drawEmptyNoteIcon(canvas, centerX, centerY - sp(14f));
+
+        String message = emptyMessage == null || emptyMessage.trim().isEmpty()
+                ? emptyFallbackMessage
+                : emptyMessage.trim();
+        float textSize = sp(15f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        configurePaint(Color.argb(126, 255, 255, 255), "vocal", false, textSize, false, AppFonts.regular(getContext()));
+        shrinkTextToFit(message, contentWidth() * 0.86f, textSize, sp(11f));
+        canvas.drawText(message, centerX, centerY + sp(46f), textPaint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
         resetPaintEffects();
+    }
+
+    private void drawEmptyNoteIcon(Canvas canvas, float centerX, float centerY) {
+        float size = Math.min(sp(58f), Math.max(sp(42f), getWidth() * 0.13f));
+        int alpha = 150;
+
+        emptyIconPaint.setShader(null);
+        emptyIconPaint.clearShadowLayer();
+        emptyIconPaint.setStyle(Paint.Style.STROKE);
+        emptyIconPaint.setStrokeCap(Paint.Cap.ROUND);
+        emptyIconPaint.setStrokeJoin(Paint.Join.ROUND);
+        emptyIconPaint.setStrokeWidth(Math.max(sp(2.2f), size * 0.055f));
+        emptyIconPaint.setColor(Color.argb(alpha, 255, 255, 255));
+        emptyIconPaint.setShadowLayer(size * 0.10f, 0f, 0f, Color.argb(44, 255, 255, 255));
+
+        float stemX = centerX + size * 0.16f;
+        float topY = centerY - size * 0.46f;
+        float bottomY = centerY + size * 0.18f;
+        emptyIconPath.reset();
+        emptyIconPath.moveTo(stemX, bottomY);
+        emptyIconPath.lineTo(stemX, topY);
+        emptyIconPath.cubicTo(
+                stemX + size * 0.04f,
+                topY + size * 0.02f,
+                stemX + size * 0.24f,
+                topY + size * 0.02f,
+                stemX + size * 0.31f,
+                topY + size * 0.12f
+        );
+        emptyIconPath.lineTo(stemX + size * 0.31f, topY + size * 0.27f);
+        canvas.drawPath(emptyIconPath, emptyIconPaint);
+
+        emptyIconOval.set(
+                centerX - size * 0.39f,
+                centerY + size * 0.08f,
+                centerX + size * 0.08f,
+                centerY + size * 0.39f
+        );
+        int save = canvas.save();
+        canvas.rotate(-18f, emptyIconOval.centerX(), emptyIconOval.centerY());
+        canvas.drawOval(emptyIconOval, emptyIconPaint);
+        canvas.restoreToCount(save);
+        emptyIconPaint.clearShadowLayer();
+    }
+
+    private void shrinkTextToFit(String text, float maxWidth, float initialSize, float minSize) {
+        float size = initialSize;
+        while (size > minSize && textPaint.measureText(text) > maxWidth) {
+            size -= sp(0.8f);
+            textPaint.setTextSize(size);
+        }
     }
 
     private void drawLoadingSkeleton(Canvas canvas) {

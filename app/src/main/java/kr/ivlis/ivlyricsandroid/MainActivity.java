@@ -100,6 +100,7 @@ public final class MainActivity extends Activity implements
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
+    private static final long EMPTY_LYRICS_PREVIEW_VISIBLE_MS = 3_000L;
     private static final String SETTINGS_TAB_LYRICS = "lyrics";
     private static final String SETTINGS_TAB_DISPLAY = "display";
     private static final String SETTINGS_TAB_AI = "ai";
@@ -130,6 +131,7 @@ public final class MainActivity extends Activity implements
     };
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable emptyLyricsPreviewClearRunnable = this::clearExpiredEmptyLyricsPreview;
     private final Runnable onboardingWelcomeTicker = new Runnable() {
         @Override
         public void run() {
@@ -277,6 +279,7 @@ public final class MainActivity extends Activity implements
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
+    private String emptyLyricsPreviewKey = "";
     private String currentArtworkKey = "";
     private String currentYouTubeBackgroundRequestKey = "";
     private String currentResolvedIsrc = "";
@@ -306,6 +309,7 @@ public final class MainActivity extends Activity implements
     private boolean artworkSwipeDragging;
     private VelocityTracker artworkVelocityTracker;
     private long lastProgressUiUpdateMs;
+    private long emptyLyricsPreviewShownAtMs;
     private long pendingSeekPositionMs = -1L;
     private long pendingSeekUptimeMs;
     private long lastSeekCommandUptimeMs;
@@ -7145,6 +7149,7 @@ public final class MainActivity extends Activity implements
             if (lyricPreviewContainer != null) {
                 lyricPreviewContainer.setVisibility(View.GONE);
             }
+            resetEmptyLyricsPreviewTimer();
             lyricPreviewView.clear();
             return;
         }
@@ -7153,11 +7158,20 @@ public final class MainActivity extends Activity implements
         }
         if (currentLyricsResult == null || currentLyricsResult.lines.isEmpty()) {
             String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
+            boolean loading = isLoadingLyricsPreview(detail);
+            if (currentLyricsResult != null && !loading && shouldHideEmptyLyricsPreview(detail)) {
+                lyricPreviewView.clear();
+                return;
+            }
+            if (loading || currentLyricsResult == null) {
+                resetEmptyLyricsPreviewTimer();
+            }
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(emptyPreviewLine(detail));
-            lyricPreviewView.setPreview(rows, positionMs, 0L, 0L, isLoadingLyricsPreview(detail));
+            lyricPreviewView.setPreview(rows, positionMs, 0L, 0L, loading);
             return;
         }
+        resetEmptyLyricsPreviewTimer();
         PreviewEntry entry = previewEntryAt(positionMs);
         if (entry == null) {
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
@@ -7199,6 +7213,62 @@ public final class MainActivity extends Activity implements
     private boolean isLoadingLyricsPreview(String detail) {
         String value = detail == null ? "" : detail.trim().toLowerCase(Locale.ROOT);
         return value.contains("loading") || value.contains("불러");
+    }
+
+    private boolean shouldHideEmptyLyricsPreview(String detail) {
+        String key = buildEmptyLyricsPreviewKey(detail);
+        long now = SystemClock.uptimeMillis();
+        if (!key.equals(emptyLyricsPreviewKey)) {
+            emptyLyricsPreviewKey = key;
+            emptyLyricsPreviewShownAtMs = now;
+            scheduleEmptyLyricsPreviewClear();
+            return false;
+        }
+        long elapsed = now - emptyLyricsPreviewShownAtMs;
+        if (elapsed < EMPTY_LYRICS_PREVIEW_VISIBLE_MS) {
+            scheduleEmptyLyricsPreviewClear();
+            return false;
+        }
+        return true;
+    }
+
+    private String buildEmptyLyricsPreviewKey(String detail) {
+        String trackKey = currentTrack == null ? "" : currentTrack.stableKey();
+        String message = detail == null ? "" : detail.trim();
+        return trackKey + "\n" + message;
+    }
+
+    private void scheduleEmptyLyricsPreviewClear() {
+        handler.removeCallbacks(emptyLyricsPreviewClearRunnable);
+        long elapsed = SystemClock.uptimeMillis() - emptyLyricsPreviewShownAtMs;
+        long delay = Math.max(0L, EMPTY_LYRICS_PREVIEW_VISIBLE_MS - elapsed);
+        handler.postDelayed(emptyLyricsPreviewClearRunnable, delay);
+    }
+
+    private void clearExpiredEmptyLyricsPreview() {
+        if (lyricPreviewView == null || emptyLyricsPreviewKey.isEmpty()) {
+            return;
+        }
+        if (currentLyricsResult == null || !currentLyricsResult.lines.isEmpty()) {
+            resetEmptyLyricsPreviewTimer();
+            return;
+        }
+        String detail = currentLyricsResult.detail;
+        if (isLoadingLyricsPreview(detail) || !buildEmptyLyricsPreviewKey(detail).equals(emptyLyricsPreviewKey)) {
+            return;
+        }
+        if (SystemClock.uptimeMillis() - emptyLyricsPreviewShownAtMs >= EMPTY_LYRICS_PREVIEW_VISIBLE_MS) {
+            lyricPreviewView.clear();
+        }
+    }
+
+    private void resetEmptyLyricsPreviewTimer() {
+        if (emptyLyricsPreviewKey.isEmpty() && emptyLyricsPreviewShownAtMs == 0L) {
+            return;
+        }
+        emptyLyricsPreviewKey = "";
+        emptyLyricsPreviewShownAtMs = 0L;
+        handler.removeCallbacks(emptyLyricsPreviewClearRunnable);
     }
 
     private PreviewEntry previewEntryAt(long positionMs) {
