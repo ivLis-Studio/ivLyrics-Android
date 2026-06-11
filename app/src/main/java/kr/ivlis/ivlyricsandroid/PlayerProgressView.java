@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -50,6 +51,33 @@ public final class PlayerProgressView extends View {
     private void init() {
         setClickable(true);
         setFocusable(true);
+        setFocusableInTouchMode(false);
+        setDefaultFocusHighlightEnabled(true);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (durationMs <= 0L || seekListener == null) {
+            return super.onKeyDown(keyCode, event);
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            long delta = event != null && event.isShiftPressed() ? 30_000L : 5_000L;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                delta = -delta;
+            }
+            positionMs = Math.max(0L, Math.min(durationMs, positionMs + delta));
+            seekListener.onSeekRequested(positionMs);
+            invalidate();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            seekListener.onSeekRequested(positionMs);
+            performClick();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override

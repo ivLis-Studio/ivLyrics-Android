@@ -13,6 +13,7 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.SystemClock;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
 import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -410,6 +411,9 @@ public final class LyricsView extends View {
         lyricTypeface = AppFonts.semiBold(getContext());
         setWillNotDraw(false);
         setClickable(true);
+        setFocusable(true);
+        setFocusableInTouchMode(false);
+        setDefaultFocusHighlightEnabled(true);
         ViewConfiguration configuration = ViewConfiguration.get(getContext());
         touchSlop = configuration.getScaledTouchSlop();
         minimumFlingVelocity = configuration.getScaledMinimumFlingVelocity();
@@ -417,6 +421,29 @@ public final class LyricsView extends View {
         manualScroller = new OverScroller(getContext());
         textPaint.setTypeface(lyricTypeface);
         textPaint.setSubpixelText(true);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (lines.isEmpty()) {
+            return super.onKeyDown(keyCode, event);
+        }
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                return moveRemoteSelection(event != null && event.isShiftPressed() ? -5 : -1);
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                return moveRemoteSelection(event != null && event.isShiftPressed() ? 5 : 1);
+            case KeyEvent.KEYCODE_PAGE_UP:
+                return moveRemoteSelection(-5);
+            case KeyEvent.KEYCODE_PAGE_DOWN:
+                return moveRemoteSelection(5);
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                return seekRemoteSelection() || super.onKeyDown(keyCode, event);
+            default:
+                return super.onKeyDown(keyCode, event);
+        }
     }
 
     @Override
@@ -661,6 +688,63 @@ public final class LyricsView extends View {
                 postInvalidateOnAnimation();
             }
         }, MANUAL_SCROLL_HOLD_MS + 80L);
+    }
+
+    private boolean moveRemoteSelection(int delta) {
+        List<DisplayLine> displayLines = buildDisplayLines();
+        if (displayLines.isEmpty()) {
+            return false;
+        }
+        int currentIndex = remoteSelectionIndex(displayLines);
+        int nextIndex = Math.max(0, Math.min(displayLines.size() - 1, currentIndex + delta));
+        if (nextIndex == currentIndex) {
+            return true;
+        }
+        if (manualScroller != null) {
+            manualScroller.abortAnimation();
+        }
+        manualScrollActive = true;
+        draggingLyrics = false;
+        smoothSeekCenterActive = false;
+        manualCenterIndex = nextIndex;
+        animatedCenterIndex = nextIndex;
+        centerInitialized = true;
+        lastManualScrollUptimeMs = SystemClock.uptimeMillis();
+        postInvalidateOnAnimation();
+        scheduleReturnToPlayback();
+        return true;
+    }
+
+    private boolean seekRemoteSelection() {
+        if (seekListener == null) {
+            return false;
+        }
+        List<DisplayLine> displayLines = buildDisplayLines();
+        if (displayLines.isEmpty()) {
+            return false;
+        }
+        int index = remoteSelectionIndex(displayLines);
+        DisplayLine displayLine = displayLines.get(Math.max(0, Math.min(displayLines.size() - 1, index)));
+        if (displayLine == null || !displayLine.isTimed()) {
+            return false;
+        }
+        prepareSmoothSeekCenter();
+        seekListener.onSeekRequested(displayLine.seekTimeMs());
+        performClick();
+        return true;
+    }
+
+    private int remoteSelectionIndex(List<DisplayLine> displayLines) {
+        if (displayLines == null || displayLines.isEmpty()) {
+            return 0;
+        }
+        int index;
+        if (manualScrollActive || centerInitialized) {
+            index = Math.round(animatedCenterIndex);
+        } else {
+            index = findActiveDisplayIndex(displayLines);
+        }
+        return Math.max(0, Math.min(displayLines.size() - 1, index));
     }
 
     private void updateAnimatedCenter(int activeIndex) {

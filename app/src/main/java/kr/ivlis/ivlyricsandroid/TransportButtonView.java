@@ -50,6 +50,8 @@ public final class TransportButtonView extends View {
     private void init() {
         setClickable(true);
         setFocusable(true);
+        setFocusableInTouchMode(false);
+        setDefaultFocusHighlightEnabled(true);
         setWillNotDraw(false);
     }
 

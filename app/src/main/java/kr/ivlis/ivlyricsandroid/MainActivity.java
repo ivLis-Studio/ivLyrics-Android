@@ -36,6 +36,7 @@ import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -121,6 +122,8 @@ public final class MainActivity extends Activity implements
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
     private static final int LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP = 120;
+    private static final long REMOTE_SEEK_STEP_MS = 5_000L;
+    private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
             "ivLyrics에 오신 것을 환영합니다",
             "Welcome to ivLyrics",
@@ -393,6 +396,7 @@ public final class MainActivity extends Activity implements
         applySpeakerColorSettings(settingsSnapshot);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
+        requestDefaultRemoteFocus(false);
     }
 
     @Override
@@ -527,6 +531,215 @@ public final class MainActivity extends Activity implements
         }
         lastBackPressElapsedMs = now;
         Toast.makeText(this, ui("toast.back_exit"), Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event != null && handleRemoteKeyBeforeDefault(event)) {
+            return true;
+        }
+        boolean handled = super.dispatchKeyEvent(event);
+        if (handled) {
+            return true;
+        }
+        return event != null && handleRemoteKeyFallback(event);
+    }
+
+    private boolean handleRemoteKeyBeforeDefault(KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            return false;
+        }
+        int keyCode = event.getKeyCode();
+        boolean textInputFocused = isTextInputFocused();
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE || (keyCode == KeyEvent.KEYCODE_DEL && !textInputFocused)) {
+            onBackPressed();
+            return true;
+        }
+        if (textInputFocused) {
+            return false;
+        }
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                runTransportCommand(() -> NowPlayingService.togglePlayback());
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+                runTransportCommand(() -> NowPlayingService.skipToNext());
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                runTransportCommand(() -> NowPlayingService.skipToPrevious());
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                seekPlayerBy(-remoteSeekStep(event));
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                seekPlayerBy(remoteSeekStep(event));
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+                showSettingsPanel(!isSettingsPanelVisible());
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean handleRemoteKeyFallback(KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN || isTextInputFocused()) {
+            return false;
+        }
+        int keyCode = event.getKeyCode();
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_PAGE_UP:
+            case KeyEvent.KEYCODE_PAGE_DOWN:
+                return routeRemoteKeyToLyrics(event);
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (getCurrentFocus() == null && playerProgressView != null && playerProgressView.isShown()) {
+                    playerProgressView.requestFocus();
+                    return playerProgressView.dispatchKeyEvent(event);
+                }
+                return false;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                return activateRemoteDefaultAction();
+            case KeyEvent.KEYCODE_SPACE:
+                runTransportCommand(() -> NowPlayingService.togglePlayback());
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean routeRemoteKeyToLyrics(KeyEvent event) {
+        if (isInAppBrowserVisible()
+                || isLyricsMetaMenuPopupVisible()
+                || isSpotifySetupPanelVisible()
+                || isSettingsPanelVisible()) {
+            return false;
+        }
+        LyricsView target = activeLyricsViewForRemoteKeys();
+        if (target == null || !target.isShown()) {
+            return false;
+        }
+        target.requestFocus();
+        return target.dispatchKeyEvent(event);
+    }
+
+    private LyricsView activeLyricsViewForRemoteKeys() {
+        if (isLandscapeLayout()) {
+            return landscapeLyricsView;
+        }
+        return lyricsPageVisible ? lyricsView : null;
+    }
+
+    private boolean activateRemoteDefaultAction() {
+        View focused = getCurrentFocus();
+        if (focused != null && focused.isShown() && focused.isClickable()) {
+            focused.performClick();
+            return true;
+        }
+        if (isLyricsMetaMenuPopupVisible()
+                || isInAppBrowserVisible()
+                || isSpotifySetupPanelVisible()
+                || isSettingsPanelVisible()) {
+            requestDefaultRemoteFocus(true);
+            return false;
+        }
+        LyricsView target = activeLyricsViewForRemoteKeys();
+        if (target != null && target.isShown()) {
+            target.requestFocus();
+            return target.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+        }
+        if (playPauseButton != null && playPauseButton.isShown()) {
+            playPauseButton.requestFocus();
+            playPauseButton.performClick();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isTextInputFocused() {
+        return getCurrentFocus() instanceof EditText;
+    }
+
+    private long remoteSeekStep(KeyEvent event) {
+        return event != null && event.isShiftPressed() ? REMOTE_SEEK_LARGE_STEP_MS : REMOTE_SEEK_STEP_MS;
+    }
+
+    private void seekPlayerBy(long deltaMs) {
+        TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
+        if (snapshot == null || snapshot.durationMs <= 0L) {
+            return;
+        }
+        long current = snapshot.positionNow();
+        seekPlayerToPosition(Math.max(0L, Math.min(snapshot.durationMs, current + deltaMs)));
+    }
+
+    private void requestDefaultRemoteFocus(boolean force) {
+        handler.post(() -> {
+            View current = getCurrentFocus();
+            if (!force && current != null && current.isShown()) {
+                return;
+            }
+            View target = defaultRemoteFocusTarget();
+            if (target != null && target.isShown()) {
+                target.requestFocus();
+            }
+        });
+    }
+
+    private View defaultRemoteFocusTarget() {
+        if (isLyricsMetaMenuPopupVisible()) {
+            return firstFocusableDescendant(lyricsLanguageSettingsPanel);
+        }
+        if (isSpotifySetupPanelVisible()) {
+            return firstFocusableDescendant(spotifySetupPanel);
+        }
+        if (isSettingsPanelVisible()) {
+            return firstFocusableDescendant(settingsPanel);
+        }
+        if (lyricsPageVisible && lyricsView != null) {
+            return lyricsView;
+        }
+        if (isLandscapeLayout() && landscapeLyricsView != null) {
+            return landscapeLyricsView;
+        }
+        return playPauseButton;
+    }
+
+    private View firstFocusableDescendant(View view) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return null;
+        }
+        if (view.isFocusable() && view.isEnabled() && isUsefulRemoteFocusTarget(view)) {
+            return view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int index = 0; index < group.getChildCount(); index++) {
+            View child = firstFocusableDescendant(group.getChildAt(index));
+            if (child != null) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private boolean isUsefulRemoteFocusTarget(View view) {
+        return view != null
+                && (view.isClickable()
+                || view instanceof EditText
+                || view instanceof SeekBar
+                || view instanceof Switch
+                || view instanceof LyricsView
+                || view instanceof PlayerProgressView
+                || view instanceof TransportButtonView);
     }
 
     @Override
@@ -1241,6 +1454,7 @@ public final class MainActivity extends Activity implements
         lyricPreviewContainer.setGravity(Gravity.CENTER);
         lyricPreviewContainer.setPadding(dp(12), dp(8), dp(12), dp(8));
         lyricPreviewContainer.setOnClickListener(view -> showLyricsPage(true));
+        makeRemoteFocusable(lyricPreviewContainer);
         attachPageSwipe(lyricPreviewContainer, true, true);
         lyricPreviewView = new MainLyricPreviewView(this);
         lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
@@ -2864,6 +3078,7 @@ public final class MainActivity extends Activity implements
         } else {
             buildOnboardingSpotifyStep(onboardingBody);
         }
+        requestDefaultRemoteFocus(true);
     }
 
     private void handleOnboardingNextAction() {
@@ -3104,6 +3319,8 @@ public final class MainActivity extends Activity implements
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
+        content.setFocusable(true);
+        content.setFocusableInTouchMode(true);
         content.setPadding(dp(8), dp(8), dp(8), dp(8));
         content.setBackground(roundDrawable(Color.rgb(30, 32, 42), dp(14)));
 
@@ -3116,6 +3333,15 @@ public final class MainActivity extends Activity implements
         );
         popup.setOutsideTouchable(true);
         popup.setBackgroundDrawable(roundDrawable(Color.rgb(30, 32, 42), dp(14)));
+        content.setOnKeyListener((view, keyCode, event) -> {
+            if (event != null
+                    && event.getAction() == KeyEvent.ACTION_DOWN
+                    && (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_DEL)) {
+                popup.dismiss();
+                return true;
+            }
+            return false;
+        });
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             popup.setElevation(dp(10));
         }
@@ -3138,6 +3364,7 @@ public final class MainActivity extends Activity implements
             TextView item = label(choice.label, 13f,
                     active ? Color.rgb(12, 13, 17) : Color.WHITE,
                     AppFonts.semiBold(this));
+            makeRemoteFocusable(item);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setSingleLine(true);
             item.setEllipsize(TextUtils.TruncateAt.END);
@@ -3158,6 +3385,9 @@ public final class MainActivity extends Activity implements
                 params.topMargin = dp(4);
             }
             list.addView(item, params);
+            if (active) {
+                item.post(item::requestFocus);
+            }
         }
 
         popup.showAsDropDown(anchor, 0, dp(6));
@@ -3214,6 +3444,7 @@ public final class MainActivity extends Activity implements
             }
         }
         applyLandscapeControlsAutoHideSetting();
+        requestDefaultRemoteFocus(false);
     }
 
     private void rebuildContentViewAfterConfigurationChange() {
@@ -3259,6 +3490,7 @@ public final class MainActivity extends Activity implements
             }
         }
         applyLandscapeControlsAutoHideSetting();
+        requestDefaultRemoteFocus(false);
     }
 
     private void rebuildOrientationSensitivePages() {
@@ -3392,6 +3624,7 @@ public final class MainActivity extends Activity implements
 
     private void addSettingsTabButton(String tabId, String text) {
         TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(button);
         button.setTag(tabId);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
@@ -3803,6 +4036,7 @@ public final class MainActivity extends Activity implements
 
     private TextView colorValueButton(String color) {
         TextView value = label(color, 12f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(value);
         value.setGravity(Gravity.CENTER);
         value.setMinHeight(dp(42));
         value.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(9)));
@@ -4105,6 +4339,7 @@ public final class MainActivity extends Activity implements
 
     private TextView primaryButton(String label) {
         TextView view = label(label, 13f, Color.rgb(12, 13, 17), AppFonts.bold(this));
+        makeRemoteFocusable(view);
         view.setGravity(Gravity.CENTER);
         view.setBackground(roundDrawable(Color.argb(238, 255, 255, 255), dp(12)));
         view.setPadding(dp(12), 0, dp(12), 0);
@@ -4151,6 +4386,7 @@ public final class MainActivity extends Activity implements
 
     private TextView providerButton(AiLyricsSettings.Provider provider) {
         TextView button = label(provider.label, 12f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(button);
         button.setTag(provider.id);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
@@ -4620,6 +4856,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(button);
         button.setTag(tabId);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
@@ -4810,6 +5047,7 @@ public final class MainActivity extends Activity implements
         row.setPadding(dp(11), dp(10), dp(11), dp(10));
         row.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(10)));
         row.setClickable(true);
+        makeRemoteFocusable(row);
         row.setOnClickListener(view -> selectManualLrclibCandidate(candidate));
 
         TextView title = label(
@@ -5013,6 +5251,7 @@ public final class MainActivity extends Activity implements
 
     private TextView languageButton(String text, boolean selected) {
         TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
         button.setEllipsize(TextUtils.TruncateAt.END);
@@ -5035,6 +5274,7 @@ public final class MainActivity extends Activity implements
 
     private TextView settingsSelectButton(String text) {
         TextView button = label(text, 13f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER_VERTICAL);
         button.setSingleLine(true);
         button.setEllipsize(TextUtils.TruncateAt.END);
@@ -5127,7 +5367,12 @@ public final class MainActivity extends Activity implements
         if (view == null) {
             return;
         }
+        makeRemoteFocusable(view);
         view.setClickable(true);
+        view.setOnLongClickListener(target -> {
+            openLyricsMetaMenuFromMain(target);
+            return true;
+        });
         view.setOnTouchListener((target, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
@@ -5228,6 +5473,17 @@ public final class MainActivity extends Activity implements
         detachFromParent(lyricsLanguageSettingsPanel);
 
         FrameLayout popupContent = new FrameLayout(this);
+        popupContent.setFocusable(true);
+        popupContent.setFocusableInTouchMode(true);
+        popupContent.setOnKeyListener((view, keyCode, event) -> {
+            if (event != null
+                    && event.getAction() == KeyEvent.ACTION_DOWN
+                    && (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_DEL)) {
+                dismissLyricsMetaMenuPopup();
+                return true;
+            }
+            return false;
+        });
         popupContent.setPadding(dp(16), dp(10), dp(16), dp(10));
         popupContent.setClipChildren(false);
         popupContent.setClipToPadding(false);
@@ -5257,7 +5513,7 @@ public final class MainActivity extends Activity implements
                 popupContent,
                 lyricsMetaMenuPopupWidthPx,
                 popupHeight,
-                false
+                true
         );
         lyricsMetaMenuPopup.setOutsideTouchable(true);
         lyricsMetaMenuPopup.setBackgroundDrawable(roundDrawable(Color.TRANSPARENT, dp(18)));
@@ -5280,6 +5536,7 @@ public final class MainActivity extends Activity implements
         lyricsLanguageSettingsPanel.setTranslationY(0f);
         updateLyricsLanguageButtonState();
         lyricsMetaMenuPopup.showAtLocation(rootView, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, popupTop);
+        requestDefaultRemoteFocus(true);
     }
 
     private int lyricsMetaMenuPopupTop(View anchor) {
@@ -6602,6 +6859,7 @@ public final class MainActivity extends Activity implements
             settingsPanel.setAlpha(0f);
             settingsPanel.bringToFront();
             settingsPanel.animate().alpha(1f).setDuration(180L).start();
+            requestDefaultRemoteFocus(true);
         } else {
             settingsPanel.animate()
                     .alpha(0f)
@@ -6610,6 +6868,7 @@ public final class MainActivity extends Activity implements
                         settingsPanel.setVisibility(View.GONE);
                         settingsPanel.setAlpha(1f);
                         applyLandscapeControlsAutoHideSetting();
+                        requestDefaultRemoteFocus(true);
                     })
                     .start();
         }
@@ -6646,11 +6905,13 @@ public final class MainActivity extends Activity implements
                         .withEndAction(() -> {
                             spotifySetupPanel.setVisibility(View.GONE);
                             spotifySetupPanel.setAlpha(1f);
+                            requestDefaultRemoteFocus(true);
                         })
                         .start();
             } else {
                 spotifySetupPanel.setVisibility(View.GONE);
                 spotifySetupPanel.setAlpha(1f);
+                requestDefaultRemoteFocus(true);
             }
             return;
         }
@@ -6689,6 +6950,7 @@ public final class MainActivity extends Activity implements
         if (animate) {
             spotifySetupPanel.animate().alpha(1f).setDuration(180L).start();
         }
+        requestDefaultRemoteFocus(true);
     }
 
     private void requestMetadataTranslation(boolean clearCache) {
@@ -8235,6 +8497,7 @@ public final class MainActivity extends Activity implements
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
                         maybeShowLyricsMetaTip();
+                        requestDefaultRemoteFocus(true);
                     })
                     .start();
         } else {
@@ -8252,6 +8515,7 @@ public final class MainActivity extends Activity implements
                         clearMainPageRevealClip();
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
+                        requestDefaultRemoteFocus(true);
                     })
                     .start();
         }
@@ -8905,7 +9169,12 @@ public final class MainActivity extends Activity implements
     }
 
     private void attachLyricsMetaSwipe(View view) {
+        makeRemoteFocusable(view);
         view.setClickable(true);
+        view.setOnLongClickListener(target -> {
+            handleLyricsMetaLongPress(target);
+            return true;
+        });
         view.setOnTouchListener((target, event) -> {
             if (pageVelocityTracker != null) {
                 pageVelocityTracker.addMovement(event);
@@ -9372,6 +9641,18 @@ public final class MainActivity extends Activity implements
         return view;
     }
 
+    private <T extends View> T makeRemoteFocusable(T view) {
+        if (view == null) {
+            return null;
+        }
+        view.setFocusable(true);
+        view.setFocusableInTouchMode(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.setDefaultFocusHighlightEnabled(true);
+        }
+        return view;
+    }
+
     private LinearLayout createLyricsSupplementLoadingIndicator() {
         LinearLayout indicator = new LinearLayout(this);
         indicator.setOrientation(LinearLayout.HORIZONTAL);
@@ -9399,6 +9680,7 @@ public final class MainActivity extends Activity implements
 
     private ImageButton iconButton(int drawableRes, int sizeDp, int iconSizeDp, int iconColor, int backgroundColor, String description) {
         ImageButton view = new ImageButton(this);
+        makeRemoteFocusable(view);
         view.setImageResource(drawableRes);
         view.setColorFilter(iconColor);
         view.setScaleType(ImageView.ScaleType.CENTER);
@@ -9415,6 +9697,7 @@ public final class MainActivity extends Activity implements
 
     private TextView pillButton(String label) {
         TextView view = label(label, 13f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(view);
         view.setGravity(Gravity.CENTER);
         view.setBackground(roundDrawable(Color.argb(46, 255, 255, 255), dp(22)));
         return view;
@@ -9422,6 +9705,7 @@ public final class MainActivity extends Activity implements
 
     private TextView debugButton(String label) {
         TextView view = label(label, 13f, Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(view);
         view.setGravity(Gravity.CENTER);
         view.setBackground(roundDrawable(Color.argb(42, 255, 255, 255), dp(9)));
         view.setPadding(dp(12), 0, dp(12), 0);
