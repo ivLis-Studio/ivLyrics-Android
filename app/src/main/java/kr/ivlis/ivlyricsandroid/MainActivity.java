@@ -221,7 +221,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout providerButtonsContainer;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
-    private LinearLayout sourceLanguageButtonsContainer;
+    private TextView sourceLanguageSelectButton;
     private ScrollView settingsScrollView;
     private ScrollView logScrollView;
     private Switch languageTranslationSwitch;
@@ -1911,29 +1911,12 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        ScrollView choicesScroll = new ScrollView(this);
-        choicesScroll.setFillViewport(false);
-        choicesScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        LinearLayout choicesContent = new LinearLayout(this);
-        choicesContent.setOrientation(LinearLayout.VERTICAL);
-        choicesScroll.addView(choicesContent, new ScrollView.LayoutParams(
+        sourceLanguageSelectButton = settingsSelectButton("");
+        sourceLanguageSelectButton.setOnClickListener(view -> showLyricsSourceLanguagePopup(sourceLanguageSelectButton));
+        lyricsLanguageSettingsContent.addView(sourceLanguageSelectButton, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        LinearLayout.LayoutParams choicesScrollParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(300)
-        );
-        choicesScrollParams.topMargin = dp(10);
-        lyricsLanguageSettingsContent.addView(choicesScroll, choicesScrollParams);
-
-        sourceLanguageButtonsContainer = new LinearLayout(this);
-        sourceLanguageButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams sourceParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        choicesContent.addView(sourceLanguageButtonsContainer, sourceParams);
+                dp(42)
+        ), dp(10)));
 
         LinearLayout switchRow = new LinearLayout(this);
         switchRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1943,7 +1926,7 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         switchRowParams.topMargin = dp(10);
-        choicesContent.addView(switchRow, switchRowParams);
+        lyricsLanguageSettingsContent.addView(switchRow, switchRowParams);
 
         languageTranslationSwitch = settingSwitch(ui("lyrics.translation"), "");
         languageTranslationSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -4973,15 +4956,17 @@ public final class MainActivity extends Activity implements
     }
 
     private void rebuildSourceLanguageButtons() {
-        if (sourceLanguageButtonsContainer == null) {
+        if (sourceLanguageSelectButton == null) {
             return;
         }
-        List<LanguageChoice> choices = new ArrayList<>();
-        choices.add(new LanguageChoice("auto", autoSourceLanguageLabel()));
-        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
-            choices.add(new LanguageChoice(language.code, language.code + " · " + language.nativeName));
+        sourceLanguageSelectButton.setText(sourceLanguageLabel(selectedRuleSourceLang) + "  v");
+    }
+
+    private void showLyricsSourceLanguagePopup(View anchor) {
+        if (anchor == null || aiLyricsSettings == null) {
+            return;
         }
-        rebuildChoiceButtons(sourceLanguageButtonsContainer, choices, selectedRuleSourceLang, code -> {
+        showLanguageSelectPopup(anchor, sourceLanguageChoices(), selectedRuleSourceLang, code -> {
             selectedRuleSourceLang = "auto".equalsIgnoreCase(code)
                     ? "auto"
                     : AiLyricsSettings.normalizeSourceLanguageKey(code);
@@ -4989,6 +4974,15 @@ public final class MainActivity extends Activity implements
             rebuildSourceLanguageButtons();
             requestAiLyrics(true);
         });
+    }
+
+    private List<LanguageChoice> sourceLanguageChoices() {
+        List<LanguageChoice> choices = new ArrayList<>();
+        choices.add(new LanguageChoice("auto", autoSourceLanguageLabel()));
+        for (AiLyricsSettings.Language language : AiLyricsSettings.SUPPORTED_LANGUAGES) {
+            choices.add(new LanguageChoice(language.code, language.nativeName + " · " + language.name));
+        }
+        return choices;
     }
 
     private void rebuildChoiceButtons(LinearLayout container, List<LanguageChoice> choices, String selectedCode, ChoiceHandler handler) {
