@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to create or update"
         required: true
-        default: "v1.0.8"
+        default: "v1.0.9"
       prerelease:
         description: "Mark release as prerelease"
         required: true
