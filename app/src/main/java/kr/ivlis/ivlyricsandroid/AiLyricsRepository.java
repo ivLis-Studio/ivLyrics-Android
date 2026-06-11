@@ -9,10 +9,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -109,6 +111,18 @@ final class AiLyricsRepository {
         void write(String message);
     }
 
+    private interface TextDeltaSink {
+        void onDelta(String text) throws Exception;
+    }
+
+    private interface StreamRowSink {
+        void onRow(int index, String value);
+    }
+
+    private interface SseDataHandler {
+        String onEvent(String eventName, String data) throws Exception;
+    }
+
     private static final class SupplementRequest {
         final int lineIndex;
         final int partIndex;
@@ -168,13 +182,21 @@ final class AiLyricsRepository {
         }
 
         synchronized void setPronunciation(List<String> values) {
-            pronunciation = safeCopy(values);
+            pronunciation = normalizedCopy(values, requests.size());
             pronunciationFinished = true;
         }
 
         synchronized void setTranslation(List<String> values) {
-            translation = safeCopy(values);
+            translation = normalizedCopy(values, requests.size());
             translationFinished = true;
+        }
+
+        synchronized void setPronunciationValue(int index, String value) {
+            pronunciation = withValue(pronunciation, requests.size(), index, value);
+        }
+
+        synchronized void setTranslationValue(int index, String value) {
+            translation = withValue(translation, requests.size(), index, value);
         }
 
         synchronized void markPronunciationFailed() {
@@ -204,15 +226,113 @@ final class AiLyricsRepository {
         }
 
         synchronized List<String> pronunciationSnapshot() {
-            return safeCopy(pronunciation);
+            return normalizedCopy(pronunciation, requests.size());
         }
 
         synchronized List<String> translationSnapshot() {
-            return safeCopy(translation);
+            return normalizedCopy(translation, requests.size());
         }
 
-        private static List<String> safeCopy(List<String> values) {
-            return values == null ? Collections.emptyList() : new ArrayList<>(values);
+        private static List<String> normalizedCopy(List<String> values, int size) {
+            List<String> copy = values == null ? new ArrayList<>() : new ArrayList<>(values);
+            while (copy.size() < size) {
+                copy.add("");
+            }
+            if (copy.size() > size) {
+                copy = new ArrayList<>(copy.subList(0, size));
+            }
+            return copy;
+        }
+
+        private static List<String> withValue(List<String> values, int size, int index, String value) {
+            List<String> copy = normalizedCopy(values, size);
+            if (index >= 0 && index < copy.size()) {
+                copy.set(index, value == null ? "" : value);
+            }
+            return copy;
+        }
+    }
+
+    private static final class TaggedTextStreamAccumulator {
+        private final int expectedLineCount;
+        private final boolean[] seen;
+        private final StringBuilder pending = new StringBuilder();
+        private int matched;
+        private int duplicate;
+
+        TaggedTextStreamAccumulator(int expectedLineCount) {
+            this.expectedLineCount = Math.max(0, expectedLineCount);
+            this.seen = new boolean[this.expectedLineCount];
+        }
+
+        void append(String delta, StreamRowSink sink) {
+            if (delta == null || delta.isEmpty() || expectedLineCount <= 0) {
+                return;
+            }
+            pending.append(delta);
+            drain(false, sink);
+        }
+
+        void finish(StreamRowSink sink) {
+            drain(true, sink);
+        }
+
+        int matchedCount() {
+            return matched;
+        }
+
+        int duplicateCount() {
+            return duplicate;
+        }
+
+        private void drain(boolean flush, StreamRowSink sink) {
+            while (true) {
+                int newline = firstNewlineIndex(pending);
+                if (newline < 0) {
+                    break;
+                }
+                String line = pending.substring(0, newline);
+                int removeLength = newline + 1;
+                if (newline + 1 < pending.length()
+                        && pending.charAt(newline) == '\r'
+                        && pending.charAt(newline + 1) == '\n') {
+                    removeLength = newline + 2;
+                }
+                pending.delete(0, removeLength);
+                emitLine(line, sink);
+            }
+            if (flush && pending.length() > 0) {
+                String line = pending.toString();
+                pending.setLength(0);
+                emitLine(line, sink);
+            }
+        }
+
+        private void emitLine(String rawLine, StreamRowSink sink) {
+            TaggedOutputLine tagged = parseTaggedOutputLine(stripCodeFences(rawLine));
+            if (tagged == null || tagged.index < 0 || tagged.index >= expectedLineCount) {
+                return;
+            }
+            String value = cleanSupplementOutput(tagged.value);
+            if (seen[tagged.index]) {
+                duplicate++;
+                return;
+            }
+            seen[tagged.index] = true;
+            matched++;
+            if (sink != null) {
+                sink.onRow(tagged.index, value);
+            }
+        }
+
+        private static int firstNewlineIndex(StringBuilder value) {
+            for (int index = 0; index < value.length(); index++) {
+                char c = value.charAt(index);
+                if (c == '\n' || c == '\r') {
+                    return index;
+                }
+            }
+            return -1;
         }
     }
 
@@ -583,17 +703,49 @@ final class AiLyricsRepository {
         try {
             List<SupplementRequest> requests = session.requests;
             int expectedLineCount = requests.size();
+            boolean pronunciation = SUPPLEMENT_TASK_PRONUNCIATION.equals(task);
             List<String> values;
-            if (SUPPLEMENT_TASK_PRONUNCIATION.equals(task)) {
-                log.write("ai pronunciation request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
-                String raw = callProviderRaw(buildPhoneticPrompt(requests, pronunciationLang), settings);
-                values = parseTaggedTextLines(raw, requests, SUPPLEMENT_TASK_PRONUNCIATION, log);
+            String prompt;
+            if (pronunciation) {
+                prompt = buildPhoneticPrompt(requests, pronunciationLang);
+                log.write("ai pronunciation stream request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
+                values = loadSupplementValuesStreamFirst(
+                        prompt,
+                        settings,
+                        requests,
+                        SUPPLEMENT_TASK_PRONUNCIATION,
+                        session,
+                        true,
+                        trackKey,
+                        rule,
+                        sourceLang,
+                        targetLang,
+                        pronunciationLang,
+                        translationSkipped,
+                        log,
+                        callback
+                );
                 log.write("ai pronunciation response: lines=" + values.size());
                 session.setPronunciation(values);
             } else {
-                log.write("ai translation request: lines=" + expectedLineCount);
-                String raw = callProviderRaw(buildTranslationPrompt(requests, targetLang), settings);
-                values = parseTaggedTextLines(raw, requests, SUPPLEMENT_TASK_TRANSLATION, log);
+                prompt = buildTranslationPrompt(requests, targetLang);
+                log.write("ai translation stream request: lines=" + expectedLineCount);
+                values = loadSupplementValuesStreamFirst(
+                        prompt,
+                        settings,
+                        requests,
+                        SUPPLEMENT_TASK_TRANSLATION,
+                        session,
+                        false,
+                        trackKey,
+                        rule,
+                        sourceLang,
+                        targetLang,
+                        pronunciationLang,
+                        translationSkipped,
+                        log,
+                        callback
+                );
                 log.write("ai translation response: lines=" + values.size());
                 session.setTranslation(values);
             }
@@ -602,7 +754,7 @@ final class AiLyricsRepository {
                     session.baseResult,
                     requests,
                     values,
-                    SUPPLEMENT_TASK_PRONUNCIATION.equals(task)
+                    pronunciation
             );
             cacheResult(taskCacheKey, taskResult);
 
@@ -648,6 +800,94 @@ final class AiLyricsRepository {
                     session.finished()
             ));
         }
+    }
+
+    private List<String> loadSupplementValuesStreamFirst(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            List<SupplementRequest> requests,
+            String taskName,
+            SupplementSession session,
+            boolean pronunciation,
+            String trackKey,
+            AiLyricsSettings.LanguageRule rule,
+            String sourceLang,
+            String targetLang,
+            String pronunciationLang,
+            boolean translationSkipped,
+            LogSink log,
+            Callback callback
+    ) throws Exception {
+        TaggedTextStreamAccumulator accumulator = new TaggedTextStreamAccumulator(requests.size());
+        StreamRowSink rowSink = (index, value) -> {
+            if (pronunciation) {
+                session.setPronunciationValue(index, value);
+            } else {
+                session.setTranslationValue(index, value);
+            }
+            postSupplementPartial(
+                    trackKey,
+                    session,
+                    settings,
+                    rule,
+                    sourceLang,
+                    targetLang,
+                    pronunciationLang,
+                    translationSkipped,
+                    callback
+            );
+        };
+
+        try {
+            String raw = callProviderStreamRaw(prompt, settings, delta -> accumulator.append(delta, rowSink));
+            accumulator.finish(rowSink);
+            if (accumulator.duplicateCount() > 0 && log != null) {
+                log.write("ai " + taskName + " stream alignment: duplicate IDs ignored=" + accumulator.duplicateCount());
+            }
+            if (accumulator.matchedCount() > 0 && log != null) {
+                log.write("ai " + taskName + " stream rows=" + accumulator.matchedCount() + "/" + requests.size());
+            }
+            return parseTaggedTextLines(raw, requests, taskName, log);
+        } catch (Exception streamError) {
+            if (log != null) {
+                log.write("ai " + taskName + " stream fallback: " + errorMessage(streamError));
+            }
+            String raw = callProviderRaw(prompt, settings);
+            return parseTaggedTextLines(raw, requests, taskName, log);
+        }
+    }
+
+    private void postSupplementPartial(
+            String trackKey,
+            SupplementSession session,
+            AiLyricsSettings.Snapshot settings,
+            AiLyricsSettings.LanguageRule rule,
+            String sourceLang,
+            String targetLang,
+            String pronunciationLang,
+            boolean translationSkipped,
+            Callback callback
+    ) {
+        LyricsResult result = buildMergedSupplementResult(
+                session.baseResult,
+                session.requests,
+                session.pronunciationSnapshot(),
+                session.translationSnapshot(),
+                settings,
+                rule,
+                sourceLang,
+                targetLang,
+                pronunciationLang,
+                translationSkipped
+        );
+        mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
+                trackKey,
+                result,
+                session.pronunciationLoading(),
+                session.translationLoading(),
+                session.finished(),
+                session.hasError()
+        ));
     }
 
     private LyricsResult buildMergedSupplementResult(
@@ -865,6 +1105,61 @@ final class AiLyricsRepository {
         return builder.toString();
     }
 
+    private String callProviderStreamRaw(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            TextDeltaSink sink
+    ) throws Exception {
+        List<String> apiKeys = parseApiKeys(settings.apiKeys);
+        if (apiKeys.isEmpty()) {
+            throw new IOException("API 키가 필요합니다");
+        }
+
+        Exception lastError = null;
+        for (String apiKey : apiKeys) {
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try {
+                    return callProviderStreamRawOnce(prompt, settings, apiKey, sink);
+                } catch (HttpStatusException error) {
+                    lastError = error;
+                    if (error.statusCode == 401) {
+                        throw error;
+                    }
+                    if (error.statusCode == 403 || error.statusCode == 429) {
+                        break;
+                    }
+                    if (attempt == 1) {
+                        throw error;
+                    }
+                    Thread.sleep(900L * (attempt + 1));
+                } catch (Exception error) {
+                    lastError = error;
+                    if (attempt == 1) {
+                        throw error;
+                    }
+                    Thread.sleep(900L * (attempt + 1));
+                }
+            }
+        }
+        throw lastError == null ? new IOException("AI 제공자 스트림 요청 실패") : lastError;
+    }
+
+    private String callProviderStreamRawOnce(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink
+    ) throws Exception {
+        String providerId = settings.provider.id;
+        if ("gemini".equals(providerId)) {
+            return callGeminiStream(prompt, settings, apiKey, sink);
+        }
+        if ("claude".equals(providerId)) {
+            return callClaudeStream(prompt, settings, apiKey, sink);
+        }
+        return callOpenAiCompatibleStream(prompt, settings, apiKey, sink);
+    }
+
     private String callProviderRaw(String prompt, AiLyricsSettings.Snapshot settings) throws Exception {
         List<String> apiKeys = parseApiKeys(settings.apiKeys);
         if (apiKeys.isEmpty()) {
@@ -911,24 +1206,46 @@ final class AiLyricsRepository {
         return callOpenAiCompatible(prompt, settings, apiKey);
     }
 
+    private String callGeminiStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink
+    ) throws Exception {
+        String endpoint = trimRight(settings.baseUrl, "/")
+                + "/models/" + urlPath(settings.model)
+                + ":streamGenerateContent?alt=sse&key=" + urlQuery(apiKey);
+        JSONObject body = geminiBody(prompt, settings);
+        return postJsonSse(endpoint, body, Collections.singletonMap("Content-Type", "application/json"), (eventName, data) -> {
+            if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) {
+                return "";
+            }
+            JSONObject response = new JSONObject(data);
+            JSONArray candidates = response.optJSONArray("candidates");
+            if (candidates == null || candidates.length() == 0) {
+                return "";
+            }
+            JSONObject candidate = candidates.optJSONObject(0);
+            JSONObject responseContent = candidate == null ? null : candidate.optJSONObject("content");
+            JSONArray responseParts = responseContent == null ? null : responseContent.optJSONArray("parts");
+            StringBuilder builder = new StringBuilder();
+            if (responseParts != null) {
+                for (int index = 0; index < responseParts.length(); index++) {
+                    JSONObject part = responseParts.optJSONObject(index);
+                    if (part != null) {
+                        builder.append(part.optString("text", ""));
+                    }
+                }
+            }
+            return builder.toString();
+        }, sink);
+    }
+
     private String callGemini(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
         String endpoint = trimRight(settings.baseUrl, "/")
                 + "/models/" + urlPath(settings.model)
                 + ":generateContent?key=" + urlQuery(apiKey);
-        JSONObject body = new JSONObject();
-        JSONArray contents = new JSONArray();
-        JSONObject content = new JSONObject();
-        content.put("role", "user");
-        JSONArray parts = new JSONArray();
-        parts.put(new JSONObject().put("text", prompt));
-        content.put("parts", parts);
-        contents.put(content);
-        body.put("contents", contents);
-        JSONObject config = new JSONObject();
-        config.put("maxOutputTokens", settings.maxTokens);
-        config.put("temperature", settings.temperature);
-        config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
-        body.put("generationConfig", config);
+        JSONObject body = geminiBody(prompt, settings);
 
         JSONObject response = new JSONObject(postJson(endpoint, body, Collections.singletonMap("Content-Type", "application/json")));
         JSONArray candidates = response.optJSONArray("candidates");
@@ -954,22 +1271,52 @@ final class AiLyricsRepository {
         return raw;
     }
 
+    private JSONObject geminiBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        JSONObject body = new JSONObject();
+        JSONArray contents = new JSONArray();
+        JSONObject content = new JSONObject();
+        content.put("role", "user");
+        JSONArray parts = new JSONArray();
+        parts.put(new JSONObject().put("text", prompt));
+        content.put("parts", parts);
+        contents.put(content);
+        body.put("contents", contents);
+        JSONObject config = new JSONObject();
+        config.put("maxOutputTokens", settings.maxTokens);
+        config.put("temperature", settings.temperature);
+        config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
+        body.put("generationConfig", config);
+        return body;
+    }
+
+    private String callClaudeStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink
+    ) throws Exception {
+        String endpoint = trimRight(settings.baseUrl, "/") + "/messages";
+        JSONObject body = claudeBody(prompt, settings);
+        body.put("stream", true);
+        Map<String, String> headers = claudeHeaders(apiKey);
+        return postJsonSse(endpoint, body, headers, (eventName, data) -> {
+            if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) {
+                return "";
+            }
+            JSONObject object = new JSONObject(data);
+            String type = object.optString("type", eventName == null ? "" : eventName);
+            if (!"content_block_delta".equals(type)) {
+                return "";
+            }
+            JSONObject delta = object.optJSONObject("delta");
+            return delta == null ? "" : delta.optString("text", "");
+        }, sink);
+    }
+
     private String callClaude(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
         String endpoint = trimRight(settings.baseUrl, "/") + "/messages";
-        JSONObject body = new JSONObject();
-        body.put("model", settings.model);
-        body.put("max_tokens", settings.maxTokens);
-        body.put("temperature", settings.temperature);
-        JSONArray messages = new JSONArray();
-        messages.put(new JSONObject()
-                .put("role", "user")
-                .put("content", prompt));
-        body.put("messages", messages);
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "application/json");
-        headers.put("x-api-key", apiKey);
-        headers.put("anthropic-version", "2023-06-01");
+        JSONObject body = claudeBody(prompt, settings);
+        Map<String, String> headers = claudeHeaders(apiKey);
 
         JSONObject response = new JSONObject(postJson(endpoint, body, headers));
         JSONArray content = response.optJSONArray("content");
@@ -989,25 +1336,60 @@ final class AiLyricsRepository {
         return raw;
     }
 
-    private String callOpenAiCompatible(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
-        String endpoint = openAiEndpoint(settings);
+    private JSONObject claudeBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
         JSONObject body = new JSONObject();
         body.put("model", settings.model);
+        body.put("max_tokens", settings.maxTokens);
+        body.put("temperature", settings.temperature);
         JSONArray messages = new JSONArray();
         messages.put(new JSONObject()
                 .put("role", "user")
                 .put("content", prompt));
         body.put("messages", messages);
-        body.put(tokenField(settings.provider.id), settings.maxTokens);
-        body.put("temperature", settings.temperature);
+        return body;
+    }
 
+    private Map<String, String> claudeHeaders(String apiKey) {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");
-        headers.put("Authorization", "Bearer " + apiKey);
-        if ("openrouter".equals(settings.provider.id)) {
-            headers.put("HTTP-Referer", "https://github.com/ivLis-STUDIO/ivLyrics");
-            headers.put("X-Title", "ivLyrics");
-        }
+        headers.put("x-api-key", apiKey);
+        headers.put("anthropic-version", "2023-06-01");
+        return headers;
+    }
+
+    private String callOpenAiCompatibleStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink
+    ) throws Exception {
+        String endpoint = openAiEndpoint(settings);
+        JSONObject body = openAiCompatibleBody(prompt, settings);
+        body.put("stream", true);
+        Map<String, String> headers = openAiCompatibleHeaders(settings, apiKey);
+        return postJsonSse(endpoint, body, headers, (eventName, data) -> {
+            if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) {
+                return "";
+            }
+            JSONObject response = new JSONObject(data);
+            JSONArray choices = response.optJSONArray("choices");
+            if (choices == null || choices.length() == 0) {
+                return "";
+            }
+            JSONObject choice = choices.optJSONObject(0);
+            JSONObject delta = choice == null ? null : choice.optJSONObject("delta");
+            if (delta != null) {
+                return extractOpenAiContent(delta.opt("content"));
+            }
+            JSONObject message = choice == null ? null : choice.optJSONObject("message");
+            return extractOpenAiContent(message == null ? null : message.opt("content"));
+        }, sink);
+    }
+
+    private String callOpenAiCompatible(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
+        String endpoint = openAiEndpoint(settings);
+        JSONObject body = openAiCompatibleBody(prompt, settings);
+        Map<String, String> headers = openAiCompatibleHeaders(settings, apiKey);
 
         JSONObject response = new JSONObject(postJson(endpoint, body, headers));
         JSONArray choices = response.optJSONArray("choices");
@@ -1021,6 +1403,30 @@ final class AiLyricsRepository {
             throw new IOException("[" + settings.provider.label + "] Empty response from API");
         }
         return raw;
+    }
+
+    private JSONObject openAiCompatibleBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        JSONObject body = new JSONObject();
+        body.put("model", settings.model);
+        JSONArray messages = new JSONArray();
+        messages.put(new JSONObject()
+                .put("role", "user")
+                .put("content", prompt));
+        body.put("messages", messages);
+        body.put(tokenField(settings.provider.id), settings.maxTokens);
+        body.put("temperature", settings.temperature);
+        return body;
+    }
+
+    private Map<String, String> openAiCompatibleHeaders(AiLyricsSettings.Snapshot settings, String apiKey) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("Authorization", "Bearer " + apiKey);
+        if ("openrouter".equals(settings.provider.id)) {
+            headers.put("HTTP-Referer", "https://github.com/ivLis-STUDIO/ivLyrics");
+            headers.put("X-Title", "ivLyrics");
+        }
+        return headers;
     }
 
     private String openAiEndpoint(AiLyricsSettings.Snapshot settings) {
@@ -1059,6 +1465,94 @@ final class AiLyricsRepository {
             throw new HttpStatusException(code, extractErrorMessage(response, code));
         }
         return response;
+    }
+
+    private String postJsonSse(
+            String endpoint,
+            JSONObject body,
+            Map<String, String> headers,
+            SseDataHandler handler,
+            TextDeltaSink sink
+    ) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Accept", "text/event-stream");
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            connection.setRequestProperty(entry.getKey(), entry.getValue());
+        }
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        connection.setFixedLengthStreamingMode(bytes.length);
+        try (OutputStream output = connection.getOutputStream()) {
+            output.write(bytes);
+        }
+        int code = connection.getResponseCode();
+        if (code < 200 || code >= 300) {
+            String response = readResponse(connection, true);
+            connection.disconnect();
+            throw new HttpStatusException(code, extractErrorMessage(response, code));
+        }
+
+        StringBuilder raw = new StringBuilder();
+        InputStream input = connection.getInputStream();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            String eventName = "";
+            StringBuilder data = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty()) {
+                    String delta = handleSseEvent(eventName, data.toString(), handler);
+                    if (!delta.isEmpty()) {
+                        raw.append(delta);
+                        if (sink != null) {
+                            sink.onDelta(delta);
+                        }
+                    }
+                    eventName = "";
+                    data.setLength(0);
+                    continue;
+                }
+                if (line.startsWith(":")) {
+                    continue;
+                }
+                if (line.startsWith("event:")) {
+                    eventName = line.substring("event:".length()).trim();
+                    continue;
+                }
+                if (line.startsWith("data:")) {
+                    if (data.length() > 0) {
+                        data.append('\n');
+                    }
+                    data.append(line.substring("data:".length()).trim());
+                }
+            }
+            if (data.length() > 0) {
+                String delta = handleSseEvent(eventName, data.toString(), handler);
+                if (!delta.isEmpty()) {
+                    raw.append(delta);
+                    if (sink != null) {
+                        sink.onDelta(delta);
+                    }
+                }
+            }
+        } finally {
+            connection.disconnect();
+        }
+
+        String text = raw.toString();
+        if (text.trim().isEmpty()) {
+            throw new IOException("Streaming returned no text");
+        }
+        return text;
+    }
+
+    private String handleSseEvent(String eventName, String data, SseDataHandler handler) throws Exception {
+        if (data == null || data.trim().isEmpty() || handler == null) {
+            return "";
+        }
+        return firstNonNull(handler.onEvent(eventName == null ? "" : eventName, data));
     }
 
     private String readResponse(HttpURLConnection connection, boolean error) throws IOException {
@@ -1504,6 +1998,20 @@ final class AiLyricsRepository {
             }
         }
         return "";
+    }
+
+    private static String firstNonNull(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String errorMessage(Exception error) {
+        if (error == null) {
+            return "unknown error";
+        }
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty()
+                ? error.getClass().getSimpleName()
+                : message.trim();
     }
 
     private static String payloadTextForRequests(List<SupplementRequest> requests) {
