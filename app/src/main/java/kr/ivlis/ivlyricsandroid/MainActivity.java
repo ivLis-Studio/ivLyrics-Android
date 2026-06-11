@@ -864,12 +864,55 @@ public final class MainActivity extends Activity implements
     }
 
     @Override
+    public void onAiLyricsPartialLoaded(
+            String trackKey,
+            LyricsResult result,
+            boolean pronunciationLoading,
+            boolean translationLoading,
+            boolean finished,
+            boolean hadError
+    ) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        aiLyricsGenerating = pronunciationLoading || translationLoading;
+        currentLyricsResult = mergeAiSupplementsIntoResult(currentLyricsResult, result);
+        currentLyricsResult = mergeCurrentFuriganaInto(currentLyricsResult);
+        setLyricsResultOnViews(currentLyricsResult);
+        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        statusView.setText(currentLyricsResult.detail);
+        if (aiSettingsStatusView != null && !hadError) {
+            aiSettingsStatusView.setText(finished ? ui("status.ai_applied") : ui("status.ai_generating"));
+        }
+    }
+
+    @Override
     public void onAiLyricsError(String trackKey, String message) {
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
         aiLyricsGenerating = false;
         setLyricsSupplementLoading(false, false, lyricsSupplementFuriganaLoading);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        if (aiSettingsStatusView != null) {
+            aiSettingsStatusView.setText(uiFormat("status.ai_failed_format", message));
+        }
+    }
+
+    @Override
+    public void onAiLyricsTaskError(
+            String trackKey,
+            String message,
+            boolean pronunciationLoading,
+            boolean translationLoading,
+            boolean finished
+    ) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        aiLyricsGenerating = pronunciationLoading || translationLoading;
+        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(uiFormat("status.ai_failed_format", message));
@@ -6346,6 +6389,8 @@ public final class MainActivity extends Activity implements
             aiSettingsStatusView.setText(ui("status.ai_generating"));
         }
         aiLyricsGenerating = true;
+        currentLyricsResult = mergeCurrentFuriganaInto(currentBaseLyricsResult);
+        setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(
                 rule.pronunciationEnabled,
                 rule.translationEnabled && !translationSkipped,
@@ -6400,6 +6445,70 @@ public final class MainActivity extends Activity implements
             return target;
         }
         return mergeFuriganaIntoResult(target, currentFuriganaResult);
+    }
+
+    private LyricsResult mergeAiSupplementsIntoResult(LyricsResult target, LyricsResult source) {
+        if (source == null || source.lines.isEmpty()) {
+            return target == null ? source : target;
+        }
+        if (target == null || target.lines.isEmpty()) {
+            return source;
+        }
+        List<LyricsLine> lines = new ArrayList<>();
+        int count = target.lines.size();
+        for (int index = 0; index < count; index++) {
+            LyricsLine targetLine = target.lines.get(index);
+            LyricsLine sourceLine = index < source.lines.size()
+                    ? source.lines.get(index)
+                    : null;
+            lines.add(mergeAiSupplementsIntoLine(targetLine, sourceLine));
+        }
+        return new LyricsResult(
+                lines,
+                target.providerLabel,
+                nonEmpty(source.detail, target.detail),
+                target.karaoke,
+                target.isrc,
+                target.spotifyTrackId,
+                target.contributors
+        );
+    }
+
+    private LyricsLine mergeAiSupplementsIntoLine(LyricsLine target, LyricsLine source) {
+        if (target == null) {
+            return source;
+        }
+        String pronunciation = nonEmpty(source == null ? "" : source.pronunciationText, target.pronunciationText);
+        String translation = nonEmpty(source == null ? "" : source.translationText, target.translationText);
+        if (target.vocalParts == null || target.vocalParts.isEmpty()) {
+            return target.withSupplements(pronunciation, translation, target.furiganaText);
+        }
+        List<LyricsLine.VocalPart> parts = new ArrayList<>();
+        for (int index = 0; index < target.vocalParts.size(); index++) {
+            LyricsLine.VocalPart targetPart = target.vocalParts.get(index);
+            LyricsLine.VocalPart sourcePart = source != null
+                    && source.vocalParts != null
+                    && index < source.vocalParts.size()
+                    ? source.vocalParts.get(index)
+                    : null;
+            parts.add(targetPart.withSupplements(
+                    nonEmpty(sourcePart == null ? "" : sourcePart.pronunciationText, targetPart.pronunciationText),
+                    nonEmpty(sourcePart == null ? "" : sourcePart.translationText, targetPart.translationText),
+                    targetPart.furiganaText
+            ));
+        }
+        return new LyricsLine(
+                target.startTimeMs,
+                target.endTimeMs,
+                target.text,
+                target.syllables,
+                target.speaker,
+                target.kind,
+                parts,
+                pronunciation,
+                translation,
+                target.furiganaText
+        );
     }
 
     private LyricsResult mergeFuriganaIntoResult(LyricsResult target, LyricsResult furiganaSource) {
