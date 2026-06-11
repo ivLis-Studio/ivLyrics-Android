@@ -820,6 +820,13 @@ public final class MainActivity extends Activity implements
         setLyricsTrackDurationOnViews(snapshot.durationMs);
         playPauseButton.setPlaying(snapshot.playing);
 
+        if (snapshot.isSpotifyDjSegment()) {
+            if (trackChanged) {
+                setSpotifyDjSegmentState(snapshot, nextKey);
+            }
+            return;
+        }
+
         if (trackChanged) {
             currentLyricsKey = nextKey;
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
@@ -858,6 +865,36 @@ public final class MainActivity extends Activity implements
             }
         }
         updateYouTubeBackgroundPlaybackState();
+    }
+
+    private void setSpotifyDjSegmentState(TrackSnapshot snapshot, String trackKey) {
+        currentLyricsKey = trackKey == null ? "" : trackKey;
+        currentResolvedIsrc = "";
+        currentResolvedSpotifyTrackId = "";
+        currentTrackSyncOffsetMs = 0;
+        currentVideoSyncOffsetMs = 0;
+        aiLyricsGenerating = false;
+        detectedLyricsSourceLang = "en";
+        selectedRuleSourceLang = "auto";
+        translatedTrackTitle = "";
+        translatedTrackArtist = "";
+        pendingSeekPositionMs = -1L;
+        currentLyricsResult = LyricsResult.empty("");
+        currentBaseLyricsResult = currentLyricsResult;
+        currentFuriganaResult = null;
+        currentFuriganaKey = "";
+        sourceView.setText("");
+        statusView.setText("");
+        setLyricsResultOnViews(currentLyricsResult);
+        setLyricsSupplementLoading(false, false, false);
+        updateLyricPreview(0L);
+        updateLyricsLanguageSettingsUi();
+        resetManualLrclibSearchForTrack(snapshot);
+        resetYouTubeBackgroundForTrack();
+        resetLogs("spotify dj segment");
+        appendLog("spotify dj segment: skipped Spotify metadata, lyrics, and background lookup"
+                + " / title=\"" + snapshot.title + "\""
+                + " / artist=\"" + snapshot.artist + "\"");
     }
 
     private void setSpotifySetupRequiredState(TrackSnapshot snapshot) {
@@ -4686,7 +4723,8 @@ public final class MainActivity extends Activity implements
         if (!isVideoBackgroundMode()
                 || youtubeBackgroundRepository == null
                 || currentTrack == null
-                || !currentTrack.hasUsableMetadata()) {
+                || !currentTrack.hasUsableMetadata()
+                || currentTrack.isSpotifyDjSegment()) {
             return;
         }
         LyricsResult lyricsResult = currentBaseLyricsResult == null ? LyricsResult.empty("") : currentBaseLyricsResult;
@@ -6951,6 +6989,12 @@ public final class MainActivity extends Activity implements
 
     private void requestMetadataTranslation(boolean clearCache) {
         if (currentTrack == null || !currentTrack.hasUsableMetadata() || aiLyricsRepository == null || aiLyricsSettings == null) {
+            return;
+        }
+        if (currentTrack.isSpotifyDjSegment()) {
+            translatedTrackTitle = "";
+            translatedTrackArtist = "";
+            updateTrackMetadataTextViews(currentTrack);
             return;
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
