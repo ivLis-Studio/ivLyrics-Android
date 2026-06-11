@@ -3393,22 +3393,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateSettingsTabButtons() {
-        if (settingsTabButtonsContainer == null) {
-            return;
-        }
-        for (int index = 0; index < settingsTabButtonsContainer.getChildCount(); index++) {
-            View child = settingsTabButtonsContainer.getChildAt(index);
-            if (!(child instanceof TextView)) {
-                continue;
-            }
-            TextView button = (TextView) child;
-            boolean selected = activeSettingsTab.equals(child.getTag());
-            button.setTextColor(selected ? Color.rgb(12, 13, 17) : Color.WHITE);
-            button.setBackground(roundDrawable(
-                    selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
-                    dp(12)
-            ));
-        }
+        updateTaggedSelectableButtons(settingsTabButtonsContainer, activeSettingsTab);
     }
 
     private String normalizeSettingsTab(String tabId) {
@@ -4048,6 +4033,26 @@ public final class MainActivity extends Activity implements
         return view;
     }
 
+    private LinearLayout addChoiceGridRow(LinearLayout container) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        if (container.getChildCount() > 0) {
+            rowParams.topMargin = dp(8);
+        }
+        container.addView(row, rowParams);
+        return row;
+    }
+
+    private LinearLayout.LayoutParams choiceGridButtonParams(int index, int heightDp) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(heightDp), 1f);
+        params.leftMargin = index % 2 == 0 ? 0 : dp(8);
+        return params;
+    }
+
     private void buildProviderButtons() {
         if (providerButtonsContainer == null) {
             return;
@@ -4056,28 +4061,18 @@ public final class MainActivity extends Activity implements
         LinearLayout row = null;
         for (int index = 0; index < AiLyricsSettings.PROVIDERS.size(); index++) {
             if (index % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-                if (providerButtonsContainer.getChildCount() > 0) {
-                    rowParams.topMargin = dp(8);
-                }
-                providerButtonsContainer.addView(row, rowParams);
+                row = addChoiceGridRow(providerButtonsContainer);
             }
             AiLyricsSettings.Provider provider = AiLyricsSettings.PROVIDERS.get(index);
             TextView button = providerButton(provider);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(54), 1f);
-            params.leftMargin = index % 2 == 0 ? 0 : dp(8);
-            row.addView(button, params);
+            row.addView(button, choiceGridButtonParams(index, 54));
         }
         updateProviderButtons();
     }
 
     private TextView providerButton(AiLyricsSettings.Provider provider) {
         TextView button = label(provider.label, 12f, Color.WHITE, AppFonts.semiBold(this));
+        button.setTag(provider.id);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
         button.setEllipsize(TextUtils.TruncateAt.END);
@@ -4110,19 +4105,7 @@ public final class MainActivity extends Activity implements
                     continue;
                 }
                 TextView button = (TextView) child;
-                String label = button.getText().toString();
-                boolean selected = false;
-                for (AiLyricsSettings.Provider provider : AiLyricsSettings.PROVIDERS) {
-                    if (provider.label.equals(label) && provider.id.equals(selectedId)) {
-                        selected = true;
-                        break;
-                    }
-                }
-                button.setTextColor(selected ? Color.rgb(12, 13, 17) : Color.WHITE);
-                button.setBackground(roundDrawable(
-                        selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
-                        dp(12)
-                ));
+                setSelectableButtonState(button, selectedId != null && selectedId.equals(button.getTag()));
             }
         }
     }
@@ -4249,16 +4232,7 @@ public final class MainActivity extends Activity implements
         LinearLayout row = null;
         for (int index = 0; index < choices.size(); index++) {
             if (index % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-                if (previewModeButtonsContainer.getChildCount() > 0) {
-                    rowParams.topMargin = dp(8);
-                }
-                previewModeButtonsContainer.addView(row, rowParams);
+                row = addChoiceGridRow(previewModeButtonsContainer);
             }
             PreviewChoice choice = choices.get(index);
             boolean selected = choice.item == AiLyricsSettings.PREVIEW_ITEM_NONE
@@ -4279,9 +4253,7 @@ public final class MainActivity extends Activity implements
                 updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
                 showSavedToast(ui("toast.preview_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
-            params.leftMargin = index % 2 == 0 ? 0 : dp(8);
-            row.addView(button, params);
+            row.addView(button, choiceGridButtonParams(index, 42));
         }
     }
 
@@ -4294,16 +4266,7 @@ public final class MainActivity extends Activity implements
         LinearLayout row = null;
         for (int index = 0; index < AiLyricsSettings.BACKGROUND_MODES.size(); index++) {
             if (index % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-                if (backgroundModeButtonsContainer.getChildCount() > 0) {
-                    rowParams.topMargin = dp(8);
-                }
-                backgroundModeButtonsContainer.addView(row, rowParams);
+                row = addChoiceGridRow(backgroundModeButtonsContainer);
             }
             AiLyricsSettings.BackgroundMode mode = AiLyricsSettings.BACKGROUND_MODES.get(index);
             TextView button = languageButton(backgroundModeLabel(mode.id), mode.id.equals(normalized));
@@ -4315,9 +4278,7 @@ public final class MainActivity extends Activity implements
                 applyBackgroundSettings(snapshot);
                 showSavedToast(ui("toast.background_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(46), 1f);
-            params.leftMargin = index % 2 == 0 ? 0 : dp(8);
-            row.addView(button, params);
+            row.addView(button, choiceGridButtonParams(index, 46));
         }
     }
 
@@ -4622,21 +4583,21 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateLyricsPopupTabButtons() {
-        if (lyricsPopupTabButtonsContainer == null) {
+        updateTaggedSelectableButtons(lyricsPopupTabButtonsContainer, activeLyricsPopupTab);
+    }
+
+    private void updateTaggedSelectableButtons(LinearLayout container, String selectedTag) {
+        if (container == null) {
             return;
         }
-        for (int index = 0; index < lyricsPopupTabButtonsContainer.getChildCount(); index++) {
-            View child = lyricsPopupTabButtonsContainer.getChildAt(index);
+        for (int index = 0; index < container.getChildCount(); index++) {
+            View child = container.getChildAt(index);
             if (!(child instanceof TextView)) {
                 continue;
             }
             TextView button = (TextView) child;
-            boolean selected = activeLyricsPopupTab.equals(child.getTag());
-            button.setTextColor(selected ? Color.rgb(12, 13, 17) : Color.WHITE);
-            button.setBackground(roundDrawable(
-                    selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
-                    dp(12)
-            ));
+            boolean selected = selectedTag != null && selectedTag.equals(child.getTag());
+            setSelectableButtonState(button, selected, 12f);
         }
     }
 
@@ -4968,16 +4929,25 @@ public final class MainActivity extends Activity implements
     }
 
     private TextView languageButton(String text, boolean selected) {
-        TextView button = label(text, 12f, selected ? Color.rgb(12, 13, 17) : Color.WHITE, AppFonts.semiBold(this));
+        TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
         button.setEllipsize(TextUtils.TruncateAt.END);
         button.setPadding(dp(8), 0, dp(8), 0);
+        setSelectableButtonState(button, selected, 11f);
+        return button;
+    }
+
+    private void setSelectableButtonState(TextView button, boolean selected) {
+        setSelectableButtonState(button, selected, 12f);
+    }
+
+    private void setSelectableButtonState(TextView button, boolean selected, float radiusDp) {
+        button.setTextColor(selected ? Color.rgb(12, 13, 17) : Color.WHITE);
         button.setBackground(roundDrawable(
                 selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
-                dp(11)
+                dp(radiusDp)
         ));
-        return button;
     }
 
     private TextView settingsSelectButton(String text) {

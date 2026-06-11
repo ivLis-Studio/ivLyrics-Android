@@ -1445,26 +1445,18 @@ final class AiLyricsRepository {
     }
 
     private String postJson(String endpoint, JSONObject body, Map<String, String> headers) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setRequestMethod("POST");
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setDoOutput(true);
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            connection.setRequestProperty(entry.getKey(), entry.getValue());
+        HttpURLConnection connection = openJsonPostConnection(endpoint, headers, false);
+        try {
+            writeJsonBody(connection, body);
+            int code = connection.getResponseCode();
+            String response = readResponse(connection, code >= 400);
+            if (code < 200 || code >= 300) {
+                throw new HttpStatusException(code, extractErrorMessage(response, code));
+            }
+            return response;
+        } finally {
+            connection.disconnect();
         }
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        connection.setFixedLengthStreamingMode(bytes.length);
-        try (OutputStream output = connection.getOutputStream()) {
-            output.write(bytes);
-        }
-        int code = connection.getResponseCode();
-        String response = readResponse(connection, code >= 400);
-        connection.disconnect();
-        if (code < 200 || code >= 300) {
-            throw new HttpStatusException(code, extractErrorMessage(response, code));
-        }
-        return response;
     }
 
     private String postJsonSse(
@@ -1474,66 +1466,55 @@ final class AiLyricsRepository {
             SseDataHandler handler,
             TextDeltaSink sink
     ) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setRequestMethod("POST");
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Accept", "text/event-stream");
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            connection.setRequestProperty(entry.getKey(), entry.getValue());
-        }
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        connection.setFixedLengthStreamingMode(bytes.length);
-        try (OutputStream output = connection.getOutputStream()) {
-            output.write(bytes);
-        }
-        int code = connection.getResponseCode();
-        if (code < 200 || code >= 300) {
-            String response = readResponse(connection, true);
-            connection.disconnect();
-            throw new HttpStatusException(code, extractErrorMessage(response, code));
-        }
-
+        HttpURLConnection connection = openJsonPostConnection(endpoint, headers, true);
         StringBuilder raw = new StringBuilder();
-        InputStream input = connection.getInputStream();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-            String eventName = "";
-            StringBuilder data = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isEmpty()) {
+        try {
+            writeJsonBody(connection, body);
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) {
+                String response = readResponse(connection, true);
+                throw new HttpStatusException(code, extractErrorMessage(response, code));
+            }
+
+            InputStream input = connection.getInputStream();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                String eventName = "";
+                StringBuilder data = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isEmpty()) {
+                        String delta = handleSseEvent(eventName, data.toString(), handler);
+                        if (!delta.isEmpty()) {
+                            raw.append(delta);
+                            if (sink != null) {
+                                sink.onDelta(delta);
+                            }
+                        }
+                        eventName = "";
+                        data.setLength(0);
+                        continue;
+                    }
+                    if (line.startsWith(":")) {
+                        continue;
+                    }
+                    if (line.startsWith("event:")) {
+                        eventName = line.substring("event:".length()).trim();
+                        continue;
+                    }
+                    if (line.startsWith("data:")) {
+                        if (data.length() > 0) {
+                            data.append('\n');
+                        }
+                        data.append(line.substring("data:".length()).trim());
+                    }
+                }
+                if (data.length() > 0) {
                     String delta = handleSseEvent(eventName, data.toString(), handler);
                     if (!delta.isEmpty()) {
                         raw.append(delta);
                         if (sink != null) {
                             sink.onDelta(delta);
                         }
-                    }
-                    eventName = "";
-                    data.setLength(0);
-                    continue;
-                }
-                if (line.startsWith(":")) {
-                    continue;
-                }
-                if (line.startsWith("event:")) {
-                    eventName = line.substring("event:".length()).trim();
-                    continue;
-                }
-                if (line.startsWith("data:")) {
-                    if (data.length() > 0) {
-                        data.append('\n');
-                    }
-                    data.append(line.substring("data:".length()).trim());
-                }
-            }
-            if (data.length() > 0) {
-                String delta = handleSseEvent(eventName, data.toString(), handler);
-                if (!delta.isEmpty()) {
-                    raw.append(delta);
-                    if (sink != null) {
-                        sink.onDelta(delta);
                     }
                 }
             }
@@ -1546,6 +1527,35 @@ final class AiLyricsRepository {
             throw new IOException("Streaming returned no text");
         }
         return text;
+    }
+
+    private HttpURLConnection openJsonPostConnection(
+            String endpoint,
+            Map<String, String> headers,
+            boolean sse
+    ) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setDoOutput(true);
+        if (sse) {
+            connection.setRequestProperty("Accept", "text/event-stream");
+        }
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                connection.setRequestProperty(entry.getKey(), entry.getValue());
+            }
+        }
+        return connection;
+    }
+
+    private void writeJsonBody(HttpURLConnection connection, JSONObject body) throws IOException {
+        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+        connection.setFixedLengthStreamingMode(bytes.length);
+        try (OutputStream output = connection.getOutputStream()) {
+            output.write(bytes);
+        }
     }
 
     private String handleSseEvent(String eventName, String data, SseDataHandler handler) throws Exception {
