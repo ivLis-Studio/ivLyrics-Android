@@ -55,6 +55,9 @@ final class LyricsRepository {
     private static final long SPOTIFY_TOKEN_MAX_AGE_MS = 50L * 60L * 1_000L;
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
+    private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
+    private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
+    private static final double LRCLIB_SYNCED_FALLBACK_MIN_ARTIST_SCORE = 0.45;
     private static final String LRCLIB_METADATA_LINE_PATTERN = "^\\s*\\[(?:ar|al|ti|au|length|by|offset|re|ve):[^\\]]*\\]\\s*$";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -641,7 +644,14 @@ final class LyricsRepository {
             }
             log.write("lrclib legacy sync-data: no exact line-shape candidate found; using ranked fallback");
         }
-        LrclibCandidate best = candidates.get(0);
+        LrclibCandidate best = selectSyncedFallbackCandidate(
+                track,
+                spotifySearchTrack,
+                syncData,
+                candidates,
+                candidates.get(0),
+                log
+        );
         if (best.score <= 2.2 && best.syncSourceMatchScore <= 0 && !best.syncLineExactMatch) {
             log.write("lrclib selected: rejected top candidate, score below threshold: " + fmt(best.score));
             return null;
@@ -938,6 +948,106 @@ final class LyricsRepository {
         int syncedLine = Boolean.compare(right.exactSyncedLineMatch, left.exactSyncedLineMatch);
         if (syncedLine != 0) return syncedLine;
         return Double.compare(right.score, left.score);
+    }
+
+    private LrclibCandidate selectSyncedFallbackCandidate(
+            TrackSnapshot track,
+            TrackSnapshot spotifySearchTrack,
+            SyncDataResult syncData,
+            List<LrclibCandidate> candidates,
+            LrclibCandidate best,
+            LogSink log
+    ) {
+        if (best == null || candidates == null || candidates.isEmpty() || !shouldPreferSyncedLrclibFallback(syncData)) {
+            return best;
+        }
+        if (best.useSyncedLyrics()) {
+            return best;
+        }
+        if (hasSyncedLyricsPayload(best) && isReasonableSyncedFallbackMatch(track, spotifySearchTrack, best)) {
+            best.preferredLyricsSource = "synced";
+            log.write("lrclib synced fallback: using synced lyrics from top candidate"
+                    + " / score=" + fmt(best.score)
+                    + " / " + describeLrclibCandidate(best));
+            return best;
+        }
+
+        double floor = best.score - LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW;
+        for (LrclibCandidate candidate : candidates) {
+            if (candidate == null || candidate == best || !hasSyncedLyricsPayload(candidate)) {
+                continue;
+            }
+            if (candidate.score + 0.0001 < floor) {
+                continue;
+            }
+            if (!isReasonableSyncedFallbackMatch(track, spotifySearchTrack, candidate)) {
+                continue;
+            }
+            if (!passesLrclibSelectionThreshold(candidate)) {
+                continue;
+            }
+            candidate.preferredLyricsSource = "synced";
+            log.write("lrclib synced fallback: selected synced candidate within score window"
+                    + " / bestPlainScore=" + fmt(best.score)
+                    + " / syncedScore=" + fmt(candidate.score)
+                    + " / window=" + fmt(LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW)
+                    + " / " + describeLrclibCandidate(candidate));
+            return candidate;
+        }
+        return best;
+    }
+
+    private boolean shouldPreferSyncedLrclibFallback(SyncDataResult syncData) {
+        return syncData == null
+                || (syncData.lrclibId() <= 0L
+                && syncData.lineCharCounts().isEmpty());
+    }
+
+    private boolean passesLrclibSelectionThreshold(LrclibCandidate candidate) {
+        return candidate != null
+                && (candidate.score > 2.2
+                || candidate.syncSourceMatchScore > 0
+                || candidate.syncLineExactMatch);
+    }
+
+    private boolean hasSyncedLyricsPayload(LrclibCandidate candidate) {
+        return candidate != null
+                && candidate.syncedLyrics != null
+                && !candidate.syncedLyrics.trim().isEmpty();
+    }
+
+    private boolean isReasonableSyncedFallbackMatch(
+            TrackSnapshot track,
+            TrackSnapshot spotifySearchTrack,
+            LrclibCandidate candidate
+    ) {
+        if (candidate == null) {
+            return false;
+        }
+        if (!candidate.isrc.isEmpty()) {
+            if (track != null && candidate.isrc.equals(track.isrc)) {
+                return true;
+            }
+            if (spotifySearchTrack != null && candidate.isrc.equals(spotifySearchTrack.isrc)) {
+                return true;
+            }
+        }
+        return isReasonableSyncedFallbackMatch(track, candidate)
+                || isReasonableSyncedFallbackMatch(spotifySearchTrack, candidate);
+    }
+
+    private boolean isReasonableSyncedFallbackMatch(TrackSnapshot track, LrclibCandidate candidate) {
+        if (track == null || candidate == null) {
+            return false;
+        }
+        double title = titleScore(track.title, candidate.trackName);
+        double artist = bestArtistScore(track.artist, candidate.artistName);
+        boolean durationOk = track.durationMs <= 0L
+                || candidate.durationSeconds <= 0.0
+                || isWithinDurationTolerance(track, candidate);
+        return title >= LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE
+                && artist >= LRCLIB_SYNCED_FALLBACK_MIN_ARTIST_SCORE
+                && durationOk;
     }
 
     private Map<String, String> buildStructuredQuery(TrackSnapshot track) {
