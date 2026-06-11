@@ -34,6 +34,7 @@ public final class LyricsView extends View {
     private static final float SIDE_PADDING_SP = 18f;
     private static final float MAIN_TEXT_SP = 25f;
     private static final float SUPPLEMENT_TEXT_SP = 14f;
+    private static final int SUPPLEMENT_PLACEHOLDER_COLOR = Color.TRANSPARENT;
     private static final float EMPTY_TEXT_SP = 22f;
     private static final float LINE_HEIGHT_MULTIPLIER = 1.34f;
     private static final float FURIGANA_TEXT_RATIO = 0.42f;
@@ -819,8 +820,9 @@ public final class LyricsView extends View {
         LyricsLine line = displayLine.line;
         List<DrawGroup> groups = new ArrayList<>();
         if (line.vocalParts != null && !line.vocalParts.isEmpty()) {
-            groups.addAll(buildVocalGroups(lineIndex, line, active, distance));
-            if (!hasVocalPartSupplements(line)) {
+            boolean partSupplements = shouldUseVocalPartSupplements(line);
+            groups.addAll(buildVocalGroups(lineIndex, line, active, distance, partSupplements));
+            if (!partSupplements) {
                 addSupplementGroups(groups, lineIndex, line, active, distance);
             }
             return groups;
@@ -868,7 +870,13 @@ public final class LyricsView extends View {
         );
     }
 
-    private List<DrawGroup> buildVocalGroups(int lineIndex, LyricsLine line, boolean active, float distance) {
+    private List<DrawGroup> buildVocalGroups(
+            int lineIndex,
+            LyricsLine line,
+            boolean active,
+            float distance,
+            boolean partSupplements
+    ) {
         List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
         List<DrawGroup> groups = new ArrayList<>();
         for (int index = 0; index < parts.size(); index++) {
@@ -892,7 +900,9 @@ public final class LyricsView extends View {
                     "line:" + lineIndex + ":part:" + partKey(part, index),
                     AiLyricsSettings.TYPO_LYRICS_ORIGINAL
             ));
-            addVocalPartSupplementGroups(groups, lineIndex, part, index, partActive, distance);
+            if (partSupplements) {
+                addVocalPartSupplementGroups(groups, lineIndex, part, index, partActive, distance);
+            }
         }
         return groups;
     }
@@ -922,6 +932,15 @@ public final class LyricsView extends View {
                     lineIndex,
                     "part:" + key + ":pron",
                     groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION,
+                    supplementPlaceholderText(part)
+            ));
+        } else if (pronunciationLoading) {
+            groups.add(buildSupplementPlaceholderGroup(
+                    supplementPlaceholderText(part),
+                    lineIndex,
+                    "part:" + key + ":pron",
+                    groups.size(),
                     AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION
             ));
         }
@@ -932,9 +951,22 @@ public final class LyricsView extends View {
                     lineIndex,
                     "part:" + key + ":trans",
                     groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_TRANSLATION,
+                    supplementPlaceholderText(part)
+            ));
+        } else if (translationLoading) {
+            groups.add(buildSupplementPlaceholderGroup(
+                    supplementPlaceholderText(part),
+                    lineIndex,
+                    "part:" + key + ":trans",
+                    groups.size(),
                     AiLyricsSettings.TYPO_LYRICS_TRANSLATION
             ));
         }
+    }
+
+    private boolean shouldUseVocalPartSupplements(LyricsLine line) {
+        return hasVocalPartSupplements(line) || displayableVocalPartCount(line) > 1;
     }
 
     private boolean hasVocalPartSupplements(LyricsLine line) {
@@ -954,6 +986,19 @@ public final class LyricsView extends View {
         return false;
     }
 
+    private int displayableVocalPartCount(LyricsLine line) {
+        if (line == null || line.vocalParts == null || line.vocalParts.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (LyricsLine.VocalPart part : line.vocalParts) {
+            if (part != null && !supplementPlaceholderText(part).trim().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private void addSupplementGroups(List<DrawGroup> groups, int lineIndex, LyricsLine line, boolean active, float distance) {
         if (line == null) {
             return;
@@ -971,6 +1016,15 @@ public final class LyricsView extends View {
                     lineIndex,
                     "pron",
                     groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION,
+                    supplementPlaceholderText(line)
+            ));
+        } else if (pronunciationLoading) {
+            groups.add(buildSupplementPlaceholderGroup(
+                    supplementPlaceholderText(line),
+                    lineIndex,
+                    "pron",
+                    groups.size(),
                     AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION
             ));
         }
@@ -981,13 +1035,78 @@ public final class LyricsView extends View {
                     lineIndex,
                     "trans",
                     groups.size(),
+                    AiLyricsSettings.TYPO_LYRICS_TRANSLATION,
+                    supplementPlaceholderText(line)
+            ));
+        } else if (translationLoading) {
+            groups.add(buildSupplementPlaceholderGroup(
+                    supplementPlaceholderText(line),
+                    lineIndex,
+                    "trans",
+                    groups.size(),
                     AiLyricsSettings.TYPO_LYRICS_TRANSLATION
             ));
         }
     }
 
-    private DrawGroup buildSupplementGroup(String text, int color, int lineIndex, String type, int rowSeed, String typographySlotId) {
-        return buildGroup(
+    private String supplementPlaceholderText(LyricsLine line) {
+        if (line == null) {
+            return " ";
+        }
+        String text = supplementPlaceholderText(line.text);
+        if (!text.trim().isEmpty()) {
+            return text;
+        }
+        StringBuilder builder = new StringBuilder();
+        if (line.vocalParts != null) {
+            for (LyricsLine.VocalPart part : line.vocalParts) {
+                String partText = supplementPlaceholderText(part);
+                if (partText.trim().isEmpty()) {
+                    continue;
+                }
+                if (builder.length() > 0) {
+                    builder.append(' ');
+                }
+                builder.append(partText.trim());
+            }
+        }
+        return builder.length() == 0 ? " " : builder.toString();
+    }
+
+    private String supplementPlaceholderText(LyricsLine.VocalPart part) {
+        if (part == null) {
+            return " ";
+        }
+        String text = supplementPlaceholderText(part.text);
+        if (!text.trim().isEmpty()) {
+            return text;
+        }
+        StringBuilder builder = new StringBuilder();
+        if (part.syllables != null) {
+            for (LyricsLine.Syllable syllable : part.syllables) {
+                if (syllable != null && syllable.text != null) {
+                    builder.append(syllable.text);
+                }
+            }
+        }
+        return builder.length() == 0 ? " " : builder.toString();
+    }
+
+    private String supplementPlaceholderText(String sourceText) {
+        String text = sourceText == null ? "" : sourceText.trim();
+        return text.isEmpty() ? "" : text;
+    }
+
+    private DrawGroup buildSupplementGroup(
+            String text,
+            int color,
+            int lineIndex,
+            String type,
+            int rowSeed,
+            String typographySlotId,
+            String reserveText
+    ) {
+        DrawGroup group = buildGroup(
                 text,
                 "",
                 Collections.emptyList(),
@@ -1003,6 +1122,80 @@ public final class LyricsView extends View {
                 "line:" + lineIndex + ":supp:" + type,
                 typographySlotId
         );
+        return withSupplementReserveRows(group, lineIndex, type, typographySlotId, reserveText);
+    }
+
+    private DrawGroup buildSupplementPlaceholderGroup(String text, int lineIndex, String type, int rowSeed, String typographySlotId) {
+        return buildGroup(
+                text,
+                "",
+                Collections.emptyList(),
+                0L,
+                0L,
+                SUPPLEMENT_TEXT_SP,
+                SUPPLEMENT_PLACEHOLDER_COLOR,
+                SUPPLEMENT_PLACEHOLDER_COLOR,
+                "vocal",
+                false,
+                rowSeed,
+                "line:" + lineIndex + ":supp-placeholder:" + type + ":" + text.hashCode(),
+                "line:" + lineIndex + ":supp-placeholder:" + type,
+                typographySlotId
+        );
+    }
+
+    private DrawGroup withSupplementReserveRows(
+            DrawGroup group,
+            int lineIndex,
+            String type,
+            String typographySlotId,
+            String reserveText
+    ) {
+        if (group == null) {
+            return null;
+        }
+        String reserve = reserveText == null ? "" : reserveText.trim();
+        if (reserve.isEmpty()) {
+            return group;
+        }
+        String slotId = AiLyricsSettings.typographySlotById(typographySlotId).id;
+        float textSize = sp(typographyTextSizeSp(slotId, SUPPLEMENT_TEXT_SP));
+        List<TextRow> reserveRows = cachedRows(
+                "line:" + lineIndex + ":supp-reserve:" + type + ":" + reserve.hashCode() + typographyCacheKey(slotId),
+                reserve,
+                "",
+                Collections.emptyList(),
+                0L,
+                0L,
+                textSize
+        );
+        int missingRows = reserveRows.size() - group.rows.size();
+        if (missingRows <= 0) {
+            return group;
+        }
+        List<TextRow> rows = new ArrayList<>(group.rows);
+        for (int index = 0; index < missingRows; index++) {
+            rows.add(emptyTextRow());
+        }
+        return new DrawGroup(
+                rows,
+                group.textSize,
+                group.inactiveColor,
+                group.activeColor,
+                group.kind,
+                group.active,
+                group.rowSeed,
+                group.bounceKeyPrefix,
+                group.activeSegmentIndex,
+                group.typeface,
+                group.supplement
+        );
+    }
+
+    private TextRow emptyTextRow() {
+        return new TextRow(Collections.singletonList(
+                new TextSegment("", 0f, 0f, 0L, 0L, 0, 1, "")
+        ));
     }
 
     private DrawGroup buildGroup(

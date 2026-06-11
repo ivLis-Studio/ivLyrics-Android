@@ -112,8 +112,85 @@ final class AppI18n {
         addSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
         addVideoSyncOffsetStrings(languages);
+        addPollinationsAuthStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addPollinationsAuthStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = pollinationsAuthStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] pollinationsAuthStrings(String lang) {
+        if ("ko".equals(normalize(lang))) {
+            return new String[]{
+                    "pollinations.account", "Pollinations 계정",
+                    "pollinations.account_desc", "Pollinations는 API key 직접 입력과 계정 로그인 토큰을 모두 지원합니다. 로그인 토큰이 있으면 우선 사용됩니다.",
+                    "pollinations.connect", "Pollinations 로그인",
+                    "pollinations.reconnect", "다시 로그인",
+                    "pollinations.waiting", "로그인 대기 중",
+                    "pollinations.open_login", "로그인 페이지 열기",
+                    "pollinations.disconnect", "연결 해제",
+                    "pollinations.test", "연결 테스트",
+                    "pollinations.configured", "설정됨",
+                    "pollinations.status_disconnected", "Pollinations 계정이 연결되어 있지 않습니다. 수동 access key를 입력하거나 로그인하세요.",
+                    "pollinations.status_requesting", "Pollinations 로그인 코드를 요청하는 중...",
+                    "pollinations.status_waiting", "브라우저에서 Pollinations 로그인을 완료하면 자동으로 연결됩니다.",
+                    "pollinations.status_code_format", "브라우저에서 Pollinations 로그인을 완료하세요. 코드: %s",
+                    "pollinations.user_code_format", "Pollinations 로그인 코드: %s",
+                    "pollinations.status_connected_format", "Pollinations 로그인 연결됨: %s",
+                    "pollinations.status_saved", "Pollinations 로그인 토큰을 저장했습니다.",
+                    "pollinations.status_failed_format", "Pollinations 연결 실패: %s",
+                    "pollinations.status_no_token", "테스트할 Pollinations 토큰이 없습니다.",
+                    "pollinations.status_testing", "Pollinations 토큰 확인 중...",
+                    "pollinations.status_valid", "Pollinations 토큰 유효",
+                    "pollinations.status_invalid", "Pollinations 토큰 유효하지 않음",
+                    "pollinations.expires_days_format", "%d일 후 만료",
+                    "pollinations.toast_connected", "Pollinations 연결됨",
+                    "pollinations.toast_disconnected", "Pollinations 연결 해제됨",
+                    "pollinations.toast_failed", "Pollinations 연결 실패",
+                    "pollinations.toast_valid", "Pollinations 토큰 확인됨"
+            };
+        }
+        return new String[]{
+                "pollinations.account", "Pollinations Account",
+                "pollinations.account_desc", "Pollinations supports both manual API keys and account login tokens. Login tokens are used first when available.",
+                "pollinations.connect", "Sign in to Pollinations",
+                "pollinations.reconnect", "Reconnect",
+                "pollinations.waiting", "Waiting for login",
+                "pollinations.open_login", "Open Login Page",
+                "pollinations.disconnect", "Disconnect",
+                "pollinations.test", "Test Connection",
+                "pollinations.configured", "configured",
+                "pollinations.status_disconnected", "Pollinations is not connected. Enter a manual access key or sign in.",
+                "pollinations.status_requesting", "Requesting Pollinations login code...",
+                "pollinations.status_waiting", "Complete Pollinations login in your browser. The app will connect automatically.",
+                "pollinations.status_code_format", "Complete Pollinations login in your browser. Code: %s",
+                "pollinations.user_code_format", "Pollinations login code: %s",
+                "pollinations.status_connected_format", "Pollinations login connected: %s",
+                "pollinations.status_saved", "Pollinations login token saved.",
+                "pollinations.status_failed_format", "Pollinations connection failed: %s",
+                "pollinations.status_no_token", "No Pollinations token is available to test.",
+                "pollinations.status_testing", "Checking Pollinations token...",
+                "pollinations.status_valid", "Pollinations token valid",
+                "pollinations.status_invalid", "Pollinations token invalid",
+                "pollinations.expires_days_format", "expires in %d day(s)",
+                "pollinations.toast_connected", "Pollinations connected",
+                "pollinations.toast_disconnected", "Pollinations disconnected",
+                "pollinations.toast_failed", "Pollinations connection failed",
+                "pollinations.toast_valid", "Pollinations token verified"
+        };
     }
 
     private static void addManualLrclibSearchStrings(Map<String, Map<String, String>> languages) {

@@ -146,6 +146,7 @@ public final class MainActivity extends Activity implements
     private final Rect mainPageRevealClip = new Rect();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
+    private final PollinationsAuthClient pollinationsAuthClient = new PollinationsAuthClient();
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
     private FuriganaRepository furiganaRepository;
@@ -188,6 +189,12 @@ public final class MainActivity extends Activity implements
     private TextView logView;
     private TextView aiSettingsStatusView;
     private TextView providerSummaryView;
+    private TextView pollinationsAuthStatusView;
+    private TextView pollinationsAuthCodeView;
+    private TextView pollinationsAuthConnectButton;
+    private TextView pollinationsAuthDisconnectButton;
+    private TextView pollinationsAuthOpenButton;
+    private TextView pollinationsAuthTestButton;
     private TextView selectedLanguageRuleView;
     private TextView lyricsSyncOffsetValueView;
     private TextView lyricsSyncOffsetDescriptionView;
@@ -223,6 +230,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout previewModeButtonsContainer;
     private LinearLayout backgroundModeButtonsContainer;
     private LinearLayout providerButtonsContainer;
+    private View pollinationsAuthGroup;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
     private TextView sourceLanguageSelectButton;
@@ -333,6 +341,7 @@ public final class MainActivity extends Activity implements
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
     private boolean spotifyCredentialsValidationInFlight;
+    private volatile boolean pollinationsAuthInFlight;
     private boolean updateCheckInFlight;
     private boolean updateDownloadInFlight;
     private boolean automaticUpdateCheckStarted;
@@ -341,6 +350,8 @@ public final class MainActivity extends Activity implements
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
+    private String pollinationsAuthVerificationUrl = "";
+    private String pollinationsAuthUserCode = "";
     private boolean landscapeControlsVisible = true;
     private boolean consumeLandscapeRevealGesture;
     private boolean pendingOpenLyricsPageFromIntent;
@@ -894,10 +905,10 @@ public final class MainActivity extends Activity implements
             return;
         }
         aiLyricsGenerating = pronunciationLoading || translationLoading;
+        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
         currentLyricsResult = mergeAiSupplementsIntoResult(currentLyricsResult, result);
         currentLyricsResult = mergeCurrentFuriganaInto(currentLyricsResult);
         setLyricsResultOnViews(currentLyricsResult);
-        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         statusView.setText(currentLyricsResult.detail);
         if (aiSettingsStatusView != null && !hadError) {
@@ -2558,6 +2569,13 @@ public final class MainActivity extends Activity implements
         settingsAiPage.addView(providerButtonsContainer, topMargin(matchWrap(), dp(12)));
         buildProviderButtons();
 
+        pollinationsAuthGroup = settingGroup(
+                ui("pollinations.account"),
+                ui("pollinations.account_desc"),
+                buildPollinationsAuthControl()
+        );
+        settingsAiPage.addView(pollinationsAuthGroup, topMargin(matchWrap(), dp(14)));
+
         apiKeysInput = settingEditText("", true, true);
         settingsAiPage.addView(settingField(ui("field.api_key"), ui("field.api_key_desc"), apiKeysInput), topMargin(matchWrap(), dp(18)));
 
@@ -3628,6 +3646,53 @@ public final class MainActivity extends Activity implements
         return container;
     }
 
+    private LinearLayout buildPollinationsAuthControl() {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+
+        pollinationsAuthStatusView = label("", 12f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
+        pollinationsAuthStatusView.setLineSpacing(dp(2), 1f);
+        container.addView(pollinationsAuthStatusView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        pollinationsAuthCodeView = label("", 18f, Color.WHITE, AppFonts.bold(this));
+        pollinationsAuthCodeView.setGravity(Gravity.CENTER);
+        pollinationsAuthCodeView.setPadding(dp(12), dp(10), dp(12), dp(10));
+        pollinationsAuthCodeView.setBackground(roundDrawable(Color.argb(44, 255, 255, 255), dp(12)));
+        pollinationsAuthCodeView.setVisibility(View.GONE);
+        container.addView(pollinationsAuthCodeView, topMargin(matchWrap(), dp(10)));
+
+        LinearLayout firstRow = new LinearLayout(this);
+        firstRow.setOrientation(LinearLayout.HORIZONTAL);
+        firstRow.setGravity(Gravity.CENTER_VERTICAL);
+        container.addView(firstRow, topMargin(matchWrap(), dp(10)));
+
+        pollinationsAuthConnectButton = primaryButton(ui("pollinations.connect"));
+        pollinationsAuthConnectButton.setOnClickListener(view -> startPollinationsLogin());
+        firstRow.addView(pollinationsAuthConnectButton, weightedButtonParams(1.2f, dp(4)));
+
+        pollinationsAuthOpenButton = debugButton(ui("pollinations.open_login"));
+        pollinationsAuthOpenButton.setOnClickListener(view -> openPollinationsLoginPage());
+        firstRow.addView(pollinationsAuthOpenButton, weightedButtonParams(1f, dp(4)));
+
+        LinearLayout secondRow = new LinearLayout(this);
+        secondRow.setOrientation(LinearLayout.HORIZONTAL);
+        secondRow.setGravity(Gravity.CENTER_VERTICAL);
+        container.addView(secondRow, topMargin(matchWrap(), dp(8)));
+
+        pollinationsAuthDisconnectButton = debugButton(ui("pollinations.disconnect"));
+        pollinationsAuthDisconnectButton.setOnClickListener(view -> disconnectPollinationsLogin());
+        secondRow.addView(pollinationsAuthDisconnectButton, weightedButtonParams(1f, dp(4)));
+
+        pollinationsAuthTestButton = debugButton(ui("pollinations.test"));
+        pollinationsAuthTestButton.setOnClickListener(view -> testPollinationsToken());
+        secondRow.addView(pollinationsAuthTestButton, weightedButtonParams(1f, dp(4)));
+
+        return container;
+    }
+
     private LinearLayout buildTypographySettingsList() {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -4122,6 +4187,7 @@ public final class MainActivity extends Activity implements
                 setSelectableButtonState(button, selectedId != null && selectedId.equals(button.getTag()));
             }
         }
+        updatePollinationsAuthUi(aiLyricsSettings.snapshot());
     }
 
     private String providerDescription(AiLyricsSettings.Provider provider) {
@@ -5587,6 +5653,7 @@ public final class MainActivity extends Activity implements
             providerSummaryView.setText(snapshot.provider.label + " · " + providerDescription(snapshot.provider)
                     + "\n" + snapshot.provider.defaultBaseUrl);
         }
+        updatePollinationsAuthUi(snapshot);
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(snapshot.enabled()
                     ? (snapshot.hasApiKey() ? ui("status.ai_lyrics_active") : ui("status.ai_key_needed"))
@@ -5615,6 +5682,225 @@ public final class MainActivity extends Activity implements
         if (updateStatus) {
             showSavedToast(ui("toast.settings_saved"));
         }
+    }
+
+    private void updatePollinationsAuthUi(AiLyricsSettings.Snapshot snapshot) {
+        boolean pollinations = snapshot != null && "pollinations".equals(snapshot.provider.id);
+        if (pollinationsAuthGroup != null) {
+            pollinationsAuthGroup.setVisibility(pollinations ? View.VISIBLE : View.GONE);
+        }
+        if (!pollinations) {
+            return;
+        }
+        String token = snapshot.pollinationsAccessToken == null ? "" : snapshot.pollinationsAccessToken.trim();
+        boolean connected = !token.isEmpty();
+        if (pollinationsAuthStatusView != null) {
+            if (pollinationsAuthInFlight) {
+                pollinationsAuthStatusView.setText(ui("pollinations.status_waiting"));
+            } else if (connected) {
+                pollinationsAuthStatusView.setText(uiFormat("pollinations.status_connected_format", maskAccessToken(token)));
+            } else {
+                pollinationsAuthStatusView.setText(ui("pollinations.status_disconnected"));
+            }
+        }
+        if (pollinationsAuthCodeView != null) {
+            boolean showCode = pollinationsAuthInFlight && !pollinationsAuthUserCode.trim().isEmpty();
+            pollinationsAuthCodeView.setVisibility(showCode ? View.VISIBLE : View.GONE);
+            if (showCode) {
+                pollinationsAuthCodeView.setText(pollinationsAuthUserCode);
+                pollinationsAuthCodeView.setContentDescription(uiFormat("pollinations.user_code_format", pollinationsAuthUserCode));
+            }
+        }
+        if (pollinationsAuthConnectButton != null) {
+            pollinationsAuthConnectButton.setEnabled(!pollinationsAuthInFlight);
+            pollinationsAuthConnectButton.setAlpha(pollinationsAuthInFlight ? 0.58f : 1f);
+            pollinationsAuthConnectButton.setText(pollinationsAuthInFlight
+                    ? ui("pollinations.waiting")
+                    : connected ? ui("pollinations.reconnect") : ui("pollinations.connect"));
+        }
+        if (pollinationsAuthOpenButton != null) {
+            boolean canOpen = pollinationsAuthInFlight && !pollinationsAuthVerificationUrl.trim().isEmpty();
+            pollinationsAuthOpenButton.setEnabled(canOpen);
+            pollinationsAuthOpenButton.setAlpha(canOpen ? 1f : 0.42f);
+        }
+        if (pollinationsAuthDisconnectButton != null) {
+            pollinationsAuthDisconnectButton.setEnabled(connected && !pollinationsAuthInFlight);
+            pollinationsAuthDisconnectButton.setAlpha(connected && !pollinationsAuthInFlight ? 1f : 0.42f);
+        }
+        if (pollinationsAuthTestButton != null) {
+            boolean canTest = (connected || !textOf(apiKeysInput).isEmpty()) && !pollinationsAuthInFlight;
+            pollinationsAuthTestButton.setEnabled(canTest);
+            pollinationsAuthTestButton.setAlpha(canTest ? 1f : 0.42f);
+        }
+    }
+
+    private void startPollinationsLogin() {
+        if (aiLyricsSettings == null || pollinationsAuthInFlight) {
+            return;
+        }
+        applyAiSettingsFromUi(false);
+        pollinationsAuthInFlight = true;
+        pollinationsAuthVerificationUrl = "";
+        pollinationsAuthUserCode = "";
+        setPollinationsAuthStatus(ui("pollinations.status_requesting"));
+        updatePollinationsAuthUi(aiLyricsSettings.snapshot());
+        updateExecutor.execute(() -> {
+            try {
+                PollinationsAuthClient.DeviceCode device = pollinationsAuthClient.requestDeviceCode();
+                handler.post(() -> {
+                    pollinationsAuthVerificationUrl = device.verificationUrl;
+                    pollinationsAuthUserCode = device.userCode;
+                    setPollinationsAuthStatus(uiFormat("pollinations.status_code_format", device.userCode));
+                    updatePollinationsAuthUi(aiLyricsSettings.snapshot());
+                    openPollinationsLoginPage();
+                });
+
+                long intervalMs = device.intervalMs;
+                while (pollinationsAuthInFlight && System.currentTimeMillis() < device.expiresAtMs) {
+                    Thread.sleep(intervalMs);
+                    PollinationsAuthClient.TokenPollResult result = pollinationsAuthClient.pollDeviceToken(device.deviceCode);
+                    if (result.pending) {
+                        if (result.slowDown) {
+                            intervalMs += 2_000L;
+                        }
+                        continue;
+                    }
+                    handler.post(() -> finishPollinationsLogin(result.accessToken));
+                    return;
+                }
+                throw new IOException("Pollinations login timed out.");
+            } catch (Exception error) {
+                handler.post(() -> failPollinationsLogin(error));
+            }
+        });
+    }
+
+    private void finishPollinationsLogin(String accessToken) {
+        pollinationsAuthInFlight = false;
+        pollinationsAuthVerificationUrl = "";
+        pollinationsAuthUserCode = "";
+        if (aiLyricsSettings == null) {
+            return;
+        }
+        aiLyricsSettings.setPollinationsAccessToken(accessToken);
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        updatePollinationsAuthUi(snapshot);
+        if (aiSettingsStatusView != null) {
+            aiSettingsStatusView.setText(ui("pollinations.status_saved"));
+        }
+        appendLog("pollinations auth: connected through device login");
+        showSavedToast(ui("pollinations.toast_connected"));
+        requestMetadataTranslation(true);
+        requestAiLyrics(true);
+    }
+
+    private void failPollinationsLogin(Exception error) {
+        pollinationsAuthInFlight = false;
+        pollinationsAuthVerificationUrl = "";
+        pollinationsAuthUserCode = "";
+        String detail = error == null || error.getMessage() == null || error.getMessage().trim().isEmpty()
+                ? "unknown error"
+                : error.getMessage().trim();
+        setPollinationsAuthStatus(uiFormat("pollinations.status_failed_format", detail));
+        appendLog("pollinations auth failed: " + detail);
+        showSavedToast(ui("pollinations.toast_failed"));
+        if (aiLyricsSettings != null) {
+            updatePollinationsAuthUi(aiLyricsSettings.snapshot());
+        }
+    }
+
+    private void disconnectPollinationsLogin() {
+        pollinationsAuthInFlight = false;
+        pollinationsAuthVerificationUrl = "";
+        pollinationsAuthUserCode = "";
+        if (aiLyricsSettings != null) {
+            aiLyricsSettings.clearPollinationsAccessToken();
+            updatePollinationsAuthUi(aiLyricsSettings.snapshot());
+        }
+        setPollinationsAuthStatus(ui("pollinations.status_disconnected"));
+        showSavedToast(ui("pollinations.toast_disconnected"));
+    }
+
+    private void openPollinationsLoginPage() {
+        String url = pollinationsAuthVerificationUrl == null || pollinationsAuthVerificationUrl.trim().isEmpty()
+                ? PollinationsAuthClient.AUTH_BASE_URL
+                : pollinationsAuthVerificationUrl;
+        openExternalUrl(url);
+    }
+
+    private void testPollinationsToken() {
+        if (aiLyricsSettings == null) {
+            return;
+        }
+        applyAiSettingsFromUi(false);
+        String token = firstPollinationsAuthToken(aiLyricsSettings.snapshot());
+        if (token.isEmpty()) {
+            setPollinationsAuthStatus(ui("pollinations.status_no_token"));
+            showSavedToast(ui("status.ai_key_needed"));
+            return;
+        }
+        setPollinationsAuthStatus(ui("pollinations.status_testing"));
+        updateExecutor.execute(() -> {
+            try {
+                PollinationsAuthClient.KeyInfo info = pollinationsAuthClient.fetchKeyInfo(token);
+                handler.post(() -> {
+                    String type = info.type.trim().isEmpty() ? "API" : info.type.trim();
+                    String expires = info.expiresInSeconds > 0L
+                            ? " · " + uiFormat("pollinations.expires_days_format", Math.max(1L, (info.expiresInSeconds + 86_399L) / 86_400L))
+                            : "";
+                    setPollinationsAuthStatus((info.valid ? ui("pollinations.status_valid") : ui("pollinations.status_invalid"))
+                            + " · " + type + expires);
+                    showSavedToast(info.valid ? ui("pollinations.toast_valid") : ui("pollinations.toast_failed"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    String detail = error.getMessage() == null ? "unknown error" : error.getMessage().trim();
+                    setPollinationsAuthStatus(uiFormat("pollinations.status_failed_format", detail));
+                    showSavedToast(ui("pollinations.toast_failed"));
+                });
+            }
+        });
+    }
+
+    private String firstPollinationsAuthToken(AiLyricsSettings.Snapshot snapshot) {
+        if (snapshot == null) {
+            return "";
+        }
+        String loginToken = snapshot.pollinationsAccessToken == null ? "" : snapshot.pollinationsAccessToken.trim();
+        if (!loginToken.isEmpty()) {
+            return loginToken;
+        }
+        String manual = snapshot.apiKeys == null ? "" : snapshot.apiKeys.trim();
+        if (manual.isEmpty()) {
+            return "";
+        }
+        if (manual.startsWith("[")) {
+            int firstQuote = manual.indexOf('"');
+            int secondQuote = firstQuote < 0 ? -1 : manual.indexOf('"', firstQuote + 1);
+            if (firstQuote >= 0 && secondQuote > firstQuote) {
+                return manual.substring(firstQuote + 1, secondQuote).trim();
+            }
+        }
+        String[] pieces = manual.split("[\\n,]");
+        return pieces.length == 0 ? "" : pieces[0].trim();
+    }
+
+    private void setPollinationsAuthStatus(String message) {
+        String value = message == null ? "" : message;
+        if (pollinationsAuthStatusView != null) {
+            pollinationsAuthStatusView.setText(value);
+        }
+        if (aiSettingsStatusView != null && !value.trim().isEmpty()) {
+            aiSettingsStatusView.setText(value);
+        }
+    }
+
+    private String maskAccessToken(String token) {
+        String value = token == null ? "" : token.trim();
+        if (value.length() <= 12) {
+            return ui("pollinations.configured");
+        }
+        return value.substring(0, 5) + "..." + value.substring(value.length() - 4);
     }
 
     private void applySpotifySettingsFromUi() {

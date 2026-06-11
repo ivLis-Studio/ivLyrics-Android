@@ -27,6 +27,7 @@ final class AiLyricsSettings {
     static final String KEY_PRONUNCIATION_LANG = "pronunciation_lang";
     static final String KEY_LANGUAGE_RULES = "language_rules_v2";
     static final String KEY_API_KEYS = "api_keys";
+    static final String KEY_POLLINATIONS_ACCESS_TOKEN = "pollinations_access_token";
     static final String KEY_MODEL = "model";
     static final String KEY_BASE_URL = "base_url";
     static final String KEY_MAX_TOKENS = "max_tokens";
@@ -227,6 +228,7 @@ final class AiLyricsSettings {
                 ruleConfig.defaultRule,
                 ruleConfig.languageRules,
                 prefs.getString(KEY_API_KEYS, ""),
+                prefs.getString(KEY_POLLINATIONS_ACCESS_TOKEN, ""),
                 baseUrl == null || baseUrl.trim().isEmpty() ? provider.defaultBaseUrl : baseUrl.trim(),
                 model == null || model.trim().isEmpty() ? provider.defaultModel : model.trim(),
                 Math.max(256, prefs.getInt(KEY_MAX_TOKENS, 16000)),
@@ -365,6 +367,16 @@ final class AiLyricsSettings {
 
     void setApiKeys(String apiKeys) {
         prefs.edit().putString(KEY_API_KEYS, apiKeys == null ? "" : apiKeys.trim()).apply();
+    }
+
+    void setPollinationsAccessToken(String accessToken) {
+        prefs.edit()
+                .putString(KEY_POLLINATIONS_ACCESS_TOKEN, accessToken == null ? "" : accessToken.trim())
+                .apply();
+    }
+
+    void clearPollinationsAccessToken() {
+        prefs.edit().remove(KEY_POLLINATIONS_ACCESS_TOKEN).apply();
     }
 
     void setModel(String model) {
@@ -1258,6 +1270,7 @@ final class AiLyricsSettings {
         final LanguageRule defaultRule;
         final Map<String, LanguageRule> languageRules;
         final String apiKeys;
+        final String pollinationsAccessToken;
         final String baseUrl;
         final String model;
         final int maxTokens;
@@ -1285,6 +1298,7 @@ final class AiLyricsSettings {
                 LanguageRule defaultRule,
                 Map<String, LanguageRule> languageRules,
                 String apiKeys,
+                String pollinationsAccessToken,
                 String baseUrl,
                 String model,
                 int maxTokens,
@@ -1313,6 +1327,7 @@ final class AiLyricsSettings {
                     : defaultRule;
             this.languageRules = Collections.unmodifiableMap(new LinkedHashMap<>(languageRules));
             this.apiKeys = apiKeys == null ? "" : apiKeys;
+            this.pollinationsAccessToken = pollinationsAccessToken == null ? "" : pollinationsAccessToken.trim();
             this.baseUrl = baseUrl == null ? "" : baseUrl;
             this.model = model == null ? "" : model;
             this.maxTokens = Math.max(256, maxTokens);
@@ -1352,6 +1367,9 @@ final class AiLyricsSettings {
         }
 
         boolean hasApiKey() {
+            if ("pollinations".equals(provider.id) && !pollinationsAccessToken.trim().isEmpty()) {
+                return true;
+            }
             return !apiKeys.trim().isEmpty();
         }
 

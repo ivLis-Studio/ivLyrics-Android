@@ -1203,7 +1203,7 @@ final class AiLyricsRepository {
             AiLyricsSettings.Snapshot settings,
             TextDeltaSink sink
     ) throws Exception {
-        List<String> apiKeys = parseApiKeys(settings.apiKeys);
+        List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
             throw new IOException("API 키가 필요합니다");
         }
@@ -1254,7 +1254,7 @@ final class AiLyricsRepository {
     }
 
     private String callProviderRaw(String prompt, AiLyricsSettings.Snapshot settings) throws Exception {
-        List<String> apiKeys = parseApiKeys(settings.apiKeys);
+        List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
             throw new IOException("API 키가 필요합니다");
         }
@@ -2235,6 +2235,25 @@ final class AiLyricsRepository {
         for (String item : value.split("[\\n,]")) {
             String key = item.trim();
             if (!key.isEmpty()) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private List<String> providerApiKeys(AiLyricsSettings.Snapshot settings) {
+        if (settings == null) {
+            return Collections.emptyList();
+        }
+        List<String> keys = new ArrayList<>();
+        if ("pollinations".equals(settings.provider.id)) {
+            String token = settings.pollinationsAccessToken == null ? "" : settings.pollinationsAccessToken.trim();
+            if (!token.isEmpty()) {
+                keys.add(token);
+            }
+        }
+        for (String key : parseApiKeys(settings.apiKeys)) {
+            if (!keys.contains(key)) {
                 keys.add(key);
             }
         }
