@@ -27,7 +27,8 @@ final class AppI18n {
             new AiLyricsSettings.Language("th", "Thai", "ภาษาไทย", ""),
             new AiLyricsSettings.Language("vi", "Vietnamese", "Tiếng Việt", ""),
             new AiLyricsSettings.Language("id", "Indonesian", "Bahasa Indonesia", ""),
-            new AiLyricsSettings.Language("ms", "Malay", "Bahasa Melayu", "")
+            new AiLyricsSettings.Language("ms", "Malay", "Bahasa Melayu", ""),
+            new AiLyricsSettings.Language("tr", "Turkish", "Türkçe", "")
     ));
 
     private static final Map<String, Map<String, String>> STRINGS = buildStrings();
@@ -100,6 +101,7 @@ final class AppI18n {
         languages.put("vi", viStrings());
         languages.put("id", idStrings());
         languages.put("ms", msStrings());
+        languages.put("tr", trStrings());
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
         addDisplayPowerStrings(languages);
@@ -332,6 +334,28 @@ final class AppI18n {
                 return manualLrclibSearchStringsEn("Pencarian LRCLIB manual", "Cari langsung di LRCLIB dan terapkan hasil saat lirik tidak cocok dengan lagu ini.");
             case "ms":
                 return manualLrclibSearchStringsEn("Carian LRCLIB manual", "Cari terus dalam LRCLIB dan guna keputusan apabila lirik tidak sepadan dengan lagu ini.");
+            case "tr":
+                return new String[]{
+                        "lyrics.lrclib_search.title", "LRCLIB El ile Arama",
+                        "lyrics.lrclib_search.desc", "Yüklenen sözler bu şarkıyla eşleşmediğinde LRCLIB'de doğrudan arayın ve bir sonucu uygulayın.",
+                        "lyrics.lrclib_search.title_hint", "Şarkı başlığı",
+                        "lyrics.lrclib_search.artist_hint", "Sanatçı",
+                        "lyrics.lrclib_search.field_title", "Başlık",
+                        "lyrics.lrclib_search.field_artist", "Sanatçı",
+                        "lyrics.lrclib_search.button", "LRCLIB'de Ara",
+                        "lyrics.lrclib_search.ready", "Arama terimlerini kontrol edip LRCLIB'de arayın.",
+                        "lyrics.lrclib_search.empty_title", "Aranacak şarkı başlığını girin.",
+                        "lyrics.lrclib_search.loading", "LRCLIB aranıyor...",
+                        "lyrics.lrclib_search.no_results", "LRCLIB sonucu yok.",
+                        "lyrics.lrclib_search.result_count_format", "%d LRCLIB sonucu",
+                        "lyrics.lrclib_search.selecting", "Seçili LRCLIB sözleri yükleniyor...",
+                        "lyrics.lrclib_search.loaded", "LRCLIB sözleri uygulandı.",
+                        "lyrics.lrclib_search.error_format", "LRCLIB araması başarısız: %s",
+                        "lyrics.lrclib_search.instrumental", "Enstrümantal",
+                        "lyrics.lrclib_search.synced", "Senkronlu",
+                        "lyrics.lrclib_search.plain", "Düz",
+                        "repo.detail.manual_lrclib", "El ile seçilen LRCLIB sözleri."
+                };
             default:
                 return manualLrclibSearchStringsEn(
                         "Manual LRCLIB Search",
@@ -521,6 +545,20 @@ final class AppI18n {
                         "Ketik tajuk atau artis untuk kembali ke Spotify.",
                         "Ketik sekali untuk membuka Spotify; tekan lama untuk membuka tetapan terjemahan dan sebutan."
                 );
+            case "tr":
+                return new String[]{
+                        "section.spotify_shortcut", "Spotify Kısayolu",
+                        "section.spotify_shortcut_desc", "Yalnızca Spotify Şu Anda Çalıyor ekranında küçük taşınabilir bir ikon gösterir. Dokununca ivLyrics söz sayfasını açar.",
+                        "button.open_accessibility_permission", "Spotify Algılama İznini Aç",
+                        "button.accessibility_permission_enabled", "Spotify Algılama İzni Etkin",
+                        "button.open_overlay_permission", "Kayan İkon İznini Aç",
+                        "button.overlay_permission_enabled", "Kayan İkon İzni Etkin",
+                        "toast.accessibility_permission_needed", "Spotify algılama izni gereklidir",
+                        "toast.overlay_permission_needed", "Diğer uygulamaların üzerinde gösterme izni gereklidir",
+                        "toast.spotify_open_failed", "Spotify açılamadı",
+                        "onboarding.preview.line4", "Spotify'a dönmek için başlığa veya sanatçıya dokunun",
+                        "lyrics.menu_tip", "Spotify'ı açmak için bir kez dokunun; çeviri ve telaffuz ayarlarını açmak için uzun basın."
+                };
             default:
                 return spotifyShortcutStringsEn(
                         "Spotify Shortcut",
@@ -697,6 +735,13 @@ final class AppI18n {
                         "Skrin dikekalkan menyala",
                         "Skrin boleh padam automatik"
                 );
+            case "tr":
+                return displayPowerStringsValues(
+                        "Ekranı açık tut",
+                        "Uygulamayı kullanırken telefon ekranının otomatik kapanmasını önler.",
+                        "Ekran açık kalacak",
+                        "Ekran otomatik kapanabilir"
+                );
             default:
                 return displayPowerStringsValues(
                         "Keep screen on",
@@ -795,6 +840,8 @@ final class AppI18n {
                 return updateStringsValues("Pembaruan otomatis", "Memeriksa APK terbaru di GitHub Releases dan memandu pemasangan.", "Periksa pembaruan", "Halaman rilis", "Pembaruan belum diperiksa.", "Memeriksa versi terbaru...", "Versi saat ini %s sudah terbaru.", "Versi baru %s tersedia", "Gagal memeriksa pembaruan: %s", "Versi baru tersedia", "Saat ini: %s (%d)\nTerbaru: %s (%d)\n\n%s", "Tidak ada catatan rilis.", "Unduh", "Nanti", "Buka rilis", "Menyiapkan unduhan APK", "Unduhan %s dimulai", "Unduhan selesai. Membuka pemasangan...", "Tidak dapat membuka pemasangan.", "Memeriksa pembaruan", "Anda sudah memakai versi terbaru.", "Versi baru %s tersedia.", "Gagal memeriksa pembaruan.");
             case "ms":
                 return updateStringsValues("Kemas kini automatik", "Menyemak APK terkini di GitHub Releases dan membimbing pemasangan.", "Semak kemas kini", "Halaman keluaran", "Kemas kini belum disemak.", "Menyemak versi terkini...", "Versi semasa %s ialah yang terkini.", "Versi baharu %s tersedia", "Semakan kemas kini gagal: %s", "Versi baharu tersedia", "Semasa: %s (%d)\nTerkini: %s (%d)\n\n%s", "Tiada nota keluaran.", "Muat turun", "Nanti", "Buka keluaran", "Menyediakan muat turun APK", "Muat turun %s bermula", "Muat turun selesai. Membuka pemasangan...", "Tidak dapat membuka pemasangan.", "Menyemak kemas kini", "Anda sudah menggunakan versi terkini.", "Versi baharu %s tersedia.", "Semakan kemas kini gagal.");
+            case "tr":
+                return updateStringsValues("Otomatik Güncellemeler", "GitHub Releases üzerinden en son APK'yi kontrol eder ve kuruluma yönlendirir.", "Güncellemeleri Kontrol Et", "Sürüm Sayfası", "Güncellemeler henüz kontrol edilmedi.", "En son sürüm kontrol ediliyor...", "Geçerli sürüm %s güncel.", "Yeni sürüm %s mevcut", "Güncelleme kontrolü başarısız: %s", "Yeni Sürüm Mevcut", "Geçerli: %s (%d)\nEn son: %s (%d)\n\n%s", "Sürüm notu yok.", "İndir", "Daha Sonra", "Sürümü Aç", "Güncelleme APK indirmesi hazırlanıyor", "%s indirmesi başladı", "İndirme tamamlandı. Kurulum ekranı açılıyor...", "Kurulum ekranı açılamadı.", "Güncellemeler kontrol ediliyor", "En son sürümü kullanıyorsunuz.", "Yeni sürüm %s mevcut.", "Güncelleme kontrolü başarısız.");
             default:
                 return updateStringsValues("Automatic Updates", "Check GitHub Releases for the latest APK and guide installation.", "Check Updates", "Release Page", "Updates have not been checked yet.", "Checking the latest version...", "Current version %s is up to date.", "New version %s available", "Update check failed: %s", "New Version Available", "Current: %s (%d)\nLatest: %s (%d)\n\n%s", "No release notes.", "Download", "Later", "Open Release", "Preparing update APK download", "%s download started", "Download complete. Opening install screen...", "Could not open the install screen.", "Checking updates", "You are on the latest version.", "New version %s is available.", "Update check failed.");
         }
@@ -1040,6 +1087,15 @@ final class AppI18n {
                         "Bahasa sebutan/terjemahan disimpan",
                         "Tajuk lagu dan artis juga dipaparkan dalam bahasa output yang dipilih."
                 );
+            case "tr":
+                return unifiedOutputLanguageStringsValues(
+                        "Uygulama görüntü dili ile telaffuz/çeviri çıkış dilini yönetin.",
+                        "Telaffuz/Çeviri Dili",
+                        "Telaffuz ve çeviri çıktısı için ortak dil. UI diliyle aynı bırakabilir veya belirli bir dile sabitleyebilirsiniz.",
+                        "UI diliyle aynı",
+                        "Telaffuz/çeviri dili kaydedildi",
+                        "Şarkı başlığı ve sanatçı da seçili çıkış dilinde gösterilir."
+                );
             default:
                 return unifiedOutputLanguageStringsValues(
                         "Manage app display language and pronunciation/translation output language.",
@@ -1118,6 +1174,14 @@ final class AppI18n {
                         "ふりがな",
                         "ふりがなをオンにしました",
                         "ふりがなをオフにしました"
+                );
+            case "tr":
+                return furiganaStringsValues(
+                        "Japonca furigana",
+                        "Sözler Japonca olarak algılandığında kanjilerin üzerinde hiragana okunuşlarını gösterir. Yalnızca kanji varsa oluşturulur.",
+                        "Furigana",
+                        "Furigana açık",
+                        "Furigana kapalı"
                 );
             default:
                 return furiganaStringsValues(
@@ -1581,6 +1645,28 @@ final class AppI18n {
                         "Terjemahan halaman lirik",
                         "Laraskan saiz dan ketebalan item ini."
                 );
+            case "tr":
+                return typographyStringsValues(
+                        "Tipografi",
+                        "Ana oynatıcı ve söz sayfası için metin boyutunu ve kalınlığını özelleştirin.",
+                        "Boyut",
+                        "Kalınlık",
+                        "Regular",
+                        "SemiBold",
+                        "Bold",
+                        "Tipografi kaydedildi",
+                        "Ana Başlık",
+                        "Ana Sanatçı",
+                        "Ana Alt Orijinal",
+                        "Ana Alt Telaffuz",
+                        "Ana Alt Çeviri",
+                        "Söz Sayfası Başlığı",
+                        "Söz Sayfası Sanatçısı",
+                        "Söz Sayfası Orijinal",
+                        "Söz Sayfası Telaffuz",
+                        "Söz Sayfası Çeviri",
+                        "Bu öğe için boyut ve kalınlığı ayarlayın."
+                );
             default:
                 return typographyStringsValues(
                         "Typography",
@@ -1714,6 +1800,8 @@ final class AppI18n {
                 return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, male, dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna terpilih", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
             case "ms":
                 return speakerColorStringsValues("Warna vokal", "Laraskan warna normal, duet, male dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna dipilih", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
+            case "tr":
+                return speakerColorStringsValues("Vokal Renkleri", "Normal, duet, male ve female söz renklerini renk seçiciyle özelleştirin.", "Normal", "Duet", "Male", "Female", "Seçili renk", "Renkleri uygula", "Sıfırla", "Vokal renkleri kaydedildi", "Vokal renkleri sıfırlandı", "%s renk biçimi geçersiz.");
             default:
                 return speakerColorStringsValues("Vocal Colors", "Customize normal, duet, male, and female lyric colors with a color picker.", "Normal", "Duet", "Male", "Female", "Selected color", "Apply colors", "Reset", "Vocal colors saved", "Vocal colors reset", "%s color format is invalid.");
         }
@@ -1808,6 +1896,8 @@ final class AppI18n {
                 return videoBackgroundStringsValues("Pilih sampul album, video, gradien buram, atau warna solid.", "Video", "Memuat video YouTube ivLyrics dan memutar video asli di belakang pemutar.");
             case "ms":
                 return videoBackgroundStringsValues("Pilih kulit album, video, kecerunan kabur atau warna pepejal.", "Video", "Memuatkan video YouTube ivLyrics dan memainkan video sebenar di belakang pemain.");
+            case "tr":
+                return videoBackgroundStringsValues("Albüm kapağı, video, bulanık gradyan veya düz renk arka plan seçin.", "Video", "ivLyrics YouTube video bilgisini yükler ve gerçek videoyu oynatıcının arkasında oynatır.");
             default:
                 return videoBackgroundStringsValues("Choose album cover, video, blurred gradient, or solid color background.", "Video", "Loads ivLyrics YouTube video metadata and plays the real video behind the player.");
         }
@@ -1861,6 +1951,8 @@ final class AppI18n {
                 return videoBackgroundScaleStringsValues("Zoom video", "Memperbesar video latar saat sumber memiliki bilah hitam atau perlu memenuhi layar lebih banyak.");
             case "ms":
                 return videoBackgroundScaleStringsValues("Zum video", "Membesarkan video latar apabila sumber mempunyai jalur hitam atau perlu memenuhi skrin dengan lebih baik.");
+            case "tr":
+                return videoBackgroundScaleStringsValues("Video yakınlaştırma", "Kaynakta siyah kenarlık varsa veya ekranı daha iyi doldurması gerekiyorsa video arka planını yakınlaştırır.");
             default:
                 return videoBackgroundScaleStringsValues("Video zoom", "Zoom the video background when the source has letterboxing or needs to fill more of the screen.");
         }
@@ -1928,6 +2020,8 @@ final class AppI18n {
                 return videoSyncOffsetStringsValues("Video", "Offset sinkronisasi video", "Koreksi video %s", "Tidak ada lagu saat ini.", "Nilai + memindahkan video ke waktu yang lebih maju, nilai - ke waktu sebelumnya. Ini ditambahkan di atas offset sinkronisasi lirik.", "Reset offset video", "Offset video %s");
             case "ms":
                 return videoSyncOffsetStringsValues("Video", "Offset penyegerakan video", "Pembetulan video %s", "Tiada lagu semasa.", "Nilai + mengalihkan video ke masa lebih lewat, nilai - ke masa lebih awal. Ia ditambah pada offset penyegerakan lirik.", "Tetapkan semula offset video", "Offset video %s");
+            case "tr":
+                return videoSyncOffsetStringsValues("Video", "Video Senkron Ofseti", "%s video düzeltmesi", "Geçerli şarkı yok.", "+ değerler videoyu daha sonraki zamana, - değerler daha önceki zamana taşır. Bu, söz senkron ofsetinin üzerine eklenir.", "Video Ofsetini Sıfırla", "Video ofseti %s");
             default:
                 return videoSyncOffsetStringsValues("Video", "Video Sync Offset", "%s video adjustment", "No current song.", "+ values move the video to a later timestamp, while - values move it earlier. This is added on top of the lyric sync offset.", "Reset Video Offset", "Video offset %s");
         }
@@ -6628,6 +6722,243 @@ final class AppI18n {
                 "lyrics.credit_sync_by_format", "sync oleh %s"
         );
     }
+
+    private static Map<String, String> trStrings() {
+        return strings(
+                "button.close", "Kapat",
+                "button.previous", "Geri",
+                "button.save_start", "Kaydet ve Başlat",
+                "button.spotify_setup", "Spotify API'yi Ayarla",
+                "status.waiting_spotify", "Spotify çalması bekleniyor",
+                "status.lyrics_loading", "Sözler yükleniyor",
+                "status.lyrics_waiting", "Sözler bekleniyor",
+                "status.spotify_required_title", "Spotify API Gerekli",
+                "status.spotify_required_subtitle", "Önce Client ID ve Client Secret değerlerinizi kaydedin",
+                "status.spotify_required_detail", "Kurulum tamamlanana kadar ISRC, sync-data ve LRCLIB sözleri yüklenmez.",
+                "toast.spotify_required", "Önce Spotify API'yi kaydedin",
+                "toast.setup_required", "Önce ilk kurulumu tamamlayın",
+                "toast.back_exit", "Çıkmak için Geri'ye tekrar basın",
+                "toast.ui_language_saved", "Uygulama dili kaydedildi",
+                "settings.title", "Ayarlar",
+                "settings.subtitle", "Sözler, görünüm, AI ve araçlar",
+                "tab.lyrics", "Sözler",
+                "tab.display", "Görünüm",
+                "tab.ai", "AI",
+                "tab.tools", "Araçlar",
+                "section.language", "Dil",
+                "section.language_desc", "Uygulama dili, telaffuz ve şarkı başına çeviri kurallarını ayrı ayrı yönetin.",
+                "setting.ui_language", "Uygulama Dili",
+                "setting.ui_language_desc", "Uygulama arayüzünde kullanılan dil. Yalnızca gerçek UI çevirisi olan diller gösterilir.",
+                "setting.pronunciation_language", "Telaffuz Dili",
+                "setting.pronunciation_language_desc", "Telaffuzun hangi yazı/dil ile üretileceğini seçin.",
+                "setting.metadata_translation", "Başlığı/sanatçıyı çevir",
+                "setting.metadata_translation_desc", "Geçerli şarkı başlığını ve sanatçı adını da seçili hedef dile çevirir.",
+                "setting.main_preview", "Ana söz önizlemesi",
+                "setting.main_preview_desc", "Orijinal, telaffuz ve çeviri satırlarını seçin. Uzun satırlar söz zamanlamasına göre kayar.",
+                "setting.auto_interlude", "Intro/ara/outro otomatik algılansın",
+                "setting.auto_interlude_desc", "Nota/boş satırları ve sözlerden sonraki uzun boşlukları animasyonlu ara işaretlerine dönüştürür.",
+                "setting.interlude_labels", "Ara etiketlerini göster",
+                "setting.interlude_labels_desc", "Animasyonlu ikon korunurken intro/ara/outro işaretlerinin yanında metin etiketi gösterir.",
+                "setting.synced_karaoke_animation", "Satır senkronlu karaoke efekti",
+                "setting.synced_karaoke_animation_desc", "sync-data olmayan normal LRCLIB senkronlu sözlere eşit zamanlı harf dolumu uygular.",
+                "setting.karaoke_bounce_effect", "Karaoke zıplama efekti",
+                "setting.karaoke_bounce_effect_desc", "Karaoke oynatımında harfler dolarken metni zıplatır.",
+                "section.player", "Oynatıcı",
+                "section.player_desc", "Görünüm ve yatay ekran davranışını ayarlayın.",
+                "setting.landscape_auto_hide", "Yatay kontrolleri otomatik gizle",
+                "setting.landscape_auto_hide_desc", "Yatay ekranda işlem yokken ilerleme çubuğunu ve düğmeleri gizler.",
+                "section.background", "Arka plan",
+                "section.background_desc", "Albüm kapağı, bulanık gradyan veya düz renk arka plan seçin.",
+                "setting.background_mode", "Arka plan efekti",
+                "setting.background_mode_desc", "Geçerli şarkı arka planının nasıl çizileceğini seçin.",
+                "setting.brightness", "Parlaklık",
+                "setting.brightness_desc", "Albüm kapağı ve gradyan arka planları için parlaklık.",
+                "setting.blur", "Bulanıklık",
+                "setting.blur_desc", "Albüm kapağı ve gradyan arka planları için bulanıklık yoğunluğu. Video arka planları bu değerin iki katını kullanır.",
+                "setting.video_scale", "Video yakınlaştırma",
+                "setting.video_scale_desc", "Kaynakta siyah kenarlık varsa veya ekranı daha fazla doldurması gerekiyorsa video arka planını yakınlaştırır.",
+                "setting.noise", "Gürültü dokusu",
+                "setting.noise_desc", "Orijinal ivLyrics gibi hafif bir gren dokusu ekler.",
+                "setting.reduce_motion", "Hareketi azalt",
+                "setting.reduce_motion_desc", "Albüm/gradyan arka planının otomatik hareketini durdurur.",
+                "section.ai_lyrics", "Söz AI",
+                "section.ai_lyrics_desc", "ivLyrics ile uyumlu istemlerle telaffuz ve çeviri üretir.",
+                "section.provider", "Sağlayıcı",
+                "field.api_key", "API Anahtarı",
+                "field.model", "Model",
+                "field.base_url", "Temel URL",
+                "button.save_regenerate", "Kaydet ve Yeniden Oluştur",
+                "button.get_key", "Anahtar Al",
+                "section.tools", "Araçlar",
+                "section.tools_desc", "Önbelleği ve hata ayıklama günlüklerini yönetin.",
+                "section.spotify_api", "Spotify API",
+                "section.spotify_api_desc", "Spotify Developer Dashboard'dan aldığınız Client ID ve Client Secret değerlerini kullanın. Yalnızca bu cihazda saklanır.",
+                "button.spotify_save", "Spotify API'yi Kaydet",
+                "section.lyrics_cache", "Söz Önbelleği",
+                "section.lyrics_cache_desc", "sync-data/LRCLIB temel sözlerini ve AI telaffuz/çeviri önbelleğini temizler. Temizlikten sonra geçerli şarkı yeniden yüklenir.",
+                "button.clear_current", "Geçerli Olanı Temizle",
+                "button.clear_all", "Tümünü Temizle",
+                "button.ai_cache_clear", "AI Önbelleğini Temizle",
+                "button.debug_log", "Hata Ayıklama / Günlükler",
+                "onboarding.subtitle", "Şu anda çalan şarkı için karaoke sözleri, çeviri ve telaffuz.",
+                "onboarding.welcome_title", "ivLyrics'i Ayarla",
+                "onboarding.welcome_desc", "Önce uygulama dilini seçin, ardından medya erişim iznini ve kendi Spotify API bilgilerinizi ayarlayın.",
+                "onboarding.app_language_en", "Uygulama Dili",
+                "onboarding.app_language_native", "Uygulama Dili",
+                "onboarding.permission_title", "Medya Erişim İzni",
+                "onboarding.permission_desc", "Spotify'da şu anda çalan şarkıyı okuyabilmek için Android bildirim erişimi gerekir.",
+                "onboarding.permission_hint", "Ayarlar ekranında ivLyrics'i bulun, erişime izin verin ve uygulamaya geri dönün.",
+                "onboarding.permission_status_enabled", "İzin etkin. Spotify oynatımı artık algılanabilir.",
+                "onboarding.permission_status_required", "İzin henüz etkin değil. İzin ayarlarını açın ve ivLyrics'e izin verin.",
+                "onboarding.spotify_title", "Şarkı Bilgisini Bağla",
+                "onboarding.spotify_desc", "Spotify Web API, geçerli şarkının ISRC bilgisini ve yüksek çözünürlüklü kapak görselini yüklemek için kullanılır.",
+                "onboarding.step_format", "Adım %d / %d",
+                "spotify.status_configured", "Spotify API yapılandırıldı",
+                "spotify.status_required", "İlk kullanımdan önce Spotify API'yi kaydedin.",
+                "spotify.status_checking", "Spotify token kontrol ediliyor...",
+                "spotify.status_invalid_format", "Spotify token isteği başarısız: %s\nClient ID ve Client Secret değerlerinizi tekrar kontrol edin.",
+                "button.next", "İleri",
+                "button.restart", "Baştan Başla",
+                "button.copy", "Kopyala",
+                "button.open_browser", "Tarayıcıyı Aç",
+                "button.open_permission", "İzin Ayarlarını Aç",
+                "button.prev_track", "Önceki parça",
+                "button.next_track", "Sonraki parça",
+                "debug.title", "Hata Ayıklama",
+                "debug.permission", "Medya erişim iznini aç",
+                "debug.previous", "Önceki",
+                "debug.play_pause", "Oynat/Duraklat",
+                "debug.next", "Sonraki",
+                "debug.refresh", "Yenile",
+                "debug.log", "Günlük",
+                "debug.log_waiting", "Günlükler bekleniyor",
+                "lyrics.tab.language", "Dil",
+                "lyrics.tab.sync", "Senkron",
+                "lyrics.translation", "Çeviri",
+                "lyrics.pronunciation", "Telaffuz",
+                "lyrics.sync.title", "Geçerli Şarkı Söz Ofseti",
+                "lyrics.sync.reset", "0ms'ye sıfırla",
+                "lyrics.sync.no_track", "Çalan şarkı yok, bu yüzden kaydedilmeyecek.",
+                "lyrics.sync.track_scope", "Yalnızca \"%s\" için kaydedildi.",
+                "lyrics.sync.help", "+ değerler sözleri daha erken, - değerler daha geç gösterir.",
+                "lyrics.menu_tip", "Çeviri ve telaffuz ayarlarını açmak için başlığa veya sanatçıya uzun basın.",
+                "lyrics.rule.track_language", "Şarkı dili",
+                "lyrics.rule.save_target", "Hedefi kaydet",
+                "lyrics.rule.translation_language", "Çeviri dili",
+                "label.on", "Açık",
+                "label.off", "Kapalı",
+                "label.auto", "Otomatik",
+                "label.auto_target", "Otomatik (%s)",
+                "lyrics.button.translation_on", "Çeviri Açık",
+                "lyrics.button.pronunciation_on", "Telaffuz Açık",
+                "lyrics.button.translation_plus", "Çeviri+",
+                "field.api_key_desc", "Tek anahtar, satır satır liste veya JSON dizisi desteklenir. Yalnızca bu cihazda saklanır.",
+                "field.model_desc", "Sağlayıcı model geçersiz kılma değeri.",
+                "field.base_url_desc", "OpenAI uyumlu veya sağlayıcı API temel URL'si.",
+                "field.max_tokens", "Maksimum token",
+                "field.temperature", "Yaratıcılık",
+                "field.solid_color", "Düz arka plan rengi",
+                "field.solid_color_desc", "Düz arka plan modunda kullanılacak rengi seçin.",
+                "field.spotify_client_id_desc", "Spotify uygulamanızın Client ID değeri.",
+                "field.spotify_client_secret_desc", "Spotify uygulamanızın Client Secret değeri.",
+                "preview.none", "Gizli",
+                "preview.original", "Orijinal",
+                "preview.pronunciation", "Telaffuz",
+                "preview.translation", "Çeviri",
+                "background.mode.gradient", "Albüm Kapağı",
+                "background.mode.gradient_desc", "Geçerli albüm kapağını büyük bulanık arka plan olarak kullanır.",
+                "background.mode.blur_gradient", "Bulanık Gradyan",
+                "background.mode.blur_gradient_desc", "Albüm renklerinden hareketli bulanık gradyan oluşturur.",
+                "background.mode.solid", "Düz Renk",
+                "background.mode.solid_desc", "Özel düz arka plan rengi kullanır.",
+                "provider.desc.gemini", "Google AI Studio API",
+                "provider.desc.chatgpt", "OpenAI uyumlu API",
+                "provider.desc.claude", "Claude Messages API",
+                "provider.desc.openrouter", "Birden fazla AI modelini yönlendirir",
+                "provider.desc.groq", "Hızlı OpenAI uyumlu çıkarım",
+                "provider.desc.perplexity", "Sonar API",
+                "provider.desc.pollinations", "Pollinations OpenAI uyumlu API",
+                "spotify.step0.title", "Spotify Developer Dashboard'a gidin",
+                "spotify.step0.desc", "Tarayıcınızda Spotify Developer Dashboard'u açın. Oturum açın ve yeni bir uygulama oluşturun.",
+                "spotify.step1.title", "Create app bölümünde ad girin",
+                "spotify.step1.desc", "Create app'e basın ve App name için aşağıdaki değeri girin. ivLyrics veya ivlyrics yazmayın.",
+                "spotify.step2.title", "Açıklamayı girin",
+                "spotify.step2.desc", "App description için de aşağıdaki değeri girin. Bu yalnızca karışıklığı önlemek için bir örnektir.",
+                "spotify.step3.title", "Redirect URI girin",
+                "spotify.step3.desc", "Aşağıdaki adresi Redirect URIs alanına ekleyin. Sondaki eğik çizgiyi dahil edin.",
+                "spotify.step4.title", "Web API'yi seçip kaydedin",
+                "spotify.step4.desc", "API seçim alanında Web API'yi seçin, onay kutusunu işaretleyin ve Save'e basın.",
+                "spotify.step5.title", "Client ID ve Secret'ı kopyalayın",
+                "spotify.step5.desc", "Uygulama ayarlarından Client ID ve Client Secret'ı kopyalayın, aşağıya yapıştırın ve Spotify API'yi kaydedin.",
+                "toast.copied_format", "Kopyalandı: %s",
+                "toast.provider_saved", "Sağlayıcı kaydedildi",
+                "toast.pronunciation_language_saved", "Telaffuz dili kaydedildi",
+                "toast.preview_saved", "Ana söz önizlemesi kaydedildi",
+                "toast.background_saved", "Arka plan efekti kaydedildi",
+                "toast.metadata_translation_on", "Başlık/sanatçı çevirisi açık",
+                "toast.metadata_translation_off", "Başlık/sanatçı çevirisi kapalı",
+                "toast.auto_interlude_on", "Otomatik ara algılama açık",
+                "toast.auto_interlude_off", "Otomatik ara algılama kapalı",
+                "toast.landscape_auto_hide_on", "Yatay kontroller otomatik gizleme açık",
+                "toast.landscape_auto_hide_off", "Yatay kontroller otomatik gizleme kapalı",
+                "toast.background_noise_on", "Arka plan gürültüsü açık",
+                "toast.background_noise_off", "Arka plan gürültüsü kapalı",
+                "toast.reduce_motion_on", "Arka plan hareketi azaltıldı",
+                "toast.reduce_motion_off", "Arka plan hareketi etkin",
+                "toast.ai_cache_cleared", "AI önbelleği temizlendi",
+                "toast.language_rule_saved", "Şarkı dili ayarları kaydedildi",
+                "toast.settings_saved", "Ayarlar kaydedildi",
+                "toast.spotify_missing", "Hem Client ID hem de Client Secret girin.",
+                "toast.spotify_checking", "Spotify token kontrol ediliyor...",
+                "toast.spotify_invalid", "Spotify API bilgilerinizi tekrar kontrol edin.",
+                "toast.spotify_saved", "Spotify API kaydedildi",
+                "toast.current_track_missing", "Geçerli şarkı bilgisi yok",
+                "toast.current_cache_cleared", "Geçerli şarkı söz önbelleği temizlendi",
+                "toast.all_cache_cleared", "Tüm söz önbelleği temizlendi",
+                "toast.sync_offset_format", "Senkron ofseti %s",
+                "status.lyrics_request_failed", "Söz isteği başarısız",
+                "status.ai_applied", "Çeviri/telaffuz uygulandı",
+                "status.ai_failed_format", "AI sözleri başarısız: %s",
+                "status.ai_cache_cleared", "AI önbelleği temizlendi",
+                "status.ai_lyrics_active", "AI sözleri etkin",
+                "status.ai_key_needed", "AI sözleri oluşturmak için API anahtarı girin.",
+                "status.ai_disabled", "Çeviri/telaffuz kapalı.",
+                "status.no_lyrics_to_apply", "Uygulanacak söz yok.",
+                "status.ai_generating", "AI sözleri oluşturuluyor...",
+                "status.reload_after_spotify", "Spotify API ayarları değiştikten sonra bu şarkının ISRC, sync-data ve LRCLIB sözleri yeniden yükleniyor.",
+                "status.detecting_media", "Medya oturumu algılanıyor",
+                "status.permission_required", "Bildirim erişim izni gerekli",
+                "status.lyrics_lookup_spotify", "Spotify Web API ile ISRC bulunuyor, ardından sync-data ve LRCLIB yükleniyor.",
+                "status.lyrics_lookup_player", "Oynatıcı ISRC'si ile sync-data ve LRCLIB yükleniyor.",
+                "status.waiting_current_track", "Şu anda çalan şarkı bekleniyor",
+                "status.spotify_required_plain", "Spotify API gerekli",
+                "loading.generating", "Oluşturuluyor",
+                "loading.pronunciation", "Telaffuz oluşturuluyor...",
+                "loading.translation", "Çeviri oluşturuluyor...",
+                "lyrics.empty_none", "Söz yok",
+                "interlude.prelude", "Intro",
+                "interlude.break", "Ara",
+                "interlude.postlude", "Outro",
+                "onboarding.preview.line1", "Karaoke sözleri şarkıyı takip eder",
+                "onboarding.preview.line2", "Telaffuz ve çeviri burada görünür",
+                "onboarding.preview.line3", "Her şey geçerli parçaya göre güncellenir",
+                "repo.metadata_waiting", "Şarkı meta verisi bekleniyor",
+                "repo.lyrics_not_found", "LRCLIB sözleri bulunamadı",
+                "repo.instrumental", "Enstrümantal parça",
+                "repo.no_renderable_lyrics", "Gösterilebilir LRCLIB sözü yok",
+                "repo.detail.sync_applied_direct", "Karaoke sync-data uygulandı. LRCLIB doğrudan sync-data'dan yüklendi.",
+                "repo.detail.sync_applied_search", "Karaoke sync-data uygulandı. LRCLIB arama ile seçildi.",
+                "repo.detail.no_spotify_isrc", "LRCLIB satır sözleri. Spotify ISRC araması kullanılamıyor.",
+                "repo.detail.no_sync_data", "LRCLIB satır sözleri. Bu ISRC için eşleşen sync-data bulunamadı.",
+                "repo.detail.sync_apply_failed", "LRCLIB satır sözleri. sync-data uygulanamadı.",
+                "spotify.error.incomplete_credentials", "Spotify API Client ID veya Client Secret eksik.",
+                "spotify.error.credentials_not_configured", "Spotify API bilgileri yapılandırılmamış.",
+                "spotify.error.no_access_token", "Spotify token yanıtında access_token yok.",
+                "spotify.error.repository_unavailable", "Söz deposu kullanılamıyor.",
+                "lyrics.credit_sync_by_format", "sync: %s"
+        );
+    }
+
     private static Map<String, String> strings(String... values) {
         Map<String, String> table = new LinkedHashMap<>();
         for (int index = 0; index + 1 < values.length; index += 2) {

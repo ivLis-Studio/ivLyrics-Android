@@ -201,7 +201,8 @@ final class AiLyricsSettings {
             new Language("th", "Thai", "ภาษาไทย", "Thai script pronunciation"),
             new Language("vi", "Vietnamese", "Tiếng Việt", "Vietnamese phonetic spelling"),
             new Language("id", "Indonesian", "Bahasa Indonesia", "Indonesian phonetic spelling"),
-            new Language("ms", "Malay", "Bahasa Melayu", "Malay phonetic spelling")
+            new Language("ms", "Malay", "Bahasa Melayu", "Malay phonetic spelling"),
+            new Language("tr", "Turkish", "Türkçe", "Turkish phonetic spelling")
     ));
     private static final Map<String, Language> LANGUAGE_BY_CODE = buildLanguageMap();
 
