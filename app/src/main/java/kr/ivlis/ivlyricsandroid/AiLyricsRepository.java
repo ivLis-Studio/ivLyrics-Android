@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -35,6 +36,7 @@ import java.util.regex.Pattern;
 final class AiLyricsRepository {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 70_000;
+    private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 96L;
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
@@ -250,6 +252,124 @@ final class AiLyricsRepository {
                 copy.set(index, value == null ? "" : value);
             }
             return copy;
+        }
+    }
+
+    private final class SupplementPartialDispatcher {
+        private final String trackKey;
+        private final SupplementSession session;
+        private final AiLyricsSettings.Snapshot settings;
+        private final AiLyricsSettings.LanguageRule rule;
+        private final String sourceLang;
+        private final String targetLang;
+        private final String pronunciationLang;
+        private final boolean translationSkipped;
+        private final Callback callback;
+        private final Runnable pendingRunnable = this::dispatchPending;
+        private boolean pending;
+        private long lastDispatchMs;
+
+        SupplementPartialDispatcher(
+                String trackKey,
+                SupplementSession session,
+                AiLyricsSettings.Snapshot settings,
+                AiLyricsSettings.LanguageRule rule,
+                String sourceLang,
+                String targetLang,
+                String pronunciationLang,
+                boolean translationSkipped,
+                Callback callback
+        ) {
+            this.trackKey = trackKey;
+            this.session = session;
+            this.settings = settings;
+            this.rule = rule;
+            this.sourceLang = sourceLang;
+            this.targetLang = targetLang;
+            this.pronunciationLang = pronunciationLang;
+            this.translationSkipped = translationSkipped;
+            this.callback = callback;
+        }
+
+        void request() {
+            boolean dispatchNow = false;
+            long delay = STREAM_PARTIAL_DISPATCH_INTERVAL_MS;
+            synchronized (this) {
+                long now = SystemClock.uptimeMillis();
+                long elapsed = now - lastDispatchMs;
+                if (elapsed >= STREAM_PARTIAL_DISPATCH_INTERVAL_MS && !pending) {
+                    lastDispatchMs = now;
+                    dispatchNow = true;
+                } else if (!pending) {
+                    pending = true;
+                    delay = Math.max(1L, STREAM_PARTIAL_DISPATCH_INTERVAL_MS - elapsed);
+                } else {
+                    return;
+                }
+            }
+            if (dispatchNow) {
+                dispatch();
+            } else {
+                mainHandler.postDelayed(pendingRunnable, delay);
+            }
+        }
+
+        void flush() {
+            boolean shouldDispatch;
+            synchronized (this) {
+                shouldDispatch = pending;
+                pending = false;
+                lastDispatchMs = SystemClock.uptimeMillis();
+            }
+            mainHandler.removeCallbacks(pendingRunnable);
+            if (shouldDispatch) {
+                dispatch();
+            }
+        }
+
+        void cancelPending() {
+            synchronized (this) {
+                pending = false;
+            }
+            mainHandler.removeCallbacks(pendingRunnable);
+        }
+
+        private void dispatchPending() {
+            synchronized (this) {
+                if (!pending) {
+                    return;
+                }
+                pending = false;
+                lastDispatchMs = SystemClock.uptimeMillis();
+            }
+            dispatch();
+        }
+
+        private void dispatch() {
+            LyricsResult result = buildMergedSupplementResult(
+                    session.baseResult,
+                    session.requests,
+                    session.pronunciationSnapshot(),
+                    session.translationSnapshot(),
+                    settings,
+                    rule,
+                    sourceLang,
+                    targetLang,
+                    pronunciationLang,
+                    translationSkipped
+            );
+            boolean pronunciationLoading = session.pronunciationLoading();
+            boolean translationLoading = session.translationLoading();
+            boolean finished = session.finished();
+            boolean hadError = session.hasError();
+            mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
+                    trackKey,
+                    result,
+                    pronunciationLoading,
+                    translationLoading,
+                    finished,
+                    hadError
+            ));
         }
     }
 
@@ -510,6 +630,17 @@ final class AiLyricsRepository {
         }
 
         LogSink log = message -> emitLog(trackKey, callback, message);
+        SupplementPartialDispatcher partialDispatcher = new SupplementPartialDispatcher(
+                trackKey,
+                session,
+                settings,
+                rule,
+                sourceLang,
+                targetLang,
+                pronunciationLang,
+                translationSkipped,
+                callback
+        );
         if (session.pronunciationLoading()) {
             executor.execute(() -> loadSupplementTask(
                     trackKey,
@@ -523,6 +654,7 @@ final class AiLyricsRepository {
                     pronunciationLang,
                     translationSkipped,
                     SUPPLEMENT_TASK_PRONUNCIATION,
+                    partialDispatcher,
                     log,
                     callback
             ));
@@ -540,6 +672,7 @@ final class AiLyricsRepository {
                     pronunciationLang,
                     translationSkipped,
                     SUPPLEMENT_TASK_TRANSLATION,
+                    partialDispatcher,
                     log,
                     callback
             ));
@@ -697,6 +830,7 @@ final class AiLyricsRepository {
             String pronunciationLang,
             boolean translationSkipped,
             String task,
+            SupplementPartialDispatcher partialDispatcher,
             LogSink log,
             Callback callback
     ) {
@@ -722,8 +856,8 @@ final class AiLyricsRepository {
                         targetLang,
                         pronunciationLang,
                         translationSkipped,
-                        log,
-                        callback
+                        partialDispatcher,
+                        log
                 );
                 log.write("ai pronunciation response: lines=" + values.size());
                 session.setPronunciation(values);
@@ -743,8 +877,8 @@ final class AiLyricsRepository {
                         targetLang,
                         pronunciationLang,
                         translationSkipped,
-                        log,
-                        callback
+                        partialDispatcher,
+                        log
                 );
                 log.write("ai translation response: lines=" + values.size());
                 session.setTranslation(values);
@@ -770,6 +904,7 @@ final class AiLyricsRepository {
                     pronunciationLang,
                     translationSkipped
             );
+            partialDispatcher.cancelPending();
             if (session.finished() && !session.hasError()) {
                 cacheResult(combinedCacheKey, result);
                 mainHandler.post(() -> callback.onAiLyricsLoaded(trackKey, result));
@@ -792,6 +927,7 @@ final class AiLyricsRepository {
                 session.markTranslationFailed();
                 log.write("ai translation error: " + message);
             }
+            partialDispatcher.flush();
             mainHandler.post(() -> callback.onAiLyricsTaskError(
                     trackKey,
                     message,
@@ -815,8 +951,8 @@ final class AiLyricsRepository {
             String targetLang,
             String pronunciationLang,
             boolean translationSkipped,
-            LogSink log,
-            Callback callback
+            SupplementPartialDispatcher partialDispatcher,
+            LogSink log
     ) throws Exception {
         TaggedTextStreamAccumulator accumulator = new TaggedTextStreamAccumulator(requests.size());
         StreamRowSink rowSink = (index, value) -> {
@@ -825,17 +961,7 @@ final class AiLyricsRepository {
             } else {
                 session.setTranslationValue(index, value);
             }
-            postSupplementPartial(
-                    trackKey,
-                    session,
-                    settings,
-                    rule,
-                    sourceLang,
-                    targetLang,
-                    pronunciationLang,
-                    translationSkipped,
-                    callback
-            );
+            partialDispatcher.request();
         };
 
         try {
@@ -855,39 +981,6 @@ final class AiLyricsRepository {
             String raw = callProviderRaw(prompt, settings);
             return parseTaggedTextLines(raw, requests, taskName, log);
         }
-    }
-
-    private void postSupplementPartial(
-            String trackKey,
-            SupplementSession session,
-            AiLyricsSettings.Snapshot settings,
-            AiLyricsSettings.LanguageRule rule,
-            String sourceLang,
-            String targetLang,
-            String pronunciationLang,
-            boolean translationSkipped,
-            Callback callback
-    ) {
-        LyricsResult result = buildMergedSupplementResult(
-                session.baseResult,
-                session.requests,
-                session.pronunciationSnapshot(),
-                session.translationSnapshot(),
-                settings,
-                rule,
-                sourceLang,
-                targetLang,
-                pronunciationLang,
-                translationSkipped
-        );
-        mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
-                trackKey,
-                result,
-                session.pronunciationLoading(),
-                session.translationLoading(),
-                session.finished(),
-                session.hasError()
-        ));
     }
 
     private LyricsResult buildMergedSupplementResult(

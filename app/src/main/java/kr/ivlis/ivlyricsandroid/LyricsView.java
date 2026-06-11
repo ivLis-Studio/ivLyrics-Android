@@ -126,6 +126,7 @@ public final class LyricsView extends View {
     }
 
     void setResult(LyricsResult result) {
+        boolean softUpdate = canSoftUpdateResult(result);
         if (result == null || result.lines.isEmpty()) {
             lines = Collections.emptyList();
             emptyMessage = result == null || result.detail.isEmpty() ? emptyFallbackMessage : result.detail;
@@ -134,6 +135,11 @@ public final class LyricsView extends View {
             lines = result.lines;
             emptyMessage = "";
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
+        }
+        if (softUpdate) {
+            currentDisplayLineCount = Math.max(0, lines.size());
+            postInvalidateOnAnimation();
+            return;
         }
         centerInitialized = false;
         lastFrameMs = 0L;
@@ -155,6 +161,97 @@ public final class LyricsView extends View {
         postInvalidateOnAnimation();
     }
 
+    private boolean canSoftUpdateResult(LyricsResult result) {
+        if (result == null || result.lines.isEmpty() || lines == null || lines.isEmpty()) {
+            return false;
+        }
+        if (result.lines.size() != lines.size()) {
+            return false;
+        }
+        for (int index = 0; index < lines.size(); index++) {
+            if (!sameRenderableLineStructure(lines.get(index), result.lines.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean sameRenderableLineStructure(LyricsLine current, LyricsLine next) {
+        if (current == next) {
+            return true;
+        }
+        if (current == null || next == null) {
+            return false;
+        }
+        if (current.startTimeMs != next.startTimeMs
+                || current.endTimeMs != next.endTimeMs
+                || !sameString(current.text, next.text)
+                || !sameString(current.speaker, next.speaker)
+                || !sameString(current.kind, next.kind)
+                || !sameSyllableStructure(current.syllables, next.syllables)) {
+            return false;
+        }
+        List<LyricsLine.VocalPart> currentParts = current.vocalParts == null
+                ? Collections.emptyList()
+                : current.vocalParts;
+        List<LyricsLine.VocalPart> nextParts = next.vocalParts == null
+                ? Collections.emptyList()
+                : next.vocalParts;
+        if (currentParts.size() != nextParts.size()) {
+            return false;
+        }
+        for (int index = 0; index < currentParts.size(); index++) {
+            if (!sameRenderablePartStructure(currentParts.get(index), nextParts.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean sameRenderablePartStructure(LyricsLine.VocalPart current, LyricsLine.VocalPart next) {
+        if (current == next) {
+            return true;
+        }
+        if (current == null || next == null) {
+            return false;
+        }
+        return current.startTimeMs == next.startTimeMs
+                && current.endTimeMs == next.endTimeMs
+                && sameString(current.id, next.id)
+                && sameString(current.role, next.role)
+                && sameString(current.speaker, next.speaker)
+                && sameString(current.kind, next.kind)
+                && sameString(current.text, next.text)
+                && sameSyllableStructure(current.syllables, next.syllables);
+    }
+
+    private boolean sameSyllableStructure(List<LyricsLine.Syllable> current, List<LyricsLine.Syllable> next) {
+        List<LyricsLine.Syllable> currentSyllables = current == null ? Collections.emptyList() : current;
+        List<LyricsLine.Syllable> nextSyllables = next == null ? Collections.emptyList() : next;
+        if (currentSyllables.size() != nextSyllables.size()) {
+            return false;
+        }
+        for (int index = 0; index < currentSyllables.size(); index++) {
+            LyricsLine.Syllable currentSyllable = currentSyllables.get(index);
+            LyricsLine.Syllable nextSyllable = nextSyllables.get(index);
+            if (currentSyllable == nextSyllable) {
+                continue;
+            }
+            if (currentSyllable == null
+                    || nextSyllable == null
+                    || currentSyllable.startTimeMs != nextSyllable.startTimeMs
+                    || currentSyllable.endTimeMs != nextSyllable.endTimeMs
+                    || !sameString(currentSyllable.text, nextSyllable.text)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean sameString(String current, String next) {
+        return (current == null ? "" : current).equals(next == null ? "" : next);
+    }
+
     void setUiText(
             String loadingMessage,
             String emptyFallbackMessage,
@@ -162,21 +259,34 @@ public final class LyricsView extends View {
             String breakLabel,
             String postludeLabel
     ) {
-        this.loadingMessage = loadingMessage == null || loadingMessage.trim().isEmpty()
+        String nextLoadingMessage = loadingMessage == null || loadingMessage.trim().isEmpty()
                 ? AppI18n.t("en", "status.lyrics_loading")
                 : loadingMessage;
-        this.emptyFallbackMessage = emptyFallbackMessage == null || emptyFallbackMessage.trim().isEmpty()
+        String nextEmptyFallbackMessage = emptyFallbackMessage == null || emptyFallbackMessage.trim().isEmpty()
                 ? AppI18n.t("en", "lyrics.empty_none")
                 : emptyFallbackMessage;
-        this.preludeLabel = preludeLabel == null || preludeLabel.trim().isEmpty()
+        String nextPreludeLabel = preludeLabel == null || preludeLabel.trim().isEmpty()
                 ? AppI18n.t("en", "interlude.prelude")
                 : preludeLabel;
-        this.breakLabel = breakLabel == null || breakLabel.trim().isEmpty()
+        String nextBreakLabel = breakLabel == null || breakLabel.trim().isEmpty()
                 ? AppI18n.t("en", "interlude.break")
                 : breakLabel;
-        this.postludeLabel = postludeLabel == null || postludeLabel.trim().isEmpty()
+        String nextPostludeLabel = postludeLabel == null || postludeLabel.trim().isEmpty()
                 ? AppI18n.t("en", "interlude.postlude")
                 : postludeLabel;
+        if (sameString(this.loadingMessage, nextLoadingMessage)
+                && sameString(this.emptyFallbackMessage, nextEmptyFallbackMessage)
+                && sameString(this.preludeLabel, nextPreludeLabel)
+                && sameString(this.breakLabel, nextBreakLabel)
+                && sameString(this.postludeLabel, nextPostludeLabel)) {
+            return;
+        }
+
+        this.loadingMessage = nextLoadingMessage;
+        this.emptyFallbackMessage = nextEmptyFallbackMessage;
+        this.preludeLabel = nextPreludeLabel;
+        this.breakLabel = nextBreakLabel;
+        this.postludeLabel = nextPostludeLabel;
         if (lines.isEmpty() && (emptyMessage == null || emptyMessage.trim().isEmpty())) {
             emptyMessage = this.emptyFallbackMessage;
         }
@@ -257,7 +367,6 @@ public final class LyricsView extends View {
         }
         pronunciationLoading = pronunciation;
         translationLoading = translation;
-        rowLayoutCache.clear();
         postInvalidateOnAnimation();
     }
 
