@@ -71,8 +71,8 @@ jobs:
             echo "IVLYRICS_RELEASE_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
           } >> "${GITHUB_ENV}"
 
-      - name: Build all APK variants
-        run: ./gradlew :app:assembleDebug :app:assembleRelease
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease
 
       - name: Collect APKs
         id: collect
@@ -96,7 +96,7 @@ jobs:
               name="ivLyrics-Android-${release_tag}-${variant}-unsigned.apk"
             fi
             cp "${apk}" "release-apks/${name}"
-          done < <(find app/build/outputs/apk -type f -name "*.apk" | sort)
+          done < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" | sort)
           {
             echo "release_tag=${release_tag}"
             echo "release_target=${release_target}"
@@ -138,6 +138,12 @@ jobs:
             args+=(--prerelease)
           fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' \
+              | while IFS= read -r asset; do
+                if [[ "${asset}" == *"-debug.apk" ]]; then
+                  gh release delete-asset "${RELEASE_TAG}" "${asset}" --yes
+                fi
+              done
             gh release edit "${RELEASE_TAG}" \
               --target "${RELEASE_TARGET}" \
               --title "ivLyrics Android ${RELEASE_TAG}" \
