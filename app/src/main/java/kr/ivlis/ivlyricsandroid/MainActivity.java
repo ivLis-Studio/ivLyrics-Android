@@ -197,6 +197,7 @@ public final class MainActivity extends Activity implements
     private TextView permissionButton;
     private PopupWindow lyricsMetaTipPopup;
     private PopupWindow lyricsMetaMenuPopup;
+    private ScrollView lyricsMetaMenuScrollView;
     private TransportButtonView playPauseButton;
     private View landscapeControlsContainer;
     private ImageButton landscapeMenuButton;
@@ -323,6 +324,8 @@ public final class MainActivity extends Activity implements
     private ViewGroup lyricsLanguageSettingsOriginalParent;
     private ViewGroup.LayoutParams lyricsLanguageSettingsOriginalLayoutParams;
     private int lyricsLanguageSettingsOriginalIndex = -1;
+    private int lyricsMetaMenuPopupWidthPx;
+    private int lyricsMetaMenuPopupTopPx;
     private boolean suppressLanguageRuleEvents;
     private boolean suppressSettingsEvents;
     private boolean aiLyricsGenerating;
@@ -4591,6 +4594,7 @@ public final class MainActivity extends Activity implements
         updateLyricsPopupTabButtons();
         updateLyricsSyncSettingsUi();
         updateVideoSyncSettingsUi();
+        resizeLyricsMetaMenuPopupForActiveTab(true);
     }
 
     private void updateLyricsPopupTabButtons() {
@@ -4716,6 +4720,7 @@ public final class MainActivity extends Activity implements
         lyricsManualSearchResultsContainer.removeAllViews();
         if (candidates == null || candidates.isEmpty()) {
             setManualLrclibStatus(ui("lyrics.lrclib_search.no_results"));
+            resizeLyricsMetaMenuPopupForActiveTab(false);
             return;
         }
         setManualLrclibStatus(uiFormat("lyrics.lrclib_search.result_count_format", candidates.size()));
@@ -4730,6 +4735,7 @@ public final class MainActivity extends Activity implements
             }
             lyricsManualSearchResultsContainer.addView(row, params);
         }
+        resizeLyricsMetaMenuPopupForActiveTab(false);
     }
 
     private View manualLrclibCandidateRow(LyricsRepository.ManualLrclibCandidate candidate) {
@@ -5159,19 +5165,32 @@ public final class MainActivity extends Activity implements
         popupContent.setPadding(dp(16), dp(10), dp(16), dp(10));
         popupContent.setClipChildren(false);
         popupContent.setClipToPadding(false);
-        popupContent.addView(lyricsLanguageSettingsPanel, new FrameLayout.LayoutParams(
+
+        lyricsMetaMenuScrollView = new ScrollView(this);
+        lyricsMetaMenuScrollView.setFillViewport(true);
+        lyricsMetaMenuScrollView.setClipToPadding(false);
+        lyricsMetaMenuScrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        lyricsMetaMenuScrollView.addView(lyricsLanguageSettingsPanel, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        popupContent.addView(lyricsMetaMenuScrollView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
         int width = Math.min(
                 getResources().getDisplayMetrics().widthPixels - dp(isLandscapeLayout() ? 56 : 32),
                 dp(isLandscapeLayout() ? 480 : 430)
         );
+        int popupTop = lyricsMetaMenuPopupTop(anchor);
+        lyricsMetaMenuPopupWidthPx = Math.max(dp(280), width);
+        int popupHeight = lyricsMetaMenuPopupHeight(lyricsMetaMenuPopupWidthPx, popupTop);
+        lyricsMetaMenuPopupTopPx = popupTop;
         lyricsMetaMenuPopup = new PopupWindow(
                 popupContent,
-                Math.max(dp(280), width),
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                lyricsMetaMenuPopupWidthPx,
+                popupHeight,
                 false
         );
         lyricsMetaMenuPopup.setOutsideTouchable(true);
@@ -5181,6 +5200,9 @@ public final class MainActivity extends Activity implements
         }
         lyricsMetaMenuPopup.setOnDismissListener(() -> {
             restoreLyricsLanguageSettingsPanelFromPopup();
+            lyricsMetaMenuScrollView = null;
+            lyricsMetaMenuPopupWidthPx = 0;
+            lyricsMetaMenuPopupTopPx = 0;
             lyricsMetaMenuPopup = null;
         });
 
@@ -5191,7 +5213,7 @@ public final class MainActivity extends Activity implements
         lyricsLanguageSettingsPanel.setAlpha(1f);
         lyricsLanguageSettingsPanel.setTranslationY(0f);
         updateLyricsLanguageButtonState();
-        lyricsMetaMenuPopup.showAtLocation(rootView, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, lyricsMetaMenuPopupTop(anchor));
+        lyricsMetaMenuPopup.showAtLocation(rootView, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, popupTop);
     }
 
     private int lyricsMetaMenuPopupTop(View anchor) {
@@ -5204,6 +5226,44 @@ public final class MainActivity extends Activity implements
         }
         int maxTop = Math.max(dp(12), screenHeight - dp(isLandscapeLayout() ? 390 : 470));
         return Math.max(dp(12), Math.min(top, maxTop));
+    }
+
+    private int lyricsMetaMenuPopupHeight(int width, int top) {
+        int maxHeight = lyricsMetaMenuPopupMaxHeight(top);
+        int desiredHeight = measureLyricsMetaMenuPopupHeight(width);
+        int minHeight = Math.min(maxHeight, dp(isLandscapeLayout() ? 210 : 240));
+        return Math.max(minHeight, Math.min(desiredHeight, maxHeight));
+    }
+
+    private int lyricsMetaMenuPopupMaxHeight(int top) {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int bottomMargin = dp(isLandscapeLayout() ? 14 : 22);
+        return Math.max(dp(180), screenHeight - top - bottomMargin);
+    }
+
+    private int measureLyricsMetaMenuPopupHeight(int popupWidth) {
+        if (lyricsLanguageSettingsPanel == null) {
+            return dp(260);
+        }
+        int panelWidth = Math.max(dp(160), popupWidth - dp(32));
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(panelWidth, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        lyricsLanguageSettingsPanel.measure(widthSpec, heightSpec);
+        return lyricsLanguageSettingsPanel.getMeasuredHeight() + dp(20);
+    }
+
+    private void resizeLyricsMetaMenuPopupForActiveTab(boolean scrollToTop) {
+        if (lyricsMetaMenuPopup == null
+                || !lyricsMetaMenuPopup.isShowing()
+                || lyricsMetaMenuPopupWidthPx <= 0) {
+            return;
+        }
+        int top = lyricsMetaMenuPopupTopPx > 0 ? lyricsMetaMenuPopupTopPx : lyricsMetaMenuPopupTop(null);
+        int height = lyricsMetaMenuPopupHeight(lyricsMetaMenuPopupWidthPx, top);
+        lyricsMetaMenuPopup.update(lyricsMetaMenuPopupWidthPx, height);
+        if (scrollToTop && lyricsMetaMenuScrollView != null) {
+            lyricsMetaMenuScrollView.post(() -> lyricsMetaMenuScrollView.scrollTo(0, 0));
+        }
     }
 
     private void rememberLyricsLanguageSettingsParent() {
