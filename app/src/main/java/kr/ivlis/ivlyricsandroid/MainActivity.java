@@ -440,6 +440,8 @@ public final class MainActivity extends Activity implements
         if (youtubeBackgroundView != null) {
             youtubeBackgroundView.suppressHardSyncFor(900L);
         }
+        cancelLyricsMetaLongPress();
+        dismissLyricsMetaMenuPopup();
         rebuildContentViewAfterConfigurationChange();
     }
 
@@ -2300,20 +2302,14 @@ public final class MainActivity extends Activity implements
         lyricsManualSearchStatusView.setLineSpacing(dp(2), 1f);
         content.addView(lyricsManualSearchStatusView, topMargin(matchWrap(), dp(9)));
 
-        ScrollView resultsScroll = new ScrollView(this);
-        resultsScroll.setFillViewport(false);
-        resultsScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        resultsScroll.setBackground(roundDrawable(Color.argb(22, 255, 255, 255), dp(12)));
         lyricsManualSearchResultsContainer = new LinearLayout(this);
         lyricsManualSearchResultsContainer.setOrientation(LinearLayout.VERTICAL);
         lyricsManualSearchResultsContainer.setPadding(dp(8), dp(8), dp(8), dp(8));
-        resultsScroll.addView(lyricsManualSearchResultsContainer, new ScrollView.LayoutParams(
+        lyricsManualSearchResultsContainer.setMinimumHeight(dp(isLandscapeLayout() ? 150 : 180));
+        lyricsManualSearchResultsContainer.setBackground(roundDrawable(Color.argb(22, 255, 255, 255), dp(12)));
+        content.addView(lyricsManualSearchResultsContainer, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        content.addView(resultsScroll, topMargin(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(220)
         ), dp(8)));
 
         populateManualLrclibSearchDefaults(false);
