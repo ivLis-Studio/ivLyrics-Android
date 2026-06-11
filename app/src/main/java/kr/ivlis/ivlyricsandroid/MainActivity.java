@@ -6054,19 +6054,25 @@ public final class MainActivity extends Activity implements
             if (confirmationIntent != null) {
                 try {
                     setUpdateStatus(ui("update.download_complete"));
+                    confirmationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(confirmationIntent);
                     return;
-                } catch (ActivityNotFoundException ignored) {
+                } catch (ActivityNotFoundException | SecurityException error) {
+                    appendLog("update install confirmation failed: " + error.getClass().getSimpleName());
                 }
             }
+            appendLog("update install result: pending user action without confirmation intent");
         }
         if (status == PackageInstaller.STATUS_SUCCESS) {
             setUpdateStatus(ui("update.download_complete"));
             return;
         }
         String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-        appendLog("update install result: status=" + status + " / message=" + (message == null ? "" : message));
-        setUpdateStatus(ui("update.install_failed"));
+        String detail = message == null ? "" : message.trim();
+        appendLog("update install result: status=" + status + " / message=" + detail);
+        setUpdateStatus(detail.isEmpty()
+                ? ui("update.install_failed")
+                : ui("update.install_failed") + ": " + detail);
     }
 
     private void postUpdateStatus(String message) {
