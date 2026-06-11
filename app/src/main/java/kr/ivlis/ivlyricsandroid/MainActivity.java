@@ -6053,15 +6053,16 @@ public final class MainActivity extends Activity implements
         }
         int sessionId = installer.createSession(params);
         boolean committed = false;
-        try (PackageInstaller.Session session = installer.openSession(sessionId);
-             InputStream input = new FileInputStream(apkFile);
-             OutputStream output = session.openWrite(apkFile.getName(), 0L, apkFile.length())) {
-            byte[] buffer = new byte[32 * 1024];
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                output.write(buffer, 0, read);
+        try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+            try (InputStream input = new FileInputStream(apkFile);
+                 OutputStream output = session.openWrite(apkFile.getName(), 0L, apkFile.length())) {
+                byte[] buffer = new byte[32 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                }
+                session.fsync(output);
             }
-            session.fsync(output);
 
             Intent callback = new Intent(this, MainActivity.class);
             callback.setAction(ACTION_UPDATE_INSTALL_RESULT);
@@ -6072,8 +6073,8 @@ public final class MainActivity extends Activity implements
                 flags |= PendingIntent.FLAG_MUTABLE;
             }
             PendingIntent pendingIntent = PendingIntent.getActivity(this, sessionId, callback, flags);
-            committed = true;
             session.commit(pendingIntent.getIntentSender());
+            committed = true;
         } finally {
             if (!committed) {
                 installer.abandonSession(sessionId);
