@@ -112,10 +112,53 @@ final class AppI18n {
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
+        addTrackBackgroundStrings(languages);
         addVideoSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addTrackBackgroundStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = trackBackgroundStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] trackBackgroundStrings(String lang) {
+        if ("ko".equals(normalize(lang))) {
+            return new String[]{
+                    "lyrics.tab.background", "배경",
+                    "lyrics.background.title", "현재 곡 배경",
+                    "lyrics.background.desc", "설정의 전체 배경값 대신 이 곡에만 적용할 배경을 저장합니다.",
+                    "lyrics.background.override", "이 곡에만 적용",
+                    "lyrics.background.override_desc", "끄면 설정 화면의 전체 배경 설정을 사용합니다.",
+                    "lyrics.background.mode_desc", "앨범 커버, 블러 그라데이션, 영상, 단색 중 이 곡에만 사용할 방식을 선택합니다.",
+                    "lyrics.background.reset", "이 곡 배경 초기화",
+                    "toast.track_background_saved", "현재 곡 배경 저장됨",
+                    "toast.track_background_cleared", "현재 곡 배경 초기화됨"
+            };
+        }
+        return new String[]{
+                "lyrics.tab.background", "Background",
+                "lyrics.background.title", "Current Track Background",
+                "lyrics.background.desc", "Save a background override for this track instead of the global background setting.",
+                "lyrics.background.override", "Apply only to this track",
+                "lyrics.background.override_desc", "Turn this off to use the global background settings.",
+                "lyrics.background.mode_desc", "Choose album cover, blurred gradient, video, or solid color for this track only.",
+                "lyrics.background.reset", "Reset This Track Background",
+                "toast.track_background_saved", "Track background saved",
+                "toast.track_background_cleared", "Track background reset"
+        };
     }
 
     private static void addLandscapeNoLyricsStrings(Map<String, Map<String, String>> languages) {

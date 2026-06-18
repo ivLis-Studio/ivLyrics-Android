@@ -45,6 +45,7 @@ final class AiLyricsSettings {
     static final String KEY_BACKGROUND_REDUCE_MOTION = "background_reduce_motion";
     static final String KEY_BACKGROUND_SOLID_COLOR = "background_solid_color";
     static final String KEY_BACKGROUND_VIDEO_SCALE = "background_video_scale";
+    static final String KEY_TRACK_BACKGROUND_SETTINGS = "track_background_settings_v1";
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
     static final String KEY_LANDSCAPE_CENTER_NO_LYRICS = "landscape_center_no_lyrics";
     static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
@@ -453,6 +454,50 @@ final class AiLyricsSettings {
         prefs.edit().putString(KEY_BACKGROUND_SOLID_COLOR, normalizeHexColor(color, DEFAULT_SOLID_BACKGROUND_COLOR)).apply();
     }
 
+    BackgroundSettings trackBackgroundSettings(String trackKey) {
+        String key = trackKey == null ? "" : trackKey.trim();
+        if (key.isEmpty()) {
+            return null;
+        }
+        try {
+            JSONObject object = new JSONObject(prefs.getString(KEY_TRACK_BACKGROUND_SETTINGS, "{}"));
+            JSONObject settingsObject = object.optJSONObject(key);
+            return settingsObject == null ? null : backgroundSettingsFromJson(settingsObject, backgroundSettings());
+        } catch (JSONException ignored) {
+            prefs.edit().remove(KEY_TRACK_BACKGROUND_SETTINGS).apply();
+            return null;
+        }
+    }
+
+    void setTrackBackgroundSettings(String trackKey, BackgroundSettings settings) {
+        String key = trackKey == null ? "" : trackKey.trim();
+        if (key.isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject object = new JSONObject(prefs.getString(KEY_TRACK_BACKGROUND_SETTINGS, "{}"));
+            if (settings == null) {
+                object.remove(key);
+            } else {
+                object.put(key, backgroundSettingsToJson(settings));
+            }
+            prefs.edit().putString(KEY_TRACK_BACKGROUND_SETTINGS, object.toString()).apply();
+        } catch (JSONException ignored) {
+            JSONObject object = new JSONObject();
+            try {
+                if (settings != null) {
+                    object.put(key, backgroundSettingsToJson(settings));
+                }
+            } catch (JSONException ignoredAgain) {
+            }
+            prefs.edit().putString(KEY_TRACK_BACKGROUND_SETTINGS, object.toString()).apply();
+        }
+    }
+
+    void clearTrackBackgroundSettings(String trackKey) {
+        setTrackBackgroundSettings(trackKey, null);
+    }
+
     void setLandscapeAutoHideControls(boolean enabled) {
         prefs.edit().putBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, enabled).apply();
     }
@@ -537,6 +582,39 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_BACKGROUND_REDUCE_MOTION, false),
                 normalizeHexColor(prefs.getString(KEY_BACKGROUND_SOLID_COLOR, DEFAULT_SOLID_BACKGROUND_COLOR), DEFAULT_SOLID_BACKGROUND_COLOR),
                 clampInt(prefs.getInt(KEY_BACKGROUND_VIDEO_SCALE, 100), 100, 180)
+        );
+    }
+
+    private static JSONObject backgroundSettingsToJson(BackgroundSettings settings) throws JSONException {
+        BackgroundSettings safeSettings = settings == null
+                ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR, 100)
+                : settings;
+        JSONObject object = new JSONObject();
+        object.put("mode", safeSettings.mode);
+        object.put("brightness", safeSettings.brightness);
+        object.put("blur", safeSettings.blur);
+        object.put("noise", safeSettings.noise);
+        object.put("reduceMotion", safeSettings.reduceMotion);
+        object.put("solidColor", safeSettings.solidColor);
+        object.put("videoScale", safeSettings.videoScale);
+        return object;
+    }
+
+    private static BackgroundSettings backgroundSettingsFromJson(JSONObject object, BackgroundSettings fallback) {
+        BackgroundSettings safeFallback = fallback == null
+                ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR, 100)
+                : fallback;
+        if (object == null) {
+            return safeFallback;
+        }
+        return new BackgroundSettings(
+                object.optString("mode", safeFallback.mode),
+                object.optInt("brightness", safeFallback.brightness),
+                object.optInt("blur", safeFallback.blur),
+                object.optBoolean("noise", safeFallback.noise),
+                object.optBoolean("reduceMotion", safeFallback.reduceMotion),
+                object.optString("solidColor", safeFallback.solidColor),
+                object.optInt("videoScale", safeFallback.videoScale)
         );
     }
 
