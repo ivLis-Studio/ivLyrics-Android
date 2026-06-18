@@ -113,10 +113,84 @@ final class AppI18n {
         addSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
         addTrackBackgroundStrings(languages);
+        addLyricsAlignmentStrings(languages);
         addVideoSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addLyricsAlignmentStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = lyricsAlignmentStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] lyricsAlignmentStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return lyricsAlignmentStringsValues("가사 정렬", "가사 페이지의 원문, 발음, 번역 줄을 어느 방향으로 정렬할지 선택합니다.", "좌측", "가운데", "우측", "가사 정렬 저장됨");
+            case "zh-CN":
+                return lyricsAlignmentStringsValues("歌词对齐", "选择歌词页中原文、发音和翻译行的对齐方式。", "左对齐", "居中", "右对齐", "歌词对齐已保存");
+            case "zh-TW":
+                return lyricsAlignmentStringsValues("歌詞對齊", "選擇歌詞頁中原文、發音與翻譯行的對齊方式。", "靠左", "置中", "靠右", "歌詞對齊已儲存");
+            case "ja":
+                return lyricsAlignmentStringsValues("歌詞の配置", "歌詞ページの原文、発音、翻訳行をどの方向に揃えるか選択します。", "左揃え", "中央", "右揃え", "歌詞の配置を保存しました");
+            case "hi":
+                return lyricsAlignmentStringsValues("लिरिक्स संरेखण", "लिरिक्स पेज पर मूल, उच्चारण और अनुवाद पंक्तियों की दिशा चुनें।", "बाएँ", "बीच", "दाएँ", "लिरिक्स संरेखण सहेजा गया");
+            case "es":
+                return lyricsAlignmentStringsValues("Alineación de letras", "Elige cómo alinear las líneas original, pronunciación y traducción en la página de letras.", "Izquierda", "Centro", "Derecha", "Alineación guardada");
+            case "fr":
+                return lyricsAlignmentStringsValues("Alignement des paroles", "Choisissez l'alignement des lignes originales, prononciation et traduction dans la page des paroles.", "Gauche", "Centre", "Droite", "Alignement des paroles enregistré");
+            case "ar":
+                return lyricsAlignmentStringsValues("محاذاة الكلمات", "اختر طريقة محاذاة سطور النص الأصلي والنطق والترجمة في صفحة الكلمات.", "يسار", "وسط", "يمين", "تم حفظ محاذاة الكلمات");
+            case "fa":
+                return lyricsAlignmentStringsValues("تراز متن ترانه", "نحوه تراز خطوط متن اصلی، تلفظ و ترجمه را در صفحه ترانه انتخاب کنید.", "چپ", "وسط", "راست", "تراز متن ترانه ذخیره شد");
+            case "de":
+                return lyricsAlignmentStringsValues("Lyrics-Ausrichtung", "Wähle, wie Original-, Aussprache- und Übersetzungszeilen auf der Lyrics-Seite ausgerichtet werden.", "Links", "Mitte", "Rechts", "Lyrics-Ausrichtung gespeichert");
+            case "ru":
+                return lyricsAlignmentStringsValues("Выравнивание текста", "Выберите выравнивание строк оригинала, произношения и перевода на странице текста.", "Слева", "По центру", "Справа", "Выравнивание текста сохранено");
+            case "sv":
+                return lyricsAlignmentStringsValues("Textjustering", "Välj hur original-, uttals- och översättningsrader justeras på textsidan.", "Vänster", "Centrerat", "Höger", "Textjustering sparad");
+            case "pt":
+                return lyricsAlignmentStringsValues("Alinhamento da letra", "Escolha como alinhar as linhas original, pronúncia e tradução na página de letras.", "Esquerda", "Centro", "Direita", "Alinhamento salvo");
+            case "bn":
+                return lyricsAlignmentStringsValues("লিরিক্স সারিবদ্ধতা", "লিরিক্স পেজে মূল, উচ্চারণ এবং অনুবাদ লাইন কীভাবে সারিবদ্ধ হবে তা বেছে নিন।", "বামে", "মাঝে", "ডানে", "লিরিক্স সারিবদ্ধতা সংরক্ষিত");
+            case "it":
+                return lyricsAlignmentStringsValues("Allineamento testo", "Scegli come allineare le righe originali, pronuncia e traduzione nella pagina del testo.", "Sinistra", "Centro", "Destra", "Allineamento salvato");
+            case "th":
+                return lyricsAlignmentStringsValues("การจัดแนวเนื้อเพลง", "เลือกการจัดแนวของบรรทัดต้นฉบับ คำอ่าน และคำแปลในหน้าเนื้อเพลง", "ซ้าย", "กลาง", "ขวา", "บันทึกการจัดแนวเนื้อเพลงแล้ว");
+            case "vi":
+                return lyricsAlignmentStringsValues("Căn lề lời bài hát", "Chọn cách căn lề các dòng nguyên bản, phát âm và bản dịch trên trang lời bài hát.", "Trái", "Giữa", "Phải", "Đã lưu căn lề lời bài hát");
+            case "id":
+                return lyricsAlignmentStringsValues("Perataan lirik", "Pilih perataan baris asli, pelafalan, dan terjemahan di halaman lirik.", "Kiri", "Tengah", "Kanan", "Perataan lirik disimpan");
+            case "ms":
+                return lyricsAlignmentStringsValues("Penjajaran lirik", "Pilih penjajaran baris asal, sebutan dan terjemahan pada halaman lirik.", "Kiri", "Tengah", "Kanan", "Penjajaran lirik disimpan");
+            case "tr":
+                return lyricsAlignmentStringsValues("Söz Hizalaması", "Söz sayfasında orijinal, telaffuz ve çeviri satırlarının hizasını seçin.", "Sol", "Orta", "Sağ", "Söz hizalaması kaydedildi");
+            default:
+                return lyricsAlignmentStringsValues("Lyrics Alignment", "Choose how original, pronunciation, and translation lines are aligned on the lyrics page.", "Left", "Center", "Right", "Lyrics alignment saved");
+        }
+    }
+
+    private static String[] lyricsAlignmentStringsValues(String title, String desc, String left, String center, String right, String toast) {
+        return new String[]{
+                "setting.lyrics_alignment", title,
+                "setting.lyrics_alignment_desc", desc,
+                "lyrics_alignment.left", left,
+                "lyrics_alignment.center", center,
+                "lyrics_alignment.right", right,
+                "toast.lyrics_alignment_saved", toast
+        };
     }
 
     private static void addTrackBackgroundStrings(Map<String, Map<String, String>> languages) {

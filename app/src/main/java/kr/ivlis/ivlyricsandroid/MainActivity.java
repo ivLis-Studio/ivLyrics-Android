@@ -238,6 +238,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout settingsAiPage;
     private LinearLayout settingsToolsPage;
     private LinearLayout previewModeButtonsContainer;
+    private LinearLayout lyricsAlignmentButtonsContainer;
     private LinearLayout backgroundModeButtonsContainer;
     private LinearLayout providerButtonsContainer;
     private View pollinationsAuthGroup;
@@ -416,6 +417,7 @@ public final class MainActivity extends Activity implements
         applyBackgroundSettings(settingsSnapshot);
         applyTypographySettings(settingsSnapshot);
         applySpeakerColorSettings(settingsSnapshot);
+        applyLyricsTextAlignmentSetting(settingsSnapshot);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
         requestDefaultRemoteFocus(false);
@@ -1734,6 +1736,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         landscapeLyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
+        landscapeLyricsView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
         landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
         landscapeLyricsView.setResult(currentLyricsResult);
@@ -2193,6 +2196,7 @@ public final class MainActivity extends Activity implements
         lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         lyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
+        lyricsView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
         lyricsView.setOnSeekListener(this::seekToPosition);
         LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -3037,6 +3041,14 @@ public final class MainActivity extends Activity implements
                     : ui("toast.landscape_center_no_lyrics_off"));
         });
         settingsDisplayPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
+
+        lyricsAlignmentButtonsContainer = new LinearLayout(this);
+        lyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        settingsDisplayPage.addView(settingGroup(
+                ui("setting.lyrics_alignment"),
+                ui("setting.lyrics_alignment_desc"),
+                lyricsAlignmentButtonsContainer
+        ), topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
@@ -5104,6 +5116,46 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void rebuildLyricsAlignmentButtons(String selectedAlignment) {
+        if (lyricsAlignmentButtonsContainer == null || aiLyricsSettings == null) {
+            return;
+        }
+        String normalized = AiLyricsSettings.normalizeLyricsTextAlignment(selectedAlignment);
+        lyricsAlignmentButtonsContainer.removeAllViews();
+        String[] alignments = {
+                AiLyricsSettings.LYRICS_ALIGN_LEFT,
+                AiLyricsSettings.LYRICS_ALIGN_CENTER,
+                AiLyricsSettings.LYRICS_ALIGN_RIGHT
+        };
+        for (int index = 0; index < alignments.length; index++) {
+            String alignment = alignments[index];
+            TextView button = languageButton(lyricsAlignmentLabel(alignment), alignment.equals(normalized));
+            button.setOnClickListener(view -> {
+                aiLyricsSettings.setLyricsTextAlignment(alignment);
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                rebuildLyricsAlignmentButtons(snapshot.lyricsTextAlignment);
+                applyLyricsTextAlignmentSetting(snapshot);
+                showSavedToast(ui("toast.lyrics_alignment_saved"));
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            if (index > 0) {
+                params.leftMargin = dp(8);
+            }
+            lyricsAlignmentButtonsContainer.addView(button, params);
+        }
+    }
+
+    private String lyricsAlignmentLabel(String alignment) {
+        String normalized = AiLyricsSettings.normalizeLyricsTextAlignment(alignment);
+        if (AiLyricsSettings.LYRICS_ALIGN_CENTER.equals(normalized)) {
+            return ui("lyrics_alignment.center");
+        }
+        if (AiLyricsSettings.LYRICS_ALIGN_RIGHT.equals(normalized)) {
+            return ui("lyrics_alignment.right");
+        }
+        return ui("lyrics_alignment.left");
+    }
+
     private void rebuildBackgroundModeButtons(String selectedMode) {
         if (backgroundModeButtonsContainer == null || aiLyricsSettings == null) {
             return;
@@ -5430,6 +5482,18 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setTypographySettings(typography);
+        }
+    }
+
+    private void applyLyricsTextAlignmentSetting(AiLyricsSettings.Snapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        if (lyricsView != null) {
+            lyricsView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
         }
     }
 
@@ -6545,6 +6609,8 @@ public final class MainActivity extends Activity implements
             suppressSettingsEvents = false;
         }
         updateBackgroundSettingsUi(snapshot, true);
+        rebuildLyricsAlignmentButtons(snapshot.lyricsTextAlignment);
+        applyLyricsTextAlignmentSetting(snapshot);
         applyTypographySettings(snapshot);
         updateSpeakerColorSettingsUi(snapshot);
         applySpeakerColorSettings(snapshot);

@@ -57,6 +57,7 @@ final class AiLyricsSettings {
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
+    static final String KEY_LYRICS_TEXT_ALIGNMENT = "lyrics_text_alignment";
 
     static final String DEFAULT_SOURCE_LANG = "default";
     static final String PREVIEW_MODE_ORIGINAL = "original";
@@ -85,9 +86,13 @@ final class AiLyricsSettings {
     static final String TYPO_WEIGHT_SEMIBOLD = "semibold";
     static final String TYPO_WEIGHT_BOLD = "bold";
     static final String SPEAKER_COLOR_NORMAL = "normal";
+    static final String LYRICS_ALIGN_LEFT = "left";
+    static final String LYRICS_ALIGN_CENTER = "center";
+    static final String LYRICS_ALIGN_RIGHT = "right";
     private static final String DEFAULT_PROVIDER = "gemini";
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
+    private static final String DEFAULT_LYRICS_TEXT_ALIGNMENT = LYRICS_ALIGN_LEFT;
     private static final String DEFAULT_SOLID_BACKGROUND_COLOR = "#1e3a8a";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
@@ -251,6 +256,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 typographySettings(),
                 speakerColorSettings(),
+                normalizeLyricsTextAlignment(prefs.getString(KEY_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
@@ -289,6 +295,10 @@ final class AiLyricsSettings {
 
     void resetSpeakerColors() {
         prefs.edit().remove(KEY_SPEAKER_COLOR_SETTINGS).apply();
+    }
+
+    void setLyricsTextAlignment(String alignment) {
+        prefs.edit().putString(KEY_LYRICS_TEXT_ALIGNMENT, normalizeLyricsTextAlignment(alignment)).apply();
     }
 
     void setTranslationEnabled(boolean enabled) {
@@ -949,6 +959,17 @@ final class AiLyricsSettings {
         return DEFAULT_BACKGROUND_MODE;
     }
 
+    static String normalizeLyricsTextAlignment(String alignment) {
+        String value = alignment == null ? "" : alignment.trim().toLowerCase(Locale.ROOT);
+        if (LYRICS_ALIGN_CENTER.equals(value)) {
+            return LYRICS_ALIGN_CENTER;
+        }
+        if (LYRICS_ALIGN_RIGHT.equals(value)) {
+            return LYRICS_ALIGN_RIGHT;
+        }
+        return DEFAULT_LYRICS_TEXT_ALIGNMENT;
+    }
+
     static String backgroundModeLabel(String mode) {
         String normalized = normalizeBackgroundMode(mode);
         for (BackgroundMode backgroundMode : BACKGROUND_MODES) {
@@ -1373,6 +1394,7 @@ final class AiLyricsSettings {
         final boolean japaneseFuriganaEnabled;
         final TypographySettings typography;
         final SpeakerColorSettings speakerColors;
+        final String lyricsTextAlignment;
         final String spotifyClientId;
         final String spotifyClientSecret;
 
@@ -1402,6 +1424,7 @@ final class AiLyricsSettings {
                 boolean japaneseFuriganaEnabled,
                 TypographySettings typography,
                 SpeakerColorSettings speakerColors,
+                String lyricsTextAlignment,
                 String spotifyClientId,
                 String spotifyClientSecret
         ) {
@@ -1434,6 +1457,7 @@ final class AiLyricsSettings {
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.typography = typography == null ? TypographySettings.defaults() : typography;
             this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
+            this.lyricsTextAlignment = normalizeLyricsTextAlignment(lyricsTextAlignment);
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
         }

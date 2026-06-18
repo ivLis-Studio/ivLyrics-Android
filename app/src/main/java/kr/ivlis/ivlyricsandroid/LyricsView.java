@@ -75,6 +75,7 @@ public final class LyricsView extends View {
     private Typeface lyricTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
     private AiLyricsSettings.SpeakerColorSettings speakerColorSettings = AiLyricsSettings.SpeakerColorSettings.defaults();
+    private String lyricsTextAlignment = AiLyricsSettings.LYRICS_ALIGN_LEFT;
 
     private List<LyricsLine> lines = Collections.emptyList();
     private long positionMs;
@@ -360,6 +361,15 @@ public final class LyricsView extends View {
 
     void setSpeakerColorSettings(AiLyricsSettings.SpeakerColorSettings settings) {
         speakerColorSettings = settings == null ? AiLyricsSettings.SpeakerColorSettings.defaults() : settings;
+        postInvalidateOnAnimation();
+    }
+
+    void setLyricTextAlignment(String alignment) {
+        String normalized = AiLyricsSettings.normalizeLyricsTextAlignment(alignment);
+        if (normalized.equals(lyricsTextAlignment)) {
+            return;
+        }
+        lyricsTextAlignment = normalized;
         postInvalidateOnAnimation();
     }
 
@@ -1476,12 +1486,22 @@ public final class LyricsView extends View {
         InterludeInfo info = group.interludeInfo == null ? InterludeInfo.none() : group.interludeInfo;
         int color = scaleAlpha(group.active ? group.activeColor : group.inactiveColor, fadeAlpha);
         long now = SystemClock.uptimeMillis();
-        float left = contentLeft();
         float barWidth = sp(3.2f);
         float gap = sp(3.8f);
         float minHeight = sp(7f);
         float maxHeight = sp(23f);
         float radius = barWidth * 0.7f;
+        float iconWidth = 4f * barWidth + 3f * gap;
+        float labelTextSize = sp(15f);
+        String label = interludeLabelsEnabled ? interludeLabel(info.kind) : "";
+        boolean showLabel = !label.trim().isEmpty();
+        float labelGap = sp(11f);
+        float labelWidth = 0f;
+        if (showLabel) {
+            configurePaint(color, "vocal", false, labelTextSize, false, group.typeface);
+            labelWidth = textPaint.measureText(label);
+        }
+        float left = alignedContentLeft(iconWidth + (showLabel ? labelGap + labelWidth : 0f));
 
         interludePaint.setShader(null);
         interludePaint.setStyle(Paint.Style.FILL);
@@ -1495,16 +1515,14 @@ public final class LyricsView extends View {
             canvas.drawRoundRect(x, centerY - height * 0.5f, x + barWidth, centerY + height * 0.5f, radius, radius, interludePaint);
         }
 
-        if (!interludeLabelsEnabled) {
+        if (!showLabel) {
             return;
         }
 
-        float labelTextSize = sp(15f);
-        configurePaint(color, "vocal", false, labelTextSize, false, group.typeface);
         Paint.FontMetrics metrics = textPaint.getFontMetrics();
         float baseline = centerY - (metrics.ascent + metrics.descent) * 0.5f;
-        float labelLeft = left + 4f * barWidth + 3f * gap + sp(11f);
-        canvas.drawText(interludeLabel(info.kind), labelLeft, baseline, textPaint);
+        float labelLeft = left + iconWidth + labelGap;
+        canvas.drawText(label, labelLeft, baseline, textPaint);
         resetPaintEffects();
     }
 
@@ -1559,13 +1577,13 @@ public final class LyricsView extends View {
     }
 
     private void drawTextRow(Canvas canvas, TextRow row, float baseline, DrawGroup group, int rowIndex, float fadeAlpha) {
-        float left = contentLeft();
+        float left = alignedRowLeft(row);
         int canvasSave = canvas.save();
         applyCanvasEffect(
                 canvas,
                 group.kind,
                 group.active,
-                left + contentWidth() * 0.5f,
+                left + row.width * 0.5f,
                 baseline,
                 group.textSize,
                 group.rowSeed + rowIndex
@@ -1610,6 +1628,22 @@ public final class LyricsView extends View {
 
         canvas.restoreToCount(canvasSave);
         resetPaintEffects();
+    }
+
+    private float alignedRowLeft(TextRow row) {
+        return alignedContentLeft(row == null ? 0f : row.width);
+    }
+
+    private float alignedContentLeft(float width) {
+        float left = contentLeft();
+        float freeWidth = Math.max(0f, contentWidth() - Math.max(0f, width));
+        if (AiLyricsSettings.LYRICS_ALIGN_RIGHT.equals(lyricsTextAlignment)) {
+            return left + freeWidth;
+        }
+        if (AiLyricsSettings.LYRICS_ALIGN_CENTER.equals(lyricsTextAlignment)) {
+            return left + freeWidth * 0.5f;
+        }
+        return left;
     }
 
     private void drawRubyText(
@@ -3298,19 +3332,23 @@ public final class LyricsView extends View {
     private static final class TextRow {
         final List<TextSegment> segments;
         final String text;
+        final float width;
         final boolean hasRuby;
 
         TextRow(List<TextSegment> segments) {
             this.segments = segments == null ? Collections.emptyList() : segments;
             StringBuilder builder = new StringBuilder();
+            float totalWidth = 0f;
             boolean nextHasRuby = false;
             for (TextSegment segment : this.segments) {
                 builder.append(segment.text);
+                totalWidth += segment.width;
                 if (segment.rubyText != null && !segment.rubyText.trim().isEmpty()) {
                     nextHasRuby = true;
                 }
             }
             this.text = builder.toString();
+            this.width = Math.max(0f, totalWidth);
             this.hasRuby = nextHasRuby;
         }
 
