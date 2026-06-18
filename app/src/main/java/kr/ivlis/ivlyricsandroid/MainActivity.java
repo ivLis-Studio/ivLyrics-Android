@@ -27,11 +27,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.Gravity;
@@ -4560,30 +4562,83 @@ public final class MainActivity extends Activity implements
         View swatch = new View(this);
         swatch.setBackground(roundDrawable(initialColor, dp(10)));
         previewRow.addView(swatch, new LinearLayout.LayoutParams(dp(42), dp(42)));
-        TextView value = colorValueButton(hexColor(initialColor));
+        EditText value = new EditText(this);
+        value.setSingleLine(true);
+        value.setSelectAllOnFocus(true);
+        value.setText(hexColor(initialColor));
+        value.setTextColor(Color.WHITE);
+        value.setHintTextColor(Color.argb(125, 255, 255, 255));
+        value.setTextSize(12f);
+        value.setTypeface(AppFonts.semiBold(this));
+        value.setGravity(Gravity.CENTER_VERTICAL);
+        value.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        value.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(9)));
+        value.setPadding(dp(12), 0, dp(12), 0);
+        value.setHint("#000000");
         LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
         valueParams.leftMargin = dp(10);
         previewRow.addView(value, valueParams);
         content.addView(previewRow, topMargin(matchWrap(), dp(12)));
 
+        final boolean[] updatingColorInput = {false};
         picker.setOnColorChangedListener(color -> {
+            String hex = hexColor(color);
             swatch.setBackground(roundDrawable(color, dp(10)));
-            value.setText(hexColor(color));
+            updatingColorInput[0] = true;
+            value.setText(hex);
+            value.setSelection(value.getText().length());
+            value.setTextColor(Color.WHITE);
+            updatingColorInput[0] = false;
+        });
+        value.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence sequence, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence sequence, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                if (updatingColorInput[0]) {
+                    return;
+                }
+                String normalized = normalizeColorInput(editable == null ? "" : editable.toString());
+                if (normalized == null) {
+                    value.setTextColor(editable == null || editable.toString().trim().isEmpty()
+                            ? Color.WHITE
+                            : Color.rgb(255, 171, 171));
+                    return;
+                }
+                int color = parseColor(normalized, fallbackColor);
+                picker.setColor(color);
+                swatch.setBackground(roundDrawable(color, dp(10)));
+                value.setTextColor(Color.WHITE);
+            }
         });
 
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(content)
                 .setNegativeButton(ui("button.close"), null)
-                .setPositiveButton(ui("button.apply_colors"), (dialogInterface, which) -> {
-                    if (callback != null) {
-                        callback.onColorPicked(picker.getColor());
-                    }
-                })
+                .setPositiveButton(ui("button.apply_colors"), null)
                 .create();
         dialog.setOnShowListener(dialogInterface -> {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(Color.rgb(37, 99, 235));
             dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.rgb(84, 91, 110));
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+                String normalized = normalizeColorInput(value.getText().toString());
+                if (normalized == null) {
+                    value.setTextColor(Color.rgb(255, 171, 171));
+                    showSavedToast(uiFormat("toast.invalid_color_format", title));
+                    return;
+                }
+                if (callback != null) {
+                    callback.onColorPicked(parseColor(normalized, fallbackColor));
+                }
+                dialog.dismiss();
+            });
         });
         dialog.show();
     }
@@ -4687,6 +4742,14 @@ public final class MainActivity extends Activity implements
 
     private String hexColor(int color) {
         return String.format(Locale.ROOT, "#%06x", color & 0x00ffffff);
+    }
+
+    private String normalizeColorInput(String color) {
+        String value = color == null ? "" : color.trim();
+        if (!AiLyricsSettings.isHexColor(value)) {
+            return null;
+        }
+        return (value.startsWith("#") ? value : "#" + value).toLowerCase(Locale.ROOT);
     }
 
     private LinearLayout buildTypographySlotControl(AiLyricsSettings.TypographySlot slot) {
