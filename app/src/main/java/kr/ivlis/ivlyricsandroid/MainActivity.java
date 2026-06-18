@@ -165,6 +165,9 @@ public final class MainActivity extends Activity implements
     private FrameLayout rootView;
     private FrameLayout mainPage;
     private FrameLayout lyricsPage;
+    private LinearLayout landscapeContentRow;
+    private LinearLayout landscapePlayerPane;
+    private FrameLayout landscapeLyricsPane;
     private FrameLayout inAppBrowserPage;
     private FrameLayout inAppBrowserSheet;
     private FrameLayout inAppBrowserLoadingView;
@@ -248,6 +251,7 @@ public final class MainActivity extends Activity implements
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
     private Switch landscapeAutoHideControlsSwitch;
+    private Switch landscapeCenterNoLyricsSwitch;
     private Switch keepScreenOnSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
@@ -340,6 +344,7 @@ public final class MainActivity extends Activity implements
     private boolean suppressLanguageRuleEvents;
     private boolean suppressSettingsEvents;
     private boolean aiLyricsGenerating;
+    private boolean lyricsLookupInFlight;
     private boolean lyricsSupplementPronunciationLoading;
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
@@ -773,6 +778,7 @@ public final class MainActivity extends Activity implements
             debugProgressView.setText("0:00 / 0:00");
             pendingSeekPositionMs = -1L;
             resetLogs("waiting for current track");
+            lyricsLookupInFlight = false;
             currentLyricsResult = LyricsResult.empty(ui("status.waiting_current_track"));
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
@@ -848,6 +854,7 @@ public final class MainActivity extends Activity implements
                     + " / artist=\"" + snapshot.artist + "\""
                     + " / artwork=" + artworkDebug(snapshot)
                     + packageSuffix(snapshot.packageName));
+            lyricsLookupInFlight = lyricsRepository != null;
             currentLyricsResult = LyricsResult.empty(ui("status.lyrics_loading"));
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
@@ -874,6 +881,7 @@ public final class MainActivity extends Activity implements
         currentTrackSyncOffsetMs = 0;
         currentVideoSyncOffsetMs = 0;
         aiLyricsGenerating = false;
+        lyricsLookupInFlight = false;
         detectedLyricsSourceLang = "en";
         selectedRuleSourceLang = "auto";
         translatedTrackTitle = "";
@@ -917,6 +925,7 @@ public final class MainActivity extends Activity implements
         statusView.setText(ui("status.spotify_required_detail"));
         debugProgressView.setText("0:00 / 0:00");
         pendingSeekPositionMs = -1L;
+        lyricsLookupInFlight = false;
         currentLyricsResult = LyricsResult.empty(ui("status.spotify_required_plain"));
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
@@ -945,6 +954,7 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
+        lyricsLookupInFlight = false;
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
@@ -971,6 +981,7 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
+        lyricsLookupInFlight = false;
         currentLyricsResult = LyricsResult.empty(ui("status.lyrics_request_failed"));
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
@@ -1521,6 +1532,7 @@ public final class MainActivity extends Activity implements
         main.setGravity(Gravity.CENTER_VERTICAL);
         main.setClipChildren(false);
         main.setClipToPadding(false);
+        landscapeContentRow = main;
         page.addView(main, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -1531,6 +1543,7 @@ public final class MainActivity extends Activity implements
         player.setGravity(Gravity.CENTER_HORIZONTAL);
         player.setClipChildren(false);
         player.setClipToPadding(false);
+        landscapePlayerPane = player;
         main.addView(player, new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1678,6 +1691,7 @@ public final class MainActivity extends Activity implements
         ));
 
         FrameLayout lyricsPane = new FrameLayout(this);
+        landscapeLyricsPane = lyricsPane;
         LinearLayout.LayoutParams lyricsPaneParams = new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1730,6 +1744,7 @@ public final class MainActivity extends Activity implements
         page.addView(menuButton, menuParams);
 
         applyLandscapeControlsAutoHideSetting();
+        applyLandscapeNoLyricsLayout(false);
         return page;
     }
 
@@ -1740,6 +1755,86 @@ public final class MainActivity extends Activity implements
     private boolean isLandscapeTabletLayout() {
         Configuration configuration = getResources().getConfiguration();
         return isLandscapeLayout() && configuration.smallestScreenWidthDp >= 600;
+    }
+
+    private boolean shouldCenterLandscapePlayerForNoLyrics() {
+        return isLandscapeLayout()
+                && aiLyricsSettings != null
+                && aiLyricsSettings.snapshot().landscapeCenterNoLyrics
+                && !lyricsLookupInFlight
+                && !hasRenderableLyrics(currentLyricsResult);
+    }
+
+    private boolean hasRenderableLyrics(LyricsResult result) {
+        return result != null && result.lines != null && !result.lines.isEmpty();
+    }
+
+    private void applyLandscapeNoLyricsLayout(boolean animate) {
+        if (landscapePlayerPane == null || landscapeLyricsPane == null || landscapeContentRow == null) {
+            return;
+        }
+        boolean centerPlayer = shouldCenterLandscapePlayerForNoLyrics();
+        landscapeContentRow.setGravity(centerPlayer ? Gravity.CENTER : Gravity.CENTER_VERTICAL);
+
+        ViewGroup.LayoutParams rawPlayerParams = landscapePlayerPane.getLayoutParams();
+        if (rawPlayerParams instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams playerParams = (LinearLayout.LayoutParams) rawPlayerParams;
+            if (centerPlayer) {
+                playerParams.width = Math.min(
+                        getResources().getDisplayMetrics().widthPixels - dp(44),
+                        dp(isLandscapeTabletLayout() ? 720 : 560)
+                );
+                playerParams.weight = 0f;
+            } else {
+                playerParams.width = 0;
+                playerParams.weight = 0.88f;
+            }
+            playerParams.gravity = Gravity.CENTER;
+            landscapePlayerPane.setLayoutParams(playerParams);
+        }
+
+        ViewGroup.LayoutParams rawLyricsParams = landscapeLyricsPane.getLayoutParams();
+        if (rawLyricsParams instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams lyricsParams = (LinearLayout.LayoutParams) rawLyricsParams;
+            lyricsParams.width = 0;
+            lyricsParams.weight = centerPlayer ? 0f : 1.12f;
+            lyricsParams.leftMargin = centerPlayer ? 0 : dp(18);
+            landscapeLyricsPane.setLayoutParams(lyricsParams);
+        }
+
+        setLandscapeLyricsPaneVisible(!centerPlayer, animate);
+    }
+
+    private void setLandscapeLyricsPaneVisible(boolean visible, boolean animate) {
+        if (landscapeLyricsPane == null) {
+            return;
+        }
+        landscapeLyricsPane.animate().cancel();
+        if (visible) {
+            if (landscapeLyricsPane.getVisibility() != View.VISIBLE) {
+                landscapeLyricsPane.setAlpha(animate ? 0f : 1f);
+                landscapeLyricsPane.setVisibility(View.VISIBLE);
+            }
+            if (animate) {
+                landscapeLyricsPane.animate().alpha(1f).setDuration(180L).start();
+            }
+            return;
+        }
+        if (animate && landscapeLyricsPane.getVisibility() == View.VISIBLE) {
+            landscapeLyricsPane.animate()
+                    .alpha(0f)
+                    .setDuration(140L)
+                    .withEndAction(() -> {
+                        if (landscapeLyricsPane != null) {
+                            landscapeLyricsPane.setVisibility(View.GONE);
+                            landscapeLyricsPane.setAlpha(1f);
+                        }
+                    })
+                    .start();
+        } else {
+            landscapeLyricsPane.setVisibility(View.GONE);
+            landscapeLyricsPane.setAlpha(1f);
+        }
     }
 
     private int landscapeArtworkSize() {
@@ -2673,6 +2768,22 @@ public final class MainActivity extends Activity implements
             showSavedToast(isChecked ? ui("toast.landscape_auto_hide_on") : ui("toast.landscape_auto_hide_off"));
         });
         settingsDisplayPage.addView(landscapeAutoHideControlsSwitch, topMargin(matchWrap(), dp(12)));
+
+        landscapeCenterNoLyricsSwitch = settingSwitch(
+                ui("setting.landscape_center_no_lyrics"),
+                ui("setting.landscape_center_no_lyrics_desc")
+        );
+        landscapeCenterNoLyricsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setLandscapeCenterNoLyrics(isChecked);
+            applyLandscapeNoLyricsLayout(true);
+            showSavedToast(isChecked
+                    ? ui("toast.landscape_center_no_lyrics_on")
+                    : ui("toast.landscape_center_no_lyrics_off"));
+        });
+        settingsDisplayPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
@@ -5931,6 +6042,11 @@ public final class MainActivity extends Activity implements
             landscapeAutoHideControlsSwitch.setChecked(snapshot.landscapeAutoHideControls);
             suppressSettingsEvents = false;
         }
+        if (landscapeCenterNoLyricsSwitch != null) {
+            suppressSettingsEvents = true;
+            landscapeCenterNoLyricsSwitch.setChecked(snapshot.landscapeCenterNoLyrics);
+            suppressSettingsEvents = false;
+        }
         if (keepScreenOnSwitch != null) {
             suppressSettingsEvents = true;
             keepScreenOnSwitch.setChecked(snapshot.keepScreenOn);
@@ -7349,6 +7465,7 @@ public final class MainActivity extends Activity implements
             landscapeLyricsView.setResult(result);
         }
         updateLyricsContributorCredit(result);
+        applyLandscapeNoLyricsLayout(true);
     }
 
     private void updateLyricsContributorCredit(LyricsResult result) {

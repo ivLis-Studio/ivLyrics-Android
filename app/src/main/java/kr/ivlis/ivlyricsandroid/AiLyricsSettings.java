@@ -46,6 +46,7 @@ final class AiLyricsSettings {
     static final String KEY_BACKGROUND_SOLID_COLOR = "background_solid_color";
     static final String KEY_BACKGROUND_VIDEO_SCALE = "background_video_scale";
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
+    static final String KEY_LANDSCAPE_CENTER_NO_LYRICS = "landscape_center_no_lyrics";
     static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
     static final String KEY_TRACK_VIDEO_SYNC_OFFSETS = "track_video_sync_offsets_v1";
@@ -243,6 +244,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_KARAOKE_BOUNCE_EFFECT, true),
                 backgroundSettings(),
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
+                prefs.getBoolean(KEY_LANDSCAPE_CENTER_NO_LYRICS, true),
                 prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
@@ -453,6 +455,10 @@ final class AiLyricsSettings {
 
     void setLandscapeAutoHideControls(boolean enabled) {
         prefs.edit().putBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, enabled).apply();
+    }
+
+    void setLandscapeCenterNoLyrics(boolean enabled) {
+        prefs.edit().putBoolean(KEY_LANDSCAPE_CENTER_NO_LYRICS, enabled).apply();
     }
 
     void setKeepScreenOn(boolean enabled) {
@@ -1283,6 +1289,7 @@ final class AiLyricsSettings {
         final boolean karaokeBounceEffectEnabled;
         final BackgroundSettings background;
         final boolean landscapeAutoHideControls;
+        final boolean landscapeCenterNoLyrics;
         final boolean keepScreenOn;
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
@@ -1311,6 +1318,7 @@ final class AiLyricsSettings {
                 boolean karaokeBounceEffectEnabled,
                 BackgroundSettings background,
                 boolean landscapeAutoHideControls,
+                boolean landscapeCenterNoLyrics,
                 boolean keepScreenOn,
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
@@ -1342,6 +1350,7 @@ final class AiLyricsSettings {
                     ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR, 100)
                     : background;
             this.landscapeAutoHideControls = landscapeAutoHideControls;
+            this.landscapeCenterNoLyrics = landscapeCenterNoLyrics;
             this.keepScreenOn = keepScreenOn;
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;

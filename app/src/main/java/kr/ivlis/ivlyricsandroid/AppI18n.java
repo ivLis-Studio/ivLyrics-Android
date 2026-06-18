@@ -105,6 +105,7 @@ final class AppI18n {
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
         addDisplayPowerStrings(languages);
+        addLandscapeNoLyricsStrings(languages);
         addUpdateStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
         addFuriganaStrings(languages);
@@ -115,6 +116,38 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addLandscapeNoLyricsStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = landscapeNoLyricsStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] landscapeNoLyricsStrings(String lang) {
+        if ("ko".equals(normalize(lang))) {
+            return new String[]{
+                    "setting.landscape_center_no_lyrics", "가로모드 가사 없음 중앙 정렬",
+                    "setting.landscape_center_no_lyrics_desc", "가사가 없을 때 앨범과 컨트롤을 화면 가운데에 배치합니다. 끄면 기존처럼 좌우 분할 상태를 유지합니다.",
+                    "toast.landscape_center_no_lyrics_on", "가사 없음 중앙 정렬 켜짐",
+                    "toast.landscape_center_no_lyrics_off", "가사 없음 중앙 정렬 꺼짐"
+            };
+        }
+        return new String[]{
+                "setting.landscape_center_no_lyrics", "Center landscape player without lyrics",
+                "setting.landscape_center_no_lyrics_desc", "When no lyrics are available, center the album and controls. Turn this off to keep the split landscape layout.",
+                "toast.landscape_center_no_lyrics_on", "No-lyrics landscape centering on",
+                "toast.landscape_center_no_lyrics_off", "No-lyrics landscape centering off"
+        };
     }
 
     private static void addPollinationsAuthStrings(Map<String, Map<String, String>> languages) {
