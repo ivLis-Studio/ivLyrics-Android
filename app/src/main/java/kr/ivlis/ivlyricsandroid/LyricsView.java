@@ -1969,15 +1969,7 @@ public final class LyricsView extends View {
         }
 
         if (!syncedLyricsKaraokeAnimationEnabled) {
-            String value = text == null ? "" : text;
-            return Collections.singletonList(createMeasuredSegment(
-                    value,
-                    0L,
-                    0L,
-                    0,
-                    Math.max(1, value.codePointCount(0, value.length())),
-                    rubyForRange(rubyAnnotations, 0, Math.max(1, value.codePointCount(0, value.length())))
-            ));
+            return buildUntimedSegments(text, rubyAnnotations);
         }
 
         List<String> chars = splitChars(text);
@@ -1996,6 +1988,76 @@ public final class LyricsView extends View {
             ));
         }
         return segments;
+    }
+
+    private List<TextSegment> buildUntimedSegments(String text, List<RubyAnnotation> annotations) {
+        String value = text == null ? "" : text;
+        int totalLength = Math.max(1, codePointCount(value));
+        if (annotations == null || annotations.isEmpty()) {
+            return Collections.singletonList(createMeasuredSegment(
+                    value,
+                    0L,
+                    0L,
+                    0,
+                    totalLength,
+                    ""
+            ));
+        }
+
+        List<TextSegment> segments = new ArrayList<>();
+        int cursor = 0;
+        for (RubyAnnotation annotation : annotations) {
+            int start = Math.max(cursor, Math.min(totalLength, annotation.start));
+            int end = Math.max(start, Math.min(totalLength, annotation.end()));
+            if (start > cursor) {
+                addUntimedSegment(segments, value, cursor, start, "");
+            }
+            if (end > start) {
+                addUntimedSegment(segments, value, start, end, annotation.readingForRange(start, end));
+                cursor = end;
+            }
+        }
+        if (cursor < totalLength) {
+            addUntimedSegment(segments, value, cursor, totalLength, "");
+        }
+
+        return segments.isEmpty()
+                ? Collections.singletonList(createMeasuredSegment(value, 0L, 0L, 0, totalLength, ""))
+                : segments;
+    }
+
+    private void addUntimedSegment(List<TextSegment> segments, String text, int start, int end, String rubyText) {
+        if (segments == null || end <= start) {
+            return;
+        }
+        String value = substringByCodePointRange(text, start, end);
+        if (value.isEmpty()) {
+            return;
+        }
+        segments.add(createMeasuredSegment(
+                value,
+                0L,
+                0L,
+                start,
+                Math.max(1, end - start),
+                rubyText
+        ));
+    }
+
+    private static String substringByCodePointRange(String text, int start, int end) {
+        String value = text == null ? "" : text;
+        if (value.isEmpty()) {
+            return "";
+        }
+        int totalLength = codePointCount(value);
+        int safeStart = Math.max(0, Math.min(totalLength, start));
+        int safeEnd = Math.max(safeStart, Math.min(totalLength, end));
+        if (safeStart >= safeEnd) {
+            return "";
+        }
+        int startOffset = value.offsetByCodePoints(0, safeStart);
+        int endOffset = value.offsetByCodePoints(0, safeEnd);
+        return value.substring(startOffset, endOffset);
     }
 
     private TextSegment createMeasuredSegment(
