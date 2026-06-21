@@ -205,6 +205,10 @@ final class AppI18n {
             for (int index = 0; index + 1 < values.length; index += 2) {
                 copy.put(values[index], values[index + 1]);
             }
+            String[] settingValues = pictureInPictureSettingStrings(language.code);
+            for (int index = 0; index + 1 < settingValues.length; index += 2) {
+                copy.put(settingValues[index], settingValues[index + 1]);
+            }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
@@ -261,6 +265,67 @@ final class AppI18n {
                 "pip.open_lyrics", open,
                 "pip.unavailable", unavailable,
                 "pip.enter_failed", failed
+        };
+    }
+
+    private static String[] pictureInPictureSettingStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return pictureInPictureSettingStringsValues("PiP 모드", "작은 창에 표시할 내용과 방향을 조정합니다.", "앨범 이미지 표시", "끄면 PiP에 가사만 표시합니다.", "PiP 방향", "작은 창을 가로 또는 세로 비율로 띄웁니다.", "가로", "세로", "PiP 설정이 저장되었습니다.");
+            case "zh-CN":
+                return pictureInPictureSettingStringsValues("PiP 模式", "调整小窗中显示的内容和方向。", "显示专辑图", "关闭后 PiP 只显示歌词。", "PiP 方向", "以横向或纵向比例显示小窗。", "横向", "纵向", "PiP 设置已保存。");
+            case "zh-TW":
+                return pictureInPictureSettingStringsValues("PiP 模式", "調整小視窗中顯示的內容與方向。", "顯示專輯圖", "關閉後 PiP 只顯示歌詞。", "PiP 方向", "以橫向或直向比例顯示小視窗。", "橫向", "直向", "PiP 設定已儲存。");
+            case "ja":
+                return pictureInPictureSettingStringsValues("PiP モード", "小さなウィンドウに表示する内容と向きを調整します。", "アルバム画像を表示", "オフにすると PiP には歌詞だけを表示します。", "PiP の向き", "小さなウィンドウを横向きまたは縦向きで表示します。", "横", "縦", "PiP 設定を保存しました。");
+            case "hi":
+                return pictureInPictureSettingStringsValues("PiP मोड", "छोटी विंडो में दिखने वाली सामग्री और दिशा बदलें।", "एल्बम चित्र दिखाएं", "बंद करने पर PiP में केवल लिरिक्स दिखेंगे।", "PiP दिशा", "छोटी विंडो को लैंडस्केप या पोर्ट्रेट अनुपात में दिखाएं।", "लैंडस्केप", "पोर्ट्रेट", "PiP सेटिंग सहेजी गई।");
+            case "es":
+                return pictureInPictureSettingStringsValues("Modo PiP", "Ajusta el contenido y la orientación de la ventana pequeña.", "Mostrar portada", "Si se desactiva, PiP solo muestra la letra.", "Orientación PiP", "Muestra la ventana pequeña en horizontal o vertical.", "Horizontal", "Vertical", "Configuración de PiP guardada.");
+            case "fr":
+                return pictureInPictureSettingStringsValues("Mode PiP", "Réglez le contenu et l'orientation de la petite fenêtre.", "Afficher la pochette", "Désactivé, le PiP affiche uniquement les paroles.", "Orientation PiP", "Affiche la petite fenêtre en paysage ou portrait.", "Paysage", "Portrait", "Réglages PiP enregistrés.");
+            case "ar":
+                return pictureInPictureSettingStringsValues("وضع PiP", "اضبط المحتوى والاتجاه في النافذة الصغيرة.", "إظهار غلاف الألبوم", "عند إيقافه يعرض PiP الكلمات فقط.", "اتجاه PiP", "اعرض النافذة الصغيرة أفقياً أو عمودياً.", "أفقي", "عمودي", "تم حفظ إعدادات PiP.");
+            case "fa":
+                return pictureInPictureSettingStringsValues("حالت PiP", "محتوا و جهت پنجره کوچک را تنظیم کنید.", "نمایش تصویر آلبوم", "با خاموش کردن، PiP فقط متن را نشان می‌دهد.", "جهت PiP", "پنجره کوچک را افقی یا عمودی نشان دهید.", "افقی", "عمودی", "تنظیمات PiP ذخیره شد.");
+            case "de":
+                return pictureInPictureSettingStringsValues("PiP-Modus", "Inhalt und Ausrichtung des kleinen Fensters anpassen.", "Albumcover anzeigen", "Ausgeschaltet zeigt PiP nur Lyrics.", "PiP-Ausrichtung", "Kleines Fenster im Quer- oder Hochformat anzeigen.", "Querformat", "Hochformat", "PiP-Einstellungen gespeichert.");
+            case "ru":
+                return pictureInPictureSettingStringsValues("Режим PiP", "Настройте содержимое и ориентацию малого окна.", "Показывать обложку", "Если выключено, PiP показывает только текст.", "Ориентация PiP", "Показывать малое окно горизонтально или вертикально.", "Альбомная", "Портретная", "Настройки PiP сохранены.");
+            case "sv":
+                return pictureInPictureSettingStringsValues("PiP-läge", "Justera innehåll och riktning i det lilla fönstret.", "Visa albumomslag", "Av visar bara text i PiP.", "PiP-riktning", "Visa det lilla fönstret liggande eller stående.", "Liggande", "Stående", "PiP-inställningar sparade.");
+            case "pt":
+                return pictureInPictureSettingStringsValues("Modo PiP", "Ajuste o conteúdo e a orientação da janela pequena.", "Mostrar capa", "Desativado, o PiP mostra apenas a letra.", "Orientação do PiP", "Mostre a janela pequena na horizontal ou vertical.", "Horizontal", "Vertical", "Configurações de PiP salvas.");
+            case "bn":
+                return pictureInPictureSettingStringsValues("PiP মোড", "ছোট উইন্ডোর কনটেন্ট ও দিক ঠিক করুন।", "অ্যালবাম ছবি দেখান", "বন্ধ করলে PiP-এ শুধু লিরিক্স দেখাবে।", "PiP দিক", "ছোট উইন্ডো ল্যান্ডস্কেপ বা পোর্ট্রেটে দেখান।", "ল্যান্ডস্কেপ", "পোর্ট্রেট", "PiP সেটিংস সংরক্ষিত।");
+            case "it":
+                return pictureInPictureSettingStringsValues("Modalità PiP", "Regola contenuto e orientamento della finestra piccola.", "Mostra copertina", "Se disattivato, PiP mostra solo il testo.", "Orientamento PiP", "Mostra la finestra piccola in orizzontale o verticale.", "Orizzontale", "Verticale", "Impostazioni PiP salvate.");
+            case "th":
+                return pictureInPictureSettingStringsValues("โหมด PiP", "ปรับเนื้อหาและแนวของหน้าต่างเล็ก", "แสดงภาพอัลบั้ม", "ปิดแล้ว PiP จะแสดงเฉพาะเนื้อเพลง", "แนว PiP", "แสดงหน้าต่างเล็กแนวนอนหรือแนวตั้ง", "แนวนอน", "แนวตั้ง", "บันทึกการตั้งค่า PiP แล้ว");
+            case "vi":
+                return pictureInPictureSettingStringsValues("Chế độ PiP", "Điều chỉnh nội dung và hướng của cửa sổ nhỏ.", "Hiện ảnh album", "Tắt để PiP chỉ hiển thị lời bài hát.", "Hướng PiP", "Hiển thị cửa sổ nhỏ ngang hoặc dọc.", "Ngang", "Dọc", "Đã lưu cài đặt PiP.");
+            case "id":
+                return pictureInPictureSettingStringsValues("Mode PiP", "Atur konten dan orientasi jendela kecil.", "Tampilkan sampul album", "Jika mati, PiP hanya menampilkan lirik.", "Orientasi PiP", "Tampilkan jendela kecil secara lanskap atau potret.", "Lanskap", "Potret", "Pengaturan PiP disimpan.");
+            case "ms":
+                return pictureInPictureSettingStringsValues("Mod PiP", "Laraskan kandungan dan orientasi tetingkap kecil.", "Tunjuk kulit album", "Jika dimatikan, PiP hanya memaparkan lirik.", "Orientasi PiP", "Paparkan tetingkap kecil secara landskap atau potret.", "Landskap", "Potret", "Tetapan PiP disimpan.");
+            case "tr":
+                return pictureInPictureSettingStringsValues("PiP modu", "Küçük pencerede gösterilecek içeriği ve yönü ayarlayın.", "Albüm görselini göster", "Kapalıyken PiP yalnızca sözleri gösterir.", "PiP yönü", "Küçük pencereyi yatay veya dikey oranla göster.", "Yatay", "Dikey", "PiP ayarları kaydedildi.");
+            default:
+                return pictureInPictureSettingStringsValues("PiP Mode", "Choose what appears in the small window and its orientation.", "Show album artwork", "Turn off to show only lyrics in PiP.", "PiP orientation", "Show the small window in landscape or portrait.", "Landscape", "Portrait", "PiP settings saved.");
+        }
+    }
+
+    private static String[] pictureInPictureSettingStringsValues(String section, String sectionDesc, String showArtwork, String showArtworkDesc, String orientation, String orientationDesc, String landscape, String portrait, String saved) {
+        return new String[]{
+                "section.pip", section,
+                "section.pip_desc", sectionDesc,
+                "setting.pip_show_artwork", showArtwork,
+                "setting.pip_show_artwork_desc", showArtworkDesc,
+                "setting.pip_orientation", orientation,
+                "setting.pip_orientation_desc", orientationDesc,
+                "pip.orientation.landscape", landscape,
+                "pip.orientation.portrait", portrait,
+                "toast.pip_settings_saved", saved
         };
     }
 

@@ -49,6 +49,8 @@ final class AiLyricsSettings {
     static final String KEY_LANDSCAPE_AUTO_HIDE_CONTROLS = "landscape_auto_hide_controls";
     static final String KEY_LANDSCAPE_CENTER_NO_LYRICS = "landscape_center_no_lyrics";
     static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
+    static final String KEY_PIP_SHOW_ARTWORK = "pip_show_artwork";
+    static final String KEY_PIP_ORIENTATION = "pip_orientation";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
     static final String KEY_TRACK_VIDEO_SYNC_OFFSETS = "track_video_sync_offsets_v1";
     static final String KEY_SPOTIFY_CLIENT_ID = "spotify_client_id";
@@ -89,6 +91,8 @@ final class AiLyricsSettings {
     static final String LYRICS_ALIGN_LEFT = "left";
     static final String LYRICS_ALIGN_CENTER = "center";
     static final String LYRICS_ALIGN_RIGHT = "right";
+    static final String PIP_ORIENTATION_LANDSCAPE = "landscape";
+    static final String PIP_ORIENTATION_PORTRAIT = "portrait";
     private static final String DEFAULT_PROVIDER = "gemini";
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
@@ -252,6 +256,8 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
                 prefs.getBoolean(KEY_LANDSCAPE_CENTER_NO_LYRICS, true),
                 prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
+                prefs.getBoolean(KEY_PIP_SHOW_ARTWORK, true),
+                normalizePipOrientation(prefs.getString(KEY_PIP_ORIENTATION, PIP_ORIENTATION_LANDSCAPE)),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 typographySettings(),
@@ -518,6 +524,14 @@ final class AiLyricsSettings {
 
     void setKeepScreenOn(boolean enabled) {
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply();
+    }
+
+    void setPipShowArtwork(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PIP_SHOW_ARTWORK, enabled).apply();
+    }
+
+    void setPipOrientation(String orientation) {
+        prefs.edit().putString(KEY_PIP_ORIENTATION, normalizePipOrientation(orientation)).apply();
     }
 
     void setSpotifyApiCredentials(String clientId, String clientSecret) {
@@ -970,6 +984,11 @@ final class AiLyricsSettings {
         return DEFAULT_LYRICS_TEXT_ALIGNMENT;
     }
 
+    static String normalizePipOrientation(String orientation) {
+        String value = orientation == null ? "" : orientation.trim().toLowerCase(Locale.ROOT);
+        return PIP_ORIENTATION_PORTRAIT.equals(value) ? PIP_ORIENTATION_PORTRAIT : PIP_ORIENTATION_LANDSCAPE;
+    }
+
     static String backgroundModeLabel(String mode) {
         String normalized = normalizeBackgroundMode(mode);
         for (BackgroundMode backgroundMode : BACKGROUND_MODES) {
@@ -1390,6 +1409,8 @@ final class AiLyricsSettings {
         final boolean landscapeAutoHideControls;
         final boolean landscapeCenterNoLyrics;
         final boolean keepScreenOn;
+        final boolean pipShowArtwork;
+        final String pipOrientation;
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
         final TypographySettings typography;
@@ -1420,6 +1441,8 @@ final class AiLyricsSettings {
                 boolean landscapeAutoHideControls,
                 boolean landscapeCenterNoLyrics,
                 boolean keepScreenOn,
+                boolean pipShowArtwork,
+                String pipOrientation,
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
                 TypographySettings typography,
@@ -1453,6 +1476,8 @@ final class AiLyricsSettings {
             this.landscapeAutoHideControls = landscapeAutoHideControls;
             this.landscapeCenterNoLyrics = landscapeCenterNoLyrics;
             this.keepScreenOn = keepScreenOn;
+            this.pipShowArtwork = pipShowArtwork;
+            this.pipOrientation = normalizePipOrientation(pipOrientation);
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.typography = typography == null ? TypographySettings.defaults() : typography;

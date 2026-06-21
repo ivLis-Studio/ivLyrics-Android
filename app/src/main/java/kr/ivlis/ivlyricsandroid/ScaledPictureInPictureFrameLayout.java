@@ -7,8 +7,8 @@ import android.view.ViewParent;
 import android.widget.FrameLayout;
 
 final class ScaledPictureInPictureFrameLayout extends FrameLayout {
-    private final int virtualWidthPx;
-    private final int virtualHeightPx;
+    private int virtualWidthPx;
+    private int virtualHeightPx;
 
     ScaledPictureInPictureFrameLayout(Context context, int virtualWidthPx, int virtualHeightPx) {
         super(context);
@@ -16,6 +16,18 @@ final class ScaledPictureInPictureFrameLayout extends FrameLayout {
         this.virtualHeightPx = Math.max(1, virtualHeightPx);
         setClipChildren(true);
         setClipToPadding(true);
+    }
+
+    void setVirtualSize(int virtualWidthPx, int virtualHeightPx) {
+        int safeWidth = Math.max(1, virtualWidthPx);
+        int safeHeight = Math.max(1, virtualHeightPx);
+        if (this.virtualWidthPx == safeWidth && this.virtualHeightPx == safeHeight) {
+            return;
+        }
+        this.virtualWidthPx = safeWidth;
+        this.virtualHeightPx = safeHeight;
+        requestLayout();
+        invalidate();
     }
 
     @Override
