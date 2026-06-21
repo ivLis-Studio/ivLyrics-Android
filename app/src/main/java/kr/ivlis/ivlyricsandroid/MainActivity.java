@@ -20,6 +20,7 @@ import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -231,6 +232,9 @@ public final class MainActivity extends Activity implements
     private PopupWindow lyricsMetaTipPopup;
     private PopupWindow lyricsMetaMenuPopup;
     private ScrollView lyricsMetaMenuScrollView;
+    private AlertDialog tmiDialog;
+    private LinearLayout tmiDialogBody;
+    private TextView tmiDialogRegenerateButton;
     private TransportButtonView playPauseButton;
     private View landscapeControlsContainer;
     private ImageButton landscapeMenuButton;
@@ -337,6 +341,7 @@ public final class MainActivity extends Activity implements
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
+    private String currentTmiRequestKey = "";
     private String emptyLyricsPreviewKey = "";
     private String currentArtworkKey = "";
     private String currentYouTubeBackgroundRequestKey = "";
@@ -413,6 +418,8 @@ public final class MainActivity extends Activity implements
     private boolean pendingOpenLyricsPageFromIntent;
     private boolean lyricsMetaLongPressTriggered;
     private Runnable lyricsMetaLongPressRunnable;
+    private boolean artworkLongPressTriggered;
+    private Runnable artworkLongPressRunnable;
     private UpdateChecker.UpdateInfo pendingUpdateInfo;
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
 
@@ -585,6 +592,7 @@ public final class MainActivity extends Activity implements
 
     private void prepareTouchStateForPictureInPictureGesture() {
         cancelLyricsMetaLongPress();
+        cancelArtworkLongPress();
         pageDragging = false;
         artworkSwipeDragging = false;
         recyclePageVelocityTracker();
@@ -606,6 +614,7 @@ public final class MainActivity extends Activity implements
             handler.removeCallbacks(ticker);
             handler.removeCallbacks(landscapeControlsAutoHideRunnable);
             cancelLyricsMetaLongPress();
+            cancelArtworkLongPress();
             dismissLyricsMetaMenuPopup();
             handler.removeCallbacks(onboardingWelcomeTicker);
         }
@@ -635,6 +644,8 @@ public final class MainActivity extends Activity implements
     protected void onDestroy() {
         dismissLyricsMetaTip();
         dismissLyricsMetaMenuPopup();
+        dismissTmiDialog();
+        cancelArtworkLongPress();
         if (lyricsRepository != null) {
             lyricsRepository.shutdown();
         }
@@ -663,6 +674,11 @@ public final class MainActivity extends Activity implements
         if (isInAppBrowserVisible()) {
             lastBackPressElapsedMs = 0L;
             showInAppBrowser(false);
+            return;
+        }
+        if (tmiDialog != null && tmiDialog.isShowing()) {
+            lastBackPressElapsedMs = 0L;
+            dismissTmiDialog();
             return;
         }
         if (isLyricsMetaMenuPopupVisible()) {
@@ -1447,6 +1463,22 @@ public final class MainActivity extends Activity implements
             return;
         }
         appendLog("ai metadata failed: " + message);
+    }
+
+    @Override
+    public void onAiTmiLoaded(String trackKey, AiLyricsRepository.TmiInfo info) {
+        if (!trackKey.equals(currentTmiRequestKey)) {
+            return;
+        }
+        renderTmiInfo(info);
+    }
+
+    @Override
+    public void onAiTmiError(String trackKey, String message) {
+        if (!trackKey.equals(currentTmiRequestKey)) {
+            return;
+        }
+        renderTmiError(message);
     }
 
     private View buildContentView() {
@@ -8442,6 +8474,300 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void showTmiForCurrentTrack(boolean bypassCache) {
+        TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
+        if (snapshot == null || !snapshot.hasUsableMetadata() || snapshot.isSpotifyDjSegment()) {
+            showSavedToast(ui("toast.current_track_missing"));
+            return;
+        }
+        if (aiLyricsRepository == null || aiLyricsSettings == null) {
+            return;
+        }
+        String trackKey = snapshot.stableKey();
+        boolean needsNewDialog = tmiDialog == null
+                || !tmiDialog.isShowing()
+                || !trackKey.equals(currentTmiRequestKey);
+        currentTmiRequestKey = trackKey;
+        if (needsNewDialog) {
+            showTmiDialog(snapshot);
+        }
+
+        AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
+        renderTmiLoading(snapshot);
+        if (!settings.hasApiKey()) {
+            renderTmiError(ui("tmi.require_key"));
+            return;
+        }
+        aiLyricsRepository.loadTmi(snapshot, settings, bypassCache, this);
+    }
+
+    private void showTmiDialog(TrackSnapshot snapshot) {
+        if (isFinishing()) {
+            return;
+        }
+        dismissTmiDialog();
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(dp(18), dp(16), dp(18), dp(16));
+        shell.setBackground(roundDrawable(Color.rgb(18, 20, 30), dp(22)));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        shell.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        ImageView cover = new ImageView(this);
+        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        Bitmap artwork = currentArtworkBitmap != null ? currentArtworkBitmap : snapshot.artwork;
+        if (artwork == null) {
+            cover.setBackground(albumFallbackDrawable());
+        } else {
+            cover.setImageBitmap(artwork);
+        }
+        clipRound(cover, 12);
+        header.addView(cover, new LinearLayout.LayoutParams(dp(56), dp(56)));
+
+        LinearLayout meta = new LinearLayout(this);
+        meta.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        metaParams.leftMargin = dp(12);
+        header.addView(meta, metaParams);
+
+        TextView eyebrow = label(ui("tmi.title"), 11f, Color.argb(172, 255, 255, 255), AppFonts.semiBold(this));
+        eyebrow.setSingleLine(true);
+        eyebrow.setEllipsize(TextUtils.TruncateAt.END);
+        meta.addView(eyebrow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView title = label(snapshot.title, 17f, Color.WHITE, AppFonts.bold(this));
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        meta.addView(title, topMargin(matchWrap(), dp(6)));
+
+        TextView artist = label(snapshot.artist, 13f, Color.argb(205, 255, 255, 255), AppFonts.regular(this));
+        artist.setSingleLine(true);
+        artist.setEllipsize(TextUtils.TruncateAt.END);
+        meta.addView(artist, topMargin(matchWrap(), dp(5)));
+
+        TextView close = label("×", 25f, Color.argb(220, 255, 255, 255), AppFonts.regular(this));
+        makeRemoteFocusable(close);
+        close.setGravity(Gravity.CENTER);
+        close.setOnClickListener(view -> dismissTmiDialog());
+        header.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(false);
+        scrollView.setClipToPadding(false);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        tmiDialogBody = new LinearLayout(this);
+        tmiDialogBody.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(tmiDialogBody, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        int maxBodyHeight = Math.round(getResources().getDisplayMetrics().heightPixels * (isLandscapeLayout() ? 0.48f : 0.54f));
+        shell.addView(scrollView, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Math.max(dp(220), Math.min(maxBodyHeight, dp(isLandscapeLayout() ? 360 : 460)))
+        ), dp(14)));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        shell.addView(actions, topMargin(matchWrap(), dp(14)));
+
+        tmiDialogRegenerateButton = debugButton(ui("tmi.regenerate"));
+        tmiDialogRegenerateButton.setOnClickListener(view -> showTmiForCurrentTrack(true));
+        actions.addView(tmiDialogRegenerateButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+
+        TextView closeButton = debugButton(ui("button.close"));
+        closeButton.setOnClickListener(view -> dismissTmiDialog());
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        closeParams.leftMargin = dp(8);
+        actions.addView(closeButton, closeParams);
+
+        tmiDialog = new AlertDialog.Builder(this)
+                .setView(shell)
+                .create();
+        tmiDialog.setOnDismissListener(dialog -> {
+            tmiDialog = null;
+            tmiDialogBody = null;
+            tmiDialogRegenerateButton = null;
+        });
+        tmiDialog.show();
+        Window window = tmiDialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setDimAmount(0.52f);
+            int width = Math.min(getResources().getDisplayMetrics().widthPixels - dp(32), dp(isLandscapeLayout() ? 520 : 430));
+            window.setLayout(Math.max(dp(300), width), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void dismissTmiDialog() {
+        if (tmiDialog != null) {
+            tmiDialog.dismiss();
+        }
+        tmiDialog = null;
+        tmiDialogBody = null;
+        tmiDialogRegenerateButton = null;
+    }
+
+    private void renderTmiLoading(TrackSnapshot snapshot) {
+        if (tmiDialogBody == null) {
+            return;
+        }
+        setTmiRegenerateEnabled(false);
+        tmiDialogBody.removeAllViews();
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(12), dp(12), dp(12));
+        row.setBackground(roundDrawable(Color.argb(28, 255, 255, 255), dp(14)));
+        ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+        progressBar.setIndeterminate(true);
+        if (progressBar.getIndeterminateDrawable() != null) {
+            progressBar.getIndeterminateDrawable().setTint(Color.argb(220, 255, 255, 255));
+        }
+        row.addView(progressBar, new LinearLayout.LayoutParams(dp(18), dp(18)));
+        TextView text = label(ui("tmi.loading"), 13f, Color.argb(220, 255, 255, 255), AppFonts.semiBold(this));
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textParams.leftMargin = dp(10);
+        row.addView(text, textParams);
+        tmiDialogBody.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+    }
+
+    private void renderTmiError(String message) {
+        if (tmiDialogBody == null) {
+            return;
+        }
+        setTmiRegenerateEnabled(true);
+        tmiDialogBody.removeAllViews();
+        TextView title = label(ui("tmi.error_fetch"), 15f, Color.WHITE, AppFonts.bold(this));
+        tmiDialogBody.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        TextView body = tmiBodyText(message == null || message.trim().isEmpty() ? ui("tmi.no_data") : message.trim());
+        tmiDialogBody.addView(body, topMargin(matchWrap(), dp(9)));
+    }
+
+    private void renderTmiInfo(AiLyricsRepository.TmiInfo info) {
+        if (tmiDialogBody == null) {
+            return;
+        }
+        setTmiRegenerateEnabled(true);
+        tmiDialogBody.removeAllViews();
+        if (info == null || !info.hasContent()) {
+            TextView empty = tmiBodyText(ui("tmi.no_data"));
+            tmiDialogBody.addView(empty, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+            return;
+        }
+
+        if (!info.description.isEmpty()) {
+            LinearLayout card = tmiCard();
+            TextView description = tmiBodyText(info.description);
+            description.setLineSpacing(dp(3), 1f);
+            card.addView(description, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+            tmiDialogBody.addView(card, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+        }
+
+        if (!info.trivia.isEmpty()) {
+            tmiDialogBody.addView(tmiSectionTitle(ui("tmi.did_you_know")), topMargin(matchWrap(), dp(16)));
+            for (int index = 0; index < info.trivia.size(); index++) {
+                LinearLayout item = tmiCard();
+                item.setOrientation(LinearLayout.HORIZONTAL);
+                TextView bullet = label("•", 17f, Color.WHITE, AppFonts.bold(this));
+                item.addView(bullet, new LinearLayout.LayoutParams(dp(18), ViewGroup.LayoutParams.WRAP_CONTENT));
+                TextView text = tmiBodyText(info.trivia.get(index));
+                item.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                tmiDialogBody.addView(item, topMargin(matchWrap(), dp(index == 0 ? 8 : 7)));
+            }
+        }
+
+        if (!info.confidence.isEmpty()) {
+            TextView confidence = label(uiFormat("tmi.confidence_format", info.confidence), 11f, Color.argb(150, 255, 255, 255), AppFonts.regular(this));
+            tmiDialogBody.addView(confidence, topMargin(matchWrap(), dp(14)));
+        }
+
+        addTmiSourceGroup(ui("tmi.verified_sources"), info.verifiedSources);
+        addTmiSourceGroup(ui("tmi.related_sources"), info.relatedSources);
+        addTmiSourceGroup(ui("tmi.other_sources"), info.otherSources);
+    }
+
+    private void addTmiSourceGroup(String title, List<AiLyricsRepository.TmiSource> sources) {
+        if (tmiDialogBody == null || sources == null || sources.isEmpty()) {
+            return;
+        }
+        tmiDialogBody.addView(tmiSectionTitle(title), topMargin(matchWrap(), dp(16)));
+        for (int index = 0; index < sources.size(); index++) {
+            View row = tmiSourceRow(sources.get(index));
+            if (row != null) {
+                tmiDialogBody.addView(row, topMargin(matchWrap(), dp(index == 0 ? 8 : 6)));
+            }
+        }
+    }
+
+    private LinearLayout tmiCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(11), dp(12), dp(11));
+        card.setBackground(roundDrawable(Color.argb(28, 255, 255, 255), dp(14)));
+        return card;
+    }
+
+    private TextView tmiSectionTitle(String text) {
+        return label(text, 13f, Color.WHITE, AppFonts.bold(this));
+    }
+
+    private TextView tmiBodyText(String text) {
+        TextView view = label(text == null ? "" : text.trim(), 13f, Color.argb(218, 255, 255, 255), AppFonts.regular(this));
+        view.setLineSpacing(dp(2), 1f);
+        return view;
+    }
+
+    private View tmiSourceRow(AiLyricsRepository.TmiSource source) {
+        if (source == null || source.url.isEmpty()) {
+            return null;
+        }
+        TextView view = label(source.displayTitle(), 12f, Color.argb(222, 255, 255, 255), AppFonts.semiBold(this));
+        makeRemoteFocusable(view);
+        view.setSingleLine(true);
+        view.setEllipsize(TextUtils.TruncateAt.END);
+        view.setPadding(dp(11), 0, dp(11), 0);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(11)));
+        view.setOnClickListener(target -> openExternalUrl(source.url));
+        return view;
+    }
+
+    private void setTmiRegenerateEnabled(boolean enabled) {
+        if (tmiDialogRegenerateButton == null) {
+            return;
+        }
+        tmiDialogRegenerateButton.setEnabled(enabled);
+        tmiDialogRegenerateButton.setAlpha(enabled ? 1f : 0.45f);
+    }
+
     private void maybeShowLyricsMetaTip() {
         if (isLandscapeLayout()
                 || !lyricsPageVisible
@@ -10984,6 +11310,9 @@ public final class MainActivity extends Activity implements
     }
 
     private void attachArtworkSwipe(View view) {
+        makeRemoteFocusable(view);
+        view.setClickable(true);
+        view.setLongClickable(true);
         view.setOnTouchListener((target, event) -> {
             if (artworkVelocityTracker != null) {
                 artworkVelocityTracker.addMovement(event);
@@ -10996,13 +11325,18 @@ public final class MainActivity extends Activity implements
                     artworkSwipeStartX = event.getRawX();
                     artworkSwipeStartY = event.getRawY();
                     artworkSwipeDragging = false;
+                    scheduleArtworkLongPress(target);
                     target.animate().cancel();
                     return true;
                 case MotionEvent.ACTION_MOVE: {
                     float dx = event.getRawX() - artworkSwipeStartX;
                     float dy = event.getRawY() - artworkSwipeStartY;
+                    if (Math.hypot(dx, dy) > dp(12)) {
+                        cancelArtworkLongPress();
+                    }
                     if (!artworkSwipeDragging && Math.abs(dx) > dp(16) && Math.abs(dx) > Math.abs(dy) * 1.15f) {
                         artworkSwipeDragging = true;
+                        cancelArtworkLongPress();
                         if (target.getParent() != null) {
                             target.getParent().requestDisallowInterceptTouchEvent(true);
                         }
@@ -11016,6 +11350,13 @@ public final class MainActivity extends Activity implements
                     return true;
                 }
                 case MotionEvent.ACTION_UP: {
+                    cancelArtworkLongPress();
+                    if (artworkLongPressTriggered) {
+                        artworkLongPressTriggered = false;
+                        settleArtworkSwipe(target);
+                        recycleArtworkVelocityTracker();
+                        return true;
+                    }
                     float dx = event.getRawX() - artworkSwipeStartX;
                     float velocityX = artworkVelocityX();
                     boolean shouldSwitch = artworkSwipeDragging
@@ -11030,6 +11371,8 @@ public final class MainActivity extends Activity implements
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
+                    cancelArtworkLongPress();
+                    artworkLongPressTriggered = false;
                     settleArtworkSwipe(target);
                     recycleArtworkVelocityTracker();
                     return true;
@@ -11037,6 +11380,27 @@ public final class MainActivity extends Activity implements
                     return true;
             }
         });
+    }
+
+    private void scheduleArtworkLongPress(View target) {
+        cancelArtworkLongPress();
+        artworkLongPressTriggered = false;
+        artworkLongPressRunnable = () -> {
+            artworkLongPressRunnable = null;
+            artworkLongPressTriggered = true;
+            if (target != null) {
+                target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            }
+            showTmiForCurrentTrack(false);
+        };
+        handler.postDelayed(artworkLongPressRunnable, ViewConfiguration.getLongPressTimeout());
+    }
+
+    private void cancelArtworkLongPress() {
+        if (artworkLongPressRunnable != null) {
+            handler.removeCallbacks(artworkLongPressRunnable);
+            artworkLongPressRunnable = null;
+        }
     }
 
     private void settleArtworkSwipe(View target) {

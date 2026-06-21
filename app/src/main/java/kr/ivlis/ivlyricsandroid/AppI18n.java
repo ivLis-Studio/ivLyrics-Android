@@ -118,8 +118,99 @@ final class AppI18n {
         addPictureInPictureStrings(languages);
         addVideoSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
+        addTmiStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addTmiStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = tmiStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] tmiStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return tmiStringValues("TMI", "TMI 생성 중", "알고 있었나요?", "검증된 출처", "관련 출처", "기타 출처", "이 곡에 대한 TMI가 아직 없습니다.", "다시 생성", "TMI를 불러오는 중 오류가 발생했습니다.", "AI 제공자 API 키가 필요합니다.", "신뢰도: %s");
+            case "zh-CN":
+                return tmiStringValues("TMI", "正在生成 TMI", "你知道吗？", "已验证来源", "相关来源", "其他来源", "暂时没有这首歌的 TMI。", "重新生成", "加载 TMI 时出错。", "需要 AI 提供商 API 密钥。", "可信度：%s");
+            case "zh-TW":
+                return tmiStringValues("TMI", "正在產生 TMI", "你知道嗎？", "已驗證來源", "相關來源", "其他來源", "目前沒有這首歌的 TMI。", "重新產生", "載入 TMI 時發生錯誤。", "需要 AI 供應商 API 金鑰。", "可信度：%s");
+            case "ja":
+                return tmiStringValues("TMI", "TMI を生成中", "知っていましたか？", "検証済みソース", "関連ソース", "その他のソース", "この曲の TMI はまだありません。", "再生成", "TMI の読み込み中にエラーが発生しました。", "AI プロバイダーの API キーが必要です。", "信頼度: %s");
+            case "hi":
+                return tmiStringValues("TMI", "TMI बनाया जा रहा है", "क्या आप जानते हैं?", "सत्यापित स्रोत", "संबंधित स्रोत", "अन्य स्रोत", "इस गीत के लिए अभी कोई TMI नहीं है।", "फिर बनाएं", "TMI लोड करते समय त्रुटि हुई।", "AI प्रदाता API कुंजी चाहिए।", "विश्वसनीयता: %s");
+            case "es":
+                return tmiStringValues("TMI", "Generando TMI", "¿Lo sabías?", "Fuentes verificadas", "Fuentes relacionadas", "Otras fuentes", "Aún no hay TMI para esta canción.", "Regenerar", "Error al cargar TMI.", "Se necesita la clave API del proveedor de IA.", "Confianza: %s");
+            case "fr":
+                return tmiStringValues("TMI", "Génération du TMI", "Le saviez-vous ?", "Sources vérifiées", "Sources liées", "Autres sources", "Aucun TMI disponible pour ce morceau.", "Régénérer", "Erreur lors du chargement du TMI.", "Une clé API du fournisseur IA est requise.", "Fiabilité : %s");
+            case "ar":
+                return tmiStringValues("TMI", "جارٍ إنشاء TMI", "هل تعلم؟", "مصادر موثقة", "مصادر ذات صلة", "مصادر أخرى", "لا توجد معلومات TMI لهذه الأغنية بعد.", "إعادة الإنشاء", "حدث خطأ أثناء تحميل TMI.", "يلزم مفتاح API لموفر الذكاء الاصطناعي.", "الثقة: %s");
+            case "fa":
+                return tmiStringValues("TMI", "در حال ساخت TMI", "می‌دانستید؟", "منابع تأییدشده", "منابع مرتبط", "منابع دیگر", "هنوز TMI برای این آهنگ وجود ندارد.", "ساخت دوباره", "هنگام بارگیری TMI خطایی رخ داد.", "کلید API ارائه‌دهنده هوش مصنوعی لازم است.", "اطمینان: %s");
+            case "de":
+                return tmiStringValues("TMI", "TMI wird erstellt", "Wusstest du schon?", "Verifizierte Quellen", "Verwandte Quellen", "Andere Quellen", "Für diesen Song gibt es noch kein TMI.", "Neu erstellen", "Fehler beim Laden von TMI.", "API-Schlüssel des KI-Anbieters erforderlich.", "Vertrauen: %s");
+            case "ru":
+                return tmiStringValues("TMI", "Создание TMI", "Знали ли вы?", "Проверенные источники", "Связанные источники", "Другие источники", "Для этой песни пока нет TMI.", "Создать заново", "Ошибка загрузки TMI.", "Нужен API-ключ поставщика ИИ.", "Надёжность: %s");
+            case "sv":
+                return tmiStringValues("TMI", "Skapar TMI", "Visste du?", "Verifierade källor", "Relaterade källor", "Andra källor", "Det finns ännu ingen TMI för låten.", "Skapa igen", "Fel när TMI skulle läsas in.", "API-nyckel för AI-leverantören krävs.", "Tillförlitlighet: %s");
+            case "pt":
+                return tmiStringValues("TMI", "Gerando TMI", "Você sabia?", "Fontes verificadas", "Fontes relacionadas", "Outras fontes", "Ainda não há TMI para esta música.", "Gerar novamente", "Erro ao carregar TMI.", "É necessária a chave API do provedor de IA.", "Confiança: %s");
+            case "bn":
+                return tmiStringValues("TMI", "TMI তৈরি হচ্ছে", "জানতেন?", "যাচাইকৃত উৎস", "সম্পর্কিত উৎস", "অন্যান্য উৎস", "এই গানের জন্য এখনও কোনো TMI নেই।", "আবার তৈরি করুন", "TMI লোড করতে ত্রুটি হয়েছে।", "AI প্রদানকারীর API কী প্রয়োজন।", "বিশ্বাসযোগ্যতা: %s");
+            case "it":
+                return tmiStringValues("TMI", "Generazione TMI", "Lo sapevi?", "Fonti verificate", "Fonti correlate", "Altre fonti", "Non ci sono ancora TMI per questo brano.", "Rigenera", "Errore durante il caricamento del TMI.", "Serve la chiave API del provider IA.", "Affidabilità: %s");
+            case "th":
+                return tmiStringValues("TMI", "กำลังสร้าง TMI", "รู้หรือไม่?", "แหล่งที่ยืนยันแล้ว", "แหล่งที่เกี่ยวข้อง", "แหล่งอื่น", "ยังไม่มี TMI สำหรับเพลงนี้", "สร้างใหม่", "เกิดข้อผิดพลาดขณะโหลด TMI", "ต้องใช้คีย์ API ของผู้ให้บริการ AI", "ความน่าเชื่อถือ: %s");
+            case "vi":
+                return tmiStringValues("TMI", "Đang tạo TMI", "Bạn có biết?", "Nguồn đã xác minh", "Nguồn liên quan", "Nguồn khác", "Chưa có TMI cho bài hát này.", "Tạo lại", "Lỗi khi tải TMI.", "Cần khóa API của nhà cung cấp AI.", "Độ tin cậy: %s");
+            case "id":
+                return tmiStringValues("TMI", "Membuat TMI", "Tahukah kamu?", "Sumber terverifikasi", "Sumber terkait", "Sumber lain", "Belum ada TMI untuk lagu ini.", "Buat ulang", "Gagal memuat TMI.", "Kunci API penyedia AI diperlukan.", "Keyakinan: %s");
+            case "ms":
+                return tmiStringValues("TMI", "Menjana TMI", "Tahukah anda?", "Sumber disahkan", "Sumber berkaitan", "Sumber lain", "Belum ada TMI untuk lagu ini.", "Jana semula", "Ralat semasa memuatkan TMI.", "Kunci API penyedia AI diperlukan.", "Keyakinan: %s");
+            case "tr":
+                return tmiStringValues("TMI", "TMI oluşturuluyor", "Biliyor muydun?", "Doğrulanmış kaynaklar", "İlgili kaynaklar", "Diğer kaynaklar", "Bu şarkı için henüz TMI yok.", "Yeniden oluştur", "TMI yüklenirken hata oluştu.", "AI sağlayıcısı API anahtarı gerekiyor.", "Güven: %s");
+            default:
+                return tmiStringValues("TMI", "Generating TMI", "Did you know?", "Verified sources", "Related sources", "Other sources", "No TMI is available for this song yet.", "Regenerate", "Failed to load TMI.", "An AI provider API key is required.", "Confidence: %s");
+        }
+    }
+
+    private static String[] tmiStringValues(
+            String title,
+            String loading,
+            String didYouKnow,
+            String verifiedSources,
+            String relatedSources,
+            String otherSources,
+            String noData,
+            String regenerate,
+            String errorFetch,
+            String requireKey,
+            String confidenceFormat
+    ) {
+        return new String[]{
+                "tmi.title", title,
+                "tmi.loading", loading,
+                "tmi.did_you_know", didYouKnow,
+                "tmi.verified_sources", verifiedSources,
+                "tmi.related_sources", relatedSources,
+                "tmi.other_sources", otherSources,
+                "tmi.no_data", noData,
+                "tmi.regenerate", regenerate,
+                "tmi.error_fetch", errorFetch,
+                "tmi.require_key", requireKey,
+                "tmi.confidence_format", confidenceFormat
+        };
     }
 
     private static void addKaraokeLineModeStrings(Map<String, Map<String, String>> languages) {

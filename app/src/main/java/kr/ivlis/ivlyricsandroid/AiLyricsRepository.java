@@ -38,6 +38,7 @@ final class AiLyricsRepository {
     private static final int READ_TIMEOUT_MS = 70_000;
     private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 96L;
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
+    private static final String TMI_PROMPT_VERSION = "origin-v1";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
     private static final Pattern TAGGED_OUTPUT_PATTERN = Pattern.compile(
@@ -49,12 +50,15 @@ final class AiLyricsRepository {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, LyricsResult> cache = new ConcurrentHashMap<>();
     private final Map<String, MetadataTranslation> metadataCache = new ConcurrentHashMap<>();
+    private final Map<String, TmiInfo> tmiCache = new ConcurrentHashMap<>();
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
+    private final SharedPreferences tmiPrefs;
 
     AiLyricsRepository() {
         diskCache = null;
         metadataPrefs = null;
+        tmiPrefs = null;
     }
 
     AiLyricsRepository(Context context) {
@@ -64,6 +68,9 @@ final class AiLyricsRepository {
         metadataPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_metadata_translations", Context.MODE_PRIVATE);
+        tmiPrefs = context == null
+                ? null
+                : context.getApplicationContext().getSharedPreferences("ai_tmi_cache", Context.MODE_PRIVATE);
     }
 
     interface Callback {
@@ -93,6 +100,10 @@ final class AiLyricsRepository {
         void onAiMetadataTranslationLoaded(String trackKey, MetadataTranslation translation);
 
         void onAiMetadataTranslationError(String trackKey, String message);
+
+        void onAiTmiLoaded(String trackKey, TmiInfo info);
+
+        void onAiTmiError(String trackKey, String message);
     }
 
     static final class MetadataTranslation {
@@ -106,6 +117,206 @@ final class AiLyricsRepository {
             this.artist = artist == null ? "" : artist.trim();
             this.sourceLang = AiLyricsSettings.normalizeLanguageCode(sourceLang);
             this.targetLang = AiLyricsSettings.normalizeLanguageCode(targetLang);
+        }
+    }
+
+    static final class TmiSource {
+        final String title;
+        final String url;
+
+        TmiSource(String title, String url) {
+            this.title = title == null ? "" : title.trim();
+            this.url = url == null ? "" : url.trim();
+        }
+
+        String displayTitle() {
+            if (!title.isEmpty()) {
+                return title;
+            }
+            try {
+                String host = new URL(url).getHost();
+                return host == null || host.trim().isEmpty()
+                        ? url
+                        : host.replaceFirst("^www\\.", "");
+            } catch (Exception ignored) {
+                return url;
+            }
+        }
+    }
+
+    static final class TmiInfo {
+        final String description;
+        final List<String> trivia;
+        final List<TmiSource> verifiedSources;
+        final List<TmiSource> relatedSources;
+        final List<TmiSource> otherSources;
+        final String confidence;
+        final boolean hasVerifiedSources;
+        final int verifiedSourceCount;
+        final int relatedSourceCount;
+        final int totalSourceCount;
+        final String targetLang;
+
+        TmiInfo(
+                String description,
+                List<String> trivia,
+                List<TmiSource> verifiedSources,
+                List<TmiSource> relatedSources,
+                List<TmiSource> otherSources,
+                String confidence,
+                boolean hasVerifiedSources,
+                int verifiedSourceCount,
+                int relatedSourceCount,
+                int totalSourceCount,
+                String targetLang
+        ) {
+            this.description = description == null ? "" : description.trim();
+            this.trivia = immutableStringList(trivia);
+            this.verifiedSources = immutableSourceList(verifiedSources);
+            this.relatedSources = immutableSourceList(relatedSources);
+            this.otherSources = immutableSourceList(otherSources);
+            this.confidence = confidence == null ? "" : confidence.trim();
+            this.hasVerifiedSources = hasVerifiedSources;
+            this.verifiedSourceCount = Math.max(0, verifiedSourceCount);
+            this.relatedSourceCount = Math.max(0, relatedSourceCount);
+            this.totalSourceCount = Math.max(0, totalSourceCount);
+            this.targetLang = AiLyricsSettings.normalizeLanguageCode(targetLang);
+        }
+
+        boolean hasContent() {
+            return !description.isEmpty() || !trivia.isEmpty();
+        }
+
+        List<TmiSource> allSources() {
+            List<TmiSource> sources = new ArrayList<>();
+            sources.addAll(verifiedSources);
+            sources.addAll(relatedSources);
+            sources.addAll(otherSources);
+            return sources;
+        }
+
+        JSONObject toJson(String cacheKey) throws JSONException {
+            JSONObject object = new JSONObject();
+            object.put("cacheKey", cacheKey == null ? "" : cacheKey);
+            object.put("description", description);
+            object.put("trivia", stringArray(trivia));
+            object.put("verifiedSources", sourceArray(verifiedSources));
+            object.put("relatedSources", sourceArray(relatedSources));
+            object.put("otherSources", sourceArray(otherSources));
+            object.put("confidence", confidence);
+            object.put("hasVerifiedSources", hasVerifiedSources);
+            object.put("verifiedSourceCount", verifiedSourceCount);
+            object.put("relatedSourceCount", relatedSourceCount);
+            object.put("totalSourceCount", totalSourceCount);
+            object.put("targetLang", targetLang);
+            object.put("savedAtMs", System.currentTimeMillis());
+            return object;
+        }
+
+        static TmiInfo fromJson(JSONObject object) {
+            if (object == null) {
+                return null;
+            }
+            return new TmiInfo(
+                    object.optString("description", ""),
+                    stringList(object.optJSONArray("trivia")),
+                    sourceList(object.optJSONArray("verifiedSources")),
+                    sourceList(object.optJSONArray("relatedSources")),
+                    sourceList(object.optJSONArray("otherSources")),
+                    object.optString("confidence", ""),
+                    object.optBoolean("hasVerifiedSources", false),
+                    object.optInt("verifiedSourceCount", 0),
+                    object.optInt("relatedSourceCount", 0),
+                    object.optInt("totalSourceCount", 0),
+                    object.optString("targetLang", "")
+            );
+        }
+
+        private static List<String> immutableStringList(List<String> values) {
+            List<String> copy = new ArrayList<>();
+            if (values != null) {
+                for (String value : values) {
+                    if (value != null && !value.trim().isEmpty()) {
+                        copy.add(value.trim());
+                    }
+                }
+            }
+            return Collections.unmodifiableList(copy);
+        }
+
+        private static List<TmiSource> immutableSourceList(List<TmiSource> values) {
+            List<TmiSource> copy = new ArrayList<>();
+            if (values != null) {
+                for (TmiSource value : values) {
+                    if (value != null && !value.url.isEmpty()) {
+                        copy.add(value);
+                    }
+                }
+            }
+            return Collections.unmodifiableList(copy);
+        }
+
+        private static JSONArray stringArray(List<String> values) {
+            JSONArray array = new JSONArray();
+            if (values != null) {
+                for (String value : values) {
+                    array.put(value == null ? "" : value);
+                }
+            }
+            return array;
+        }
+
+        private static JSONArray sourceArray(List<TmiSource> values) throws JSONException {
+            JSONArray array = new JSONArray();
+            if (values != null) {
+                for (TmiSource source : values) {
+                    if (source == null || source.url.isEmpty()) {
+                        continue;
+                    }
+                    array.put(new JSONObject()
+                            .put("title", source.title)
+                            .put("url", source.url));
+                }
+            }
+            return array;
+        }
+
+        private static List<String> stringList(JSONArray array) {
+            if (array == null) {
+                return Collections.emptyList();
+            }
+            List<String> values = new ArrayList<>();
+            for (int index = 0; index < array.length(); index++) {
+                String value = array.optString(index, "").trim();
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+            return values;
+        }
+
+        private static List<TmiSource> sourceList(JSONArray array) {
+            if (array == null) {
+                return Collections.emptyList();
+            }
+            List<TmiSource> values = new ArrayList<>();
+            for (int index = 0; index < array.length(); index++) {
+                Object raw = array.opt(index);
+                TmiSource source = null;
+                if (raw instanceof JSONObject) {
+                    JSONObject object = (JSONObject) raw;
+                    source = new TmiSource(
+                            object.optString("title", ""),
+                            firstNonEmpty(object.optString("url", ""), object.optString("uri", ""))
+                    );
+                } else if (raw instanceof String) {
+                    source = new TmiSource("", (String) raw);
+                }
+                if (source != null && !source.url.isEmpty()) {
+                    values.add(source);
+                }
+            }
+            return values;
         }
     }
 
@@ -785,14 +996,92 @@ final class AiLyricsRepository {
         });
     }
 
+    void loadTmi(
+            TrackSnapshot track,
+            AiLyricsSettings.Snapshot settings,
+            boolean bypassCache,
+            Callback callback
+    ) {
+        if (track == null || !track.hasUsableMetadata() || settings == null || callback == null) {
+            return;
+        }
+        String title = track.title == null ? "" : track.title.trim();
+        String artist = track.artist == null ? "" : track.artist.trim();
+        if (title.isEmpty() && artist.isEmpty()) {
+            return;
+        }
+
+        String trackKey = track.stableKey();
+        String targetLang = settings.pronunciationLanguage();
+        String cacheKey = "tmi|"
+                + trackKey
+                + "|lang=" + targetLang
+                + "|prompt=" + TMI_PROMPT_VERSION
+                + "|provider=" + settings.provider.id
+                + "|model=" + settings.model
+                + "|url=" + settings.baseUrl
+                + "|tok=" + settings.maxTokens
+                + "|temp=" + settings.temperature
+                + "|text=" + sha256(title + "\n" + artist);
+
+        if (!bypassCache) {
+            TmiInfo cached = tmiCache.get(cacheKey);
+            if (cached != null) {
+                emitLog(trackKey, callback, "ai tmi cache hit: " + settings.provider.label);
+                callback.onAiTmiLoaded(trackKey, cached);
+                return;
+            }
+            TmiInfo persisted = tmiFromPrefs(cacheKey);
+            if (persisted != null) {
+                tmiCache.put(cacheKey, persisted);
+                emitLog(trackKey, callback, "ai tmi disk cache hit: " + settings.provider.label);
+                callback.onAiTmiLoaded(trackKey, persisted);
+                return;
+            }
+        }
+
+        if (!settings.hasApiKey()) {
+            emitLog(trackKey, callback, "ai tmi skipped: API key missing for " + settings.provider.label);
+            callback.onAiTmiError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
+            return;
+        }
+
+        emitLog(trackKey, callback, "ai tmi: provider=" + settings.provider.label
+                + " / model=" + settings.model
+                + " / target=" + targetLang);
+
+        executor.execute(() -> {
+            LogSink log = message -> emitLog(trackKey, callback, message);
+            try {
+                String raw = callProviderRaw(buildTmiPrompt(title, artist, targetLang), settings);
+                TmiInfo info = parseTmiInfo(raw, targetLang);
+                tmiCache.put(cacheKey, info);
+                putTmiToPrefs(cacheKey, info);
+                log.write("ai tmi response: description=" + !info.description.isEmpty()
+                        + " / trivia=" + info.trivia.size()
+                        + " / sources=" + info.allSources().size()
+                        + " / confidence=" + info.confidence);
+                mainHandler.post(() -> callback.onAiTmiLoaded(trackKey, info));
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                log.write("ai tmi error: " + message);
+                mainHandler.post(() -> callback.onAiTmiError(trackKey, message));
+            }
+        });
+    }
+
     void clearCache() {
         cache.clear();
         metadataCache.clear();
+        tmiCache.clear();
         if (diskCache != null) {
             diskCache.clear();
         }
         if (metadataPrefs != null) {
             metadataPrefs.edit().clear().apply();
+        }
+        if (tmiPrefs != null) {
+            tmiPrefs.edit().clear().apply();
         }
     }
 
@@ -803,15 +1092,18 @@ final class AiLyricsRepository {
         }
         removeCacheEntriesByPrefix(cache, key + "|");
         removeCacheEntriesByPrefix(metadataCache, "metadata|" + key + "|");
+        removeCacheEntriesByPrefix(tmiCache, "tmi|" + key + "|");
         if (diskCache != null) {
             diskCache.removeByKeyPrefix(key + "|");
         }
         clearMetadataPrefsForTrack(key);
+        clearTmiPrefsForTrack(key);
     }
 
     void clearMemoryCache() {
         cache.clear();
         metadataCache.clear();
+        tmiCache.clear();
     }
 
     void shutdown() {
@@ -1752,6 +2044,139 @@ final class AiLyricsRepository {
                 + "OUTPUT (2 lines):";
     }
 
+    private String buildTmiPrompt(String title, String artist, String lang) {
+        AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(lang);
+        return "You are a music knowledge expert. Generate interesting facts and trivia about the song \""
+                + (title == null ? "" : title.trim())
+                + "\" by \""
+                + (artist == null ? "" : artist.trim())
+                + "\".\n\n"
+                + "LANGUAGE REQUIREMENT - FOLLOW STRICTLY:\n"
+                + "- Write ALL human-readable content in " + langInfo.name + " (" + langInfo.nativeName + ")\n"
+                + "- This includes track.description and every string inside track.trivia\n"
+                + "- Do NOT write explanatory sentences in English unless the target language itself is English\n"
+                + "- Even if the song title, artist name, album, or source pages are English, your explanation sentences must still be in " + langInfo.nativeName + "\n"
+                + "- The only text that may remain non-" + langInfo.nativeName + " is:\n"
+                + "  1. JSON keys\n"
+                + "  2. URLs\n"
+                + "  3. Proper nouns, official song titles, artist names, album names, and short quoted lyric fragments\n"
+                + "  4. reliability.confidence enum values: \"very_high\", \"high\", \"medium\", \"low\", \"none\"\n\n"
+                + "Before returning, silently verify:\n"
+                + "- track.description is fully written in " + langInfo.nativeName + "\n"
+                + "- every item in track.trivia is fully written in " + langInfo.nativeName + "\n"
+                + "- if any sentence is mostly English, rewrite it into natural " + langInfo.nativeName + " before returning\n\n"
+                + "Return ONLY valid JSON. Do not add any text before or after the JSON.\n\n"
+                + "**Output JSON Structure**:\n"
+                + "{\n"
+                + "  \"track\": {\n"
+                + "    \"description\": \"2-3 sentence description in " + langInfo.nativeName + "\",\n"
+                + "    \"trivia\": [\n"
+                + "      \"Fact 1 in " + langInfo.nativeName + "\",\n"
+                + "      \"Fact 2 in " + langInfo.nativeName + "\",\n"
+                + "      \"Fact 3 in " + langInfo.nativeName + "\"\n"
+                + "    ],\n"
+                + "    \"sources\": {\n"
+                + "      \"verified\": [],\n"
+                + "      \"related\": [],\n"
+                + "      \"other\": []\n"
+                + "    },\n"
+                + "    \"reliability\": {\n"
+                + "      \"confidence\": \"medium\",\n"
+                + "      \"has_verified_sources\": false,\n"
+                + "      \"verified_source_count\": 0,\n"
+                + "      \"related_source_count\": 0,\n"
+                + "      \"total_source_count\": 0\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n\n"
+                + "**Rules**:\n"
+                + "1. description: write 2-3 natural sentences in " + langInfo.nativeName + "\n"
+                + "2. trivia: include 3-5 concise facts, each written in " + langInfo.nativeName + "\n"
+                + "3. Prefer natural " + langInfo.nativeName + " wording, not mixed-language fragments\n"
+                + "4. Be accurate - if you're not sure about a fact, mark confidence as \"low\"\n"
+                + "5. Do NOT use markdown code blocks\n"
+                + "6. Do NOT add any explanation outside the JSON";
+    }
+
+    private TmiInfo parseTmiInfo(String raw, String targetLang) throws JSONException {
+        JSONObject root = parseJsonObjectResponse(raw);
+        JSONObject track = root.optJSONObject("track");
+        if (track == null) {
+            track = root;
+        }
+        JSONObject sources = track.optJSONObject("sources");
+        JSONObject reliability = track.optJSONObject("reliability");
+        List<TmiSource> verifiedSources = parseTmiSources(sources == null ? null : sources.optJSONArray("verified"));
+        List<TmiSource> relatedSources = parseTmiSources(sources == null ? null : sources.optJSONArray("related"));
+        List<TmiSource> otherSources = parseTmiSources(sources == null ? null : sources.optJSONArray("other"));
+        int totalSources = reliability == null
+                ? verifiedSources.size() + relatedSources.size() + otherSources.size()
+                : reliability.optInt("total_source_count", verifiedSources.size() + relatedSources.size() + otherSources.size());
+        return new TmiInfo(
+                track.optString("description", ""),
+                parseStringArray(track.optJSONArray("trivia")),
+                verifiedSources,
+                relatedSources,
+                otherSources,
+                reliability == null ? "" : reliability.optString("confidence", ""),
+                reliability != null && reliability.optBoolean("has_verified_sources", !verifiedSources.isEmpty()),
+                reliability == null ? verifiedSources.size() : reliability.optInt("verified_source_count", verifiedSources.size()),
+                reliability == null ? relatedSources.size() : reliability.optInt("related_source_count", relatedSources.size()),
+                totalSources,
+                targetLang
+        );
+    }
+
+    private JSONObject parseJsonObjectResponse(String raw) throws JSONException {
+        String cleaned = stripCodeFences(raw).trim();
+        if (!cleaned.startsWith("{")) {
+            int start = cleaned.indexOf('{');
+            int end = cleaned.lastIndexOf('}');
+            if (start >= 0 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+        }
+        return new JSONObject(cleaned);
+    }
+
+    private List<String> parseStringArray(JSONArray array) {
+        if (array == null) {
+            return Collections.emptyList();
+        }
+        List<String> values = new ArrayList<>();
+        for (int index = 0; index < array.length(); index++) {
+            String value = array.optString(index, "").trim();
+            if (!value.isEmpty()) {
+                values.add(value);
+            }
+        }
+        return values;
+    }
+
+    private List<TmiSource> parseTmiSources(JSONArray array) {
+        if (array == null) {
+            return Collections.emptyList();
+        }
+        List<TmiSource> values = new ArrayList<>();
+        for (int index = 0; index < array.length(); index++) {
+            Object raw = array.opt(index);
+            TmiSource source = null;
+            if (raw instanceof JSONObject) {
+                JSONObject object = (JSONObject) raw;
+                source = new TmiSource(
+                        object.optString("title", ""),
+                        firstNonEmpty(object.optString("uri", ""), object.optString("url", ""))
+                );
+            } else if (raw instanceof String) {
+                source = new TmiSource("", (String) raw);
+            }
+            if (source != null && !source.url.isEmpty()) {
+                values.add(source);
+            }
+        }
+        return values;
+    }
+
     private MetadataTranslation parseMetadataTranslation(
             String raw,
             String originalTitle,
@@ -2334,6 +2759,36 @@ final class AiLyricsRepository {
         }
     }
 
+    private TmiInfo tmiFromPrefs(String cacheKey) {
+        if (tmiPrefs == null || cacheKey == null || cacheKey.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            String raw = tmiPrefs.getString(sha256(cacheKey), "");
+            if (raw == null || raw.trim().isEmpty()) {
+                return null;
+            }
+            return TmiInfo.fromJson(new JSONObject(raw));
+        } catch (Exception ignored) {
+            tmiPrefs.edit().remove(sha256(cacheKey)).apply();
+            return null;
+        }
+    }
+
+    private void putTmiToPrefs(String cacheKey, TmiInfo info) {
+        if (tmiPrefs == null
+                || cacheKey == null
+                || cacheKey.trim().isEmpty()
+                || info == null
+                || !info.hasContent()) {
+            return;
+        }
+        try {
+            tmiPrefs.edit().putString(sha256(cacheKey), info.toJson(cacheKey).toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void removeCacheEntriesByPrefix(Map<String, ?> target, String prefix) {
         if (target == null || prefix == null || prefix.isEmpty()) {
             return;
@@ -2365,6 +2820,33 @@ final class AiLyricsRepository {
                 if (object.optString("cacheKey", "").startsWith(prefix)) {
                     if (editor == null) {
                         editor = metadataPrefs.edit();
+                    }
+                    editor.remove(entry.getKey());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (editor != null) {
+            editor.apply();
+        }
+    }
+
+    private void clearTmiPrefsForTrack(String trackKey) {
+        if (tmiPrefs == null || trackKey == null || trackKey.trim().isEmpty()) {
+            return;
+        }
+        String prefix = "tmi|" + trackKey.trim() + "|";
+        SharedPreferences.Editor editor = null;
+        for (Map.Entry<String, ?> entry : tmiPrefs.getAll().entrySet()) {
+            Object rawValue = entry.getValue();
+            if (!(rawValue instanceof String)) {
+                continue;
+            }
+            try {
+                JSONObject object = new JSONObject((String) rawValue);
+                if (object.optString("cacheKey", "").startsWith(prefix)) {
+                    if (editor == null) {
+                        editor = tmiPrefs.edit();
                     }
                     editor.remove(entry.getKey());
                 }
