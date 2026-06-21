@@ -132,6 +132,8 @@ public final class MainActivity extends Activity implements
     private static final int LYRICS_PIP_ASPECT_HEIGHT = 9;
     private static final int LYRICS_PIP_STAGE_WIDTH_DP = 640;
     private static final int LYRICS_PIP_STAGE_HEIGHT_DP = 360;
+    private static final float PIP_PINCH_TRIGGER_SCALE = 0.72f;
+    private static final int PIP_PINCH_TRIGGER_DISTANCE_DP = 56;
     private static final long REMOTE_SEEK_STEP_MS = 5_000L;
     private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
@@ -391,6 +393,9 @@ public final class MainActivity extends Activity implements
     private boolean pictureInPictureUiActive;
     private boolean lyricsPageVisibleBeforePictureInPicture;
     private boolean youtubeBackgroundAttachedToPictureInPicture;
+    private boolean pictureInPicturePinchTracking;
+    private boolean pictureInPicturePinchTriggered;
+    private float pictureInPicturePinchStartDistance;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
@@ -498,11 +503,88 @@ public final class MainActivity extends Activity implements
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        if (handlePictureInPicturePinch(event)) {
+            return true;
+        }
         boolean shouldConsumeReveal = handleLandscapeControlTouch(event);
         if (shouldConsumeReveal) {
             return true;
         }
         return super.dispatchTouchEvent(event);
+    }
+
+    private boolean handlePictureInPicturePinch(MotionEvent event) {
+        if (event == null || isPictureInPictureUiActive()) {
+            resetPictureInPicturePinch();
+            return false;
+        }
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_POINTER_DOWN:
+                if (event.getPointerCount() >= 2 && canEnterPictureInPictureFromGesture()) {
+                    pictureInPicturePinchTracking = true;
+                    pictureInPicturePinchTriggered = false;
+                    pictureInPicturePinchStartDistance = pointerDistance(event);
+                    cancelLyricsMetaLongPress();
+                }
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (!pictureInPicturePinchTracking || pictureInPicturePinchTriggered || event.getPointerCount() < 2) {
+                    return false;
+                }
+                float distance = pointerDistance(event);
+                float startDistance = Math.max(1f, pictureInPicturePinchStartDistance);
+                float distanceDelta = startDistance - distance;
+                boolean scaleMatched = distance / startDistance <= PIP_PINCH_TRIGGER_SCALE;
+                boolean distanceMatched = distanceDelta >= dp(PIP_PINCH_TRIGGER_DISTANCE_DP);
+                if (scaleMatched && distanceMatched) {
+                    pictureInPicturePinchTriggered = true;
+                    prepareTouchStateForPictureInPictureGesture();
+                    if (rootView != null) {
+                        rootView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                    }
+                    enterLyricsPictureInPicture();
+                    return true;
+                }
+                return false;
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                boolean consume = pictureInPicturePinchTriggered;
+                resetPictureInPicturePinch();
+                return consume;
+            default:
+                return false;
+        }
+    }
+
+    private boolean canEnterPictureInPictureFromGesture() {
+        return supportsLyricsPictureInPicture() && !isSpotifySetupPanelVisible();
+    }
+
+    private float pointerDistance(MotionEvent event) {
+        if (event == null || event.getPointerCount() < 2) {
+            return 0f;
+        }
+        float dx = event.getX(0) - event.getX(1);
+        float dy = event.getY(0) - event.getY(1);
+        return (float) Math.hypot(dx, dy);
+    }
+
+    private void resetPictureInPicturePinch() {
+        pictureInPicturePinchTracking = false;
+        pictureInPicturePinchTriggered = false;
+        pictureInPicturePinchStartDistance = 0f;
+    }
+
+    private void prepareTouchStateForPictureInPictureGesture() {
+        cancelLyricsMetaLongPress();
+        pageDragging = false;
+        artworkSwipeDragging = false;
+        recyclePageVelocityTracker();
+        recycleArtworkVelocityTracker();
+        if (artworkView != null) {
+            settleArtworkSwipe(artworkView);
+        }
     }
 
     @Override
