@@ -100,7 +100,9 @@ final class AiLyricsSettings {
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
     private static final String DEFAULT_LYRICS_TEXT_ALIGNMENT = LYRICS_ALIGN_LEFT;
-    private static final int DEFAULT_PIP_LYRICS_SIZE_PERCENT = 100;
+    private static final String DEFAULT_PIP_ORIENTATION = PIP_ORIENTATION_SQUARE;
+    private static final String DEFAULT_PIP_LYRICS_TEXT_ALIGNMENT = LYRICS_ALIGN_CENTER;
+    private static final int DEFAULT_PIP_LYRICS_SIZE_PERCENT = 150;
     private static final String DEFAULT_SOLID_BACKGROUND_COLOR = "#1e3a8a";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
@@ -261,8 +263,8 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_LANDSCAPE_CENTER_NO_LYRICS, true),
                 prefs.getBoolean(KEY_KEEP_SCREEN_ON, false),
                 prefs.getBoolean(KEY_PIP_SHOW_ARTWORK, true),
-                normalizePipOrientation(prefs.getString(KEY_PIP_ORIENTATION, PIP_ORIENTATION_LANDSCAPE)),
-                normalizeLyricsTextAlignment(prefs.getString(KEY_PIP_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
+                normalizePipOrientation(prefs.getString(KEY_PIP_ORIENTATION, DEFAULT_PIP_ORIENTATION)),
+                normalizeLyricsTextAlignment(prefs.getString(KEY_PIP_LYRICS_TEXT_ALIGNMENT, DEFAULT_PIP_LYRICS_TEXT_ALIGNMENT)),
                 normalizePipLyricsSizePercent(prefs.getInt(KEY_PIP_LYRICS_SIZE_PERCENT, DEFAULT_PIP_LYRICS_SIZE_PERCENT)),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
