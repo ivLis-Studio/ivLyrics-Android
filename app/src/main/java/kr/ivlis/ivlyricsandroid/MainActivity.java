@@ -22,6 +22,9 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -164,6 +167,8 @@ public final class MainActivity extends Activity implements
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final PollinationsAuthClient pollinationsAuthClient = new PollinationsAuthClient();
+    private AudioManager audioManager;
+    private AudioDeviceCallback audioDeviceCallback;
     private LyricsRepository lyricsRepository;
     private AiLyricsRepository aiLyricsRepository;
     private FuriganaRepository furiganaRepository;
@@ -225,6 +230,8 @@ public final class MainActivity extends Activity implements
     private TextView selectedLanguageRuleView;
     private TextView lyricsSyncOffsetValueView;
     private TextView lyricsSyncOffsetDescriptionView;
+    private TextView bluetoothSyncOffsetValueView;
+    private TextView bluetoothSyncOffsetDescriptionView;
     private TextView videoSyncOffsetValueView;
     private TextView videoSyncOffsetDescriptionView;
     private TextView lyricsLanguageButton;
@@ -379,8 +386,11 @@ public final class MainActivity extends Activity implements
     private long lastSeekCommandPositionMs = -1L;
     private String detectedLyricsSourceLang = "en";
     private String selectedRuleSourceLang = "auto";
+    private String currentBluetoothAudioDeviceKey = "";
+    private String currentBluetoothAudioDeviceName = "";
     private String activeLyricsPopupTab = LYRICS_POPUP_TAB_LANGUAGE;
     private int currentTrackSyncOffsetMs;
+    private int currentBluetoothLyricsOffsetMs;
     private int currentVideoSyncOffsetMs;
     private boolean lyricsLanguageSettingsVisible;
     private ViewGroup lyricsLanguageSettingsOriginalParent;
@@ -442,6 +452,8 @@ public final class MainActivity extends Activity implements
         lyricsRepository = new LyricsRepository(this);
         youtubeBackgroundRepository = new YouTubeBackgroundRepository(this);
         updateChecker = new UpdateChecker(this);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        registerAudioDeviceCallback();
         Window window = getWindow();
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
@@ -455,6 +467,7 @@ public final class MainActivity extends Activity implements
         applyTypographySettings(settingsSnapshot);
         applySpeakerColorSettings(settingsSnapshot);
         applyLyricsTextAlignmentSetting(settingsSnapshot);
+        refreshBluetoothAudioDeviceOffsetState(false);
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
         requestDefaultRemoteFocus(false);
@@ -475,6 +488,7 @@ public final class MainActivity extends Activity implements
         NowPlayingService.register(this);
         updatePermissionState();
         NowPlayingService.requestRefresh(this);
+        refreshBluetoothAudioDeviceOffsetState(false);
         onNowPlayingChanged(NowPlayingService.getLatestSnapshot());
         updateSpotifySetupGate(false);
         updateOnboardingPermissionState();
@@ -496,6 +510,150 @@ public final class MainActivity extends Activity implements
         if (hasFocus) {
             applySystemBarsForOrientation();
             applyLandscapeControlsAutoHideSetting();
+        }
+    }
+
+    private void registerAudioDeviceCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || audioManager == null || audioDeviceCallback != null) {
+            return;
+        }
+        audioDeviceCallback = new AudioDeviceCallback() {
+            @Override
+            public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+                refreshBluetoothAudioDeviceOffsetState(true);
+            }
+
+            @Override
+            public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+                refreshBluetoothAudioDeviceOffsetState(true);
+            }
+        };
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, handler);
+    }
+
+    private void unregisterAudioDeviceCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || audioManager == null || audioDeviceCallback == null) {
+            return;
+        }
+        audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
+        audioDeviceCallback = null;
+    }
+
+    private void refreshBluetoothAudioDeviceOffsetState(boolean deviceChanged) {
+        BluetoothAudioDevice device = currentBluetoothAudioDevice();
+        String nextKey = device == null ? "" : device.key;
+        String nextName = device == null ? "" : device.name;
+        boolean changed = !nextKey.equals(currentBluetoothAudioDeviceKey);
+        currentBluetoothAudioDeviceKey = nextKey;
+        currentBluetoothAudioDeviceName = nextName;
+        currentBluetoothLyricsOffsetMs = nextKey.isEmpty() || aiLyricsSettings == null
+                ? 0
+                : aiLyricsSettings.bluetoothSyncOffsetMs(nextKey);
+        updateLyricsSyncSettingsUi();
+        if (changed || deviceChanged) {
+            if (changed && deviceChanged) {
+                appendLog(nextKey.isEmpty()
+                        ? "bluetooth audio offset: no bluetooth output detected"
+                        : "bluetooth audio offset: device=\"" + nextName + "\" / offset=" + formatSignedMs(currentBluetoothLyricsOffsetMs));
+            }
+            updateLyricsOffsetSensitiveViews();
+        }
+    }
+
+    private BluetoothAudioDevice currentBluetoothAudioDevice() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || audioManager == null) {
+            return null;
+        }
+        AudioDeviceInfo[] devices;
+        try {
+            devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        } catch (Exception ignored) {
+            return null;
+        }
+        BluetoothAudioDevice fallback = null;
+        for (AudioDeviceInfo device : devices) {
+            if (device == null || !device.isSink() || !isBluetoothAudioDevice(device)) {
+                continue;
+            }
+            BluetoothAudioDevice candidate = bluetoothAudioDevice(device);
+            if (fallback == null) {
+                fallback = candidate;
+            }
+            if (device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || isBleSpeakerDevice(device)
+                    || isBleHeadsetDevice(device)) {
+                return candidate;
+            }
+        }
+        return fallback;
+    }
+
+    private BluetoothAudioDevice bluetoothAudioDevice(AudioDeviceInfo device) {
+        String name = "";
+        CharSequence productName = device.getProductName();
+        if (productName != null) {
+            name = productName.toString().trim();
+        }
+        if (name.isEmpty()) {
+            name = bluetoothAudioDeviceTypeLabel(device.getType());
+        }
+        String keyName = name.isEmpty() ? "id:" + device.getId() : name.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        return new BluetoothAudioDevice(
+                "type:" + device.getType() + "|name:" + keyName,
+                name.isEmpty() ? ui("bluetooth_sync.unknown_device") : name
+        );
+    }
+
+    private boolean isBluetoothAudioDevice(AudioDeviceInfo device) {
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || isBleHeadsetDevice(device)
+                || isBleSpeakerDevice(device)
+                || isHearingAidDevice(device);
+    }
+
+    private boolean isBleHeadsetDevice(AudioDeviceInfo device) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && device.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET;
+    }
+
+    private boolean isBleSpeakerDevice(AudioDeviceInfo device) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && device.getType() == AudioDeviceInfo.TYPE_BLE_SPEAKER;
+    }
+
+    private boolean isHearingAidDevice(AudioDeviceInfo device) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && device.getType() == AudioDeviceInfo.TYPE_HEARING_AID;
+    }
+
+    private String bluetoothAudioDeviceTypeLabel(int type) {
+        if (type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+            return "Bluetooth A2DP";
+        }
+        if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+            return "Bluetooth SCO";
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+            return "BLE headset";
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+            return "BLE speaker";
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && type == AudioDeviceInfo.TYPE_HEARING_AID) {
+            return "Hearing aid";
+        }
+        return ui("bluetooth_sync.unknown_device");
+    }
+
+    private static final class BluetoothAudioDevice {
+        final String key;
+        final String name;
+
+        BluetoothAudioDevice(String key, String name) {
+            this.key = key == null ? "" : key.trim();
+            this.name = name == null ? "" : name.trim();
         }
     }
 
@@ -661,6 +819,7 @@ public final class MainActivity extends Activity implements
         if (updateChecker != null) {
             updateChecker.shutdown();
         }
+        unregisterAudioDeviceCallback();
         destroyInAppBrowserWebView();
         destroyYouTubeBackgroundView();
         seekExecutor.shutdownNow();
@@ -2963,6 +3122,28 @@ public final class MainActivity extends Activity implements
         TextView resetButton = languageButton(ui("lyrics.sync.reset"), false);
         resetButton.setOnClickListener(view -> setCurrentTrackSyncOffset(0, true));
         content.addView(resetButton, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+        ), dp(8)));
+
+        TextView bluetoothTitle = label(ui("lyrics.bluetooth_sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
+        content.addView(bluetoothTitle, topMargin(matchWrap(), dp(18)));
+
+        bluetoothSyncOffsetDescriptionView = label("", 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+        bluetoothSyncOffsetDescriptionView.setLineSpacing(dp(2), 1f);
+        content.addView(bluetoothSyncOffsetDescriptionView, topMargin(matchWrap(), dp(5)));
+
+        bluetoothSyncOffsetValueView = label("", 25f, Color.WHITE, AppFonts.bold(this));
+        bluetoothSyncOffsetValueView.setGravity(Gravity.CENTER);
+        bluetoothSyncOffsetValueView.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(14)));
+        content.addView(bluetoothSyncOffsetValueView, topMargin(matchWrap(), dp(12)));
+
+        content.addView(buildOffsetButtonRow(-100, -50, -10, this::adjustCurrentBluetoothSyncOffset), topMargin(matchWrap(), dp(10)));
+        content.addView(buildOffsetButtonRow(10, 50, 100, this::adjustCurrentBluetoothSyncOffset), topMargin(matchWrap(), dp(8)));
+
+        TextView bluetoothResetButton = languageButton(ui("lyrics.bluetooth_sync.reset"), false);
+        bluetoothResetButton.setOnClickListener(view -> setCurrentBluetoothSyncOffset(0, true));
+        content.addView(bluetoothResetButton, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(42)
         ), dp(8)));
@@ -6246,7 +6427,7 @@ public final class MainActivity extends Activity implements
                 position,
                 currentTrack.playing,
                 firstLyricTimeMs(currentBaseLyricsResult),
-                currentTrackSyncOffsetMs + currentVideoSyncOffsetMs
+                currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs + currentVideoSyncOffsetMs
         );
     }
 
@@ -6502,6 +6683,18 @@ public final class MainActivity extends Activity implements
             lyricsSyncOffsetDescriptionView.setText(trackText
                     + "\n" + ui("lyrics.sync.help"));
         }
+        if (bluetoothSyncOffsetValueView != null) {
+            bluetoothSyncOffsetValueView.setText(currentBluetoothAudioDeviceKey.isEmpty()
+                    ? "--"
+                    : formatSignedMs(currentBluetoothLyricsOffsetMs));
+        }
+        if (bluetoothSyncOffsetDescriptionView != null) {
+            String deviceText = currentBluetoothAudioDeviceKey.isEmpty()
+                    ? ui("lyrics.bluetooth_sync.no_device")
+                    : uiFormat("lyrics.bluetooth_sync.device_scope", currentBluetoothAudioDeviceName);
+            bluetoothSyncOffsetDescriptionView.setText(deviceText
+                    + "\n" + ui("lyrics.bluetooth_sync.help"));
+        }
     }
 
     private void updateVideoSyncSettingsUi() {
@@ -6705,6 +6898,10 @@ public final class MainActivity extends Activity implements
         setCurrentTrackSyncOffset(currentTrackSyncOffsetMs + deltaMs, true);
     }
 
+    private void adjustCurrentBluetoothSyncOffset(int deltaMs) {
+        setCurrentBluetoothSyncOffset(currentBluetoothLyricsOffsetMs + deltaMs, true);
+    }
+
     private void adjustCurrentVideoSyncOffset(int deltaMs) {
         setCurrentVideoSyncOffset(currentVideoSyncOffsetMs + deltaMs, true);
     }
@@ -6722,6 +6919,26 @@ public final class MainActivity extends Activity implements
         updateLyricsOffsetSensitiveViews();
         if (notify) {
             showSavedToast(uiFormat("toast.sync_offset_format", formatSignedMs(nextOffset)));
+        }
+    }
+
+    private void setCurrentBluetoothSyncOffset(int offsetMs, boolean notify) {
+        if (currentBluetoothAudioDeviceKey == null || currentBluetoothAudioDeviceKey.trim().isEmpty()) {
+            updateLyricsSyncSettingsUi();
+            if (notify) {
+                showSavedToast(ui("lyrics.bluetooth_sync.no_device"));
+            }
+            return;
+        }
+        int nextOffset = clampSyncOffset(offsetMs);
+        currentBluetoothLyricsOffsetMs = nextOffset;
+        if (aiLyricsSettings != null) {
+            aiLyricsSettings.setBluetoothSyncOffsetMs(currentBluetoothAudioDeviceKey, nextOffset);
+        }
+        updateLyricsSyncSettingsUi();
+        updateLyricsOffsetSensitiveViews();
+        if (notify) {
+            showSavedToast(uiFormat("toast.bluetooth_sync_offset_format", currentBluetoothAudioDeviceName, formatSignedMs(nextOffset)));
         }
     }
 
@@ -6753,14 +6970,14 @@ public final class MainActivity extends Activity implements
     }
 
     private long lyricsPlaybackPosition(long playerPositionMs, long durationMs) {
-        long adjusted = playerPositionMs + currentTrackSyncOffsetMs;
+        long adjusted = playerPositionMs + currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, adjusted))
                 : Math.max(0L, adjusted);
     }
 
     private long playerPositionForLyricsTime(long lyricsTimeMs, long durationMs) {
-        long target = lyricsTimeMs - currentTrackSyncOffsetMs;
+        long target = lyricsTimeMs - currentTrackSyncOffsetMs - currentBluetoothLyricsOffsetMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, target))
                 : Math.max(0L, target);

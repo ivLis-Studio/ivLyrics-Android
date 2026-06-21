@@ -117,10 +117,93 @@ final class AppI18n {
         addLyricsAlignmentStrings(languages);
         addPictureInPictureStrings(languages);
         addVideoSyncOffsetStrings(languages);
+        addBluetoothSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addBluetoothSyncOffsetStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = bluetoothSyncOffsetStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] bluetoothSyncOffsetStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return bluetoothSyncOffsetStringValues("Bluetooth 기기 오프셋", "연결된 Bluetooth 오디오 기기가 없습니다.", "\"%s\"에만 저장됩니다.", "Bluetooth 스피커/이어폰에서 소리가 늦게 들릴 때 기기별로 가사 타이밍을 보정합니다.", "Bluetooth 오프셋 초기화", "%s Bluetooth 오프셋 %s", "알 수 없는 Bluetooth 기기");
+            case "zh-CN":
+                return bluetoothSyncOffsetStringValues("Bluetooth 设备偏移", "没有连接的 Bluetooth 音频设备。", "仅为“%s”保存。", "当 Bluetooth 扬声器/耳机声音延迟时，按设备校正歌词时间。", "重置 Bluetooth 偏移", "%s Bluetooth 偏移 %s", "未知 Bluetooth 设备");
+            case "zh-TW":
+                return bluetoothSyncOffsetStringValues("Bluetooth 裝置偏移", "沒有連接的 Bluetooth 音訊裝置。", "僅為「%s」儲存。", "當 Bluetooth 喇叭/耳機聲音延遲時，依裝置校正歌詞時間。", "重設 Bluetooth 偏移", "%s Bluetooth 偏移 %s", "未知 Bluetooth 裝置");
+            case "ja":
+                return bluetoothSyncOffsetStringValues("Bluetooth デバイスオフセット", "接続中の Bluetooth オーディオ機器がありません。", "「%s」にのみ保存されます。", "Bluetooth スピーカー/イヤホンで音が遅れる場合、機器ごとに歌詞タイミングを補正します。", "Bluetooth オフセットをリセット", "%s の Bluetooth オフセット %s", "不明な Bluetooth 機器");
+            case "hi":
+                return bluetoothSyncOffsetStringValues("Bluetooth डिवाइस ऑफसेट", "कोई Bluetooth ऑडियो डिवाइस कनेक्ट नहीं है।", "केवल \"%s\" के लिए सहेजा गया।", "Bluetooth स्पीकर/ईयरफोन में ध्वनि देर से सुनाई दे तो डिवाइस के अनुसार गीत समय ठीक करता है।", "Bluetooth ऑफसेट रीसेट", "%s Bluetooth ऑफसेट %s", "अज्ञात Bluetooth डिवाइस");
+            case "es":
+                return bluetoothSyncOffsetStringValues("Compensación Bluetooth", "No hay ningún dispositivo de audio Bluetooth conectado.", "Guardado sólo para \"%s\".", "Corrige el tiempo de la letra por dispositivo cuando el audio Bluetooth llega tarde.", "Restablecer compensación Bluetooth", "%s compensación Bluetooth %s", "Dispositivo Bluetooth desconocido");
+            case "fr":
+                return bluetoothSyncOffsetStringValues("Décalage Bluetooth", "Aucun appareil audio Bluetooth connecté.", "Enregistré uniquement pour \"%s\".", "Corrige le timing des paroles par appareil lorsque l'audio Bluetooth arrive en retard.", "Réinitialiser le décalage Bluetooth", "%s décalage Bluetooth %s", "Appareil Bluetooth inconnu");
+            case "ar":
+                return bluetoothSyncOffsetStringValues("إزاحة Bluetooth", "لا يوجد جهاز صوت Bluetooth متصل.", "تم الحفظ لـ \"%s\" فقط.", "يضبط توقيت الكلمات لكل جهاز عندما يتأخر صوت سماعة Bluetooth.", "إعادة تعيين إزاحة Bluetooth", "%s إزاحة Bluetooth %s", "جهاز Bluetooth غير معروف");
+            case "fa":
+                return bluetoothSyncOffsetStringValues("افست Bluetooth", "هیچ دستگاه صوتی Bluetooth متصل نیست.", "فقط برای \"%s\" ذخیره شد.", "وقتی صدای بلندگو/ایرفون Bluetooth دیر می‌رسد، زمان‌بندی متن را برای همان دستگاه اصلاح می‌کند.", "بازنشانی افست Bluetooth", "%s افست Bluetooth %s", "دستگاه Bluetooth ناشناس");
+            case "de":
+                return bluetoothSyncOffsetStringValues("Bluetooth-Geräteoffset", "Kein Bluetooth-Audiogerät verbunden.", "Nur für „%s“ gespeichert.", "Korrigiert das Liedtext-Timing pro Gerät, wenn Bluetooth-Audio verzögert ankommt.", "Bluetooth-Offset zurücksetzen", "%s Bluetooth-Offset %s", "Unbekanntes Bluetooth-Gerät");
+            case "ru":
+                return bluetoothSyncOffsetStringValues("Смещение Bluetooth", "Аудиоустройство Bluetooth не подключено.", "Сохранено только для \"%s\".", "Корректирует время текста для каждого устройства, когда звук Bluetooth запаздывает.", "Сбросить смещение Bluetooth", "%s смещение Bluetooth %s", "Неизвестное устройство Bluetooth");
+            case "sv":
+                return bluetoothSyncOffsetStringValues("Bluetooth-enhetsoffset", "Ingen Bluetooth-ljudenhet är ansluten.", "Sparad endast för \"%s\".", "Korrigerar texttajming per enhet när Bluetooth-ljudet kommer sent.", "Återställ Bluetooth-offset", "%s Bluetooth-offset %s", "Okänd Bluetooth-enhet");
+            case "pt":
+                return bluetoothSyncOffsetStringValues("Deslocamento Bluetooth", "Nenhum dispositivo de áudio Bluetooth conectado.", "Salvo apenas para \"%s\".", "Corrige o tempo da letra por dispositivo quando o áudio Bluetooth chega atrasado.", "Redefinir deslocamento Bluetooth", "%s deslocamento Bluetooth %s", "Dispositivo Bluetooth desconhecido");
+            case "bn":
+                return bluetoothSyncOffsetStringValues("Bluetooth ডিভাইস অফসেট", "কোনো Bluetooth অডিও ডিভাইস সংযুক্ত নেই।", "শুধুমাত্র \"%s\" এর জন্য সংরক্ষিত।", "Bluetooth স্পিকার/ইয়ারফোনে শব্দ দেরিতে এলে ডিভাইস অনুযায়ী লিরিক্স সময় ঠিক করে।", "Bluetooth অফসেট রিসেট", "%s Bluetooth অফসেট %s", "অজানা Bluetooth ডিভাইস");
+            case "it":
+                return bluetoothSyncOffsetStringValues("Offset Bluetooth", "Nessun dispositivo audio Bluetooth collegato.", "Salvato solo per \"%s\".", "Corregge il tempo dei testi per dispositivo quando l'audio Bluetooth arriva in ritardo.", "Reimposta offset Bluetooth", "%s offset Bluetooth %s", "Dispositivo Bluetooth sconosciuto");
+            case "th":
+                return bluetoothSyncOffsetStringValues("ออฟเซ็ตอุปกรณ์ Bluetooth", "ไม่มีอุปกรณ์เสียง Bluetooth ที่เชื่อมต่ออยู่", "บันทึกเฉพาะสำหรับ \"%s\"", "ปรับเวลาเนื้อเพลงแยกตามอุปกรณ์เมื่อเสียง Bluetooth มาช้า", "รีเซ็ตออฟเซ็ต Bluetooth", "%s ออฟเซ็ต Bluetooth %s", "อุปกรณ์ Bluetooth ที่ไม่รู้จัก");
+            case "vi":
+                return bluetoothSyncOffsetStringValues("Bù thiết bị Bluetooth", "Không có thiết bị âm thanh Bluetooth nào được kết nối.", "Chỉ lưu cho \"%s\".", "Chỉnh thời gian lời theo từng thiết bị khi âm thanh Bluetooth đến muộn.", "Đặt lại bù Bluetooth", "%s bù Bluetooth %s", "Thiết bị Bluetooth không xác định");
+            case "id":
+                return bluetoothSyncOffsetStringValues("Offset perangkat Bluetooth", "Tidak ada perangkat audio Bluetooth yang terhubung.", "Disimpan hanya untuk \"%s\".", "Mengoreksi timing lirik per perangkat saat audio Bluetooth terlambat terdengar.", "Reset offset Bluetooth", "%s offset Bluetooth %s", "Perangkat Bluetooth tidak dikenal");
+            case "ms":
+                return bluetoothSyncOffsetStringValues("Ofset peranti Bluetooth", "Tiada peranti audio Bluetooth disambungkan.", "Disimpan hanya untuk \"%s\".", "Membetulkan masa lirik mengikut peranti apabila audio Bluetooth lambat kedengaran.", "Tetapkan semula ofset Bluetooth", "%s ofset Bluetooth %s", "Peranti Bluetooth tidak diketahui");
+            case "tr":
+                return bluetoothSyncOffsetStringValues("Bluetooth cihaz ofseti", "Bağlı Bluetooth ses cihazı yok.", "Yalnızca \"%s\" için kaydedildi.", "Bluetooth hoparlör/kulaklık sesi geç geldiğinde şarkı sözü zamanını cihaza göre düzeltir.", "Bluetooth ofsetini sıfırla", "%s Bluetooth ofseti %s", "Bilinmeyen Bluetooth cihazı");
+            default:
+                return bluetoothSyncOffsetStringValues("Bluetooth Device Offset", "No Bluetooth audio device is connected.", "Saved only for \"%s\".", "Adjust lyric timing per Bluetooth speaker/headphones when audio is heard late.", "Reset Bluetooth Offset", "%s Bluetooth offset %s", "Unknown Bluetooth device");
+        }
+    }
+
+    private static String[] bluetoothSyncOffsetStringValues(
+            String title,
+            String noDevice,
+            String deviceScope,
+            String help,
+            String reset,
+            String toastFormat,
+            String unknownDevice
+    ) {
+        return new String[]{
+                "lyrics.bluetooth_sync.title", title,
+                "lyrics.bluetooth_sync.no_device", noDevice,
+                "lyrics.bluetooth_sync.device_scope", deviceScope,
+                "lyrics.bluetooth_sync.help", help,
+                "lyrics.bluetooth_sync.reset", reset,
+                "toast.bluetooth_sync_offset_format", toastFormat,
+                "bluetooth_sync.unknown_device", unknownDevice
+        };
     }
 
     private static void addTmiStrings(Map<String, Map<String, String>> languages) {

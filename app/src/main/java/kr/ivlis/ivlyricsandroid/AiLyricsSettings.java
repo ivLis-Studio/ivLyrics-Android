@@ -56,6 +56,7 @@ final class AiLyricsSettings {
     static final String KEY_PIP_LYRICS_SIZE_PERCENT = "pip_lyrics_size_percent";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
     static final String KEY_TRACK_VIDEO_SYNC_OFFSETS = "track_video_sync_offsets_v1";
+    static final String KEY_BLUETOOTH_SYNC_OFFSETS = "bluetooth_sync_offsets_v1";
     static final String KEY_SPOTIFY_CLIENT_ID = "spotify_client_id";
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
@@ -577,6 +578,14 @@ final class AiLyricsSettings {
 
     void setTrackVideoSyncOffsetMs(String trackKey, int offsetMs) {
         setTrackOffsetMs(KEY_TRACK_VIDEO_SYNC_OFFSETS, trackKey, offsetMs);
+    }
+
+    int bluetoothSyncOffsetMs(String deviceKey) {
+        return trackOffsetMs(KEY_BLUETOOTH_SYNC_OFFSETS, deviceKey);
+    }
+
+    void setBluetoothSyncOffsetMs(String deviceKey, int offsetMs) {
+        setTrackOffsetMs(KEY_BLUETOOTH_SYNC_OFFSETS, deviceKey, offsetMs);
     }
 
     private int trackOffsetMs(String prefsKey, String trackKey) {
