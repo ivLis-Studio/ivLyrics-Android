@@ -172,6 +172,7 @@ public final class MainActivity extends Activity implements
     private LyricsView pictureInPictureLyricsView;
     private PlayerProgressView playerProgressView;
     private PlayerBackgroundView backgroundView;
+    private PlayerBackgroundView pictureInPictureBackgroundView;
     private YouTubeBackgroundView youtubeBackgroundView;
     private FrameLayout rootView;
     private FrameLayout mainPage;
@@ -389,6 +390,7 @@ public final class MainActivity extends Activity implements
     private boolean manualLrclibSearchInFlight;
     private boolean pictureInPictureUiActive;
     private boolean lyricsPageVisibleBeforePictureInPicture;
+    private boolean youtubeBackgroundAttachedToPictureInPicture;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
@@ -1426,6 +1428,7 @@ public final class MainActivity extends Activity implements
             return new YouTubeBackgroundView(this);
         }
         detachFromParent(youtubeBackgroundView);
+        youtubeBackgroundAttachedToPictureInPicture = false;
         return youtubeBackgroundView;
     }
 
@@ -1616,11 +1619,20 @@ public final class MainActivity extends Activity implements
         page.setClickable(true);
         page.setClipChildren(false);
         page.setClipToPadding(false);
-        page.setBackgroundColor(Color.rgb(8, 9, 14));
         page.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
+        pictureInPictureBackgroundView = new PlayerBackgroundView(this);
+        pictureInPictureBackgroundView.setArtwork(currentArtworkBitmap, currentArtworkKey);
+        if (aiLyricsSettings != null) {
+            pictureInPictureBackgroundView.setBackgroundSettings(effectiveBackgroundSettings(aiLyricsSettings.snapshot()));
+        }
+        page.addView(pictureInPictureBackgroundView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
         View shade = new View(this);
-        shade.setBackgroundColor(Color.argb(112, 4, 5, 10));
+        shade.setBackgroundColor(Color.argb(42, 4, 5, 10));
         page.addView(shade, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -5568,6 +5580,9 @@ public final class MainActivity extends Activity implements
         if (backgroundView != null) {
             backgroundView.setBackgroundSettings(settings);
         }
+        if (pictureInPictureBackgroundView != null) {
+            pictureInPictureBackgroundView.setBackgroundSettings(settings);
+        }
         if (youtubeBackgroundView != null) {
             youtubeBackgroundView.setBackgroundSettings(settings);
         }
@@ -5587,6 +5602,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         boolean videoMode = isVideoBackgroundMode();
+        syncPictureInPictureBackgroundLayer(videoMode);
         youtubeBackgroundView.setVideoBackgroundEnabled(videoMode);
         if (!videoMode) {
             return;
@@ -5597,6 +5613,51 @@ public final class MainActivity extends Activity implements
             requestYouTubeBackgroundIfNeeded();
         }
         updateYouTubeBackgroundPlaybackState();
+    }
+
+    private void syncPictureInPictureBackgroundLayer(boolean videoMode) {
+        if (youtubeBackgroundView == null) {
+            return;
+        }
+        if (isPictureInPictureUiActive() && videoMode) {
+            attachYouTubeBackgroundToPictureInPicture();
+        } else {
+            attachYouTubeBackgroundToRoot();
+        }
+    }
+
+    private void attachYouTubeBackgroundToPictureInPicture() {
+        if (youtubeBackgroundView == null || pictureInPictureStage == null || youtubeBackgroundAttachedToPictureInPicture) {
+            return;
+        }
+        detachFromParent(youtubeBackgroundView);
+        pictureInPictureStage.addView(youtubeBackgroundView, Math.min(1, pictureInPictureStage.getChildCount()), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        youtubeBackgroundAttachedToPictureInPicture = true;
+    }
+
+    private void attachYouTubeBackgroundToRoot() {
+        if (youtubeBackgroundView == null || rootView == null) {
+            return;
+        }
+        if (!youtubeBackgroundAttachedToPictureInPicture && youtubeBackgroundView.getParent() == rootView) {
+            return;
+        }
+        detachFromParent(youtubeBackgroundView);
+        int insertIndex = 1;
+        if (backgroundView != null) {
+            int backgroundIndex = rootView.indexOfChild(backgroundView);
+            if (backgroundIndex >= 0) {
+                insertIndex = backgroundIndex + 1;
+            }
+        }
+        rootView.addView(youtubeBackgroundView, Math.min(insertIndex, rootView.getChildCount()), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        youtubeBackgroundAttachedToPictureInPicture = false;
     }
 
     private void requestYouTubeBackgroundIfNeeded() {
@@ -6686,8 +6747,11 @@ public final class MainActivity extends Activity implements
         pictureInPicturePage.setAlpha(1f);
         pictureInPicturePage.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (visible) {
+            syncPictureInPictureBackgroundLayer(isVideoBackgroundMode());
             pictureInPicturePage.bringToFront();
             updatePictureInPictureUiFromCurrentState();
+        } else {
+            attachYouTubeBackgroundToRoot();
         }
     }
 
@@ -10670,6 +10734,9 @@ public final class MainActivity extends Activity implements
         currentArtworkBitmap = artwork;
         if (backgroundView != null) {
             backgroundView.setArtwork(artwork, artworkKey);
+        }
+        if (pictureInPictureBackgroundView != null) {
+            pictureInPictureBackgroundView.setArtwork(artwork, artworkKey);
         }
         if (artwork != null) {
             if (artworkView != null) {
