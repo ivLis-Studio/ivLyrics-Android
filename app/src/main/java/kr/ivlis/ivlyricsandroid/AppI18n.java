@@ -114,6 +114,7 @@ final class AppI18n {
         addVideoBackgroundStrings(languages);
         addTrackBackgroundStrings(languages);
         addLyricsAlignmentStrings(languages);
+        addPictureInPictureStrings(languages);
         addVideoSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
         assertComplete(languages);
@@ -190,6 +191,76 @@ final class AppI18n {
                 "lyrics_alignment.center", center,
                 "lyrics_alignment.right", right,
                 "toast.lyrics_alignment_saved", toast
+        };
+    }
+
+    private static void addPictureInPictureStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = pictureInPictureStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] pictureInPictureStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return pictureInPictureStringsValues("PiP로 가사 보기", "이 기기는 PiP를 지원하지 않습니다.", "PiP 모드를 열 수 없습니다.");
+            case "zh-CN":
+                return pictureInPictureStringsValues("用 PiP 查看歌词", "此设备不支持 PiP。", "无法打开 PiP 模式。");
+            case "zh-TW":
+                return pictureInPictureStringsValues("以 PiP 查看歌詞", "此裝置不支援 PiP。", "無法開啟 PiP 模式。");
+            case "ja":
+                return pictureInPictureStringsValues("PiPで歌詞を見る", "この端末は PiP に対応していません。", "PiP モードを開けません。");
+            case "hi":
+                return pictureInPictureStringsValues("PiP में लिरिक्स देखें", "यह डिवाइस PiP का समर्थन नहीं करता।", "PiP मोड नहीं खुल सका।");
+            case "es":
+                return pictureInPictureStringsValues("Ver letras en PiP", "Este dispositivo no admite PiP.", "No se pudo abrir el modo PiP.");
+            case "fr":
+                return pictureInPictureStringsValues("Voir les paroles en PiP", "Cet appareil ne prend pas en charge le PiP.", "Impossible d'ouvrir le mode PiP.");
+            case "ar":
+                return pictureInPictureStringsValues("عرض الكلمات في PiP", "هذا الجهاز لا يدعم PiP.", "تعذر فتح وضع PiP.");
+            case "fa":
+                return pictureInPictureStringsValues("نمایش متن در PiP", "این دستگاه از PiP پشتیبانی نمی‌کند.", "حالت PiP باز نشد.");
+            case "de":
+                return pictureInPictureStringsValues("Lyrics im PiP anzeigen", "Dieses Gerät unterstützt PiP nicht.", "PiP-Modus konnte nicht geöffnet werden.");
+            case "ru":
+                return pictureInPictureStringsValues("Показать текст в PiP", "Это устройство не поддерживает PiP.", "Не удалось открыть режим PiP.");
+            case "sv":
+                return pictureInPictureStringsValues("Visa text i PiP", "Den här enheten stöder inte PiP.", "Kunde inte öppna PiP-läget.");
+            case "pt":
+                return pictureInPictureStringsValues("Ver letras em PiP", "Este dispositivo não oferece suporte a PiP.", "Não foi possível abrir o modo PiP.");
+            case "bn":
+                return pictureInPictureStringsValues("PiP-এ লিরিক্স দেখুন", "এই ডিভাইস PiP সমর্থন করে না।", "PiP মোড খোলা যায়নি।");
+            case "it":
+                return pictureInPictureStringsValues("Mostra testo in PiP", "Questo dispositivo non supporta PiP.", "Impossibile aprire la modalità PiP.");
+            case "th":
+                return pictureInPictureStringsValues("ดูเนื้อเพลงแบบ PiP", "อุปกรณ์นี้ไม่รองรับ PiP", "ไม่สามารถเปิดโหมด PiP ได้");
+            case "vi":
+                return pictureInPictureStringsValues("Xem lời ở PiP", "Thiết bị này không hỗ trợ PiP.", "Không thể mở chế độ PiP.");
+            case "id":
+                return pictureInPictureStringsValues("Lihat lirik di PiP", "Perangkat ini tidak mendukung PiP.", "Tidak dapat membuka mode PiP.");
+            case "ms":
+                return pictureInPictureStringsValues("Lihat lirik dalam PiP", "Peranti ini tidak menyokong PiP.", "Tidak dapat membuka mod PiP.");
+            case "tr":
+                return pictureInPictureStringsValues("Sözleri PiP'de göster", "Bu cihaz PiP desteklemiyor.", "PiP modu açılamadı.");
+            default:
+                return pictureInPictureStringsValues("Show Lyrics in PiP", "This device does not support PiP.", "Could not open PiP mode.");
+        }
+    }
+
+    private static String[] pictureInPictureStringsValues(String open, String unavailable, String failed) {
+        return new String[]{
+                "pip.open_lyrics", open,
+                "pip.unavailable", unavailable,
+                "pip.enter_failed", failed
         };
     }
 

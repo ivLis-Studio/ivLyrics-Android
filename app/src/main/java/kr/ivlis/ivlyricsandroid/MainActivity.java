@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.app.PictureInPictureParams;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -36,6 +37,7 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
+import android.util.Rational;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -126,6 +128,8 @@ public final class MainActivity extends Activity implements
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
     private static final int LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP = 120;
+    private static final int LYRICS_PIP_ASPECT_WIDTH = 16;
+    private static final int LYRICS_PIP_ASPECT_HEIGHT = 9;
     private static final long REMOTE_SEEK_STEP_MS = 5_000L;
     private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
@@ -163,6 +167,7 @@ public final class MainActivity extends Activity implements
 
     private LyricsView lyricsView;
     private LyricsView landscapeLyricsView;
+    private LyricsView pictureInPictureLyricsView;
     private PlayerProgressView playerProgressView;
     private PlayerBackgroundView backgroundView;
     private YouTubeBackgroundView youtubeBackgroundView;
@@ -178,15 +183,19 @@ public final class MainActivity extends Activity implements
     private FrameLayout inAppBrowserHandleTouchTarget;
     private View inAppBrowserHandleView;
     private FrameLayout settingsPanel;
+    private FrameLayout pictureInPicturePage;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
     private ImageView artworkView;
     private ImageView lyricsArtworkView;
+    private ImageView pictureInPictureArtworkView;
     private TextView titleView;
     private TextView artistView;
     private TextView lyricsTitleView;
     private TextView lyricsArtistView;
     private TextView lyricsContributorView;
+    private TextView pictureInPictureTitleView;
+    private TextView pictureInPictureArtistView;
     private WebView inAppBrowserWebView;
     private MainLyricPreviewView lyricPreviewView;
     private TextView sourceView;
@@ -375,6 +384,8 @@ public final class MainActivity extends Activity implements
     private boolean automaticUpdateCheckStarted;
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
+    private boolean pictureInPictureUiActive;
+    private boolean lyricsPageVisibleBeforePictureInPicture;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
     private String activeSettingsTab = SETTINGS_TAB_LYRICS;
@@ -446,8 +457,12 @@ public final class MainActivity extends Activity implements
         applySystemBarsForOrientation();
         applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
         applyLandscapeControlsAutoHideSetting();
+        handler.removeCallbacks(ticker);
         handler.post(ticker);
         consumeOpenLyricsPageRequest();
+        if (!isPictureInPictureUiActive()) {
+            setPictureInPictureUiVisible(false);
+        }
         maybeStartAutomaticUpdateCheck();
     }
 
@@ -463,6 +478,11 @@ public final class MainActivity extends Activity implements
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (isPictureInPictureUiActive()) {
+            updatePictureInPictureUiFromCurrentState();
+            updatePictureInPictureParamsIfNeeded();
+            return;
+        }
         if (youtubeBackgroundView != null) {
             youtubeBackgroundView.suppressHardSyncFor(900L);
         }
@@ -482,15 +502,39 @@ public final class MainActivity extends Activity implements
 
     @Override
     protected void onPause() {
-        SpotifyShortcutOverlayController.setIvLyricsForeground(false);
+        boolean keepActiveForPictureInPicture = isPictureInPictureUiActive();
+        if (!keepActiveForPictureInPicture) {
+            SpotifyShortcutOverlayController.setIvLyricsForeground(false);
+        }
         NowPlayingService.requestRefresh(this);
-        NowPlayingService.unregister(this);
-        handler.removeCallbacks(ticker);
-        handler.removeCallbacks(landscapeControlsAutoHideRunnable);
-        cancelLyricsMetaLongPress();
-        dismissLyricsMetaMenuPopup();
-        handler.removeCallbacks(onboardingWelcomeTicker);
+        if (!keepActiveForPictureInPicture) {
+            NowPlayingService.unregister(this);
+            handler.removeCallbacks(ticker);
+            handler.removeCallbacks(landscapeControlsAutoHideRunnable);
+            cancelLyricsMetaLongPress();
+            dismissLyricsMetaMenuPopup();
+            handler.removeCallbacks(onboardingWelcomeTicker);
+        }
         super.onPause();
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        pictureInPictureUiActive = isInPictureInPictureMode;
+        setPictureInPictureUiVisible(isInPictureInPictureMode);
+        if (isInPictureInPictureMode) {
+            handler.removeCallbacks(ticker);
+            handler.post(ticker);
+            return;
+        }
+        if (lyricsPageVisibleBeforePictureInPicture && !isLandscapeLayout()) {
+            handler.postDelayed(() -> showLyricsPage(true), 80L);
+        }
+        lyricsPageVisibleBeforePictureInPicture = false;
+        applySystemBarsForOrientation();
+        applyLandscapeControlsAutoHideSetting();
+        requestDefaultRemoteFocus(false);
     }
 
     @Override
@@ -787,6 +831,7 @@ public final class MainActivity extends Activity implements
             applyNowPlayingTextColors();
             lyricsTitleView.setText("ivLyrics");
             lyricsArtistView.setText(ui("status.waiting_spotify"));
+            updatePictureInPictureMetadataText("ivLyrics", ui("status.waiting_spotify"));
             translatedTrackTitle = "";
             translatedTrackArtist = "";
             updateArtwork(null, "");
@@ -942,6 +987,7 @@ public final class MainActivity extends Activity implements
         applyNowPlayingTextColors();
         lyricsTitleView.setText(ui("status.spotify_required_title"));
         lyricsArtistView.setText(ui("status.spotify_required_subtitle"));
+        updatePictureInPictureMetadataText(ui("status.spotify_required_title"), ui("status.spotify_required_subtitle"));
         translatedTrackTitle = "";
         translatedTrackArtist = "";
         updateArtwork(null, "");
@@ -1362,6 +1408,13 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
+        pictureInPicturePage = buildPictureInPicturePage();
+        pictureInPicturePage.setVisibility(View.GONE);
+        root.addView(pictureInPicturePage, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
         return root;
     }
 
@@ -1547,6 +1600,107 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
         attachPageSwipe(page, true, false);
+        return page;
+    }
+
+    private FrameLayout buildPictureInPicturePage() {
+        FrameLayout page = new FrameLayout(this);
+        page.setClickable(true);
+        page.setClipChildren(false);
+        page.setClipToPadding(false);
+
+        View shade = new View(this);
+        shade.setBackgroundColor(Color.argb(96, 4, 5, 10));
+        page.addView(shade, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        row.setPadding(dp(18), dp(10), dp(16), dp(10));
+        page.addView(row, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        LinearLayout meta = new LinearLayout(this);
+        meta.setOrientation(LinearLayout.VERTICAL);
+        meta.setGravity(Gravity.CENTER_HORIZONTAL);
+        meta.setClipChildren(false);
+        meta.setClipToPadding(false);
+        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0.43f
+        );
+        metaParams.rightMargin = dp(14);
+        row.addView(meta, metaParams);
+
+        meta.addView(flexSpacer(0.25f), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                0.25f
+        ));
+
+        pictureInPictureArtworkView = new ImageView(this);
+        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        pictureInPictureArtworkView.setAdjustViewBounds(false);
+        pictureInPictureArtworkView.setCropToPadding(false);
+        pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
+        clipRound(pictureInPictureArtworkView, 12);
+        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(82), dp(82));
+        artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
+        meta.addView(pictureInPictureArtworkView, artworkParams);
+
+        pictureInPictureTitleView = label("ivLyrics", 13f, Color.WHITE, AppFonts.bold(this));
+        pictureInPictureTitleView.setGravity(Gravity.CENTER);
+        pictureInPictureTitleView.setSingleLine(true);
+        pictureInPictureTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        pictureInPictureTitleView.setIncludeFontPadding(true);
+        pictureInPictureTitleView.setShadowLayer(dp(2), 0f, dp(1), Color.argb(145, 0, 0, 0));
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.topMargin = dp(8);
+        meta.addView(pictureInPictureTitleView, titleParams);
+
+        pictureInPictureArtistView = label(ui("status.waiting_spotify"), 10f, Color.argb(202, 255, 255, 255), AppFonts.regular(this));
+        pictureInPictureArtistView.setGravity(Gravity.CENTER);
+        pictureInPictureArtistView.setSingleLine(true);
+        pictureInPictureArtistView.setEllipsize(TextUtils.TruncateAt.END);
+        pictureInPictureArtistView.setIncludeFontPadding(true);
+        pictureInPictureArtistView.setShadowLayer(dp(1.5f), 0f, dp(1), Color.argb(130, 0, 0, 0));
+        LinearLayout.LayoutParams artistParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        artistParams.topMargin = dp(2);
+        meta.addView(pictureInPictureArtistView, artistParams);
+
+        meta.addView(flexSpacer(0.35f), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                0.35f
+        ));
+
+        pictureInPictureLyricsView = new LyricsView(this);
+        configureLyricsViewUiText(pictureInPictureLyricsView);
+        configureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f, false);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setResult(currentLyricsResult);
+        pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
+        row.addView(pictureInPictureLyricsView, new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1f
+        ));
+
+        updatePictureInPictureUiFromCurrentState();
         return page;
     }
 
@@ -1883,6 +2037,9 @@ public final class MainActivity extends Activity implements
     private void applySystemBarsForOrientation() {
         Window window = getWindow();
         if (window == null) {
+            return;
+        }
+        if (isPictureInPictureUiActive()) {
             return;
         }
         boolean landscape = isLandscapeLayout();
@@ -2299,6 +2456,13 @@ public final class MainActivity extends Activity implements
         panel.setPadding(dp(14), dp(12), dp(14), dp(12));
         panel.setBackground(lyricsLanguageSettingsPanelBackground(false));
 
+        TextView pipButton = languageButton(ui("pip.open_lyrics"), false);
+        pipButton.setOnClickListener(view -> enterLyricsPictureInPicture());
+        panel.addView(pipButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(40)
+        ));
+
         lyricsPopupTabButtonsContainer = new LinearLayout(this);
         lyricsPopupTabButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
         lyricsPopupTabButtonsContainer.setGravity(Gravity.CENTER_VERTICAL);
@@ -2310,10 +2474,10 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(38)
         ));
-        panel.addView(tabScrollView, new LinearLayout.LayoutParams(
+        panel.addView(tabScrollView, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(38)
-        ));
+        ), dp(10)));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_LANGUAGE, ui("lyrics.tab.language"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_SYNC, ui("lyrics.tab.sync"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_VIDEO, ui("lyrics.tab.video"));
@@ -3937,6 +4101,7 @@ public final class MainActivity extends Activity implements
             artistView.setText(ui("status.waiting_spotify"));
             lyricsTitleView.setText("ivLyrics");
             lyricsArtistView.setText(ui("status.waiting_spotify"));
+            updatePictureInPictureMetadataText("ivLyrics", ui("status.waiting_spotify"));
             sourceView.setText("");
             statusView.setText("");
             debugProgressView.setText("0:00 / 0:00");
@@ -5546,6 +5711,15 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setTypographySettings(typography);
         }
+        if (pictureInPictureTitleView != null) {
+            applyTypographyToTextView(pictureInPictureTitleView, typography, AiLyricsSettings.TYPO_LYRICS_HEADER_TITLE, 13f);
+        }
+        if (pictureInPictureArtistView != null) {
+            applyTypographyToTextView(pictureInPictureArtistView, typography, AiLyricsSettings.TYPO_LYRICS_HEADER_ARTIST, 10f);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setTypographySettings(typography);
+        }
     }
 
     private void applyLyricsTextAlignmentSetting(AiLyricsSettings.Snapshot snapshot) {
@@ -5557,6 +5731,9 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
         }
     }
 
@@ -5571,6 +5748,26 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSpeakerColorSettings(speakerColors);
         }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setSpeakerColorSettings(speakerColors);
+        }
+    }
+
+    private void configureLyricsViewFromSettings(LyricsView view, float verticalCenterBias, boolean seekable) {
+        if (view == null || aiLyricsSettings == null) {
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        view.setVerticalCenterBias(verticalCenterBias);
+        view.setAutoInstrumentalBreakEnabled(snapshot.autoInstrumentalBreakEnabled);
+        view.setInterludeLabelsEnabled(snapshot.interludeLabelsEnabled);
+        view.setSyncedLyricsKaraokeAnimationEnabled(snapshot.syncedLyricsKaraokeAnimationEnabled);
+        view.setKaraokeBounceEffectEnabled(snapshot.karaokeBounceEffectEnabled);
+        view.setJapaneseFuriganaEnabled(snapshot.japaneseFuriganaEnabled);
+        view.setTypographySettings(snapshot.typography);
+        view.setLyricTextAlignment(snapshot.lyricsTextAlignment);
+        view.setSpeakerColorSettings(snapshot.speakerColors);
+        view.setOnSeekListener(seekable ? this::seekToPosition : null);
     }
 
     private void applyTypographyToTextView(
@@ -6404,6 +6601,109 @@ public final class MainActivity extends Activity implements
         updateLyricsLanguageButtonState();
     }
 
+    private void enterLyricsPictureInPicture() {
+        if (!supportsLyricsPictureInPicture()) {
+            showSavedToast(ui("pip.unavailable"));
+            return;
+        }
+        lyricsPageVisibleBeforePictureInPicture = lyricsPageVisible;
+        dismissLyricsMetaTip();
+        dismissLyricsMetaMenuPopup();
+        if (isSettingsPanelVisible()) {
+            showSettingsPanel(false);
+        }
+        if (isInAppBrowserVisible()) {
+            showInAppBrowser(false);
+        }
+        updatePictureInPictureUiFromCurrentState();
+        setPictureInPictureUiVisible(true);
+        pictureInPictureUiActive = true;
+        try {
+            boolean entered = enterPictureInPictureMode(buildLyricsPictureInPictureParams());
+            if (!entered) {
+                pictureInPictureUiActive = false;
+                setPictureInPictureUiVisible(false);
+                showSavedToast(ui("pip.enter_failed"));
+            }
+        } catch (RuntimeException error) {
+            pictureInPictureUiActive = false;
+            setPictureInPictureUiVisible(false);
+            showSavedToast(ui("pip.enter_failed"));
+        }
+    }
+
+    private boolean supportsLyricsPictureInPicture() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                && getPackageManager().hasSystemFeature("android.software.picture_in_picture");
+    }
+
+    private PictureInPictureParams buildLyricsPictureInPictureParams() {
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(LYRICS_PIP_ASPECT_WIDTH, LYRICS_PIP_ASPECT_HEIGHT));
+        Rect bounds = new Rect();
+        if (pictureInPicturePage != null && pictureInPicturePage.getGlobalVisibleRect(bounds)) {
+            builder.setSourceRectHint(bounds);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setSeamlessResizeEnabled(true);
+        }
+        return builder.build();
+    }
+
+    private boolean isPictureInPictureUiActive() {
+        return pictureInPictureUiActive
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode());
+    }
+
+    private void updatePictureInPictureParamsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isInPictureInPictureMode()) {
+            return;
+        }
+        try {
+            setPictureInPictureParams(buildLyricsPictureInPictureParams());
+        } catch (RuntimeException ignored) {
+            // PiP params may be rejected while the system is resizing the activity.
+        }
+    }
+
+    private void setPictureInPictureUiVisible(boolean visible) {
+        if (pictureInPicturePage == null) {
+            return;
+        }
+        pictureInPicturePage.animate().cancel();
+        pictureInPicturePage.setAlpha(1f);
+        pictureInPicturePage.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) {
+            pictureInPicturePage.bringToFront();
+            updatePictureInPictureUiFromCurrentState();
+        }
+    }
+
+    private void updatePictureInPictureUiFromCurrentState() {
+        if (pictureInPictureLyricsView != null) {
+            configureLyricsViewUiText(pictureInPictureLyricsView);
+            configureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f, false);
+            pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+            pictureInPictureLyricsView.setPlaybackPosition(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+            pictureInPictureLyricsView.setResult(currentLyricsResult);
+            pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
+        }
+        if (currentTrack != null && currentTrack.hasUsableMetadata()) {
+            String title = translatedTrackTitle == null || translatedTrackTitle.trim().isEmpty()
+                    ? currentTrack.title
+                    : translatedTrackTitle.trim();
+            String artist = translatedTrackArtist == null || translatedTrackArtist.trim().isEmpty()
+                    ? currentTrack.artist
+                    : translatedTrackArtist.trim();
+            updatePictureInPictureMetadataText(title, artist);
+        } else if (spotifySetupRequired) {
+            updatePictureInPictureMetadataText(ui("status.spotify_required_title"), ui("status.spotify_required_subtitle"));
+        } else {
+            updatePictureInPictureMetadataText("ivLyrics", ui("status.waiting_spotify"));
+        }
+        updateArtwork(currentArtworkBitmap, currentArtworkKey);
+    }
+
     private void cancelLyricsMetaLongPress() {
         if (lyricsMetaLongPressRunnable != null) {
             handler.removeCallbacks(lyricsMetaLongPressRunnable);
@@ -6593,6 +6893,16 @@ public final class MainActivity extends Activity implements
         applyNowPlayingTextColors();
         lyricsTitleView.setText(title);
         lyricsArtistView.setText(artist);
+        updatePictureInPictureMetadataText(title, artist);
+    }
+
+    private void updatePictureInPictureMetadataText(String title, String artist) {
+        if (pictureInPictureTitleView != null) {
+            pictureInPictureTitleView.setText(title == null || title.trim().isEmpty() ? "ivLyrics" : title.trim());
+        }
+        if (pictureInPictureArtistView != null) {
+            pictureInPictureArtistView.setText(artist == null ? "" : artist.trim());
+        }
     }
 
     private void applyNowPlayingTextColors() {
@@ -8023,6 +8333,9 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSupplementLoading(pronunciation, translation);
         }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setSupplementLoading(pronunciation, translation);
+        }
         updateLyricsSupplementLoadingIndicator(pronunciation || translation || furigana);
     }
 
@@ -8084,6 +8397,10 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             configureLyricsViewUiText(landscapeLyricsView);
             landscapeLyricsView.setResult(result);
+        }
+        if (pictureInPictureLyricsView != null) {
+            configureLyricsViewUiText(pictureInPictureLyricsView);
+            pictureInPictureLyricsView.setResult(result);
         }
         updateLyricsContributorCredit(result);
         applyLandscapeNoLyricsLayout(true);
@@ -8320,6 +8637,9 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setTrackDuration(durationMs);
         }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setTrackDuration(durationMs);
+        }
     }
 
     private void setLyricsPlaybackPositionOnViews(long positionMs) {
@@ -8328,6 +8648,9 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setPlaybackPosition(positionMs);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setPlaybackPosition(positionMs);
         }
     }
 
@@ -8338,6 +8661,9 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setAutoInstrumentalBreakEnabled(enabled);
         }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setAutoInstrumentalBreakEnabled(enabled);
+        }
     }
 
     private void setInterludeLabelsOnViews(boolean enabled) {
@@ -8346,6 +8672,9 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setInterludeLabelsEnabled(enabled);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setInterludeLabelsEnabled(enabled);
         }
     }
 
@@ -8356,6 +8685,9 @@ public final class MainActivity extends Activity implements
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
         }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setSyncedLyricsKaraokeAnimationEnabled(enabled);
+        }
     }
 
     private void setKaraokeBounceEffectOnViews(boolean enabled) {
@@ -8364,6 +8696,9 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setKaraokeBounceEffectEnabled(enabled);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setKaraokeBounceEffectEnabled(enabled);
         }
         if (lyricPreviewView != null) {
             lyricPreviewView.setKaraokeBounceEffectEnabled(enabled);
@@ -8376,6 +8711,9 @@ public final class MainActivity extends Activity implements
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setJapaneseFuriganaEnabled(enabled);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setJapaneseFuriganaEnabled(enabled);
         }
     }
 
@@ -10332,6 +10670,11 @@ public final class MainActivity extends Activity implements
                 lyricsArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 lyricsArtworkView.setImageBitmap(artwork);
             }
+            if (pictureInPictureArtworkView != null) {
+                pictureInPictureArtworkView.setBackgroundColor(Color.TRANSPARENT);
+                pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                pictureInPictureArtworkView.setImageBitmap(artwork);
+            }
         } else {
             if (artworkView != null) {
                 artworkView.setImageDrawable(null);
@@ -10340,6 +10683,10 @@ public final class MainActivity extends Activity implements
             if (lyricsArtworkView != null) {
                 lyricsArtworkView.setImageDrawable(null);
                 lyricsArtworkView.setBackground(albumFallbackDrawable());
+            }
+            if (pictureInPictureArtworkView != null) {
+                pictureInPictureArtworkView.setImageDrawable(null);
+                pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
             }
         }
     }
