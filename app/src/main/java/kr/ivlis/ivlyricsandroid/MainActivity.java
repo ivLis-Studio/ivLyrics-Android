@@ -287,12 +287,14 @@ public final class MainActivity extends Activity implements
     private SeekBar backgroundBrightnessSeekBar;
     private SeekBar backgroundBlurSeekBar;
     private SeekBar backgroundVideoScaleSeekBar;
+    private SeekBar pipLyricsSizeSeekBar;
     private SeekBar lyricsBackgroundBrightnessSeekBar;
     private SeekBar lyricsBackgroundBlurSeekBar;
     private SeekBar lyricsBackgroundVideoScaleSeekBar;
     private TextView backgroundBrightnessValueView;
     private TextView backgroundBlurValueView;
     private TextView backgroundVideoScaleValueView;
+    private TextView pipLyricsSizeValueView;
     private TextView lyricsBackgroundBrightnessValueView;
     private TextView lyricsBackgroundBlurValueView;
     private TextView lyricsBackgroundVideoScaleValueView;
@@ -1858,8 +1860,8 @@ public final class MainActivity extends Activity implements
         ));
 
         LinearLayout meta = new LinearLayout(this);
-        meta.setOrientation(LinearLayout.VERTICAL);
-        meta.setGravity(Gravity.CENTER_HORIZONTAL);
+        meta.setOrientation(LinearLayout.HORIZONTAL);
+        meta.setGravity(Gravity.CENTER_VERTICAL);
         meta.setClipChildren(false);
         meta.setClipToPadding(false);
         column.addView(meta, new LinearLayout.LayoutParams(
@@ -1873,25 +1875,32 @@ public final class MainActivity extends Activity implements
         pictureInPictureArtworkView.setCropToPadding(false);
         pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
         clipRound(pictureInPictureArtworkView, 12);
-        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(140), dp(140));
-        artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
-        meta.addView(pictureInPictureArtworkView, artworkParams);
+        meta.addView(pictureInPictureArtworkView, new LinearLayout.LayoutParams(dp(112), dp(112)));
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        textColumn.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+        );
+        textParams.leftMargin = dp(16);
+        meta.addView(textColumn, textParams);
 
         pictureInPictureTitleView = label("ivLyrics", 21f, Color.WHITE, AppFonts.bold(this));
-        pictureInPictureTitleView.setGravity(Gravity.CENTER);
+        pictureInPictureTitleView.setGravity(Gravity.CENTER_VERTICAL);
         pictureInPictureTitleView.setSingleLine(true);
         pictureInPictureTitleView.setEllipsize(TextUtils.TruncateAt.END);
         pictureInPictureTitleView.setIncludeFontPadding(true);
         pictureInPictureTitleView.setShadowLayer(dp(2), 0f, dp(1), Color.argb(145, 0, 0, 0));
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+        textColumn.addView(pictureInPictureTitleView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        titleParams.topMargin = dp(14);
-        meta.addView(pictureInPictureTitleView, titleParams);
+        ));
 
         pictureInPictureArtistView = label(ui("status.waiting_spotify"), 14f, Color.argb(202, 255, 255, 255), AppFonts.regular(this));
-        pictureInPictureArtistView.setGravity(Gravity.CENTER);
+        pictureInPictureArtistView.setGravity(Gravity.CENTER_VERTICAL);
         pictureInPictureArtistView.setSingleLine(true);
         pictureInPictureArtistView.setEllipsize(TextUtils.TruncateAt.END);
         pictureInPictureArtistView.setIncludeFontPadding(true);
@@ -1901,7 +1910,7 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         artistParams.topMargin = dp(5);
-        meta.addView(pictureInPictureArtistView, artistParams);
+        textColumn.addView(pictureInPictureArtistView, artistParams);
 
         pictureInPictureLyricsView = new LyricsView(this);
         configureLyricsViewUiText(pictureInPictureLyricsView);
@@ -3547,6 +3556,14 @@ public final class MainActivity extends Activity implements
         });
         settingsDisplayPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
 
+        lyricsAlignmentButtonsContainer = new LinearLayout(this);
+        lyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        settingsDisplayPage.addView(settingGroup(
+                ui("setting.lyrics_alignment"),
+                ui("setting.lyrics_alignment_desc"),
+                lyricsAlignmentButtonsContainer
+        ), topMargin(matchWrap(), dp(12)));
+
         settingsDisplayPage.addView(sectionTitle(ui("section.pip")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.pip_desc")), topMargin(matchWrap(), dp(8)));
 
@@ -3581,12 +3598,32 @@ public final class MainActivity extends Activity implements
                 pipLyricsAlignmentButtonsContainer
         ), topMargin(matchWrap(), dp(12)));
 
-        lyricsAlignmentButtonsContainer = new LinearLayout(this);
-        lyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        pipLyricsSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        pipLyricsSizeSeekBar = new SeekBar(this);
+        pipLyricsSizeSeekBar.setMax(130);
+        pipLyricsSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int sizePercent = progress + 50;
+                if (pipLyricsSizeValueView != null) {
+                    pipLyricsSizeValueView.setText(sizePercent + "%");
+                }
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) {
+                    return;
+                }
+                aiLyricsSettings.setPipLyricsSizePercent(sizePercent);
+                applyTypographySettings(aiLyricsSettings.snapshot());
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                showSavedToast(ui("toast.pip_settings_saved"));
+            }
+        });
         settingsDisplayPage.addView(settingGroup(
-                ui("setting.lyrics_alignment"),
-                ui("setting.lyrics_alignment_desc"),
-                lyricsAlignmentButtonsContainer
+                ui("setting.pip_lyrics_size"),
+                ui("setting.pip_lyrics_size_desc"),
+                buildSliderRow(pipLyricsSizeSeekBar, pipLyricsSizeValueView)
         ), topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
@@ -6217,6 +6254,7 @@ public final class MainActivity extends Activity implements
         }
         if (pictureInPictureLyricsView != null) {
             pictureInPictureLyricsView.setTypographySettings(typography);
+            pictureInPictureLyricsView.setTypographySizeMultiplier(snapshot.pipLyricsSizePercent / 100f);
         }
     }
 
@@ -6263,6 +6301,7 @@ public final class MainActivity extends Activity implements
         view.setKaraokeBounceEffectEnabled(snapshot.karaokeBounceEffectEnabled);
         view.setJapaneseFuriganaEnabled(snapshot.japaneseFuriganaEnabled);
         view.setTypographySettings(snapshot.typography);
+        view.setTypographySizeMultiplier(1f);
         view.setLyricTextAlignment(snapshot.lyricsTextAlignment);
         view.setSpeakerColorSettings(snapshot.speakerColors);
         view.setOnSeekListener(seekable ? this::seekToPosition : null);
@@ -6271,7 +6310,9 @@ public final class MainActivity extends Activity implements
     private void configurePictureInPictureLyricsViewFromSettings(LyricsView view, float verticalCenterBias) {
         configureLyricsViewFromSettings(view, verticalCenterBias, false);
         if (view != null && aiLyricsSettings != null) {
-            view.setLyricTextAlignment(aiLyricsSettings.snapshot().pipLyricsTextAlignment);
+            AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+            view.setTypographySizeMultiplier(snapshot.pipLyricsSizePercent / 100f);
+            view.setLyricTextAlignment(snapshot.pipLyricsTextAlignment);
         }
     }
 
@@ -7513,6 +7554,15 @@ public final class MainActivity extends Activity implements
         }
         rebuildPictureInPictureOrientationButtons(snapshot.pipOrientation);
         rebuildPipLyricsAlignmentButtons(snapshot.pipLyricsTextAlignment);
+        if (pipLyricsSizeSeekBar != null) {
+            suppressSettingsEvents = true;
+            int sizePercent = AiLyricsSettings.normalizePipLyricsSizePercent(snapshot.pipLyricsSizePercent);
+            pipLyricsSizeSeekBar.setProgress(sizePercent - 50);
+            if (pipLyricsSizeValueView != null) {
+                pipLyricsSizeValueView.setText(sizePercent + "%");
+            }
+            suppressSettingsEvents = false;
+        }
         updateBackgroundSettingsUi(snapshot, true);
         rebuildLyricsAlignmentButtons(snapshot.lyricsTextAlignment);
         applyLyricsTextAlignmentSetting(snapshot);

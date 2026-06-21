@@ -209,6 +209,10 @@ final class AppI18n {
             for (int index = 0; index + 1 < settingValues.length; index += 2) {
                 copy.put(settingValues[index], settingValues[index + 1]);
             }
+            String[] sizeValues = pictureInPictureSizeStrings(language.code);
+            for (int index = 0; index + 1 < sizeValues.length; index += 2) {
+                copy.put(sizeValues[index], sizeValues[index + 1]);
+            }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
@@ -329,6 +333,60 @@ final class AppI18n {
                 "setting.pip_lyrics_alignment", lyricsAlignment,
                 "setting.pip_lyrics_alignment_desc", lyricsAlignmentDesc,
                 "toast.pip_settings_saved", saved
+        };
+    }
+
+    private static String[] pictureInPictureSizeStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return pictureInPictureSizeStringsValues("PiP 가사 크기", "일반 가사페이지에서 설정한 가사 크기를 기준으로 PiP 안의 가사만 비율로 조정합니다.");
+            case "zh-CN":
+                return pictureInPictureSizeStringsValues("PiP 歌词大小", "以普通歌词页设置的歌词大小为基准，仅按比例调整 PiP 中的歌词。");
+            case "zh-TW":
+                return pictureInPictureSizeStringsValues("PiP 歌詞大小", "以一般歌詞頁設定的歌詞大小為基準，只按比例調整 PiP 中的歌詞。");
+            case "ja":
+                return pictureInPictureSizeStringsValues("PiP 歌詞サイズ", "通常の歌詞ページで設定した歌詞サイズを基準に、PiP 内の歌詞だけを比率で調整します。");
+            case "hi":
+                return pictureInPictureSizeStringsValues("PiP लिरिक्स आकार", "सामान्य लिरिक्स पेज के आकार को आधार मानकर केवल PiP की लिरिक्स को प्रतिशत से बदलें।");
+            case "es":
+                return pictureInPictureSizeStringsValues("Tamaño de letra PiP", "Ajusta solo la letra dentro de PiP como porcentaje del tamaño configurado en la página normal.");
+            case "fr":
+                return pictureInPictureSizeStringsValues("Taille des paroles PiP", "Ajuste uniquement les paroles dans le PiP en pourcentage de la taille de la page normale.");
+            case "ar":
+                return pictureInPictureSizeStringsValues("حجم كلمات PiP", "اضبط كلمات PiP فقط كنسبة من حجم الكلمات المحدد في صفحة الكلمات العادية.");
+            case "fa":
+                return pictureInPictureSizeStringsValues("اندازه متن PiP", "فقط متن داخل PiP را بر اساس درصدی از اندازه متن صفحه عادی تنظیم کنید.");
+            case "de":
+                return pictureInPictureSizeStringsValues("PiP-Lyrics-Größe", "Passt nur die Lyrics im PiP als Prozentsatz der normalen Lyrics-Seitengröße an.");
+            case "ru":
+                return pictureInPictureSizeStringsValues("Размер текста PiP", "Настраивает только текст в PiP как процент от размера текста обычной страницы.");
+            case "sv":
+                return pictureInPictureSizeStringsValues("PiP-textstorlek", "Justera bara texten i PiP som procent av storleken på den vanliga textsidan.");
+            case "pt":
+                return pictureInPictureSizeStringsValues("Tamanho da letra PiP", "Ajusta apenas a letra no PiP como porcentagem do tamanho definido na página normal.");
+            case "bn":
+                return pictureInPictureSizeStringsValues("PiP লিরিক্স আকার", "সাধারণ লিরিক্স পেজের আকারকে ভিত্তি ধরে শুধু PiP লিরিক্স শতাংশে বদলান।");
+            case "it":
+                return pictureInPictureSizeStringsValues("Dimensione testo PiP", "Regola solo il testo in PiP come percentuale della dimensione impostata nella pagina normale.");
+            case "th":
+                return pictureInPictureSizeStringsValues("ขนาดเนื้อเพลง PiP", "ปรับเฉพาะเนื้อเพลงใน PiP เป็นเปอร์เซ็นต์จากขนาดในหน้าเนื้อเพลงปกติ");
+            case "vi":
+                return pictureInPictureSizeStringsValues("Cỡ lời PiP", "Chỉ chỉnh lời trong PiP theo phần trăm của cỡ lời ở trang lời bình thường.");
+            case "id":
+                return pictureInPictureSizeStringsValues("Ukuran lirik PiP", "Atur hanya lirik di PiP sebagai persentase dari ukuran lirik halaman normal.");
+            case "ms":
+                return pictureInPictureSizeStringsValues("Saiz lirik PiP", "Laraskan hanya lirik dalam PiP sebagai peratus saiz lirik halaman biasa.");
+            case "tr":
+                return pictureInPictureSizeStringsValues("PiP söz boyutu", "Yalnızca PiP içindeki sözleri normal söz sayfası boyutunun yüzdesi olarak ayarla.");
+            default:
+                return pictureInPictureSizeStringsValues("PiP lyric size", "Scale only the lyrics inside PiP as a percentage of the normal lyrics page size.");
+        }
+    }
+
+    private static String[] pictureInPictureSizeStringsValues(String title, String desc) {
+        return new String[]{
+                "setting.pip_lyrics_size", title,
+                "setting.pip_lyrics_size_desc", desc
         };
     }
 

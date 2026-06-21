@@ -76,6 +76,7 @@ public final class LyricsView extends View {
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
     private AiLyricsSettings.SpeakerColorSettings speakerColorSettings = AiLyricsSettings.SpeakerColorSettings.defaults();
     private String lyricsTextAlignment = AiLyricsSettings.LYRICS_ALIGN_LEFT;
+    private float typographySizeMultiplier = 1f;
 
     private List<LyricsLine> lines = Collections.emptyList();
     private long positionMs;
@@ -354,6 +355,17 @@ public final class LyricsView extends View {
 
     void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
         typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
+        rowLayoutCache.clear();
+        requestLayout();
+        postInvalidateOnAnimation();
+    }
+
+    void setTypographySizeMultiplier(float multiplier) {
+        float safeMultiplier = Math.max(0.5f, Math.min(1.8f, multiplier));
+        if (Math.abs(typographySizeMultiplier - safeMultiplier) < 0.001f) {
+            return;
+        }
+        typographySizeMultiplier = safeMultiplier;
         rowLayoutCache.clear();
         requestLayout();
         postInvalidateOnAnimation();
@@ -1327,7 +1339,7 @@ public final class LyricsView extends View {
     }
 
     private float typographyTextSizeSp(String slotId, float baseSizeSp) {
-        return Math.max(8f, baseSizeSp * typographyStyle(slotId).scale());
+        return Math.max(8f, baseSizeSp * typographyStyle(slotId).scale() * typographySizeMultiplier);
     }
 
     private Typeface typographyTypeface(String slotId) {
@@ -1344,7 +1356,7 @@ public final class LyricsView extends View {
     private String typographyCacheKey(String slotId) {
         AiLyricsSettings.TypographySlot slot = AiLyricsSettings.typographySlotById(slotId);
         AiLyricsSettings.TypographyStyle style = typographyStyle(slot.id);
-        return ":typo:" + slot.id + ":" + style.sizePercent + ":" + style.weight;
+        return ":typo:" + slot.id + ":" + style.sizePercent + ":" + style.weight + ":" + Math.round(typographySizeMultiplier * 100f);
     }
 
     private boolean isSupplementTypographySlot(String slotId) {
