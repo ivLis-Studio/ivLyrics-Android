@@ -109,6 +109,7 @@ final class AppI18n {
         addUpdateStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
         addFuriganaStrings(languages);
+        addKaraokeLineModeStrings(languages);
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
@@ -119,6 +120,75 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addKaraokeLineModeStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = karaokeLineModeStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] karaokeLineModeStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return karaokeLineModeStringsValues("노래방 데이터를 일반 싱크로 표시", "sync-data 노래방 타이밍이 있어도 글자별 채움 없이 라인 단위 싱크 가사처럼 표시합니다.");
+            case "zh-CN":
+                return karaokeLineModeStringsValues("将卡拉 OK 数据显示为行同步", "即使 sync-data 含卡拉 OK 逐字时间，也不做逐字填色，只按整行同步显示。");
+            case "zh-TW":
+                return karaokeLineModeStringsValues("將卡拉 OK 資料顯示為行同步", "即使 sync-data 含卡拉 OK 逐字時間，也不做逐字填色，只按整行同步顯示。");
+            case "ja":
+                return karaokeLineModeStringsValues("カラオケデータを行同期で表示", "sync-data にカラオケの文字タイミングがあっても、文字ごとの塗りなしで通常の行同期歌詞として表示します。");
+            case "hi":
+                return karaokeLineModeStringsValues("कराओके डेटा को लाइन-सिंक की तरह दिखाएँ", "sync-data में कराओके टाइमिंग होने पर भी अक्षर भराव के बिना सामान्य लाइन-सिंक गीतों की तरह दिखाता है।");
+            case "es":
+                return karaokeLineModeStringsValues("Mostrar karaoke como sincronización por línea", "Aunque sync-data tenga tiempos de karaoke, lo muestra como letras sincronizadas por línea sin relleno por carácter.");
+            case "fr":
+                return karaokeLineModeStringsValues("Afficher le karaoké en lignes synchronisées", "Même si sync-data contient un minutage karaoké, affiche les paroles comme des lignes synchronisées sans remplissage par caractère.");
+            case "ar":
+                return karaokeLineModeStringsValues("عرض بيانات الكاريوكي كمزامنة سطرية", "حتى عند وجود توقيت كاريوكي في sync-data، يعرض الكلمات كسطور متزامنة عادية من دون تعبئة الأحرف.");
+            case "fa":
+                return karaokeLineModeStringsValues("نمایش داده کارائوکه به صورت همگام خطی", "حتی اگر sync-data زمان‌بندی کارائوکه داشته باشد، متن را بدون پرشدن کاراکتری و مانند متن همگام خطی نمایش می‌دهد.");
+            case "de":
+                return karaokeLineModeStringsValues("Karaoke-Daten als Zeilensync anzeigen", "Auch wenn sync-data Karaoke-Timing enthält, wird es ohne Zeichenfüllung wie normal synchronisierte Zeilen angezeigt.");
+            case "ru":
+                return karaokeLineModeStringsValues("Показывать караоке как построчную синхронизацию", "Даже если sync-data содержит караоке-тайминги, текст отображается как обычные синхронные строки без посимвольной заливки.");
+            case "sv":
+                return karaokeLineModeStringsValues("Visa karaokedata som radsynk", "Även när sync-data har karaoketajming visas texten som vanliga synkade rader utan teckenfyllning.");
+            case "pt":
+                return karaokeLineModeStringsValues("Mostrar dados de karaokê como sincronização por linha", "Mesmo com tempos de karaokê no sync-data, exibe como letras sincronizadas por linha sem preenchimento por caractere.");
+            case "bn":
+                return karaokeLineModeStringsValues("কারাওকে ডেটা লাইন-সিঙ্ক হিসেবে দেখান", "sync-data-তে কারাওকে টাইমিং থাকলেও অক্ষরভিত্তিক ভরাট ছাড়া সাধারণ লাইন-সিঙ্ক লিরিক্সের মতো দেখায়।");
+            case "it":
+                return karaokeLineModeStringsValues("Mostra il karaoke come sincronizzazione per riga", "Anche se sync-data contiene tempi karaoke, mostra il testo come righe sincronizzate senza riempimento per carattere.");
+            case "th":
+                return karaokeLineModeStringsValues("แสดงข้อมูลคาราโอเกะเป็นซิงก์รายบรรทัด", "แม้ sync-data จะมีจังหวะคาราโอเกะ ก็จะแสดงเป็นเนื้อเพลงซิงก์รายบรรทัดโดยไม่มีการเติมสีทีละตัวอักษร");
+            case "vi":
+                return karaokeLineModeStringsValues("Hiển thị dữ liệu karaoke như lời đồng bộ dòng", "Ngay cả khi sync-data có thời gian karaoke, vẫn hiển thị như lời đồng bộ theo dòng, không tô từng ký tự.");
+            case "id":
+                return karaokeLineModeStringsValues("Tampilkan data karaoke sebagai sinkron baris", "Meski sync-data memiliki timing karaoke, tampilkan seperti lirik sinkron baris tanpa isi per karakter.");
+            case "ms":
+                return karaokeLineModeStringsValues("Papar data karaoke sebagai segerak baris", "Walaupun sync-data mempunyai pemasaan karaoke, paparkan seperti lirik segerak baris tanpa isian aksara demi aksara.");
+            case "tr":
+                return karaokeLineModeStringsValues("Karaoke verisini satır senkronlu göster", "sync-data karaoke zamanlaması içerse bile harf dolumu olmadan normal satır senkronlu söz gibi gösterir.");
+            default:
+                return karaokeLineModeStringsValues("Show karaoke data as line-synced", "When sync-data has karaoke timing, render it like regular line-synced lyrics without per-character fill.");
+        }
+    }
+
+    private static String[] karaokeLineModeStringsValues(String title, String desc) {
+        return new String[]{
+                "setting.karaoke_data_as_line_synced", title,
+                "setting.karaoke_data_as_line_synced_desc", desc
+        };
     }
 
     private static void addLyricsAlignmentStrings(Map<String, Map<String, String>> languages) {

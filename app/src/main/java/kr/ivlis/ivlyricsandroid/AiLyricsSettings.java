@@ -38,6 +38,7 @@ final class AiLyricsSettings {
     static final String KEY_INTERLUDE_LABELS_ENABLED = "interlude_labels_enabled";
     static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_KARAOKE_BOUNCE_EFFECT = "karaoke_bounce_effect";
+    static final String KEY_KARAOKE_DATA_AS_LINE_SYNCED = "karaoke_data_as_line_synced";
     static final String KEY_BACKGROUND_MODE = "background_mode";
     static final String KEY_BACKGROUND_BRIGHTNESS = "background_brightness";
     static final String KEY_BACKGROUND_BLUR = "background_blur";
@@ -258,6 +259,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_INTERLUDE_LABELS_ENABLED, true),
                 prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, true),
                 prefs.getBoolean(KEY_KARAOKE_BOUNCE_EFFECT, true),
+                prefs.getBoolean(KEY_KARAOKE_DATA_AS_LINE_SYNCED, false),
                 backgroundSettings(),
                 prefs.getBoolean(KEY_LANDSCAPE_AUTO_HIDE_CONTROLS, true),
                 prefs.getBoolean(KEY_LANDSCAPE_CENTER_NO_LYRICS, true),
@@ -448,6 +450,10 @@ final class AiLyricsSettings {
 
     void setKaraokeBounceEffectEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_KARAOKE_BOUNCE_EFFECT, enabled).apply();
+    }
+
+    void setKaraokeDataAsLineSynced(boolean enabled) {
+        prefs.edit().putBoolean(KEY_KARAOKE_DATA_AS_LINE_SYNCED, enabled).apply();
     }
 
     void setBackgroundMode(String mode) {
@@ -1431,6 +1437,7 @@ final class AiLyricsSettings {
         final boolean interludeLabelsEnabled;
         final boolean syncedLyricsKaraokeAnimationEnabled;
         final boolean karaokeBounceEffectEnabled;
+        final boolean karaokeDataAsLineSynced;
         final BackgroundSettings background;
         final boolean landscapeAutoHideControls;
         final boolean landscapeCenterNoLyrics;
@@ -1465,6 +1472,7 @@ final class AiLyricsSettings {
                 boolean interludeLabelsEnabled,
                 boolean syncedLyricsKaraokeAnimationEnabled,
                 boolean karaokeBounceEffectEnabled,
+                boolean karaokeDataAsLineSynced,
                 BackgroundSettings background,
                 boolean landscapeAutoHideControls,
                 boolean landscapeCenterNoLyrics,
@@ -1500,6 +1508,7 @@ final class AiLyricsSettings {
             this.interludeLabelsEnabled = interludeLabelsEnabled;
             this.syncedLyricsKaraokeAnimationEnabled = syncedLyricsKaraokeAnimationEnabled;
             this.karaokeBounceEffectEnabled = karaokeBounceEffectEnabled;
+            this.karaokeDataAsLineSynced = karaokeDataAsLineSynced;
             this.background = background == null
                     ? new BackgroundSettings(DEFAULT_BACKGROUND_MODE, 30, 20, false, false, DEFAULT_SOLID_BACKGROUND_COLOR, 100)
                     : background;

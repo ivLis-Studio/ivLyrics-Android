@@ -53,6 +53,7 @@ final class MainLyricPreviewView extends View {
     private long lineEndMs;
     private boolean playing;
     private boolean karaokeBounceEffectEnabled = true;
+    private boolean karaokeDataAsLineSynced;
     private float textScale = 1f;
 
     MainLyricPreviewView(Context context) {
@@ -102,6 +103,16 @@ final class MainLyricPreviewView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
+        bounceStates.clear();
+        completedBounceKeys.clear();
+        postInvalidateOnAnimation();
+    }
+
+    void setKaraokeDataAsLineSynced(boolean enabled) {
+        if (karaokeDataAsLineSynced == enabled) {
+            return;
+        }
+        karaokeDataAsLineSynced = enabled;
         bounceStates.clear();
         completedBounceKeys.clear();
         postInvalidateOnAnimation();
@@ -199,7 +210,7 @@ final class MainLyricPreviewView extends View {
             drawLoadingLine(canvas, line.text, baseline, textSize, normalAlpha, left, width);
             return;
         }
-        if (!line.hasKaraoke()) {
+        if (karaokeDataAsLineSynced || !line.hasKaraoke()) {
             textPaint.setColor(Color.argb(normalAlpha, 255, 255, 255));
             canvas.drawText(line.text, x, baseline, textPaint);
             drawPlainRubyText(canvas, line, x, baseline, textSize, normalAlpha);
@@ -409,6 +420,9 @@ final class MainLyricPreviewView extends View {
     }
 
     private boolean hasKaraokeLine() {
+        if (karaokeDataAsLineSynced) {
+            return false;
+        }
         for (PreviewLine line : lines) {
             if (line.hasKaraoke()) {
                 return true;

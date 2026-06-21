@@ -275,6 +275,7 @@ public final class MainActivity extends Activity implements
     private Switch interludeLabelsSwitch;
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
+    private Switch karaokeDataAsLineSyncedSwitch;
     private Switch landscapeAutoHideControlsSwitch;
     private Switch landscapeCenterNoLyricsSwitch;
     private Switch keepScreenOnSwitch;
@@ -1684,6 +1685,7 @@ public final class MainActivity extends Activity implements
         attachPageSwipe(lyricPreviewContainer, true, true);
         lyricPreviewView = new MainLyricPreviewView(this);
         lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        lyricPreviewView.setKaraokeDataAsLineSynced(aiLyricsSettings.snapshot().karaokeDataAsLineSynced);
         lyricPreviewView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         lyricPreviewContainer.addView(lyricPreviewView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -2238,6 +2240,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        landscapeLyricsView.setKaraokeDataAsLineSynced(aiLyricsSettings.snapshot().karaokeDataAsLineSynced);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         landscapeLyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         landscapeLyricsView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
@@ -2701,6 +2704,7 @@ public final class MainActivity extends Activity implements
         lyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        lyricsView.setKaraokeDataAsLineSynced(aiLyricsSettings.snapshot().karaokeDataAsLineSynced);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         lyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         lyricsView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
@@ -3494,6 +3498,20 @@ public final class MainActivity extends Activity implements
             showSavedToast(ui("toast.settings_saved"));
         });
         settingsLyricsPage.addView(syncedLyricsKaraokeSwitch, topMargin(matchWrap(), dp(12)));
+
+        karaokeDataAsLineSyncedSwitch = settingSwitch(
+                ui("setting.karaoke_data_as_line_synced"),
+                ui("setting.karaoke_data_as_line_synced_desc")
+        );
+        karaokeDataAsLineSyncedSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setKaraokeDataAsLineSynced(isChecked);
+            setKaraokeDataAsLineSyncedOnViews(isChecked);
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsLyricsPage.addView(karaokeDataAsLineSyncedSwitch, topMargin(matchWrap(), dp(12)));
 
         karaokeBounceSwitch = settingSwitch(
                 ui("setting.karaoke_bounce_effect"),
@@ -6299,6 +6317,7 @@ public final class MainActivity extends Activity implements
         view.setInterludeLabelsEnabled(snapshot.interludeLabelsEnabled);
         view.setSyncedLyricsKaraokeAnimationEnabled(snapshot.syncedLyricsKaraokeAnimationEnabled);
         view.setKaraokeBounceEffectEnabled(snapshot.karaokeBounceEffectEnabled);
+        view.setKaraokeDataAsLineSynced(snapshot.karaokeDataAsLineSynced);
         view.setJapaneseFuriganaEnabled(snapshot.japaneseFuriganaEnabled);
         view.setTypographySettings(snapshot.typography);
         view.setTypographySizeMultiplier(1f);
@@ -7530,6 +7549,11 @@ public final class MainActivity extends Activity implements
         if (karaokeBounceSwitch != null) {
             suppressSettingsEvents = true;
             karaokeBounceSwitch.setChecked(snapshot.karaokeBounceEffectEnabled);
+            suppressSettingsEvents = false;
+        }
+        if (karaokeDataAsLineSyncedSwitch != null) {
+            suppressSettingsEvents = true;
+            karaokeDataAsLineSyncedSwitch.setChecked(snapshot.karaokeDataAsLineSynced);
             suppressSettingsEvents = false;
         }
         if (landscapeAutoHideControlsSwitch != null) {
@@ -9284,6 +9308,21 @@ public final class MainActivity extends Activity implements
         }
         if (lyricPreviewView != null) {
             lyricPreviewView.setKaraokeBounceEffectEnabled(enabled);
+        }
+    }
+
+    private void setKaraokeDataAsLineSyncedOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setKaraokeDataAsLineSynced(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setKaraokeDataAsLineSynced(enabled);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setKaraokeDataAsLineSynced(enabled);
+        }
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setKaraokeDataAsLineSynced(enabled);
         }
     }
 

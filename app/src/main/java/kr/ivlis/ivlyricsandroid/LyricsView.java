@@ -91,6 +91,7 @@ public final class LyricsView extends View {
     private boolean interludeLabelsEnabled = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = true;
     private boolean karaokeBounceEffectEnabled = true;
+    private boolean karaokeDataAsLineSynced;
     private boolean japaneseFuriganaEnabled;
     private boolean pronunciationLoading;
     private boolean translationLoading;
@@ -344,6 +345,17 @@ public final class LyricsView extends View {
         postInvalidateOnAnimation();
     }
 
+    void setKaraokeDataAsLineSynced(boolean enabled) {
+        if (karaokeDataAsLineSynced == enabled) {
+            return;
+        }
+        karaokeDataAsLineSynced = enabled;
+        rowLayoutCache.clear();
+        bounceStates.clear();
+        completedBounceKeys.clear();
+        postInvalidateOnAnimation();
+    }
+
     void setJapaneseFuriganaEnabled(boolean enabled) {
         if (japaneseFuriganaEnabled == enabled) {
             return;
@@ -529,7 +541,7 @@ public final class LyricsView extends View {
         boolean activeInterlude = activeIndex >= 0
                 && activeIndex < displayLines.size()
                 && displayLines.get(activeIndex).isInterlude();
-        if (karaoke || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f) {
+        if (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f) {
             postInvalidateOnAnimation();
         }
     }
@@ -914,6 +926,10 @@ public final class LyricsView extends View {
         return false;
     }
 
+    private boolean shouldRenderKaraokeTiming() {
+        return karaoke && !karaokeDataAsLineSynced;
+    }
+
     private List<DrawGroup> buildLyricGroups(DisplayLine displayLine, boolean active, float distance) {
         if (displayLine == null) {
             return Collections.emptyList();
@@ -935,7 +951,7 @@ public final class LyricsView extends View {
         }
 
         int inactiveColor = inactiveColorForSpeaker(line.speaker, distance);
-        int activeColor = karaoke
+        int activeColor = shouldRenderKaraokeTiming()
                 ? colorForSpeaker(line.speaker, "", normalActiveColor())
                 : normalActiveColor();
         groups.add(buildGroup(
@@ -1378,7 +1394,8 @@ public final class LyricsView extends View {
                 + ":w:" + Math.round(contentWidth())
                 + ":s:" + Math.round(textSize)
                 + ":ruby:" + (japaneseFuriganaEnabled ? (rubyText == null ? 0 : rubyText.hashCode()) : 0)
-                + ":fake:" + syncedLyricsKaraokeAnimationEnabled;
+                + ":fake:" + syncedLyricsKaraokeAnimationEnabled
+                + ":line:" + karaokeDataAsLineSynced;
         List<TextRow> cached = rowLayoutCache.get(key);
         if (cached != null) {
             return cached;
@@ -1995,6 +2012,9 @@ public final class LyricsView extends View {
     ) {
         List<TextSegment> segments = new ArrayList<>();
         List<RubyAnnotation> rubyAnnotations = parseRubyAnnotations(text, rubyText);
+        if (karaokeDataAsLineSynced) {
+            return buildUntimedSegments(text, rubyAnnotations);
+        }
         if (syllables != null && !syllables.isEmpty()) {
             int charOffset = 0;
             for (int index = 0; index < syllables.size(); index++) {
@@ -2833,7 +2853,7 @@ public final class LyricsView extends View {
     }
 
     private KaraokeBounce karaokeBounce(TextSegment segment, DrawGroup group) {
-        if (!karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
+        if (karaokeDataAsLineSynced || !karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
 
