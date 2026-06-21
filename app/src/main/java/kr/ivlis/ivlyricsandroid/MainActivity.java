@@ -130,6 +130,8 @@ public final class MainActivity extends Activity implements
     private static final int LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP = 120;
     private static final int LYRICS_PIP_ASPECT_WIDTH = 16;
     private static final int LYRICS_PIP_ASPECT_HEIGHT = 9;
+    private static final int LYRICS_PIP_STAGE_WIDTH_DP = 640;
+    private static final int LYRICS_PIP_STAGE_HEIGHT_DP = 360;
     private static final long REMOTE_SEEK_STEP_MS = 5_000L;
     private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
@@ -184,6 +186,7 @@ public final class MainActivity extends Activity implements
     private View inAppBrowserHandleView;
     private FrameLayout settingsPanel;
     private FrameLayout pictureInPicturePage;
+    private ScaledPictureInPictureFrameLayout pictureInPictureStage;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
     private ImageView artworkView;
@@ -1604,13 +1607,20 @@ public final class MainActivity extends Activity implements
     }
 
     private FrameLayout buildPictureInPicturePage() {
-        FrameLayout page = new FrameLayout(this);
+        ScaledPictureInPictureFrameLayout page = new ScaledPictureInPictureFrameLayout(
+                this,
+                dp(LYRICS_PIP_STAGE_WIDTH_DP),
+                dp(LYRICS_PIP_STAGE_HEIGHT_DP)
+        );
+        pictureInPictureStage = page;
         page.setClickable(true);
         page.setClipChildren(false);
         page.setClipToPadding(false);
+        page.setBackgroundColor(Color.rgb(8, 9, 14));
+        page.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         View shade = new View(this);
-        shade.setBackgroundColor(Color.argb(96, 4, 5, 10));
+        shade.setBackgroundColor(Color.argb(112, 4, 5, 10));
         page.addView(shade, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -1621,7 +1631,7 @@ public final class MainActivity extends Activity implements
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setClipChildren(false);
         row.setClipToPadding(false);
-        row.setPadding(dp(18), dp(10), dp(16), dp(10));
+        row.setPadding(dp(26), dp(18), dp(30), dp(18));
         page.addView(row, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -1635,15 +1645,15 @@ public final class MainActivity extends Activity implements
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0.43f
+                0.82f
         );
-        metaParams.rightMargin = dp(14);
+        metaParams.rightMargin = dp(24);
         row.addView(meta, metaParams);
 
-        meta.addView(flexSpacer(0.25f), new LinearLayout.LayoutParams(
+        meta.addView(flexSpacer(0.18f), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                0.25f
+                0.18f
         ));
 
         pictureInPictureArtworkView = new ImageView(this);
@@ -1652,11 +1662,11 @@ public final class MainActivity extends Activity implements
         pictureInPictureArtworkView.setCropToPadding(false);
         pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
         clipRound(pictureInPictureArtworkView, 12);
-        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(82), dp(82));
+        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(dp(150), dp(150));
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
         meta.addView(pictureInPictureArtworkView, artworkParams);
 
-        pictureInPictureTitleView = label("ivLyrics", 13f, Color.WHITE, AppFonts.bold(this));
+        pictureInPictureTitleView = label("ivLyrics", 22f, Color.WHITE, AppFonts.bold(this));
         pictureInPictureTitleView.setGravity(Gravity.CENTER);
         pictureInPictureTitleView.setSingleLine(true);
         pictureInPictureTitleView.setEllipsize(TextUtils.TruncateAt.END);
@@ -1666,10 +1676,10 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        titleParams.topMargin = dp(8);
+        titleParams.topMargin = dp(14);
         meta.addView(pictureInPictureTitleView, titleParams);
 
-        pictureInPictureArtistView = label(ui("status.waiting_spotify"), 10f, Color.argb(202, 255, 255, 255), AppFonts.regular(this));
+        pictureInPictureArtistView = label(ui("status.waiting_spotify"), 15f, Color.argb(202, 255, 255, 255), AppFonts.regular(this));
         pictureInPictureArtistView.setGravity(Gravity.CENTER);
         pictureInPictureArtistView.setSingleLine(true);
         pictureInPictureArtistView.setEllipsize(TextUtils.TruncateAt.END);
@@ -1679,13 +1689,13 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        artistParams.topMargin = dp(2);
+        artistParams.topMargin = dp(5);
         meta.addView(pictureInPictureArtistView, artistParams);
 
-        meta.addView(flexSpacer(0.35f), new LinearLayout.LayoutParams(
+        meta.addView(flexSpacer(0.30f), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                0.35f
+                0.30f
         ));
 
         pictureInPictureLyricsView = new LyricsView(this);
@@ -6641,7 +6651,9 @@ public final class MainActivity extends Activity implements
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
                 .setAspectRatio(new Rational(LYRICS_PIP_ASPECT_WIDTH, LYRICS_PIP_ASPECT_HEIGHT));
         Rect bounds = new Rect();
-        if (pictureInPicturePage != null && pictureInPicturePage.getGlobalVisibleRect(bounds)) {
+        if (pictureInPictureStage != null && pictureInPictureStage.copyScaledContentBoundsOnScreen(bounds)) {
+            builder.setSourceRectHint(bounds);
+        } else if (pictureInPicturePage != null && pictureInPicturePage.getGlobalVisibleRect(bounds)) {
             builder.setSourceRectHint(bounds);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
