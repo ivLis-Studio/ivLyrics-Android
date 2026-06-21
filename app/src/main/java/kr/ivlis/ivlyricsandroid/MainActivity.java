@@ -1882,26 +1882,41 @@ public final class MainActivity extends Activity implements
     }
 
     private void buildPortraitPictureInPictureContent(FrameLayout page) {
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setGravity(Gravity.CENTER_HORIZONTAL);
-        column.setClipChildren(false);
-        column.setClipToPadding(false);
-        column.setPadding(dp(22), dp(26), dp(22), dp(24));
-        page.addView(column, new FrameLayout.LayoutParams(
+        FrameLayout content = new FrameLayout(this);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        page.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
+        pictureInPictureLyricsView = new LyricsView(this);
+        configureLyricsViewUiText(pictureInPictureLyricsView);
+        configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setResult(currentLyricsResult);
+        pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
+        FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        lyricsParams.leftMargin = dp(18);
+        lyricsParams.rightMargin = dp(18);
+        content.addView(pictureInPictureLyricsView, lyricsParams);
 
         LinearLayout meta = new LinearLayout(this);
         meta.setOrientation(LinearLayout.HORIZONTAL);
         meta.setGravity(Gravity.CENTER_VERTICAL);
         meta.setClipChildren(false);
         meta.setClipToPadding(false);
-        column.addView(meta, new LinearLayout.LayoutParams(
+        FrameLayout.LayoutParams metaParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        );
+        metaParams.leftMargin = dp(22);
+        metaParams.rightMargin = dp(22);
+        metaParams.topMargin = dp(26);
+        content.addView(meta, metaParams);
 
         pictureInPictureArtworkView = new ImageView(this);
         pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1945,43 +1960,44 @@ public final class MainActivity extends Activity implements
         );
         artistParams.topMargin = dp(5);
         textColumn.addView(pictureInPictureArtistView, artistParams);
-
-        pictureInPictureLyricsView = new LyricsView(this);
-        configureLyricsViewUiText(pictureInPictureLyricsView);
-        configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.48f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
-        pictureInPictureLyricsView.setResult(currentLyricsResult);
-        pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
-        LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-        );
-        lyricsParams.topMargin = dp(18);
-        column.addView(pictureInPictureLyricsView, lyricsParams);
     }
 
     private void buildSquarePictureInPictureContent(FrameLayout page) {
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setGravity(Gravity.CENTER_HORIZONTAL);
-        column.setClipChildren(false);
-        column.setClipToPadding(false);
-        column.setPadding(dp(24), dp(22), dp(24), dp(22));
-        page.addView(column, new FrameLayout.LayoutParams(
+        FrameLayout content = new FrameLayout(this);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        page.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
+        pictureInPictureLyricsView = new LyricsView(this);
+        configureLyricsViewUiText(pictureInPictureLyricsView);
+        configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setResult(currentLyricsResult);
+        pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
+        FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        lyricsParams.leftMargin = dp(20);
+        lyricsParams.rightMargin = dp(20);
+        content.addView(pictureInPictureLyricsView, lyricsParams);
 
         LinearLayout meta = new LinearLayout(this);
         meta.setOrientation(LinearLayout.HORIZONTAL);
         meta.setGravity(Gravity.CENTER_VERTICAL);
         meta.setClipChildren(false);
         meta.setClipToPadding(false);
-        column.addView(meta, new LinearLayout.LayoutParams(
+        FrameLayout.LayoutParams metaParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        );
+        metaParams.leftMargin = dp(24);
+        metaParams.rightMargin = dp(24);
+        metaParams.topMargin = dp(22);
+        content.addView(meta, metaParams);
 
         pictureInPictureArtworkView = new ImageView(this);
         pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -2025,20 +2041,6 @@ public final class MainActivity extends Activity implements
         );
         artistParams.topMargin = dp(5);
         textColumn.addView(pictureInPictureArtistView, artistParams);
-
-        pictureInPictureLyricsView = new LyricsView(this);
-        configureLyricsViewUiText(pictureInPictureLyricsView);
-        configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.45f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
-        pictureInPictureLyricsView.setResult(currentLyricsResult);
-        pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
-        LinearLayout.LayoutParams lyricsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-        );
-        lyricsParams.topMargin = dp(16);
-        column.addView(pictureInPictureLyricsView, lyricsParams);
     }
 
     private void buildLyricsOnlyPictureInPictureContent(FrameLayout page) {
