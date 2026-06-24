@@ -22,7 +22,7 @@ import java.util.concurrent.Executors;
 
 final class YouTubeBackgroundRepository {
     private static final String PREFS_NAME = "youtube_background_cache";
-    private static final String YOUTUBE_ENDPOINT = "https://lyrics.api.ivl.is/lyrics/youtube";
+    private static final String YOUTUBE_ENDPOINT = "https://ivlis.kr/ivLyrics/openvideo/youtube";
     private static final String SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
 

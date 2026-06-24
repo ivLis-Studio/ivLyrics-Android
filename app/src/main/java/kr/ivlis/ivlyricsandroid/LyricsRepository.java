@@ -26,6 +26,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,9 +38,16 @@ final class LyricsRepository {
     private static final String TAG = "ivLyricsDebug";
     private static final String LRCLIB_BASE = "https://lrclib.net/api";
     private static final String SYNC_DATA_BASE = "https://lyrics.api.ivl.is/lyrics/sync-data";
+    private static final String OPENDB_ORIGIN = "https://ivlis.kr";
+    private static final String OPENDB_ROOT = "https://ivlis.kr/ivLyrics/opendb";
+    private static final String OPENDB_MANIFEST_URL = OPENDB_ROOT + "/data/manifest.json";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
     private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v1";
+    private static final String OPENDB_PREFS = "sync_data_opendb";
+    private static final String KEY_OPENDB_PROVIDER_MAP = "provider_map";
+    private static final String KEY_OPENDB_FETCHED_AT_MS = "fetched_at_ms";
+    private static final String KEY_OPENDB_UNAVAILABLE_UNTIL_MS = "unavailable_until_ms";
     private static final String SPOTIFY_ACCOUNTS_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
     private static final String SPOTIFY_SEARCH_BASE = "https://api.spotify.com/v1/search";
     private static final String SPOTIFY_TRACK_BASE = "https://api.spotify.com/v1/tracks/";
@@ -54,6 +62,9 @@ final class LyricsRepository {
     private static final int READ_TIMEOUT_MS = 35_000;
     private static final long SPOTIFY_TOKEN_MAX_AGE_MS = 50L * 60L * 1_000L;
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
+    private static final long SYNC_DATA_SERVER_CACHE_BYPASS_MS = 30L * 1_000L;
+    private static final long OPENDB_FRESH_MS = 24L * 60L * 60L * 1_000L;
+    private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
     private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
@@ -67,10 +78,13 @@ final class LyricsRepository {
     private final AiLyricsSettings aiLyricsSettings;
     private final LyricsDiskCache diskCache;
     private final RawResponseDiskCache syncDataResponseCache;
+    private final SharedPreferences openDbPrefs;
+    private final Map<String, Long> syncDataServerCacheBypassUntil = new HashMap<>();
     private String spotifyAccessToken = "";
     private String spotifyTokenSourceKey = "";
     private long spotifyTokenIssuedAtMs = 0L;
     private long spotifyTokenExpiresAtMs = 0L;
+    private long syncDataServerCacheBypassAllUntilMs = 0L;
 
     LyricsRepository(Context context) {
         Context appContext = context == null ? null : context.getApplicationContext();
@@ -84,6 +98,9 @@ final class LyricsRepository {
         syncDataResponseCache = appContext == null
                 ? null
                 : new RawResponseDiskCache(appContext, "sync_data_api", 700);
+        openDbPrefs = appContext == null
+                ? null
+                : appContext.getSharedPreferences(OPENDB_PREFS, Context.MODE_PRIVATE);
         restoreSpotifyToken();
     }
 
@@ -238,6 +255,7 @@ final class LyricsRepository {
         if (syncDataResponseCache != null) {
             syncDataResponseCache.clear();
         }
+        markSyncDataServerCacheBypass("");
     }
 
     void clearCacheForTrack(String trackKey) {
@@ -258,7 +276,44 @@ final class LyricsRepository {
         String key = syncDataCacheKey(isrc);
         if (!key.isEmpty()) {
             syncDataResponseCache.remove(key);
+            markSyncDataServerCacheBypass(TrackSnapshot.normalizeIsrc(isrc));
         }
+    }
+
+    private synchronized void markSyncDataServerCacheBypass(String normalizedIsrc) {
+        long expiresAt = System.currentTimeMillis() + SYNC_DATA_SERVER_CACHE_BYPASS_MS;
+        String key = normalizedIsrc == null ? "" : normalizedIsrc.trim();
+        if (key.isEmpty()) {
+            syncDataServerCacheBypassAllUntilMs = expiresAt;
+            syncDataServerCacheBypassUntil.clear();
+            return;
+        }
+        syncDataServerCacheBypassUntil.put(key, expiresAt);
+    }
+
+    private synchronized boolean shouldBypassSyncDataServerCache(String normalizedIsrc) {
+        long now = System.currentTimeMillis();
+        if (syncDataServerCacheBypassAllUntilMs > now) {
+            return true;
+        }
+        if (syncDataServerCacheBypassAllUntilMs > 0L) {
+            syncDataServerCacheBypassAllUntilMs = 0L;
+        }
+
+        String key = normalizedIsrc == null ? "" : normalizedIsrc.trim();
+        if (key.isEmpty()) {
+            return false;
+        }
+
+        Long expiresAt = syncDataServerCacheBypassUntil.get(key);
+        if (expiresAt == null) {
+            return false;
+        }
+        if (expiresAt <= now) {
+            syncDataServerCacheBypassUntil.remove(key);
+            return false;
+        }
+        return true;
     }
 
     void clearSpotifyTokenCache() {
@@ -1104,17 +1159,34 @@ final class LyricsRepository {
 
     private SyncDataResult fetchSyncData(String isrc, TrackSnapshot track, SpotifyTrackMatch spotifyMatch, LogSink log) {
         try {
+            String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
+            if (normalizedIsrc.isEmpty()) {
+                return null;
+            }
             String cacheKey = syncDataCacheKey(isrc);
             String cachedResponse = syncDataResponseCache == null ? "" : syncDataResponseCache.get(cacheKey);
             if (!cachedResponse.isEmpty()) {
-                log.write("sync-data cache hit: isrc=" + TrackSnapshot.normalizeIsrc(isrc));
+                log.write("sync-data cache hit: isrc=" + normalizedIsrc);
                 return parseSyncDataResponse(cachedResponse, log, true);
             }
 
+            boolean bypassServerCache = shouldBypassSyncDataServerCache(normalizedIsrc);
+            if (bypassServerCache) {
+                if (isOpenDbUnavailable(log)) {
+                    log.write("sync-data opendb: unavailable after cache clear, skip direct sync-data request");
+                    return null;
+                }
+            } else if (!shouldRequestSyncDataFromOpenDb(normalizedIsrc, LRCLIB_PROVIDER_ID, log)) {
+                return null;
+            }
+
             Map<String, String> params = new HashMap<>();
-            params.put("isrc", isrc);
+            params.put("isrc", normalizedIsrc);
             params.put("provider", "lrclib");
             params.put("metadata", "1");
+            if (bypassServerCache) {
+                params.put("bypassCache", "1");
+            }
             params.put("title", firstNonEmpty(spotifyMatch == null ? "" : spotifyMatch.title, track.title));
             params.put("artist", firstNonEmpty(spotifyMatch == null ? "" : spotifyMatch.artist, track.artist));
             params.put("album", firstNonEmpty(spotifyMatch == null ? "" : spotifyMatch.album, track.album));
@@ -1135,6 +1207,202 @@ final class LyricsRepository {
         } catch (Exception error) {
             log.write("sync-data error: " + error.getMessage());
             return null;
+        }
+    }
+
+    private boolean shouldRequestSyncDataFromOpenDb(String isrc, String provider, LogSink log) {
+        String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
+        String normalizedProvider = provider == null ? "" : provider.trim();
+        if (normalizedIsrc.isEmpty() || normalizedProvider.isEmpty()) {
+            return false;
+        }
+
+        try {
+            JSONObject providerMap = loadOpenDbProviderMap(log);
+            if (providerMap == null) {
+                log.write("sync-data opendb: unavailable, skip direct sync-data request");
+                return false;
+            }
+            JSONArray providerItems = providerMap.optJSONArray(normalizedProvider);
+            boolean exists = jsonArrayContains(providerItems, normalizedIsrc);
+            if (!exists) {
+                log.write("sync-data opendb: not listed, skip direct sync-data request"
+                        + " / provider=" + normalizedProvider
+                        + " / isrc=" + normalizedIsrc);
+            }
+            return exists;
+        } catch (Exception error) {
+            markOpenDbUnavailable();
+            log.write("sync-data opendb error: " + error.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isOpenDbUnavailable(LogSink log) {
+        try {
+            return loadOpenDbProviderMap(log) == null;
+        } catch (Exception error) {
+            markOpenDbUnavailable();
+            log.write("sync-data opendb error: " + error.getMessage());
+            return true;
+        }
+    }
+
+    private JSONObject loadOpenDbProviderMap(LogSink log) throws Exception {
+        long now = System.currentTimeMillis();
+        if (openDbPrefs == null) {
+            return null;
+        }
+
+        long unavailableUntil = openDbPrefs.getLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, 0L);
+        if (unavailableUntil > now) {
+            return null;
+        }
+
+        String cached = openDbPrefs.getString(KEY_OPENDB_PROVIDER_MAP, "");
+        long fetchedAt = openDbPrefs.getLong(KEY_OPENDB_FETCHED_AT_MS, 0L);
+        if (cached != null && !cached.isEmpty() && now - fetchedAt < OPENDB_FRESH_MS) {
+            return new JSONObject(cached);
+        }
+
+        try {
+            JSONObject refreshed = refreshOpenDbProviderMap(log);
+            openDbPrefs.edit()
+                    .putString(KEY_OPENDB_PROVIDER_MAP, refreshed.toString())
+                    .putLong(KEY_OPENDB_FETCHED_AT_MS, now)
+                    .putLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, 0L)
+                    .apply();
+            return refreshed;
+        } catch (Exception error) {
+            openDbPrefs.edit()
+                    .putLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, now + OPENDB_UNAVAILABLE_RETRY_MS)
+                    .apply();
+            throw error;
+        }
+    }
+
+    private JSONObject refreshOpenDbProviderMap(LogSink log) throws Exception {
+        log.write("sync-data opendb manifest request");
+        JSONObject manifest = new JSONObject(get(OPENDB_MANIFEST_URL));
+        JSONObject providerMap = new JSONObject();
+
+        JSONObject base = manifest.optJSONObject("base");
+        if (base != null) {
+            mergeOpenDbProviderFile(providerMap, base.optString("url", ""), false);
+        }
+
+        JSONArray deltas = manifest.optJSONArray("deltas");
+        if (deltas != null) {
+            for (int index = 0; index < deltas.length(); index++) {
+                JSONObject delta = deltas.optJSONObject(index);
+                if (delta != null) {
+                    mergeOpenDbProviderFile(providerMap, delta.optString("url", ""), true);
+                }
+            }
+        }
+
+        JSONObject current = manifest.optJSONObject("current");
+        if (current != null) {
+            mergeOpenDbProviderFile(providerMap, current.optString("url", ""), true);
+        }
+
+        JSONArray lrclib = providerMap.optJSONArray(LRCLIB_PROVIDER_ID);
+        log.write("sync-data opendb refreshed: lrclib="
+                + (lrclib == null ? 0 : lrclib.length()));
+        return providerMap;
+    }
+
+    private void mergeOpenDbProviderFile(JSONObject providerMap, String relativeUrl, boolean delta) throws Exception {
+        String url = resolveOpenDbUrl(relativeUrl);
+        if (url.isEmpty()) {
+            return;
+        }
+        JSONObject file = new JSONObject(get(url));
+        if (delta) {
+            mergeOpenDbProviderObject(providerMap, file.optJSONObject("add"), true);
+            mergeOpenDbProviderObject(providerMap, file.optJSONObject("remove"), false);
+            return;
+        }
+        mergeOpenDbProviderObject(providerMap, file.optJSONObject("items"), true);
+    }
+
+    private void mergeOpenDbProviderObject(JSONObject providerMap, JSONObject source, boolean add) throws Exception {
+        if (source == null) {
+            return;
+        }
+
+        Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String provider = keys.next();
+            JSONArray entries = source.optJSONArray(provider);
+            if (entries == null) {
+                continue;
+            }
+
+            JSONArray target = providerMap.optJSONArray(provider);
+            if (target == null) {
+                target = new JSONArray();
+                providerMap.put(provider, target);
+            }
+
+            for (int index = 0; index < entries.length(); index++) {
+                String normalizedIsrc = TrackSnapshot.normalizeIsrc(entries.optString(index, ""));
+                if (normalizedIsrc.isEmpty()) {
+                    continue;
+                }
+                if (add) {
+                    if (!jsonArrayContains(target, normalizedIsrc)) {
+                        target.put(normalizedIsrc);
+                    }
+                } else {
+                    removeFromJsonArray(target, normalizedIsrc);
+                }
+            }
+        }
+    }
+
+    private String resolveOpenDbUrl(String relativeUrl) {
+        String value = relativeUrl == null ? "" : relativeUrl.trim();
+        if (value.isEmpty()) {
+            return "";
+        }
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            return value;
+        }
+        if (value.startsWith("/")) {
+            return OPENDB_ORIGIN + value;
+        }
+        return OPENDB_ROOT + "/" + value;
+    }
+
+    private void markOpenDbUnavailable() {
+        if (openDbPrefs != null) {
+            openDbPrefs.edit()
+                    .putLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, System.currentTimeMillis() + OPENDB_UNAVAILABLE_RETRY_MS)
+                    .apply();
+        }
+    }
+
+    private static boolean jsonArrayContains(JSONArray array, String value) {
+        if (array == null || value == null || value.trim().isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < array.length(); index++) {
+            if (value.equals(array.optString(index, ""))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void removeFromJsonArray(JSONArray array, String value) throws Exception {
+        if (array == null || value == null || value.trim().isEmpty()) {
+            return;
+        }
+        for (int index = array.length() - 1; index >= 0; index--) {
+            if (value.equals(array.optString(index, ""))) {
+                array.remove(index);
+            }
         }
     }
 
