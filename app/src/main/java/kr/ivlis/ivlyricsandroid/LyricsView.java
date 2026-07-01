@@ -545,7 +545,10 @@ public final class LyricsView extends View {
                 continue;
             }
             addHitTarget(layout, baselineCenter, blockGap);
-            drawGroups(canvas, layout.groups, baselineCenter, topFadeAlpha(baselineCenter, layout.height));
+            float fadeAlpha = layout.index == activeIndex
+                    ? 1f
+                    : topFadeAlpha(baselineCenter, layout.height);
+            drawGroups(canvas, layout.groups, baselineCenter, fadeAlpha);
         }
         applyBottomEdgeFade(canvas);
         canvas.restoreToCount(lyricLayer);
