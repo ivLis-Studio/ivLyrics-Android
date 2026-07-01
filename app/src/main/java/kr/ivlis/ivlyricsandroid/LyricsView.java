@@ -105,6 +105,9 @@ public final class LyricsView extends View {
     private float animatedVocalAnchorOffsetPx;
     private long lastVocalAnchorFrameMs;
     private boolean vocalAnchorOffsetInitialized;
+    private int retainedVocalAnchorSourceIndex = Integer.MIN_VALUE;
+    private float retainedVocalAnchorOffsetPx = Float.NaN;
+    private long retainedVocalAnchorPositionMs = Long.MIN_VALUE;
     private float manualCenterIndex;
     private float scrollPixelsPerIndex = 1f;
     private float manualScrollPixelsPerIndex = 1f;
@@ -155,6 +158,9 @@ public final class LyricsView extends View {
         animatedVocalAnchorOffsetPx = 0f;
         lastVocalAnchorFrameMs = 0L;
         vocalAnchorOffsetInitialized = false;
+        retainedVocalAnchorSourceIndex = Integer.MIN_VALUE;
+        retainedVocalAnchorOffsetPx = Float.NaN;
+        retainedVocalAnchorPositionMs = Long.MIN_VALUE;
         hitTargets.clear();
         bounceStates.clear();
         rowLayoutCache.clear();
@@ -851,30 +857,63 @@ public final class LyricsView extends View {
 
     private float activeVocalAnchorOffset(LineLayout layout) {
         if (layout == null || layout.displayLine == null || layout.displayLine.line == null) {
+            resetRetainedVocalAnchor();
             return 0f;
         }
         LyricsLine line = layout.displayLine.line;
         if (line.vocalParts == null
                 || line.vocalParts.isEmpty()
                 || displayableVocalPartCount(line) < KARAOKE_VOCAL_STACK_CENTER_THRESHOLD) {
+            resetRetainedVocalAnchor();
             return 0f;
         }
 
-        int targetPartIndex = activeVocalPartIndex(line);
-        if (targetPartIndex < 0) {
-            return 0f;
+        float nextOffset = activeVocalAnchorOffsetCandidate(layout, line);
+        int sourceIndex = layout.displayLine.sourceIndex;
+        boolean positionWentBack = retainedVocalAnchorPositionMs != Long.MIN_VALUE
+                && positionMs < retainedVocalAnchorPositionMs - 250L;
+        if (retainedVocalAnchorSourceIndex != sourceIndex || positionWentBack) {
+            retainedVocalAnchorSourceIndex = sourceIndex;
+            retainedVocalAnchorOffsetPx = nextOffset;
+            retainedVocalAnchorPositionMs = positionMs;
+            return Float.isNaN(nextOffset) ? 0f : nextOffset;
         }
 
+        retainedVocalAnchorPositionMs = positionMs;
+        if (Float.isNaN(nextOffset)) {
+            return Float.isNaN(retainedVocalAnchorOffsetPx) ? 0f : retainedVocalAnchorOffsetPx;
+        }
+
+        retainedVocalAnchorOffsetPx = Float.isNaN(retainedVocalAnchorOffsetPx)
+                ? nextOffset
+                : Math.max(retainedVocalAnchorOffsetPx, nextOffset);
+        return retainedVocalAnchorOffsetPx;
+    }
+
+    private void resetRetainedVocalAnchor() {
+        retainedVocalAnchorSourceIndex = Integer.MIN_VALUE;
+        retainedVocalAnchorOffsetPx = Float.NaN;
+        retainedVocalAnchorPositionMs = Long.MIN_VALUE;
+    }
+
+    private float activeVocalAnchorOffsetCandidate(LineLayout layout, LyricsLine line) {
+        int[] activePartRange = activeVocalPartRange(line);
+        if (activePartRange[0] < 0 || activePartRange[1] < 0) {
+            return Float.NaN;
+        }
+
+        int targetPartIndex = (activePartRange[0] + activePartRange[1] + 1) / 2;
         float totalHeight = groupsHeight(layout.groups);
         float top = 0f;
         int primaryIndex = -1;
+        float targetCenter = Float.NaN;
         for (int groupIndex = 0; groupIndex < layout.groups.size(); groupIndex++) {
             DrawGroup group = layout.groups.get(groupIndex);
             boolean primaryVocalGroup = !group.supplement && !group.isInterlude();
             if (primaryVocalGroup) {
                 primaryIndex++;
                 if (primaryIndex == targetPartIndex) {
-                    return top + group.height() * 0.5f - totalHeight * 0.5f;
+                    targetCenter = top + group.height() * 0.5f;
                 }
             }
             top += group.height();
@@ -882,20 +921,22 @@ public final class LyricsView extends View {
                 top += gapBetweenGroups(layout.groups, groupIndex, groupIndex + 1);
             }
         }
-        return 0f;
+
+        if (Float.isNaN(targetCenter)) {
+            return Float.NaN;
+        }
+        return targetCenter - totalHeight * 0.5f;
     }
 
-    private int activeVocalPartIndex(LyricsLine line) {
+    private int[] activeVocalPartRange(LyricsLine line) {
+        int[] emptyRange = new int[]{-1, -1};
         if (line == null || line.vocalParts == null || line.vocalParts.isEmpty()) {
-            return -1;
+            return emptyRange;
         }
 
         List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
-        int activeIndex = -1;
-        int nearestIndex = -1;
-        long nearestDistance = Long.MAX_VALUE;
-        int latestStartedIndex = -1;
-        long latestStartedTime = Long.MIN_VALUE;
+        int firstActiveIndex = -1;
+        int lastActiveIndex = -1;
         for (int index = 0; index < parts.size(); index++) {
             LyricsLine.VocalPart part = parts.get(index);
             if (part == null) {
@@ -905,29 +946,16 @@ public final class LyricsView extends View {
             long startTimeMs = part.startTimeMs > 0L ? part.startTimeMs : line.startTimeMs;
             long endTimeMs = part.endTimeMs > startTimeMs ? part.endTimeMs : Math.max(startTimeMs, line.endTimeMs);
             if (positionMs >= startTimeMs && positionMs <= endTimeMs) {
-                activeIndex = index;
-                continue;
-            }
-
-            if (positionMs >= startTimeMs && startTimeMs > latestStartedTime) {
-                latestStartedIndex = index;
-                latestStartedTime = startTimeMs;
-            }
-
-            long distance = positionMs < startTimeMs
-                    ? startTimeMs - positionMs
-                    : positionMs - endTimeMs;
-            if (distance >= 0L && distance < nearestDistance) {
-                nearestIndex = index;
-                nearestDistance = distance;
+                if (firstActiveIndex < 0) {
+                    firstActiveIndex = index;
+                }
+                lastActiveIndex = index;
             }
         }
 
-        if (activeIndex >= 0) {
-            return activeIndex;
-        }
-
-        return latestStartedIndex >= 0 ? latestStartedIndex : nearestIndex;
+        return firstActiveIndex >= 0 && lastActiveIndex >= 0
+                ? new int[]{firstActiveIndex, lastActiveIndex}
+                : emptyRange;
     }
 
     private void prepareSmoothSeekCenter() {
