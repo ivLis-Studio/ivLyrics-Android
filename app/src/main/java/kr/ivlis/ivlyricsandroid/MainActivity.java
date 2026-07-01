@@ -8899,7 +8899,6 @@ public final class MainActivity extends Activity implements
         if (!info.description.isEmpty()) {
             LinearLayout card = tmiCard();
             TextView description = tmiBodyText(info.description);
-            description.setLineSpacing(dp(3), 1f);
             card.addView(description, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -8960,7 +8959,14 @@ public final class MainActivity extends Activity implements
 
     private TextView tmiBodyText(String text) {
         TextView view = label(text == null ? "" : text.trim(), 13f, Color.argb(218, 255, 255, 255), AppFonts.regular(this));
-        view.setLineSpacing(dp(2), 1f);
+        view.setSingleLine(false);
+        view.setMaxLines(Integer.MAX_VALUE);
+        view.setIncludeFontPadding(true);
+        view.setLineSpacing(dp(4), 1.04f);
+        view.setPadding(0, dp(1), 0, dp(2));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            view.setFallbackLineSpacing(true);
+        }
         return view;
     }
 
