@@ -891,6 +891,7 @@ public final class LyricsView extends View {
         }
 
         List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
+        int activeIndex = -1;
         int nearestIndex = -1;
         long nearestDistance = Long.MAX_VALUE;
         int latestStartedIndex = -1;
@@ -904,7 +905,8 @@ public final class LyricsView extends View {
             long startTimeMs = part.startTimeMs > 0L ? part.startTimeMs : line.startTimeMs;
             long endTimeMs = part.endTimeMs > startTimeMs ? part.endTimeMs : Math.max(startTimeMs, line.endTimeMs);
             if (positionMs >= startTimeMs && positionMs <= endTimeMs) {
-                return index;
+                activeIndex = index;
+                continue;
             }
 
             if (positionMs >= startTimeMs && startTimeMs > latestStartedTime) {
@@ -919,6 +921,10 @@ public final class LyricsView extends View {
                 nearestIndex = index;
                 nearestDistance = distance;
             }
+        }
+
+        if (activeIndex >= 0) {
+            return activeIndex;
         }
 
         return latestStartedIndex >= 0 ? latestStartedIndex : nearestIndex;
