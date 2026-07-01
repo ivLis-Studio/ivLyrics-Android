@@ -45,6 +45,7 @@ public final class LyricsView extends View {
     private static final float SUPPLEMENT_GAP_SP = 2f;
     private static final float BLOCK_GAP_SP = 32f;
     private static final float BOTTOM_EDGE_FADE_DP = 34f;
+    private static final int KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
     private static final float WAVE_PERIOD_MS = 980f;
     private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
     private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
@@ -101,6 +102,9 @@ public final class LyricsView extends View {
     private long trackDurationMs;
     private float verticalCenterBias = 0.50f;
     private long lastFrameMs;
+    private float animatedVocalAnchorOffsetPx;
+    private long lastVocalAnchorFrameMs;
+    private boolean vocalAnchorOffsetInitialized;
     private float manualCenterIndex;
     private float scrollPixelsPerIndex = 1f;
     private float manualScrollPixelsPerIndex = 1f;
@@ -148,6 +152,9 @@ public final class LyricsView extends View {
         }
         centerInitialized = false;
         lastFrameMs = 0L;
+        animatedVocalAnchorOffsetPx = 0f;
+        lastVocalAnchorFrameMs = 0L;
+        vocalAnchorOffsetInitialized = false;
         hitTargets.clear();
         bounceStates.clear();
         rowLayoutCache.clear();
@@ -523,11 +530,16 @@ public final class LyricsView extends View {
                 ? anchorFraction * distanceBetween(anchorLayout, nextLayout, blockGap)
                 : 0f;
         updateScrollPixelsPerIndex(layouts, blockGap);
+        float targetVocalAnchorOffset = manualScrollActive
+                ? 0f
+                : activeVocalAnchorOffset(layoutAt(layouts, activeIndex));
+        updateAnimatedVocalAnchorOffset(targetVocalAnchorOffset);
+        float anchoredCenterY = centerY - animatedVocalAnchorOffsetPx;
 
         hitTargets.clear();
         int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
-            float baselineCenter = centerY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
+            float baselineCenter = anchoredCenterY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
             if (baselineCenter + layout.height * 0.5f < -blockGap
                     || baselineCenter - layout.height * 0.5f > getHeight() + blockGap) {
                 continue;
@@ -541,7 +553,10 @@ public final class LyricsView extends View {
         boolean activeInterlude = activeIndex >= 0
                 && activeIndex < displayLines.size()
                 && displayLines.get(activeIndex).isInterlude();
+        boolean vocalAnchorMoving = Math.abs(targetVocalAnchorOffset - animatedVocalAnchorOffsetPx) > 0.5f;
         if (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f) {
+            postInvalidateOnAnimation();
+        } else if (vocalAnchorMoving) {
             postInvalidateOnAnimation();
         }
     }
@@ -808,6 +823,102 @@ public final class LyricsView extends View {
             animatedCenterIndex = activeIndex;
             smoothSeekCenterActive = false;
         }
+    }
+
+    private void updateAnimatedVocalAnchorOffset(float targetOffsetPx) {
+        long now = System.currentTimeMillis();
+        if (!vocalAnchorOffsetInitialized) {
+            animatedVocalAnchorOffsetPx = targetOffsetPx;
+            vocalAnchorOffsetInitialized = true;
+            lastVocalAnchorFrameMs = now;
+            return;
+        }
+
+        long deltaMs = lastVocalAnchorFrameMs == 0L
+                ? 16L
+                : Math.max(1L, Math.min(64L, now - lastVocalAnchorFrameMs));
+        lastVocalAnchorFrameMs = now;
+        float delta = targetOffsetPx - animatedVocalAnchorOffsetPx;
+        float factor = 1f - (float) Math.exp(-deltaMs / 320f);
+        animatedVocalAnchorOffsetPx += delta * factor;
+        if (Math.abs(targetOffsetPx - animatedVocalAnchorOffsetPx) < 0.5f) {
+            animatedVocalAnchorOffsetPx = targetOffsetPx;
+        }
+    }
+
+    private float activeVocalAnchorOffset(LineLayout layout) {
+        if (layout == null || layout.displayLine == null || layout.displayLine.line == null) {
+            return 0f;
+        }
+        LyricsLine line = layout.displayLine.line;
+        if (line.vocalParts == null
+                || line.vocalParts.isEmpty()
+                || displayableVocalPartCount(line) < KARAOKE_VOCAL_STACK_CENTER_THRESHOLD) {
+            return 0f;
+        }
+
+        int targetPartIndex = activeVocalPartIndex(line);
+        if (targetPartIndex < 0) {
+            return 0f;
+        }
+
+        float totalHeight = groupsHeight(layout.groups);
+        float top = 0f;
+        int primaryIndex = -1;
+        for (int groupIndex = 0; groupIndex < layout.groups.size(); groupIndex++) {
+            DrawGroup group = layout.groups.get(groupIndex);
+            boolean primaryVocalGroup = !group.supplement && !group.isInterlude();
+            if (primaryVocalGroup) {
+                primaryIndex++;
+                if (primaryIndex == targetPartIndex) {
+                    return top + group.height() * 0.5f - totalHeight * 0.5f;
+                }
+            }
+            top += group.height();
+            if (groupIndex + 1 < layout.groups.size()) {
+                top += gapBetweenGroups(layout.groups, groupIndex, groupIndex + 1);
+            }
+        }
+        return 0f;
+    }
+
+    private int activeVocalPartIndex(LyricsLine line) {
+        if (line == null || line.vocalParts == null || line.vocalParts.isEmpty()) {
+            return -1;
+        }
+
+        List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
+        int nearestIndex = -1;
+        long nearestDistance = Long.MAX_VALUE;
+        int latestStartedIndex = -1;
+        long latestStartedTime = Long.MIN_VALUE;
+        for (int index = 0; index < parts.size(); index++) {
+            LyricsLine.VocalPart part = parts.get(index);
+            if (part == null) {
+                continue;
+            }
+
+            long startTimeMs = part.startTimeMs > 0L ? part.startTimeMs : line.startTimeMs;
+            long endTimeMs = part.endTimeMs > startTimeMs ? part.endTimeMs : Math.max(startTimeMs, line.endTimeMs);
+            if (positionMs >= startTimeMs && positionMs <= endTimeMs) {
+                return index;
+            }
+
+            if (positionMs >= startTimeMs && startTimeMs > latestStartedTime) {
+                latestStartedIndex = index;
+                latestStartedTime = startTimeMs;
+            }
+
+            long distance = positionMs < startTimeMs
+                    ? startTimeMs - positionMs
+                    : positionMs - endTimeMs;
+            if (distance >= 0L && distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return latestStartedIndex >= 0 ? latestStartedIndex : nearestIndex;
     }
 
     private void prepareSmoothSeekCenter() {
