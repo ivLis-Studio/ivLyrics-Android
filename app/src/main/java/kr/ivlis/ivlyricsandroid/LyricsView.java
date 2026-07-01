@@ -1153,10 +1153,9 @@ public final class LyricsView extends View {
         }
         String pronunciation = part.pronunciationText == null ? "" : part.pronunciationText.trim();
         String translation = part.translationText == null ? "" : part.translationText.trim();
-        int activePronunciationColor = Color.argb(212, 255, 255, 255);
-        int activeTranslationColor = Color.argb(184, 255, 255, 255);
-        int inactiveAlpha = Math.max(34, Math.round(105f - Math.min(2.8f, distance) * 24f));
-        int inactiveColor = Color.argb(inactiveAlpha, 210, 216, 226);
+        int activePronunciationColor = withAlpha(colorForSpeaker(part.speaker, part.role, normalActiveColor()), 212);
+        int activeTranslationColor = withAlpha(colorForSpeaker(part.speaker, part.role, normalActiveColor()), 184);
+        int inactiveColor = supplementInactiveColorForSpeaker(part.speaker, distance + (active ? 0f : 0.45f));
         String key = partKey(part, partIndex);
         if (!pronunciation.isEmpty()) {
             groups.add(buildSupplementGroup(
@@ -1238,10 +1237,9 @@ public final class LyricsView extends View {
         }
         String pronunciation = line.pronunciationText == null ? "" : line.pronunciationText.trim();
         String translation = line.translationText == null ? "" : line.translationText.trim();
-        int activePronunciationColor = Color.argb(212, 255, 255, 255);
-        int activeTranslationColor = Color.argb(184, 255, 255, 255);
-        int inactiveAlpha = Math.max(34, Math.round(105f - Math.min(2.8f, distance) * 24f));
-        int inactiveColor = Color.argb(inactiveAlpha, 210, 216, 226);
+        int activePronunciationColor = withAlpha(colorForSpeaker(line.speaker, "", normalActiveColor()), 212);
+        int activeTranslationColor = withAlpha(colorForSpeaker(line.speaker, "", normalActiveColor()), 184);
+        int inactiveColor = supplementInactiveColorForSpeaker(line.speaker, distance);
         if (!pronunciation.isEmpty()) {
             groups.add(buildSupplementGroup(
                     pronunciation,
@@ -3058,6 +3056,15 @@ public final class LyricsView extends View {
         int alpha = Math.round(255f * speakerInactiveAlpha(key) * distanceFactor);
         alpha = Math.max(40, Math.min(150, alpha));
         return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    private int supplementInactiveColorForSpeaker(String speaker, float distance) {
+        int alpha = Math.max(34, Math.round(105f - Math.min(2.8f, distance) * 24f));
+        int color = speakerActiveColor(normalizeSpeakerKey(speaker));
+        if (color == 0) {
+            return Color.argb(alpha, 210, 216, 226);
+        }
+        return withAlpha(color, alpha);
     }
 
     private int speakerActiveColor(String key) {
