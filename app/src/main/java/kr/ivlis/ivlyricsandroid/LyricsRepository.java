@@ -38,6 +38,7 @@ final class LyricsRepository {
     private static final String TAG = "ivLyricsDebug";
     private static final String LRCLIB_BASE = "https://lrclib.net/api";
     private static final String SYNC_DATA_BASE = "https://lyrics.api.ivl.is/lyrics/sync-data";
+    private static final String SYNC_DATA_REQUEST_VERSION = "20260701";
     private static final String OPENDB_ORIGIN = "https://ivlis.kr";
     private static final String OPENDB_ROOT = "https://ivlis.kr/ivLyrics/opendb";
     private static final String OPENDB_MANIFEST_URL = OPENDB_ROOT + "/data/manifest.json";
@@ -1183,6 +1184,7 @@ final class LyricsRepository {
             Map<String, String> params = new HashMap<>();
             params.put("isrc", normalizedIsrc);
             params.put("provider", "lrclib");
+            params.put("request-version", SYNC_DATA_REQUEST_VERSION);
             params.put("metadata", "1");
             if (bypassServerCache) {
                 params.put("bypassCache", "1");
