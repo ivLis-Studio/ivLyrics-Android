@@ -64,7 +64,7 @@ final class LyricsRepository {
     private static final long SPOTIFY_TOKEN_MAX_AGE_MS = 50L * 60L * 1_000L;
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
     private static final long SYNC_DATA_SERVER_CACHE_BYPASS_MS = 30L * 1_000L;
-    private static final long OPENDB_FRESH_MS = 24L * 60L * 60L * 1_000L;
+    private static final long OPENDB_FRESH_MS = 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
     private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
@@ -256,6 +256,7 @@ final class LyricsRepository {
         if (syncDataResponseCache != null) {
             syncDataResponseCache.clear();
         }
+        clearOpenDbCache();
         markSyncDataServerCacheBypass("");
     }
 
@@ -277,8 +278,20 @@ final class LyricsRepository {
         String key = syncDataCacheKey(isrc);
         if (!key.isEmpty()) {
             syncDataResponseCache.remove(key);
+            clearOpenDbCache();
             markSyncDataServerCacheBypass(TrackSnapshot.normalizeIsrc(isrc));
         }
+    }
+
+    private void clearOpenDbCache() {
+        if (openDbPrefs == null) {
+            return;
+        }
+        openDbPrefs.edit()
+                .remove(KEY_OPENDB_PROVIDER_MAP)
+                .remove(KEY_OPENDB_FETCHED_AT_MS)
+                .remove(KEY_OPENDB_UNAVAILABLE_UNTIL_MS)
+                .apply();
     }
 
     private synchronized void markSyncDataServerCacheBypass(String normalizedIsrc) {
