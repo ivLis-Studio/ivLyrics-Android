@@ -63,6 +63,7 @@ final class AiLyricsSettings {
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
+    static final String KEY_USE_SYNC_CREATOR_SPEAKER_COLORS = "use_sync_creator_speaker_colors";
     static final String KEY_LYRICS_TEXT_ALIGNMENT = "lyrics_text_alignment";
 
     static final String DEFAULT_SOURCE_LANG = "default";
@@ -273,6 +274,7 @@ final class AiLyricsSettings {
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 typographySettings(),
                 speakerColorSettings(),
+                prefs.getBoolean(KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, true),
                 normalizeLyricsTextAlignment(prefs.getString(KEY_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
@@ -312,6 +314,10 @@ final class AiLyricsSettings {
 
     void resetSpeakerColors() {
         prefs.edit().remove(KEY_SPEAKER_COLOR_SETTINGS).apply();
+    }
+
+    void setUseSyncCreatorSpeakerColors(boolean enabled) {
+        prefs.edit().putBoolean(KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, enabled).apply();
     }
 
     void setLyricsTextAlignment(String alignment) {
@@ -1459,6 +1465,7 @@ final class AiLyricsSettings {
         final boolean japaneseFuriganaEnabled;
         final TypographySettings typography;
         final SpeakerColorSettings speakerColors;
+        final boolean useSyncCreatorSpeakerColors;
         final String lyricsTextAlignment;
         final String spotifyClientId;
         final String spotifyClientSecret;
@@ -1494,6 +1501,7 @@ final class AiLyricsSettings {
                 boolean japaneseFuriganaEnabled,
                 TypographySettings typography,
                 SpeakerColorSettings speakerColors,
+                boolean useSyncCreatorSpeakerColors,
                 String lyricsTextAlignment,
                 String spotifyClientId,
                 String spotifyClientSecret
@@ -1532,6 +1540,7 @@ final class AiLyricsSettings {
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.typography = typography == null ? TypographySettings.defaults() : typography;
             this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
+            this.useSyncCreatorSpeakerColors = useSyncCreatorSpeakerColors;
             this.lyricsTextAlignment = normalizeLyricsTextAlignment(lyricsTextAlignment);
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();

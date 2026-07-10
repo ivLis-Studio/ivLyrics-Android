@@ -150,6 +150,7 @@ final class SyncDataApplier {
                         lineText,
                         timedLine.syllables,
                         firstNonEmpty(line.speaker, leadPart.speaker),
+                        firstNonEmpty(line.speakerColor, leadPart.speakerColor),
                         firstNonEmpty(line.kind, leadPart.kind),
                         vocalParts
                 ));
@@ -161,6 +162,7 @@ final class SyncDataApplier {
                         lineText,
                         timedLine.syllables,
                         firstNonEmpty(line.speaker, part.speaker),
+                        firstNonEmpty(line.speakerColor, part.speakerColor),
                         firstNonEmpty(line.kind, part.kind),
                         Collections.emptyList()
                 ));
@@ -171,6 +173,7 @@ final class SyncDataApplier {
                         lineText,
                         timedLine.syllables,
                         line.speaker,
+                        line.speakerColor,
                         line.kind,
                         Collections.emptyList()
                 ));
@@ -291,7 +294,15 @@ final class SyncDataApplier {
         for (LyricsLine.Syllable syllable : trimmed) {
             text.append(syllable.text);
         }
-        return new LyricsLine.VocalPart(part.id, part.role, part.speaker, part.kind, text.toString(), trimmed);
+        return new LyricsLine.VocalPart(
+                part.id,
+                part.role,
+                part.speaker,
+                part.speakerColor,
+                part.kind,
+                text.toString(),
+                trimmed
+        );
     }
 
     private static List<LyricsLine.Syllable> trimWhitespaceSyllables(List<LyricsLine.Syllable> syllables) {
@@ -356,6 +367,7 @@ final class SyncDataApplier {
                     end,
                     chars,
                     rawLine.optString("speaker", ""),
+                    rawLine.optString("speaker-color", ""),
                     rawLine.optString("kind", "vocal"),
                     parallel.parts,
                     parallel.hiddenRanges
@@ -389,6 +401,7 @@ final class SyncDataApplier {
                     rawPart.optString("id", ""),
                     rawPart.optString("role", ""),
                     rawPart.optString("speaker", ""),
+                    rawPart.optString("speaker-color", ""),
                     rawPart.optString("kind", "vocal"),
                     ranges,
                     readIntArray(rawPart.optJSONArray("join")),
@@ -514,6 +527,7 @@ final class SyncDataApplier {
                     id,
                     part.role,
                     part.speaker,
+                    part.speakerColor,
                     part.kind,
                     Collections.singletonList(range),
                     Collections.emptyList(),
@@ -654,6 +668,7 @@ final class SyncDataApplier {
                     Math.max(0, line.end - charOffset),
                     line.chars,
                     line.speaker,
+                    line.speakerColor,
                     line.kind,
                     parts,
                     shiftRanges(line.hiddenRanges, charOffset).ranges
@@ -704,7 +719,16 @@ final class SyncDataApplier {
             for (ParallelPart part : line.parts) {
                 parts.add(part.withChars(shiftTimes(part.chars, offsetSeconds)));
             }
-            shifted.add(new SyncLine(line.start, line.end, chars, line.speaker, line.kind, parts, line.hiddenRanges));
+            shifted.add(new SyncLine(
+                    line.start,
+                    line.end,
+                    chars,
+                    line.speaker,
+                    line.speakerColor,
+                    line.kind,
+                    parts,
+                    line.hiddenRanges
+            ));
         }
         return shifted;
     }
@@ -1085,6 +1109,7 @@ final class SyncDataApplier {
         final int end;
         final List<Double> chars;
         final String speaker;
+        final String speakerColor;
         final String kind;
         final List<ParallelPart> parts;
         final List<Range> hiddenRanges;
@@ -1094,6 +1119,7 @@ final class SyncDataApplier {
                 int end,
                 List<Double> chars,
                 String speaker,
+                String speakerColor,
                 String kind,
                 List<ParallelPart> parts,
                 List<Range> hiddenRanges
@@ -1102,13 +1128,14 @@ final class SyncDataApplier {
             this.end = end;
             this.chars = chars == null ? Collections.emptyList() : new ArrayList<>(chars);
             this.speaker = speaker == null ? "" : speaker;
+            this.speakerColor = speakerColor == null ? "" : speakerColor;
             this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
             this.parts = parts == null ? Collections.emptyList() : new ArrayList<>(parts);
             this.hiddenRanges = hiddenRanges == null ? Collections.emptyList() : new ArrayList<>(hiddenRanges);
         }
 
         SyncLine withParts(List<ParallelPart> nextParts) {
-            return new SyncLine(start, end, chars, speaker, kind, nextParts, hiddenRanges);
+            return new SyncLine(start, end, chars, speaker, speakerColor, kind, nextParts, hiddenRanges);
         }
 
         boolean isUsable(int fullCharCount) {
@@ -1125,6 +1152,7 @@ final class SyncDataApplier {
         final String id;
         final String role;
         final String speaker;
+        final String speakerColor;
         final String kind;
         final List<Range> ranges;
         final List<Integer> join;
@@ -1134,6 +1162,7 @@ final class SyncDataApplier {
                 String id,
                 String role,
                 String speaker,
+                String speakerColor,
                 String kind,
                 List<Range> ranges,
                 List<Integer> join,
@@ -1142,6 +1171,7 @@ final class SyncDataApplier {
             this.id = id == null ? "" : id;
             this.role = role == null ? "" : role;
             this.speaker = speaker == null ? "" : speaker;
+            this.speakerColor = speakerColor == null ? "" : speakerColor;
             this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
             this.ranges = ranges == null ? Collections.emptyList() : new ArrayList<>(ranges);
             this.join = join == null ? Collections.emptyList() : new ArrayList<>(join);
@@ -1149,11 +1179,11 @@ final class SyncDataApplier {
         }
 
         ParallelPart withRangesAndChars(List<Range> nextRanges, List<Double> nextChars) {
-            return new ParallelPart(id, role, speaker, kind, nextRanges, join, nextChars);
+            return new ParallelPart(id, role, speaker, speakerColor, kind, nextRanges, join, nextChars);
         }
 
         ParallelPart withChars(List<Double> nextChars) {
-            return new ParallelPart(id, role, speaker, kind, ranges, join, nextChars);
+            return new ParallelPart(id, role, speaker, speakerColor, kind, ranges, join, nextChars);
         }
     }
 

@@ -112,6 +112,7 @@ final class AppI18n {
         addKaraokeLineModeStrings(languages);
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
+        addCreatorSpeakerColorStrings(languages);
         addVideoBackgroundStrings(languages);
         addTrackBackgroundStrings(languages);
         addLyricsAlignmentStrings(languages);
@@ -2502,6 +2503,75 @@ final class AppI18n {
                 "toast.speaker_colors_saved", saved,
                 "toast.speaker_colors_reset", resetToast,
                 "toast.invalid_color_format", invalidFormat
+        };
+    }
+
+    private static void addCreatorSpeakerColorStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = creatorSpeakerColorStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] creatorSpeakerColorStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return creatorSpeakerColorStringsValues("싱크 제작자 커스텀 색상 사용", "싱크 제작자가 데이터에 지정한 보컬 색상을 사용합니다. 끄면 CUSTOM 스피커는 해당 분류의 1번 색상을 사용합니다.");
+            case "zh-CN":
+                return creatorSpeakerColorStringsValues("使用同步制作者的自定义颜色", "使用同步制作者嵌入数据的声部颜色。关闭后，CUSTOM 声部将使用对应分类的第 1 种颜色。");
+            case "zh-TW":
+                return creatorSpeakerColorStringsValues("使用同步製作者的自訂顏色", "使用同步製作者嵌入資料的聲部顏色。關閉後，CUSTOM 聲部將使用對應分類的第 1 種顏色。");
+            case "ja":
+                return creatorSpeakerColorStringsValues("同期作成者のカスタム色を使用", "同期作成者がデータに設定したボーカル色を使用します。オフにすると、CUSTOM話者には各カテゴリの1番の色が使われます。");
+            case "hi":
+                return creatorSpeakerColorStringsValues("सिंक निर्माता के कस्टम रंग उपयोग करें", "सिंक निर्माता द्वारा डेटा में जोड़े गए वोकल रंग उपयोग करता है। बंद होने पर CUSTOM वोकल अपनी श्रेणी का रंग 1 उपयोग करते हैं।");
+            case "es":
+                return creatorSpeakerColorStringsValues("Usar colores personalizados del creador de sincronización", "Usa los colores de voz incluidos por el creador de la sincronización. Si se desactiva, las voces CUSTOM usan el color 1 de su categoría.");
+            case "fr":
+                return creatorSpeakerColorStringsValues("Utiliser les couleurs personnalisées du créateur de synchro", "Utilise les couleurs de voix intégrées par le créateur de la synchronisation. Si désactivé, les voix CUSTOM utilisent la couleur 1 de leur catégorie.");
+            case "ar":
+                return creatorSpeakerColorStringsValues("استخدام الألوان المخصصة لمنشئ المزامنة", "يستخدم ألوان الأصوات التي يضمّنها منشئ المزامنة في البيانات. عند إيقافه، تستخدم أصوات CUSTOM اللون الأول من فئتها.");
+            case "fa":
+                return creatorSpeakerColorStringsValues("استفاده از رنگ‌های سفارشی سازنده همگام‌سازی", "از رنگ‌های خواننده که سازنده همگام‌سازی در داده قرار داده استفاده می‌کند. با خاموش کردن، خواننده‌های CUSTOM از رنگ شماره ۱ دسته خود استفاده می‌کنند.");
+            case "de":
+                return creatorSpeakerColorStringsValues("Benutzerdefinierte Farben des Sync-Erstellers verwenden", "Verwendet die vom Sync-Ersteller eingebetteten Stimmenfarben. Wenn deaktiviert, nutzen CUSTOM-Stimmen Farbe 1 ihrer Kategorie.");
+            case "ru":
+                return creatorSpeakerColorStringsValues("Использовать пользовательские цвета автора синхронизации", "Использует цвета вокала, заданные автором синхронизации. Если выключено, вокалы CUSTOM используют цвет 1 своей категории.");
+            case "sv":
+                return creatorSpeakerColorStringsValues("Använd synkskaparens anpassade färger", "Använder röstfärger som synkskaparen bäddat in. När det är avstängt använder CUSTOM-röster färg 1 i sin kategori.");
+            case "pt":
+                return creatorSpeakerColorStringsValues("Usar cores personalizadas do criador da sincronização", "Usa as cores de voz incorporadas pelo criador da sincronização. Quando desativado, vozes CUSTOM usam a cor 1 da sua categoria.");
+            case "bn":
+                return creatorSpeakerColorStringsValues("সিঙ্ক নির্মাতার কাস্টম রং ব্যবহার করুন", "সিঙ্ক নির্মাতার ডেটায় যোগ করা ভোকাল রং ব্যবহার করে। বন্ধ থাকলে CUSTOM ভোকাল সংশ্লিষ্ট বিভাগের ১ নম্বর রং ব্যবহার করে।");
+            case "it":
+                return creatorSpeakerColorStringsValues("Usa i colori personalizzati del creatore della sincronizzazione", "Usa i colori delle voci incorporati dal creatore della sincronizzazione. Se disattivato, le voci CUSTOM usano il colore 1 della propria categoria.");
+            case "th":
+                return creatorSpeakerColorStringsValues("ใช้สีแบบกำหนดเองของผู้สร้างซิงก์", "ใช้สีเสียงร้องที่ผู้สร้างซิงก์ฝังไว้ในข้อมูล เมื่อปิด เสียงร้อง CUSTOM จะใช้สีลำดับที่ 1 ของหมวดนั้น");
+            case "vi":
+                return creatorSpeakerColorStringsValues("Dùng màu tùy chỉnh của người tạo đồng bộ", "Dùng màu giọng hát do người tạo đồng bộ nhúng vào dữ liệu. Khi tắt, giọng CUSTOM dùng màu số 1 của nhóm tương ứng.");
+            case "id":
+                return creatorSpeakerColorStringsValues("Gunakan warna kustom pembuat sinkronisasi", "Gunakan warna vokal yang disematkan pembuat sinkronisasi dalam data. Jika dimatikan, vokal CUSTOM memakai warna 1 dari kategorinya.");
+            case "ms":
+                return creatorSpeakerColorStringsValues("Gunakan warna tersuai pencipta penyegerakan", "Gunakan warna vokal yang dibenamkan oleh pencipta penyegerakan dalam data. Apabila dimatikan, vokal CUSTOM menggunakan warna 1 kategorinya.");
+            case "tr":
+                return creatorSpeakerColorStringsValues("Senkronizasyon oluşturucunun özel renklerini kullan", "Senkronizasyon oluşturucunun veriye eklediği vokal renklerini kullanır. Kapatıldığında CUSTOM vokaller kendi kategorisinin 1. rengini kullanır.");
+            default:
+                return creatorSpeakerColorStringsValues("Use sync creator custom colors", "Use custom speaker colors embedded by sync creators. When disabled, CUSTOM speakers use color 1 from their category.");
+        }
+    }
+
+    private static String[] creatorSpeakerColorStringsValues(String label, String description) {
+        return new String[]{
+                "setting.creator_speaker_colors", label,
+                "setting.creator_speaker_colors_desc", description
         };
     }
 

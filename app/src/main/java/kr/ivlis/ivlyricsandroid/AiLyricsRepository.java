@@ -1467,6 +1467,7 @@ final class AiLyricsRepository {
                 line.text,
                 line.syllables,
                 line.speaker,
+                line.speakerColor,
                 line.kind,
                 parts,
                 pronunciationText,

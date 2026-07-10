@@ -10,6 +10,7 @@ final class LyricsLine {
     final String text;
     final List<Syllable> syllables;
     final String speaker;
+    final String speakerColor;
     final String kind;
     final List<VocalPart> vocalParts;
     final String pronunciationText;
@@ -38,6 +39,35 @@ final class LyricsLine {
             String text,
             List<Syllable> syllables,
             String speaker,
+            String speakerColor,
+            String kind,
+            List<VocalPart> vocalParts
+    ) {
+        this(startTimeMs, endTimeMs, text, syllables, speaker, speakerColor, kind, vocalParts, "", "", "");
+    }
+
+    LyricsLine(
+            long startTimeMs,
+            long endTimeMs,
+            String text,
+            List<Syllable> syllables,
+            String speaker,
+            String kind,
+            List<VocalPart> vocalParts,
+            String pronunciationText,
+            String translationText,
+            String furiganaText
+    ) {
+        this(startTimeMs, endTimeMs, text, syllables, speaker, "", kind, vocalParts, pronunciationText, translationText, furiganaText);
+    }
+
+    LyricsLine(
+            long startTimeMs,
+            long endTimeMs,
+            String text,
+            List<Syllable> syllables,
+            String speaker,
+            String speakerColor,
             String kind,
             List<VocalPart> vocalParts,
             String pronunciationText,
@@ -51,6 +81,7 @@ final class LyricsLine {
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(syllables));
         this.speaker = speaker == null ? "" : speaker;
+        this.speakerColor = speakerColor == null ? "" : speakerColor;
         this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
         this.vocalParts = vocalParts == null
                 ? Collections.emptyList()
@@ -75,6 +106,7 @@ final class LyricsLine {
                 text,
                 syllables,
                 speaker,
+                speakerColor,
                 kind,
                 vocalParts,
                 pronunciation,
@@ -99,6 +131,7 @@ final class LyricsLine {
         final String id;
         final String role;
         final String speaker;
+        final String speakerColor;
         final String kind;
         final String text;
         final List<Syllable> syllables;
@@ -112,6 +145,10 @@ final class LyricsLine {
             this(id, role, speaker, kind, text, syllables, "", "", "");
         }
 
+        VocalPart(String id, String role, String speaker, String speakerColor, String kind, String text, List<Syllable> syllables) {
+            this(id, role, speaker, speakerColor, kind, text, syllables, "", "", "");
+        }
+
         VocalPart(
                 String id,
                 String role,
@@ -123,9 +160,25 @@ final class LyricsLine {
                 String translationText,
                 String furiganaText
         ) {
+            this(id, role, speaker, "", kind, text, syllables, pronunciationText, translationText, furiganaText);
+        }
+
+        VocalPart(
+                String id,
+                String role,
+                String speaker,
+                String speakerColor,
+                String kind,
+                String text,
+                List<Syllable> syllables,
+                String pronunciationText,
+                String translationText,
+                String furiganaText
+        ) {
             this.id = id == null ? "" : id;
             this.role = role == null ? "" : role;
             this.speaker = speaker == null ? "" : speaker;
+            this.speakerColor = speakerColor == null ? "" : speakerColor;
             this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
             this.text = text == null ? "" : text;
             this.syllables = syllables == null
@@ -149,6 +202,7 @@ final class LyricsLine {
                     id,
                     role,
                     speaker,
+                    speakerColor,
                     kind,
                     text,
                     syllables,

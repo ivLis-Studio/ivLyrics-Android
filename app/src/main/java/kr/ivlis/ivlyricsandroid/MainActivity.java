@@ -287,6 +287,7 @@ public final class MainActivity extends Activity implements
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
     private Switch karaokeDataAsLineSyncedSwitch;
+    private Switch useSyncCreatorSpeakerColorsSwitch;
     private Switch landscapeAutoHideControlsSwitch;
     private Switch landscapeCenterNoLyricsSwitch;
     private Switch keepScreenOnSwitch;
@@ -3865,6 +3866,20 @@ public final class MainActivity extends Activity implements
 
         settingsDisplayPage.addView(sectionTitle(ui("section.speaker_colors")), topMargin(matchWrap(), dp(24)));
         settingsDisplayPage.addView(sectionDescription(ui("section.speaker_colors_desc")), topMargin(matchWrap(), dp(8)));
+
+        useSyncCreatorSpeakerColorsSwitch = settingSwitch(
+                ui("setting.creator_speaker_colors"),
+                ui("setting.creator_speaker_colors_desc")
+        );
+        useSyncCreatorSpeakerColorsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setUseSyncCreatorSpeakerColors(isChecked);
+            applySpeakerColorSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsDisplayPage.addView(useSyncCreatorSpeakerColorsSwitch, topMargin(matchWrap(), dp(12)));
         settingsDisplayPage.addView(buildSpeakerColorSettingsList(), topMargin(matchWrap(), dp(12)));
 
         settingsDisplayPage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
@@ -5489,6 +5504,11 @@ public final class MainActivity extends Activity implements
         AiLyricsSettings.SpeakerColorSettings settings = snapshot == null
                 ? AiLyricsSettings.SpeakerColorSettings.defaults()
                 : snapshot.speakerColors;
+        if (useSyncCreatorSpeakerColorsSwitch != null) {
+            suppressSettingsEvents = true;
+            useSyncCreatorSpeakerColorsSwitch.setChecked(snapshot == null || snapshot.useSyncCreatorSpeakerColors);
+            suppressSettingsEvents = false;
+        }
         for (AiLyricsSettings.SpeakerColorSlot slot : AiLyricsSettings.SPEAKER_COLOR_SLOTS) {
             String color = settings.hex(slot.id);
             TextView valueView = speakerColorValueViews.get(slot.id);
@@ -6513,12 +6533,15 @@ public final class MainActivity extends Activity implements
         AiLyricsSettings.SpeakerColorSettings speakerColors = snapshot.speakerColors;
         if (lyricsView != null) {
             lyricsView.setSpeakerColorSettings(speakerColors);
+            lyricsView.setUseCreatorSpeakerColors(snapshot.useSyncCreatorSpeakerColors);
         }
         if (landscapeLyricsView != null) {
             landscapeLyricsView.setSpeakerColorSettings(speakerColors);
+            landscapeLyricsView.setUseCreatorSpeakerColors(snapshot.useSyncCreatorSpeakerColors);
         }
         if (pictureInPictureLyricsView != null) {
             pictureInPictureLyricsView.setSpeakerColorSettings(speakerColors);
+            pictureInPictureLyricsView.setUseCreatorSpeakerColors(snapshot.useSyncCreatorSpeakerColors);
         }
     }
 
@@ -6538,6 +6561,7 @@ public final class MainActivity extends Activity implements
         view.setTypographySizeMultiplier(1f);
         view.setLyricTextAlignment(snapshot.lyricsTextAlignment);
         view.setSpeakerColorSettings(snapshot.speakerColors);
+        view.setUseCreatorSpeakerColors(snapshot.useSyncCreatorSpeakerColors);
         view.setOnSeekListener(seekable ? this::seekToPosition : null);
     }
 
@@ -9390,6 +9414,7 @@ public final class MainActivity extends Activity implements
                 target.text,
                 target.syllables,
                 target.speaker,
+                target.speakerColor,
                 target.kind,
                 parts,
                 pronunciation,
@@ -9460,6 +9485,7 @@ public final class MainActivity extends Activity implements
                 target.text,
                 target.syllables,
                 target.speaker,
+                target.speakerColor,
                 target.kind,
                 parts,
                 target.pronunciationText,
