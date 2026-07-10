@@ -1107,9 +1107,9 @@ public final class LyricsView extends View {
             return groups;
         }
 
-        int inactiveColor = inactiveColorForSpeaker(line.speaker, line.speakerColor, distance);
+        int inactiveColor = inactiveColorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, distance);
         int activeColor = shouldRenderKaraokeTiming()
-                ? colorForSpeaker(line.speaker, line.speakerColor, "", normalActiveColor())
+                ? colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor())
                 : normalActiveColor();
         groups.add(buildGroup(
                 line.text,
@@ -1164,9 +1164,16 @@ public final class LyricsView extends View {
             int inactiveColor = inactiveColorForSpeaker(
                     part.speaker,
                     part.speakerColor,
+                    part.speakerFallback,
                     distance + (partActive ? 0f : 0.45f)
             );
-            int activeColor = colorForSpeaker(part.speaker, part.speakerColor, part.role, normalActiveColor());
+            int activeColor = colorForSpeaker(
+                    part.speaker,
+                    part.speakerColor,
+                    part.speakerFallback,
+                    part.role,
+                    normalActiveColor()
+            );
             groups.add(buildGroup(
                     part.text,
                     japaneseFuriganaEnabled ? part.furiganaText : "",
@@ -1204,16 +1211,17 @@ public final class LyricsView extends View {
         String pronunciation = part.pronunciationText == null ? "" : part.pronunciationText.trim();
         String translation = part.translationText == null ? "" : part.translationText.trim();
         int activePronunciationColor = withAlpha(
-                colorForSpeaker(part.speaker, part.speakerColor, part.role, normalActiveColor()),
+                colorForSpeaker(part.speaker, part.speakerColor, part.speakerFallback, part.role, normalActiveColor()),
                 212
         );
         int activeTranslationColor = withAlpha(
-                colorForSpeaker(part.speaker, part.speakerColor, part.role, normalActiveColor()),
+                colorForSpeaker(part.speaker, part.speakerColor, part.speakerFallback, part.role, normalActiveColor()),
                 184
         );
         int inactiveColor = supplementInactiveColorForSpeaker(
                 part.speaker,
                 part.speakerColor,
+                part.speakerFallback,
                 distance + (active ? 0f : 0.45f)
         );
         String key = partKey(part, partIndex);
@@ -1298,14 +1306,19 @@ public final class LyricsView extends View {
         String pronunciation = line.pronunciationText == null ? "" : line.pronunciationText.trim();
         String translation = line.translationText == null ? "" : line.translationText.trim();
         int activePronunciationColor = withAlpha(
-                colorForSpeaker(line.speaker, line.speakerColor, "", normalActiveColor()),
+                colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor()),
                 212
         );
         int activeTranslationColor = withAlpha(
-                colorForSpeaker(line.speaker, line.speakerColor, "", normalActiveColor()),
+                colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor()),
                 184
         );
-        int inactiveColor = supplementInactiveColorForSpeaker(line.speaker, line.speakerColor, distance);
+        int inactiveColor = supplementInactiveColorForSpeaker(
+                line.speaker,
+                line.speakerColor,
+                line.speakerFallback,
+                distance
+        );
         if (!pronunciation.isEmpty()) {
             groups.add(buildSupplementGroup(
                     pronunciation,
@@ -3101,9 +3114,9 @@ public final class LyricsView extends View {
         return value.isEmpty() ? "vocal" : value;
     }
 
-    private int colorForSpeaker(String speaker, String speakerColor, String role, int fallback) {
+    private int colorForSpeaker(String speaker, String speakerColor, String speakerFallback, String role, int fallback) {
         String key = normalizeSpeakerKey(speaker);
-        int color = resolvedSpeakerColor(key, speakerColor);
+        int color = resolvedSpeakerColor(key, speakerColor, speakerFallback);
         return color != 0 ? color : fallback;
     }
 
@@ -3111,9 +3124,10 @@ public final class LyricsView extends View {
         return speakerColorSettings.color(AiLyricsSettings.SPEAKER_COLOR_NORMAL);
     }
 
-    private int inactiveColorForSpeaker(String speaker, String speakerColor, float distance) {
-        String key = fallbackCustomSpeakerKey(normalizeSpeakerKey(speaker));
-        int color = resolvedSpeakerColor(normalizeSpeakerKey(speaker), speakerColor);
+    private int inactiveColorForSpeaker(String speaker, String speakerColor, String speakerFallback, float distance) {
+        String rawKey = normalizeSpeakerKey(speaker);
+        String key = fallbackCustomSpeakerKey(rawKey, speakerFallback);
+        int color = resolvedSpeakerColor(rawKey, speakerColor, speakerFallback);
         if (color == 0) {
             return inactiveColor(distance);
         }
@@ -3124,29 +3138,36 @@ public final class LyricsView extends View {
         return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
     }
 
-    private int supplementInactiveColorForSpeaker(String speaker, String speakerColor, float distance) {
+    private int supplementInactiveColorForSpeaker(
+            String speaker,
+            String speakerColor,
+            String speakerFallback,
+            float distance
+    ) {
         int alpha = Math.max(34, Math.round(105f - Math.min(2.8f, distance) * 24f));
-        int color = resolvedSpeakerColor(normalizeSpeakerKey(speaker), speakerColor);
+        int color = resolvedSpeakerColor(normalizeSpeakerKey(speaker), speakerColor, speakerFallback);
         if (color == 0) {
             return Color.argb(alpha, 210, 216, 226);
         }
         return withAlpha(color, alpha);
     }
 
-    private int resolvedSpeakerColor(String key, String speakerColor) {
+    private int resolvedSpeakerColor(String key, String speakerColor, String speakerFallback) {
         if (isCustomSpeakerKey(key) && useCreatorSpeakerColors && AiLyricsSettings.isHexColor(speakerColor)) {
             String value = speakerColor.trim();
             try {
                 return Color.parseColor(value.startsWith("#") ? value : "#" + value);
             } catch (IllegalArgumentException ignored) {
-                // Invalid creator colors use the matching category's first user color.
+                // Invalid creator colors use the sync creator's selected fallback.
             }
         }
-        return speakerActiveColor(fallbackCustomSpeakerKey(key));
+        return speakerActiveColor(fallbackCustomSpeakerKey(key, speakerFallback));
     }
 
     private boolean isCustomSpeakerKey(String key) {
-        return "male-custom".equals(key)
+        return "custom".equals(key)
+                || "speaker-custom".equals(key)
+                || "male-custom".equals(key)
                 || "speaker-male-custom".equals(key)
                 || "female-custom".equals(key)
                 || "speaker-female-custom".equals(key)
@@ -3154,7 +3175,14 @@ public final class LyricsView extends View {
                 || "speaker-duet-custom".equals(key);
     }
 
-    private String fallbackCustomSpeakerKey(String key) {
+    private String fallbackCustomSpeakerKey(String key, String speakerFallback) {
+        if ("custom".equals(key) || "speaker-custom".equals(key)) {
+            String fallback = normalizeSpeakerKey(speakerFallback);
+            if ("male-1".equals(fallback) || "female-1".equals(fallback) || "duet-1".equals(fallback)) {
+                return fallback;
+            }
+            return "male-1";
+        }
         if ("male-custom".equals(key) || "speaker-male-custom".equals(key)) {
             return "male-1";
         }

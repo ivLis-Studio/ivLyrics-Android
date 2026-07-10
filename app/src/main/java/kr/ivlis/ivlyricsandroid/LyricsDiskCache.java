@@ -221,6 +221,7 @@ final class LyricsDiskCache {
         object.put("text", line.text);
         object.put("speaker", line.speaker);
         object.put("speakerColor", line.speakerColor);
+        object.put("speakerFallback", line.speakerFallback);
         object.put("kind", line.kind);
         object.put("pronunciationText", line.pronunciationText);
         object.put("translationText", line.translationText);
@@ -242,6 +243,7 @@ final class LyricsDiskCache {
                 syllablesFromJson(object.optJSONArray("syllables")),
                 object.optString("speaker", ""),
                 object.optString("speakerColor", ""),
+                object.optString("speakerFallback", ""),
                 object.optString("kind", "vocal"),
                 vocalPartsFromJson(object.optJSONArray("vocalParts")),
                 object.optString("pronunciationText", ""),
@@ -256,6 +258,7 @@ final class LyricsDiskCache {
         object.put("role", part.role);
         object.put("speaker", part.speaker);
         object.put("speakerColor", part.speakerColor);
+        object.put("speakerFallback", part.speakerFallback);
         object.put("kind", part.kind);
         object.put("text", part.text);
         object.put("pronunciationText", part.pronunciationText);
@@ -280,6 +283,7 @@ final class LyricsDiskCache {
                     object.optString("role", ""),
                     object.optString("speaker", ""),
                     object.optString("speakerColor", ""),
+                    object.optString("speakerFallback", ""),
                     object.optString("kind", "vocal"),
                     object.optString("text", ""),
                     syllablesFromJson(object.optJSONArray("syllables")),
