@@ -41,9 +41,16 @@ final class MainLyricPreviewView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shapePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint.FontMetrics textFontMetrics = new Paint.FontMetrics();
+    private final PorterDuffXfermode edgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private final List<PreviewLine> lines = new ArrayList<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Set<String> completedBounceKeys = new HashSet<>();
+    private float[] measuredLineWidths = new float[0];
+    private LinearGradient edgeFadeShader;
+    private float edgeFadeShaderLeft = Float.NaN;
+    private float edgeFadeShaderWidth = Float.NaN;
+    private float edgeFadeShaderStop = Float.NaN;
     private Typeface primaryTypeface;
     private Typeface secondaryTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
@@ -152,7 +159,7 @@ final class MainLyricPreviewView extends View {
         float progress = lineProgress(position);
         float left = getPaddingLeft();
         float width = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
-        boolean overflow = hasOverflow(width);
+        boolean overflow = measureLineWidths(width);
 
         int save = overflow
                 ? canvas.saveLayer(left, 0f, left + width, getHeight(), null)
@@ -166,13 +173,15 @@ final class MainLyricPreviewView extends View {
             int alpha = line.primary ? 244 : 208;
             textPaint.setColor(Color.argb(alpha, 255, 255, 255));
 
-            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            textPaint.getFontMetrics(textFontMetrics);
             float rowHeight = rowHeight(line);
             float rubyExtraHeight = rubyExtraHeight(line, textSize);
             float baseline = top
                     + rubyExtraHeight
-                    + (rowHeight - rubyExtraHeight - metrics.ascent - metrics.descent) * 0.5f;
-            float textWidth = measureLineWidth(line);
+                    + (rowHeight - rubyExtraHeight - textFontMetrics.ascent - textFontMetrics.descent) * 0.5f;
+            float textWidth = Float.isNaN(measuredLineWidths[index])
+                    ? measureLineWidth(line)
+                    : measuredLineWidths[index];
             float x = xForText(textWidth, width, left, progress);
             drawPreviewLine(canvas, line, x, baseline, textSize, alpha, position, left, width);
             top += rowHeight;
@@ -337,26 +346,35 @@ final class MainLyricPreviewView extends View {
         }
         float fadeStop = clamp(fadeWidth / width);
         float rightFadeStart = Math.max(fadeStop, 1f - fadeStop);
-        edgeFadePaint.setShader(new LinearGradient(
-                left,
-                0f,
-                left + width,
-                0f,
-                new int[] {
-                        Color.TRANSPARENT,
-                        Color.BLACK,
-                        Color.BLACK,
-                        Color.TRANSPARENT
-                },
-                new float[] {
-                        0f,
-                        fadeStop,
-                        rightFadeStart,
-                        1f
-                },
-                Shader.TileMode.CLAMP
-        ));
-        edgeFadePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        if (edgeFadeShader == null
+                || Float.compare(edgeFadeShaderLeft, left) != 0
+                || Float.compare(edgeFadeShaderWidth, width) != 0
+                || Float.compare(edgeFadeShaderStop, fadeStop) != 0) {
+            edgeFadeShader = new LinearGradient(
+                    left,
+                    0f,
+                    left + width,
+                    0f,
+                    new int[] {
+                            Color.TRANSPARENT,
+                            Color.BLACK,
+                            Color.BLACK,
+                            Color.TRANSPARENT
+                    },
+                    new float[] {
+                            0f,
+                            fadeStop,
+                            rightFadeStart,
+                            1f
+                    },
+                    Shader.TileMode.CLAMP
+            );
+            edgeFadeShaderLeft = left;
+            edgeFadeShaderWidth = width;
+            edgeFadeShaderStop = fadeStop;
+        }
+        edgeFadePaint.setShader(edgeFadeShader);
+        edgeFadePaint.setXfermode(edgeFadeXfermode);
         canvas.drawRect(left, 0f, left + width, getHeight(), edgeFadePaint);
         edgeFadePaint.setXfermode(null);
         edgeFadePaint.setShader(null);
@@ -380,18 +398,25 @@ final class MainLyricPreviewView extends View {
         return clamp((positionMs - lineStartMs) / (float) (lineEndMs - lineStartMs));
     }
 
-    private boolean hasOverflow(float width) {
-        for (PreviewLine line : lines) {
+    private boolean measureLineWidths(float width) {
+        int lineCount = lines.size();
+        if (measuredLineWidths.length < lineCount) {
+            measuredLineWidths = new float[lineCount];
+        }
+        boolean overflow = false;
+        for (int index = 0; index < lineCount; index++) {
+            PreviewLine line = lines.get(index);
             if (line.isAnimatedVisual()) {
+                measuredLineWidths[index] = Float.NaN;
                 continue;
             }
             textPaint.setTypeface(typefaceForLine(line));
             textPaint.setTextSize(sp(textSizeSp(line)));
-            if (measureLineWidth(line) > width) {
-                return true;
-            }
+            float lineWidth = measureLineWidth(line);
+            measuredLineWidths[index] = lineWidth;
+            overflow |= lineWidth > width;
         }
-        return false;
+        return overflow;
     }
 
     private float measureLineWidth(PreviewLine line) {
