@@ -25,6 +25,9 @@ public final class PlayerBackgroundView extends View {
     private Bitmap sourceArtwork;
     private Bitmap blurredArtwork;
     private Bitmap noiseBitmap;
+    private LinearGradient dimmingGradientShader;
+    private int dimmingGradientHeight = -1;
+    private int dimmingGradientDim = Integer.MIN_VALUE;
     private String sourceArtworkKey = "";
     private AiLyricsSettings.BackgroundSettings backgroundSettings =
             new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a", 100);
@@ -192,15 +195,20 @@ public final class PlayerBackgroundView extends View {
 
     private void drawDimmingGradient(Canvas canvas, int width, int height, float strength) {
         int dim = Math.round((214f - backgroundSettings.brightness * 1.28f) * clamp01(strength));
-        paint.setShader(new LinearGradient(
-                0f,
-                0f,
-                0f,
-                height,
-                new int[]{Color.argb(Math.max(50, dim - 52), 6, 8, 18), Color.argb(Math.max(68, dim - 24), 18, 13, 34), Color.argb(Math.max(86, dim), 7, 9, 20)},
-                new float[]{0f, 0.52f, 1f},
-                Shader.TileMode.CLAMP
-        ));
+        if (dimmingGradientShader == null || dimmingGradientHeight != height || dimmingGradientDim != dim) {
+            dimmingGradientShader = new LinearGradient(
+                    0f,
+                    0f,
+                    0f,
+                    height,
+                    new int[]{Color.argb(Math.max(50, dim - 52), 6, 8, 18), Color.argb(Math.max(68, dim - 24), 18, 13, 34), Color.argb(Math.max(86, dim), 7, 9, 20)},
+                    new float[]{0f, 0.52f, 1f},
+                    Shader.TileMode.CLAMP
+            );
+            dimmingGradientHeight = height;
+            dimmingGradientDim = dim;
+        }
+        paint.setShader(dimmingGradientShader);
         paint.setAlpha(255);
         canvas.drawRect(0f, 0f, width, height, paint);
         paint.setShader(null);
