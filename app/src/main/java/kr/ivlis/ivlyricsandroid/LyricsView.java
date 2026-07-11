@@ -65,6 +65,7 @@ public final class LyricsView extends View {
     private final Paint skeletonPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint emptyIconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final PorterDuffXfermode bottomEdgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private final Path emptyIconPath = new Path();
     private final RectF edgeFadeBounds = new RectF();
     private final RectF emptyIconOval = new RectF();
@@ -73,6 +74,9 @@ public final class LyricsView extends View {
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Set<String> completedBounceKeys = new HashSet<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
+    private LinearGradient bottomEdgeFadeShader;
+    private float bottomEdgeFadeShaderTop = Float.NaN;
+    private int bottomEdgeFadeShaderBottom = Integer.MIN_VALUE;
     private Typeface lyricTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
     private AiLyricsSettings.SpeakerColorSettings speakerColorSettings = AiLyricsSettings.SpeakerColorSettings.defaults();
@@ -2473,22 +2477,30 @@ public final class LyricsView extends View {
     }
 
     private void applyBottomEdgeFade(Canvas canvas) {
-        float fadeHeight = Math.min(dp(BOTTOM_EDGE_FADE_DP), getHeight() * 0.12f);
+        int bottom = getHeight();
+        float fadeHeight = Math.min(dp(BOTTOM_EDGE_FADE_DP), bottom * 0.12f);
         if (fadeHeight <= 1f) {
             return;
         }
-        float top = getHeight() - fadeHeight;
-        edgeFadePaint.setShader(new LinearGradient(
-                0f,
-                top,
-                0f,
-                getHeight(),
-                Color.BLACK,
-                Color.TRANSPARENT,
-                Shader.TileMode.CLAMP
-        ));
-        edgeFadePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-        canvas.drawRect(0f, top, getWidth(), getHeight(), edgeFadePaint);
+        float top = bottom - fadeHeight;
+        if (bottomEdgeFadeShader == null
+                || Float.compare(bottomEdgeFadeShaderTop, top) != 0
+                || bottomEdgeFadeShaderBottom != bottom) {
+            bottomEdgeFadeShader = new LinearGradient(
+                    0f,
+                    top,
+                    0f,
+                    bottom,
+                    Color.BLACK,
+                    Color.TRANSPARENT,
+                    Shader.TileMode.CLAMP
+            );
+            bottomEdgeFadeShaderTop = top;
+            bottomEdgeFadeShaderBottom = bottom;
+        }
+        edgeFadePaint.setShader(bottomEdgeFadeShader);
+        edgeFadePaint.setXfermode(bottomEdgeFadeXfermode);
+        canvas.drawRect(0f, top, getWidth(), bottom, edgeFadePaint);
         edgeFadePaint.setXfermode(null);
         edgeFadePaint.setShader(null);
     }
