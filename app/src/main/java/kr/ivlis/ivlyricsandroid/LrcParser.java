@@ -7,6 +7,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class LrcParser {
+    private static final Pattern LINE_BREAK_PATTERN = Pattern.compile("\\r?\\n");
     private static final Pattern LRC_TIME_PATTERN =
             Pattern.compile("\\[(\\d+):(\\d+)(?:[.,](\\d+))?\\](.*)");
 
@@ -19,7 +20,7 @@ final class LrcParser {
         }
 
         List<LyricsLine> starts = new ArrayList<>();
-        String[] rawLines = lrc.split("\\r?\\n");
+        String[] rawLines = LINE_BREAK_PATTERN.split(lrc);
         for (String rawLine : rawLines) {
             Matcher matcher = LRC_TIME_PATTERN.matcher(rawLine);
             if (!matcher.matches()) {
@@ -53,7 +54,7 @@ final class LrcParser {
         }
 
         List<LyricsLine> result = new ArrayList<>();
-        String[] rawLines = plainLyrics.split("\\r?\\n");
+        String[] rawLines = LINE_BREAK_PATTERN.split(plainLyrics);
         for (String rawLine : rawLines) {
             String text = rawLine.trim();
             if (!text.isEmpty()) {
