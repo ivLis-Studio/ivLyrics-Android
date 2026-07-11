@@ -244,7 +244,8 @@ final class LyricsRepository {
             return;
         }
         if (cached != null) {
-            emitLog(key, callback, "cache hit: base lyrics, rechecking OpenDB sync-data");
+            emitLog(key, callback, "cache hit: base lyrics served immediately; rechecking OpenDB sync-data in background");
+            callback.onLyricsLoaded(key, cached);
         }
 
         emitLog(key, callback, "track: \"" + track.title + "\" / \"" + track.artist + "\""
@@ -254,12 +255,13 @@ final class LyricsRepository {
 
         executor.execute(() -> {
             LogSink log = message -> emitLog(key, callback, message);
+            LyricsResult reusableCached = cached;
             try {
-                LyricsResult reusableCached = cached;
                 if (reusableCached == null) {
                     reusableCached = diskCache == null ? null : diskCache.get(key);
                 }
                 if (reusableCached != null && reusableCached.karaoke) {
+                    putMemoryCachedLyrics(key, reusableCached);
                     log.write("disk cache hit: sync-data/LRCLIB lyrics"
                             + " / contributors=" + reusableCached.contributors.size());
                     LyricsResult finalCached = reusableCached;
@@ -267,16 +269,29 @@ final class LyricsRepository {
                     return;
                 }
                 if (reusableCached != null) {
-                    log.write("base lyrics cache hit: rechecking OpenDB sync-data before reuse");
+                    putMemoryCachedLyrics(key, reusableCached);
+                    log.write("base lyrics disk cache hit: served immediately; rechecking OpenDB sync-data in background");
+                    if (cached == null) {
+                        LyricsResult finalCached = reusableCached;
+                        mainHandler.post(() -> callback.onLyricsLoaded(key, finalCached));
+                    }
                 }
                 LyricsResult result = loadLyricsBlocking(track, key, callback, log, reusableCached);
                 putMemoryCachedLyrics(key, result);
                 if (diskCache != null) {
                     diskCache.put(key, result);
                 }
-                mainHandler.post(() -> callback.onLyricsLoaded(key, result));
+                if (shouldPublishRevalidatedLyrics(reusableCached, result)) {
+                    mainHandler.post(() -> callback.onLyricsLoaded(key, result));
+                } else {
+                    log.write("background sync-data recheck complete: cached lyrics kept");
+                }
             } catch (Exception error) {
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                if (reusableCached != null) {
+                    log.write("background sync-data recheck error: " + message + "; cached lyrics kept");
+                    return;
+                }
                 log.write("error: " + message);
                 mainHandler.post(() -> callback.onLyricsError(key, message));
             }
@@ -504,13 +519,25 @@ final class LyricsRepository {
             LogSink log,
             LyricsResult cachedBase
     ) throws Exception {
-        log.write("flow: Spotify Web API search -> sync-data -> LRCLIB source/search");
-        SpotifyTrackMatch spotifyMatch = fetchSpotifyIsrc(
-                track,
-                log,
-                match -> publishResolvedSpotifyMetadata(trackKey, match, callback)
-        );
-        publishSpotifyArtwork(trackKey, spotifyMatch, callback, log);
+        boolean hasCachedIsrc = cachedBase != null && !cachedBase.isrc.isEmpty();
+        log.write(hasCachedIsrc
+                ? "flow: cached ISRC -> sync-data recheck -> cached LRCLIB lyrics"
+                : "flow: Spotify Web API search -> sync-data -> LRCLIB source/search");
+        SpotifyTrackMatch spotifyMatch = null;
+        if (hasCachedIsrc) {
+            log.write("spotify lookup skipped: cached ISRC=" + cachedBase.isrc
+                    + (cachedBase.spotifyTrackId.isEmpty()
+                    ? ""
+                    : " / trackId=" + cachedBase.spotifyTrackId));
+            publishResolvedMetadata(trackKey, cachedBase.isrc, cachedBase.spotifyTrackId, callback);
+        } else {
+            spotifyMatch = fetchSpotifyIsrc(
+                    track,
+                    log,
+                    match -> publishResolvedSpotifyMetadata(trackKey, match, callback)
+            );
+            publishSpotifyArtwork(trackKey, spotifyMatch, callback, log);
+        }
         boolean isrcFromSpotify = spotifyMatch != null && !spotifyMatch.isrc.isEmpty();
         String isrc = firstNonEmpty(
                 spotifyMatch == null ? "" : spotifyMatch.isrc,
@@ -672,6 +699,13 @@ final class LyricsRepository {
                 firstNonEmpty(spotifyTrackId, cachedBase.spotifyTrackId),
                 cachedBase.contributors
         );
+    }
+
+    private boolean shouldPublishRevalidatedLyrics(LyricsResult cached, LyricsResult refreshed) {
+        if (cached == null) {
+            return true;
+        }
+        return refreshed != null && refreshed.karaoke && !cached.karaoke;
     }
 
     private LyricsResult lyricsResultFromManualCandidate(LrclibCandidate candidate, TrackSnapshot track) {
