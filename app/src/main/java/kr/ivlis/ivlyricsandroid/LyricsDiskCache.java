@@ -20,6 +20,7 @@ import java.util.Locale;
 final class LyricsDiskCache {
     private static final int VERSION = 1;
     private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 8;
+    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;
     private final int maxEntries;
@@ -366,11 +367,14 @@ final class LyricsDiskCache {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
+            char[] encoded = new char[bytes.length * 2];
+            int offset = 0;
             for (byte item : bytes) {
-                builder.append(String.format(Locale.ROOT, "%02x", item));
+                int unsigned = item & 0xff;
+                encoded[offset++] = HEX_DIGITS[unsigned >>> 4];
+                encoded[offset++] = HEX_DIGITS[unsigned & 0x0f];
             }
-            return builder.toString();
+            return new String(encoded);
         } catch (Exception ignored) {
             return Integer.toHexString((value == null ? "" : value).hashCode());
         }
