@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-final class AiLyricsSettings {
+final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChangeListener {
     static final String PREFS_NAME = "ai_lyrics_settings";
     static final String KEY_TRANSLATION_ENABLED = "translation_enabled";
     static final String KEY_PRONUNCIATION_ENABLED = "pronunciation_enabled";
@@ -228,12 +228,17 @@ final class AiLyricsSettings {
     private static final Map<String, Language> LANGUAGE_BY_CODE = buildLanguageMap();
 
     private final SharedPreferences prefs;
+    private volatile Snapshot cachedSnapshot;
 
     AiLyricsSettings(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.registerOnSharedPreferenceChangeListener(this);
     }
 
-    Snapshot snapshot() {
+    synchronized Snapshot snapshot() {
+        if (cachedSnapshot != null) {
+            return cachedSnapshot;
+        }
         String providerId = prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER);
         Provider provider = providerById(providerId);
         String baseUrl = prefs.getString(KEY_BASE_URL, provider.defaultBaseUrl);
@@ -241,7 +246,7 @@ final class AiLyricsSettings {
         RuleConfig ruleConfig = loadRuleConfig();
         String outputLang = storedOutputLanguage(ruleConfig);
         ruleConfig = ruleConfig.withTarget(outputLang);
-        return new Snapshot(
+        Snapshot snapshot = new Snapshot(
                 normalizedUiLanguage(prefs.getString(KEY_UI_LANG, autoTargetLanguage())),
                 outputLang,
                 provider,
@@ -279,6 +284,18 @@ final class AiLyricsSettings {
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
+        cachedSnapshot = snapshot;
+        return snapshot;
+    }
+
+    @Override
+    public synchronized void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        cachedSnapshot = null;
+    }
+
+    void shutdown() {
+        prefs.unregisterOnSharedPreferenceChangeListener(this);
+        cachedSnapshot = null;
     }
 
     void setUiLang(String lang) {

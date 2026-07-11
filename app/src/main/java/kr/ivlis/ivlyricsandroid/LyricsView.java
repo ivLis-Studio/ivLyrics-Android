@@ -81,6 +81,10 @@ public final class LyricsView extends View {
     private float typographySizeMultiplier = 1f;
 
     private List<LyricsLine> lines = Collections.emptyList();
+    private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
+    private boolean displayLineCacheValid;
+    private long displayLineCacheStartMs = Long.MIN_VALUE;
+    private long displayLineCacheEndMs = Long.MAX_VALUE;
     private long positionMs;
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
@@ -149,6 +153,7 @@ public final class LyricsView extends View {
             emptyMessage = "";
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
+        invalidateDisplayLineCache();
         if (softUpdate) {
             currentDisplayLineCount = Math.max(0, lines.size());
             postInvalidateOnAnimation();
@@ -318,6 +323,7 @@ public final class LyricsView extends View {
             return;
         }
         trackDurationMs = nextDurationMs;
+        invalidateDisplayLineCache();
         postInvalidateOnAnimation();
     }
 
@@ -326,6 +332,7 @@ public final class LyricsView extends View {
             return;
         }
         autoInstrumentalBreakEnabled = enabled;
+        invalidateDisplayLineCache();
         centerInitialized = false;
         postInvalidateOnAnimation();
     }
@@ -430,6 +437,9 @@ public final class LyricsView extends View {
 
     void setPlaybackPosition(long positionMs) {
         long nextPositionMs = Math.max(0L, positionMs);
+        if (this.positionMs == nextPositionMs && !smoothNextSeekCenter) {
+            return;
+        }
         boolean smoothSeekCenter = smoothNextSeekCenter && centerInitialized;
         smoothNextSeekCenter = false;
         if (nextPositionMs + 120L < this.positionMs || Math.abs(nextPositionMs - this.positionMs) > 1600L) {
@@ -2781,18 +2791,29 @@ public final class LyricsView extends View {
         if (lines.isEmpty()) {
             return Collections.emptyList();
         }
+        if (displayLineCacheValid
+                && positionMs >= displayLineCacheStartMs
+                && positionMs < displayLineCacheEndMs) {
+            return cachedDisplayLines;
+        }
 
         List<DisplayLine> displayLines = new ArrayList<>(lines.size() + 1);
+        long cacheStartMs = Long.MIN_VALUE;
+        long cacheEndMs = Long.MAX_VALUE;
         int lineCount = lines.size();
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
             InterludeInfo lineInterlude = interludeInfoForLine(line, index, lineCount);
+            cacheStartMs = cacheIntervalStart(lineInterlude, cacheStartMs);
+            cacheEndMs = cacheIntervalEnd(lineInterlude, cacheEndMs);
             boolean markerInterlude = lineInterlude.isInterlude;
             if (!markerInterlude || (isPositionInside(lineInterlude) && !hasVisibleInterludeOverlap(displayLines, lineInterlude))) {
                 displayLines.add(DisplayLine.real(line, index, displayLines.size(), markerInterlude ? lineInterlude : InterludeInfo.none()));
             }
 
             InterludeInfo trailingInterlude = trailingInterludeInfo(line, index, lineCount);
+            cacheStartMs = cacheIntervalStart(trailingInterlude, cacheStartMs);
+            cacheEndMs = cacheIntervalEnd(trailingInterlude, cacheEndMs);
             if (trailingInterlude.isInterlude
                     && isPositionInside(trailingInterlude)
                     && !hasVisibleInterludeOverlap(displayLines, trailingInterlude)) {
@@ -2804,7 +2825,46 @@ public final class LyricsView extends View {
             LyricsLine line = lines.get(0);
             displayLines.add(DisplayLine.real(line, 0, 0, interludeInfoForLine(line, 0, lineCount)));
         }
-        return displayLines;
+        cachedDisplayLines = displayLines;
+        displayLineCacheStartMs = cacheStartMs;
+        displayLineCacheEndMs = cacheEndMs;
+        displayLineCacheValid = true;
+        return cachedDisplayLines;
+    }
+
+    private long cacheIntervalStart(InterludeInfo info, long currentStartMs) {
+        if (info == null || !info.isInterlude) {
+            return currentStartMs;
+        }
+        long nextStartMs = currentStartMs;
+        if (info.startTimeMs <= positionMs) {
+            nextStartMs = Math.max(nextStartMs, info.startTimeMs);
+        }
+        if (info.endTimeMs <= positionMs) {
+            nextStartMs = Math.max(nextStartMs, info.endTimeMs);
+        }
+        return nextStartMs;
+    }
+
+    private long cacheIntervalEnd(InterludeInfo info, long currentEndMs) {
+        if (info == null || !info.isInterlude) {
+            return currentEndMs;
+        }
+        long nextEndMs = currentEndMs;
+        if (info.startTimeMs > positionMs) {
+            nextEndMs = Math.min(nextEndMs, info.startTimeMs);
+        }
+        if (info.endTimeMs > positionMs) {
+            nextEndMs = Math.min(nextEndMs, info.endTimeMs);
+        }
+        return nextEndMs;
+    }
+
+    private void invalidateDisplayLineCache() {
+        cachedDisplayLines = Collections.emptyList();
+        displayLineCacheValid = false;
+        displayLineCacheStartMs = Long.MIN_VALUE;
+        displayLineCacheEndMs = Long.MAX_VALUE;
     }
 
     private boolean hasVisibleInterludeOverlap(List<DisplayLine> displayLines, InterludeInfo info) {

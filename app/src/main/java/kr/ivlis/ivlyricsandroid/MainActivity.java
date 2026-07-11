@@ -128,6 +128,7 @@ public final class MainActivity extends Activity implements
     private static final String KEY_LYRICS_META_MENU_TIP_SHOWN = "lyrics_meta_menu_tip_shown";
     private static final String KEY_LAST_AUTO_UPDATE_CHECK_MS = "last_auto_update_check_ms";
     private static final long AUTO_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L;
+    private static final long PLAYBACK_CLOCK_INTERVAL_MS = 33L;
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
@@ -438,7 +439,7 @@ public final class MainActivity extends Activity implements
         @Override
         public void run() {
             updatePlaybackUi();
-            handler.postDelayed(this, 16L);
+            handler.postDelayed(this, PLAYBACK_CLOCK_INTERVAL_MS);
         }
     };
 
@@ -813,6 +814,9 @@ public final class MainActivity extends Activity implements
         }
         if (furiganaRepository != null) {
             furiganaRepository.shutdown();
+        }
+        if (aiLyricsSettings != null) {
+            aiLyricsSettings.shutdown();
         }
         if (youtubeBackgroundRepository != null) {
             youtubeBackgroundRepository.shutdown();
@@ -9839,6 +9843,24 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void setLyricsPlaybackPositionOnActiveView(long positionMs) {
+        if (isPictureInPictureUiActive()) {
+            if (pictureInPictureLyricsView != null) {
+                pictureInPictureLyricsView.setPlaybackPosition(positionMs);
+            }
+            return;
+        }
+        if (isLandscapeLayout()) {
+            if (landscapeLyricsView != null) {
+                landscapeLyricsView.setPlaybackPosition(positionMs);
+            }
+            return;
+        }
+        if (lyricsPageVisible && lyricsView != null) {
+            lyricsView.setPlaybackPosition(positionMs);
+        }
+    }
+
     private void setAutoInstrumentalBreakOnViews(boolean enabled) {
         if (lyricsView != null) {
             lyricsView.setAutoInstrumentalBreakEnabled(enabled);
@@ -10035,16 +10057,18 @@ public final class MainActivity extends Activity implements
         }
         long position = currentPlaybackPosition(snapshot);
         long lyricsPosition = lyricsPlaybackPosition(position, snapshot.durationMs);
-        setLyricsPlaybackPositionOnViews(lyricsPosition);
-        playerProgressView.setProgress(position, snapshot.durationMs);
-        updateYouTubeBackgroundPlaybackState();
+        setLyricsPlaybackPositionOnActiveView(lyricsPosition);
+        if (playerProgressView != null && playerProgressView.isShown()) {
+            playerProgressView.setProgress(position, snapshot.durationMs);
+        }
 
         long now = SystemClock.uptimeMillis();
         if (now - lastProgressUiUpdateMs >= 250L) {
             lastProgressUiUpdateMs = now;
-            updateProgressViews(position, snapshot.durationMs);
+            updateProgressLabels(position, snapshot.durationMs);
             updateLyricPreview(lyricsPosition);
             playPauseButton.setPlaying(snapshot.playing);
+            updateYouTubeBackgroundPlaybackState();
         }
     }
 
@@ -10052,6 +10076,10 @@ public final class MainActivity extends Activity implements
         if (playerProgressView != null) {
             playerProgressView.setProgress(position, duration);
         }
+        updateProgressLabels(position, duration);
+    }
+
+    private void updateProgressLabels(long position, long duration) {
         if (elapsedView != null) {
             elapsedView.setText(formatTime(position));
         }

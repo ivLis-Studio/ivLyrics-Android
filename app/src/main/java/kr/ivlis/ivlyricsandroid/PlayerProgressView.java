@@ -31,16 +31,21 @@ public final class PlayerProgressView extends View {
     }
 
     void setProgress(long positionMs, long durationMs) {
-        this.durationMs = Math.max(0L, durationMs);
+        long nextDurationMs = Math.max(0L, durationMs);
         if (dragging) {
-            invalidate();
             return;
         }
-        if (this.durationMs > 0L) {
-            this.positionMs = Math.max(0L, Math.min(this.durationMs, positionMs));
+        long nextPositionMs;
+        if (nextDurationMs > 0L) {
+            nextPositionMs = Math.max(0L, Math.min(nextDurationMs, positionMs));
         } else {
-            this.positionMs = Math.max(0L, positionMs);
+            nextPositionMs = Math.max(0L, positionMs);
         }
+        if (this.durationMs == nextDurationMs && this.positionMs == nextPositionMs) {
+            return;
+        }
+        this.durationMs = nextDurationMs;
+        this.positionMs = nextPositionMs;
         invalidate();
     }
 
