@@ -19,11 +19,17 @@ final class RawResponseDiskCache {
 
     private final File directory;
     private final int maxEntries;
+    private final long maxAgeMs;
 
     RawResponseDiskCache(Context context, String namespace, int maxEntries) {
+        this(context, namespace, maxEntries, 0L);
+    }
+
+    RawResponseDiskCache(Context context, String namespace, int maxEntries, long maxAgeMs) {
         File root = context.getApplicationContext().getFilesDir();
         this.directory = new File(root, "lyrics_cache/" + safeNamespace(namespace));
         this.maxEntries = Math.max(16, maxEntries);
+        this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
 
     synchronized String get(String key) {
@@ -34,6 +40,12 @@ final class RawResponseDiskCache {
         try {
             JSONObject object = new JSONObject(readUtf8(file));
             if (object.optInt("version", 0) != VERSION) {
+                return "";
+            }
+            long savedAtMs = object.optLong("savedAtMs", 0L);
+            if (maxAgeMs > 0L
+                    && (savedAtMs <= 0L || System.currentTimeMillis() - savedAtMs > maxAgeMs)) {
+                file.delete();
                 return "";
             }
             String value = object.optString("body", "");

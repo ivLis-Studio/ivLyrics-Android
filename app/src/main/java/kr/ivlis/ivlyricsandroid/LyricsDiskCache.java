@@ -24,13 +24,19 @@ final class LyricsDiskCache {
     private final File directory;
     private final int maxEntries;
     private final boolean baseLyricsCache;
+    private final long maxAgeMs;
 
     LyricsDiskCache(Context context, String namespace, int maxEntries) {
+        this(context, namespace, maxEntries, 0L);
+    }
+
+    LyricsDiskCache(Context context, String namespace, int maxEntries, long maxAgeMs) {
         File root = context.getApplicationContext().getFilesDir();
         String safeNamespace = safeNamespace(namespace);
         this.directory = new File(root, "lyrics_cache/" + safeNamespace);
         this.maxEntries = Math.max(16, maxEntries);
         this.baseLyricsCache = "base_lyrics".equals(safeNamespace);
+        this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
 
     synchronized LyricsResult get(String key) {
@@ -45,6 +51,12 @@ final class LyricsDiskCache {
             }
             if (baseLyricsCache
                     && object.optInt("contributorSchemaVersion", 0) < BASE_CONTRIBUTOR_SCHEMA_VERSION) {
+                return null;
+            }
+            long savedAtMs = object.optLong("savedAtMs", 0L);
+            if (maxAgeMs > 0L
+                    && (savedAtMs <= 0L || System.currentTimeMillis() - savedAtMs > maxAgeMs)) {
+                file.delete();
                 return null;
             }
             LyricsResult result = resultFromJson(object);

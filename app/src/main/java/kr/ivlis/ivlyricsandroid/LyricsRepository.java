@@ -48,6 +48,8 @@ final class LyricsRepository {
     private static final String OPENDB_PREFS = "sync_data_opendb";
     private static final String KEY_OPENDB_PROVIDER_MAP = "provider_map";
     private static final String KEY_OPENDB_FETCHED_AT_MS = "fetched_at_ms";
+    private static final String KEY_OPENDB_SIGNATURE = "manifest_signature";
+    private static final String KEY_OPENDB_BASE_DATE = "base_date";
     private static final String KEY_OPENDB_UNAVAILABLE_UNTIL_MS = "unavailable_until_ms";
     private static final String SPOTIFY_ACCOUNTS_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
     private static final String SPOTIFY_SEARCH_BASE = "https://api.spotify.com/v1/search";
@@ -64,6 +66,7 @@ final class LyricsRepository {
     private static final long SPOTIFY_TOKEN_MAX_AGE_MS = 50L * 60L * 1_000L;
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
     private static final long SYNC_DATA_SERVER_CACHE_BYPASS_MS = 30L * 1_000L;
+    private static final long LYRICS_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1_000L;
     private static final long OPENDB_FRESH_MS = 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
@@ -74,7 +77,7 @@ final class LyricsRepository {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final Map<String, LyricsResult> cache = new HashMap<>();
+    private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
     private final LyricsDiskCache diskCache;
@@ -95,10 +98,10 @@ final class LyricsRepository {
         aiLyricsSettings = appContext == null ? null : new AiLyricsSettings(appContext);
         diskCache = appContext == null
                 ? null
-                : new LyricsDiskCache(appContext, "base_lyrics", 350);
+                : new LyricsDiskCache(appContext, "base_lyrics", 350, LYRICS_CACHE_MAX_AGE_MS);
         syncDataResponseCache = appContext == null
                 ? null
-                : new RawResponseDiskCache(appContext, "sync_data_api", 700);
+                : new RawResponseDiskCache(appContext, "sync_data_api", 700, LYRICS_CACHE_MAX_AGE_MS);
         openDbPrefs = appContext == null
                 ? null
                 : appContext.getSharedPreferences(OPENDB_PREFS, Context.MODE_PRIVATE);
@@ -200,6 +203,33 @@ final class LyricsRepository {
         return AppI18n.t(lang, key);
     }
 
+    private synchronized LyricsResult getMemoryCachedLyrics(String key) {
+        MemoryLyricsCacheEntry entry = cache.get(key);
+        if (entry == null) {
+            return null;
+        }
+        if (System.currentTimeMillis() - entry.savedAtMs > LYRICS_CACHE_MAX_AGE_MS) {
+            cache.remove(key);
+            return null;
+        }
+        return entry.result;
+    }
+
+    private synchronized void putMemoryCachedLyrics(String key, LyricsResult result) {
+        if (key == null || key.trim().isEmpty() || result == null || result.lines.isEmpty()) {
+            return;
+        }
+        cache.put(key, new MemoryLyricsCacheEntry(result, System.currentTimeMillis()));
+    }
+
+    private synchronized void removeMemoryCachedLyrics(String key) {
+        cache.remove(key);
+    }
+
+    private synchronized void clearMemoryLyricsCache() {
+        cache.clear();
+    }
+
     void loadLyrics(TrackSnapshot track, Callback callback) {
         if (track == null || !track.hasUsableMetadata()) {
             callback.onLyricsLoaded("", LyricsResult.empty(ui("repo.metadata_waiting")));
@@ -207,11 +237,14 @@ final class LyricsRepository {
         }
 
         String key = track.stableKey();
-        LyricsResult cached = cache.get(key);
-        if (cached != null) {
+        LyricsResult cached = getMemoryCachedLyrics(key);
+        if (cached != null && cached.karaoke) {
             emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist);
             callback.onLyricsLoaded(key, cached);
             return;
+        }
+        if (cached != null) {
+            emitLog(key, callback, "cache hit: base lyrics, rechecking OpenDB sync-data");
         }
 
         emitLog(key, callback, "track: \"" + track.title + "\" / \"" + track.artist + "\""
@@ -222,16 +255,22 @@ final class LyricsRepository {
         executor.execute(() -> {
             LogSink log = message -> emitLog(key, callback, message);
             try {
-                LyricsResult diskCached = diskCache == null ? null : diskCache.get(key);
-                if (diskCached != null) {
-                    cache.put(key, diskCached);
+                LyricsResult reusableCached = cached;
+                if (reusableCached == null) {
+                    reusableCached = diskCache == null ? null : diskCache.get(key);
+                }
+                if (reusableCached != null && reusableCached.karaoke) {
                     log.write("disk cache hit: sync-data/LRCLIB lyrics"
-                            + " / contributors=" + diskCached.contributors.size());
-                    mainHandler.post(() -> callback.onLyricsLoaded(key, diskCached));
+                            + " / contributors=" + reusableCached.contributors.size());
+                    LyricsResult finalCached = reusableCached;
+                    mainHandler.post(() -> callback.onLyricsLoaded(key, finalCached));
                     return;
                 }
-                LyricsResult result = loadLyricsBlocking(track, key, callback, log);
-                cache.put(key, result);
+                if (reusableCached != null) {
+                    log.write("base lyrics cache hit: rechecking OpenDB sync-data before reuse");
+                }
+                LyricsResult result = loadLyricsBlocking(track, key, callback, log, reusableCached);
+                putMemoryCachedLyrics(key, result);
                 if (diskCache != null) {
                     diskCache.put(key, result);
                 }
@@ -249,7 +288,7 @@ final class LyricsRepository {
     }
 
     void clearCache() {
-        cache.clear();
+        clearMemoryLyricsCache();
         if (diskCache != null) {
             diskCache.clear();
         }
@@ -265,7 +304,7 @@ final class LyricsRepository {
         if (key.isEmpty()) {
             return;
         }
-        cache.remove(key);
+        removeMemoryCachedLyrics(key);
         if (diskCache != null) {
             diskCache.remove(key);
         }
@@ -290,6 +329,8 @@ final class LyricsRepository {
         openDbPrefs.edit()
                 .remove(KEY_OPENDB_PROVIDER_MAP)
                 .remove(KEY_OPENDB_FETCHED_AT_MS)
+                .remove(KEY_OPENDB_SIGNATURE)
+                .remove(KEY_OPENDB_BASE_DATE)
                 .remove(KEY_OPENDB_UNAVAILABLE_UNTIL_MS)
                 .apply();
     }
@@ -398,7 +439,7 @@ final class LyricsRepository {
                 }
                 LyricsResult result = lyricsResultFromManualCandidate(candidate, track);
                 if (!key.isEmpty()) {
-                    cache.put(key, result);
+                    putMemoryCachedLyrics(key, result);
                     if (diskCache != null) {
                         diskCache.put(key, result);
                     }
@@ -456,7 +497,13 @@ final class LyricsRepository {
         });
     }
 
-    private LyricsResult loadLyricsBlocking(TrackSnapshot track, String trackKey, Callback callback, LogSink log) throws Exception {
+    private LyricsResult loadLyricsBlocking(
+            TrackSnapshot track,
+            String trackKey,
+            Callback callback,
+            LogSink log,
+            LyricsResult cachedBase
+    ) throws Exception {
         log.write("flow: Spotify Web API search -> sync-data -> LRCLIB source/search");
         SpotifyTrackMatch spotifyMatch = fetchSpotifyIsrc(
                 track,
@@ -467,15 +514,21 @@ final class LyricsRepository {
         boolean isrcFromSpotify = spotifyMatch != null && !spotifyMatch.isrc.isEmpty();
         String isrc = firstNonEmpty(
                 spotifyMatch == null ? "" : spotifyMatch.isrc,
-                track.isrc
+                track.isrc,
+                cachedBase == null ? "" : cachedBase.isrc
         );
         String spotifyTrackId = firstNonEmpty(
                 spotifyMatch == null ? "" : spotifyMatch.spotifyId,
-                track.trackId
+                track.trackId,
+                cachedBase == null ? "" : cachedBase.spotifyTrackId
         );
+        boolean isrcFromCache = !isrcFromSpotify
+                && track.isrc.isEmpty()
+                && cachedBase != null
+                && !cachedBase.isrc.isEmpty();
         String isrcSource = isrc.isEmpty()
                 ? ""
-                : (isrcFromSpotify ? "Spotify Web API" : "player metadata");
+                : (isrcFromSpotify ? "Spotify Web API" : (isrcFromCache ? "lyrics cache" : "player metadata"));
         log.write(isrc.isEmpty()
                 ? "isrc: unavailable after Spotify lookup"
                 : "isrc: " + isrc + " (" + isrcSource + ")");
@@ -484,6 +537,9 @@ final class LyricsRepository {
         }
 
         SyncDataResult syncData = isrc.isEmpty() ? null : fetchSyncData(isrc, track, spotifyMatch, log);
+        if (cachedBase != null) {
+            return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log);
+        }
         LrclibCandidate candidate = null;
         boolean loadedFromSyncSource = false;
 
@@ -570,6 +626,51 @@ final class LyricsRepository {
                 isrc,
                 spotifyTrackId,
                 Collections.emptyList()
+        );
+    }
+
+    private LyricsResult applySyncDataToCachedBase(
+            LyricsResult cachedBase,
+            SyncDataResult syncData,
+            TrackSnapshot track,
+            String isrc,
+            String spotifyTrackId,
+            LogSink log
+    ) {
+        List<LyricsLine> baseLines = cachedBase.lines;
+        log.write("lyrics base: lines=" + baseLines.size() + " / source=cache");
+        if (syncData != null) {
+            SyncDataApplier.ApplyResult applied = SyncDataApplier.applyWithDiagnostics(baseLines, syncData.syncBody, track);
+            for (String diagnostic : applied.diagnostics) {
+                log.write("sync-data apply: " + diagnostic);
+            }
+            if (!applied.lines.isEmpty()) {
+                log.write("sync-data applied to cached lyrics: karaoke lines=" + applied.lines.size()
+                        + " / vocalParts=" + countVocalParts(applied.lines));
+                return new LyricsResult(
+                        applied.lines,
+                        "ivLyrics sync-data + LRCLIB",
+                        ui("repo.detail.sync_applied_search"),
+                        true,
+                        isrc,
+                        spotifyTrackId,
+                        syncData.contributors
+                );
+            }
+            log.write("sync-data apply failed for cached lyrics: keeping LRCLIB line lyrics");
+        }
+
+        String detail = isrc.isEmpty()
+                ? ui("repo.detail.no_spotify_isrc")
+                : (syncData == null ? cachedBase.detail : ui("repo.detail.sync_apply_failed"));
+        return new LyricsResult(
+                baseLines,
+                cachedBase.providerLabel,
+                detail,
+                false,
+                firstNonEmpty(isrc, cachedBase.isrc),
+                firstNonEmpty(spotifyTrackId, cachedBase.spotifyTrackId),
+                cachedBase.contributors
         );
     }
 
@@ -1281,10 +1382,27 @@ final class LyricsRepository {
         }
 
         try {
-            JSONObject refreshed = refreshOpenDbProviderMap(log);
+            log.write("sync-data opendb manifest request");
+            JSONObject manifest = new JSONObject(get(OPENDB_MANIFEST_URL));
+            String signature = getOpenDbManifestSignature(manifest);
+            String storedSignature = openDbPrefs.getString(KEY_OPENDB_SIGNATURE, "");
+            if (cached != null && !cached.isEmpty() && signature.equals(storedSignature)) {
+                JSONObject providerMap = new JSONObject(cached);
+                openDbPrefs.edit()
+                        .putLong(KEY_OPENDB_FETCHED_AT_MS, now)
+                        .putLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, 0L)
+                        .apply();
+                log.write("sync-data opendb manifest unchanged: cached provider map reused");
+                return providerMap;
+            }
+
+            JSONObject refreshed = refreshOpenDbProviderMap(manifest, log);
+            JSONObject base = manifest.optJSONObject("base");
             openDbPrefs.edit()
                     .putString(KEY_OPENDB_PROVIDER_MAP, refreshed.toString())
                     .putLong(KEY_OPENDB_FETCHED_AT_MS, now)
+                    .putString(KEY_OPENDB_SIGNATURE, signature)
+                    .putString(KEY_OPENDB_BASE_DATE, base == null ? "" : base.optString("date", ""))
                     .putLong(KEY_OPENDB_UNAVAILABLE_UNTIL_MS, 0L)
                     .apply();
             return refreshed;
@@ -1296,9 +1414,40 @@ final class LyricsRepository {
         }
     }
 
-    private JSONObject refreshOpenDbProviderMap(LogSink log) throws Exception {
-        log.write("sync-data opendb manifest request");
-        JSONObject manifest = new JSONObject(get(OPENDB_MANIFEST_URL));
+    private String getOpenDbManifestSignature(JSONObject manifest) throws Exception {
+        JSONObject signature = new JSONObject();
+        signature.put("schema", manifest == null ? 0 : manifest.optInt("schema", 0));
+
+        JSONObject base = manifest == null ? null : manifest.optJSONObject("base");
+        signature.put("base", base == null ? "" : firstNonEmpty(
+                base.optString("sha256", ""),
+                base.optString("url", "")
+        ));
+
+        JSONArray deltaSignatures = new JSONArray();
+        JSONArray deltas = manifest == null ? null : manifest.optJSONArray("deltas");
+        if (deltas != null) {
+            for (int index = 0; index < deltas.length(); index++) {
+                JSONObject delta = deltas.optJSONObject(index);
+                deltaSignatures.put(delta == null ? "" : firstNonEmpty(
+                        delta.optString("sha256", ""),
+                        delta.optString("url", ""),
+                        delta.optString("date", "")
+                ));
+            }
+        }
+        signature.put("deltas", deltaSignatures);
+
+        JSONObject current = manifest == null ? null : manifest.optJSONObject("current");
+        signature.put("current", current == null ? "" : firstNonEmpty(
+                current.optString("sha256", ""),
+                current.optString("updatedAt", ""),
+                current.optString("url", "")
+        ));
+        return signature.toString();
+    }
+
+    private JSONObject refreshOpenDbProviderMap(JSONObject manifest, LogSink log) throws Exception {
         JSONObject providerMap = new JSONObject();
 
         JSONObject base = manifest.optJSONObject("base");
@@ -2659,11 +2808,16 @@ final class LyricsRepository {
         return Math.max(0L, fallbackDurationMs);
     }
 
-    private static String firstNonEmpty(String first, String second) {
-        if (first != null && !first.trim().isEmpty()) {
-            return first.trim();
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
         }
-        return second == null ? "" : second.trim();
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private static String stripBearer(String value) {
@@ -2842,6 +2996,16 @@ final class LyricsRepository {
         }
 
         return jaro + prefix * 0.1 * (1.0 - jaro);
+    }
+
+    private static final class MemoryLyricsCacheEntry {
+        final LyricsResult result;
+        final long savedAtMs;
+
+        MemoryLyricsCacheEntry(LyricsResult result, long savedAtMs) {
+            this.result = result;
+            this.savedAtMs = savedAtMs;
+        }
     }
 
     private static final class LrclibCandidate {
