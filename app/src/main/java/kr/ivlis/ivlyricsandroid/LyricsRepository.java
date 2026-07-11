@@ -277,9 +277,13 @@ final class LyricsRepository {
                     }
                 }
                 LyricsResult result = loadLyricsBlocking(track, key, callback, log, reusableCached);
-                putMemoryCachedLyrics(key, result);
-                if (diskCache != null) {
-                    diskCache.put(key, result);
+                if (!UnisonLyricsProvider.isUnisonResult(result)) {
+                    putMemoryCachedLyrics(key, result);
+                    if (diskCache != null) {
+                        diskCache.put(key, result);
+                    }
+                } else {
+                    log.write("unison cache: skipped to match provider policy");
                 }
                 if (shouldPublishRevalidatedLyrics(reusableCached, result)) {
                     mainHandler.post(() -> callback.onLyricsLoaded(key, result));
@@ -522,7 +526,7 @@ final class LyricsRepository {
         boolean hasCachedIsrc = cachedBase != null && !cachedBase.isrc.isEmpty();
         log.write(hasCachedIsrc
                 ? "flow: cached ISRC -> sync-data recheck -> cached LRCLIB lyrics"
-                : "flow: Spotify Web API search -> sync-data -> LRCLIB source/search");
+                : "flow: Spotify Web API search -> sync-data -> LRCLIB source/search -> Unison fallback");
         SpotifyTrackMatch spotifyMatch = null;
         if (hasCachedIsrc) {
             log.write("spotify lookup skipped: cached ISRC=" + cachedBase.isrc
@@ -584,11 +588,22 @@ final class LyricsRepository {
         }
 
         if (candidate == null) {
-            candidate = searchBestCandidate(track, spotifyMatch, syncData, log);
+            try {
+                candidate = searchBestCandidate(track, spotifyMatch, syncData, log);
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? error.getClass().getSimpleName()
+                        : error.getMessage();
+                log.write("lrclib search error: " + message + "; continuing with Unison");
+            }
         }
 
         if (candidate == null) {
             log.write("result: no LRCLIB candidate selected");
+            LyricsResult unison = loadUnisonFallback(track, isrc, spotifyTrackId, log);
+            if (unison != null) {
+                return unison;
+            }
             return LyricsResult.empty(ui("repo.lyrics_not_found"));
         }
         log.write("lrclib selected: " + describeLrclibCandidate(candidate)
@@ -608,6 +623,10 @@ final class LyricsRepository {
                 return LyricsResult.empty(ui("repo.instrumental"));
             }
             log.write("result: LRCLIB result has no renderable lyrics");
+            LyricsResult unison = loadUnisonFallback(track, isrc, spotifyTrackId, log);
+            if (unison != null) {
+                return unison;
+            }
             return LyricsResult.empty(ui("repo.no_renderable_lyrics"));
         }
         log.write("lyrics base: lines=" + baseLines.size()
@@ -654,6 +673,24 @@ final class LyricsRepository {
                 spotifyTrackId,
                 Collections.emptyList()
         );
+    }
+
+    private LyricsResult loadUnisonFallback(
+            TrackSnapshot track,
+            String isrc,
+            String spotifyTrackId,
+            LogSink log
+    ) {
+        log.write("provider fallback: LRCLIB -> Unison");
+        try {
+            return UnisonLyricsProvider.fetch(track, isrc, spotifyTrackId, log::write);
+        } catch (Exception error) {
+            String message = error.getMessage() == null
+                    ? error.getClass().getSimpleName()
+                    : error.getMessage();
+            log.write("unison error: " + message);
+            return null;
+        }
     }
 
     private LyricsResult applySyncDataToCachedBase(
