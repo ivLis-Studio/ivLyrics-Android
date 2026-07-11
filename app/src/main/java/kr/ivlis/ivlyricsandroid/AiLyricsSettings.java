@@ -186,21 +186,21 @@ final class AiLyricsSettings {
     ));
     static final List<SpeakerColorSlot> SPEAKER_COLOR_SLOTS = Collections.unmodifiableList(Arrays.asList(
             new SpeakerColorSlot(SPEAKER_COLOR_NORMAL, "speaker_color.normal", "#ffffff"),
-            new SpeakerColorSlot("duet1", "speaker_color.duet", "#eadfff"),
-            new SpeakerColorSlot("duet2", "speaker_color.duet", "#e2d2ff"),
-            new SpeakerColorSlot("duet3", "speaker_color.duet", "#f0e8ff"),
-            new SpeakerColorSlot("duet4", "speaker_color.duet", "#dec9ff"),
-            new SpeakerColorSlot("duet5", "speaker_color.duet", "#e9dcff"),
-            new SpeakerColorSlot("male1", "speaker_color.male", "#e6f2ff"),
-            new SpeakerColorSlot("male2", "speaker_color.male", "#d7ecff"),
-            new SpeakerColorSlot("male3", "speaker_color.male", "#edf7ff"),
-            new SpeakerColorSlot("male4", "speaker_color.male", "#dbe7ff"),
-            new SpeakerColorSlot("male5", "speaker_color.male", "#e2f8ff"),
-            new SpeakerColorSlot("female1", "speaker_color.female", "#ffe7ef"),
-            new SpeakerColorSlot("female2", "speaker_color.female", "#ffe0e8"),
-            new SpeakerColorSlot("female3", "speaker_color.female", "#fff0f5"),
-            new SpeakerColorSlot("female4", "speaker_color.female", "#ffdfe0"),
-            new SpeakerColorSlot("female5", "speaker_color.female", "#fbe5ff")
+            new SpeakerColorSlot("duet1", "speaker_color.duet", "#e4d8ff"),
+            new SpeakerColorSlot("duet2", "speaker_color.duet", "#d6e4ff"),
+            new SpeakerColorSlot("duet3", "speaker_color.duet", "#ffddf2"),
+            new SpeakerColorSlot("duet4", "speaker_color.duet", "#bfaeff"),
+            new SpeakerColorSlot("duet5", "speaker_color.duet", "#9d8cf2"),
+            new SpeakerColorSlot("male1", "speaker_color.male", "#a8ccff"),
+            new SpeakerColorSlot("male2", "speaker_color.male", "#9ae8d4"),
+            new SpeakerColorSlot("male3", "speaker_color.male", "#bfe8ff"),
+            new SpeakerColorSlot("male4", "speaker_color.male", "#7fb5e6"),
+            new SpeakerColorSlot("male5", "speaker_color.male", "#6cb8b8"),
+            new SpeakerColorSlot("female1", "speaker_color.female", "#ffb8c7"),
+            new SpeakerColorSlot("female2", "speaker_color.female", "#ffd6b3"),
+            new SpeakerColorSlot("female3", "speaker_color.female", "#f6c8ff"),
+            new SpeakerColorSlot("female4", "speaker_color.female", "#e6b4d4"),
+            new SpeakerColorSlot("female5", "speaker_color.female", "#f6e5a5")
     ));
     static final List<Language> SUPPORTED_LANGUAGES = Collections.unmodifiableList(Arrays.asList(
             new Language("ko", "Korean", "한국어", "Korean Hangul pronunciation, e.g. こんにちは -> 콘니치와"),
