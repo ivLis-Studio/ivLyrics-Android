@@ -24,9 +24,11 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -36,7 +38,7 @@ import java.util.regex.Pattern;
 final class AiLyricsRepository {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 70_000;
-    private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 96L;
+    private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 600L;
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
     private static final String TMI_PROMPT_VERSION = "origin-v1";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
@@ -45,6 +47,12 @@ final class AiLyricsRepository {
             "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern LATIN_WORD_SEPARATOR_PATTERN = Pattern.compile("[^\\p{L}\\p{N}_]+");
+    private static final String VIETNAMESE_HINTS = "ăâđêôơưạảấầẩẫậắằẳẵặếềểễệịỉọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ";
+    private static final String GERMAN_HINTS = "ßü";
+    private static final String SPANISH_HINTS = "ñ¿¡";
+    private static final String PORTUGUESE_HINTS = "ãõ";
+    private static final String FRENCH_HINTS = "æœçëïÿ";
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -3002,57 +3010,71 @@ final class AiLyricsRepository {
 
     private static String detectLatinLanguage(String text) {
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        if (lower.matches("(?s).*[ăâđêôơưạảấầẩẫậắằẳẵặếềểễệịỉọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ].*")) {
+        if (containsAnyCodePoint(lower, VIETNAMESE_HINTS)) {
             return "vi";
         }
-        if (lower.matches("(?s).*[å].*")) {
+        if (lower.indexOf('å') >= 0) {
             return "sv";
         }
-        if (lower.matches("(?s).*[ßü].*")) {
+        if (containsAnyCodePoint(lower, GERMAN_HINTS)) {
             return "de";
         }
-        if (lower.matches("(?s).*[ñ¿¡].*")) {
+        if (containsAnyCodePoint(lower, SPANISH_HINTS)) {
             return "es";
         }
-        if (lower.matches("(?s).*[ãõ].*")) {
+        if (containsAnyCodePoint(lower, PORTUGUESE_HINTS)) {
             return "pt";
         }
-        if (lower.matches("(?s).*[æœçëïÿ].*")) {
+        if (containsAnyCodePoint(lower, FRENCH_HINTS)) {
             return "fr";
         }
 
-        Map<String, Integer> scores = new HashMap<>();
-        scoreWords(scores, lower, "en", "the", "and", "you", "that", "with", "love", "your", "for", "not", "we", "are");
-        scoreWords(scores, lower, "es", "que", "de", "el", "la", "y", "en", "un", "una", "mi", "tu", "no", "por");
-        scoreWords(scores, lower, "fr", "que", "de", "le", "la", "les", "et", "je", "tu", "pas", "mon", "pour", "dans");
-        scoreWords(scores, lower, "pt", "que", "de", "o", "a", "e", "eu", "voce", "você", "não", "por", "meu", "pra");
-        scoreWords(scores, lower, "it", "che", "di", "il", "la", "e", "io", "tu", "non", "per", "mio", "nel", "sono");
-        scoreWords(scores, lower, "de", "ich", "du", "und", "der", "die", "das", "nicht", "mein", "mit", "ein", "ist");
-        scoreWords(scores, lower, "sv", "och", "det", "jag", "du", "inte", "att", "min", "med", "en", "är", "för");
-        scoreWords(scores, lower, "id", "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu");
-        scoreWords(scores, lower, "ms", "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu", "kau");
-
-        String best = "en";
-        int bestScore = 0;
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
-            if (entry.getValue() > bestScore) {
-                best = entry.getKey();
-                bestScore = entry.getValue();
+        Set<String> words = new HashSet<>();
+        for (String word : LATIN_WORD_SEPARATOR_PATTERN.split(lower)) {
+            if (!word.isEmpty()) {
+                words.add(word);
             }
         }
+        String best = "en";
+        int bestScore = scoreWords(words, "the", "and", "you", "that", "with", "love", "your", "for", "not", "we", "are");
+        int score = scoreWords(words, "que", "de", "el", "la", "y", "en", "un", "una", "mi", "tu", "no", "por");
+        if (score > bestScore) { best = "es"; bestScore = score; }
+        score = scoreWords(words, "que", "de", "le", "la", "les", "et", "je", "tu", "pas", "mon", "pour", "dans");
+        if (score > bestScore) { best = "fr"; bestScore = score; }
+        score = scoreWords(words, "que", "de", "o", "a", "e", "eu", "voce", "você", "não", "por", "meu", "pra");
+        if (score > bestScore) { best = "pt"; bestScore = score; }
+        score = scoreWords(words, "che", "di", "il", "la", "e", "io", "tu", "non", "per", "mio", "nel", "sono");
+        if (score > bestScore) { best = "it"; bestScore = score; }
+        score = scoreWords(words, "ich", "du", "und", "der", "die", "das", "nicht", "mein", "mit", "ein", "ist");
+        if (score > bestScore) { best = "de"; bestScore = score; }
+        score = scoreWords(words, "och", "det", "jag", "du", "inte", "att", "min", "med", "en", "är", "för");
+        if (score > bestScore) { best = "sv"; bestScore = score; }
+        score = scoreWords(words, "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu");
+        if (score > bestScore) { best = "id"; bestScore = score; }
+        score = scoreWords(words, "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu", "kau");
+        if (score > bestScore) { best = "ms"; bestScore = score; }
         return bestScore >= 2 ? best : "en";
     }
 
-    private static void scoreWords(Map<String, Integer> scores, String text, String lang, String... words) {
+    private static int scoreWords(Set<String> textWords, String... words) {
         int score = 0;
         for (String word : words) {
-            if (text.matches("(?s).*\\b" + java.util.regex.Pattern.quote(word) + "\\b.*")) {
+            if (textWords.contains(word)) {
                 score++;
             }
         }
-        if (score > 0) {
-            scores.put(lang, score);
+        return score;
+    }
+
+    private static boolean containsAnyCodePoint(String text, String hints) {
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            if (hints.indexOf(codePoint) >= 0) {
+                return true;
+            }
+            offset += Character.charCount(codePoint);
         }
+        return false;
     }
 
     private static final String SIMPLIFIED_HINTS = "这为国们会来时说对过还后个无爱声体见长门马鸟鱼龙云";

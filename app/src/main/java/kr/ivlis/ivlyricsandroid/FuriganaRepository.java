@@ -20,6 +20,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +35,7 @@ final class FuriganaRepository {
 
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService cacheExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, LyricsResult> memoryCache = new HashMap<>();
     private final Map<String, PendingRequest> pendingRequests = new HashMap<>();
     private final List<String> queuedScripts = new ArrayList<>();
@@ -40,6 +43,8 @@ final class FuriganaRepository {
     private WebView webView;
     private boolean pageLoaded;
     private long nextRequestId;
+    private long activeLoadGeneration;
+    private volatile long cacheGeneration;
 
     FuriganaRepository(Context context) {
         this.context = context;
@@ -115,6 +120,8 @@ final class FuriganaRepository {
                 || baseResult == null || baseResult.lines.isEmpty()) {
             return;
         }
+        long loadGeneration = ++activeLoadGeneration;
+        cancelPendingRequests();
         List<FuriganaRequest> requests = buildRequests(baseResult.lines);
         if (requests.isEmpty() || !containsKanji(payloadText(requests))) {
             callback.onFuriganaLoaded(track.stableKey(), baseResult);
@@ -133,16 +140,57 @@ final class FuriganaRepository {
                 callback.onFuriganaLoaded(trackKey, mergeFurigana(baseResult, cached));
                 return;
             }
-            LyricsResult diskCached = diskCache == null ? null : diskCache.get(cacheKey);
-            if (diskCached != null) {
-                memoryCache.put(cacheKey, diskCached);
-                callback.onFuriganaLog(trackKey, "furigana js disk cache hit");
-                callback.onFuriganaLoaded(trackKey, mergeFurigana(baseResult, diskCached));
+            if (diskCache != null) {
+                long expectedCacheGeneration = cacheGeneration;
+                executeCacheTask(() -> {
+                    LyricsResult diskCached = diskCache.get(cacheKey);
+                    mainHandler.post(() -> finishDiskLookup(
+                            loadGeneration,
+                            expectedCacheGeneration,
+                            trackKey,
+                            cacheKey,
+                            baseResult,
+                            requests,
+                            callback,
+                            diskCached
+                    ));
+                });
                 return;
             }
         }
 
-        cancelPendingForTrack(trackKey);
+        startFuriganaRequest(trackKey, cacheKey, baseResult, requests, callback);
+    }
+
+    private void finishDiskLookup(
+            long loadGeneration,
+            long expectedCacheGeneration,
+            String trackKey,
+            String cacheKey,
+            LyricsResult baseResult,
+            List<FuriganaRequest> requests,
+            Callback callback,
+            LyricsResult diskCached
+    ) {
+        if (loadGeneration != activeLoadGeneration || expectedCacheGeneration != cacheGeneration) {
+            return;
+        }
+        if (diskCached != null) {
+            memoryCache.put(cacheKey, diskCached);
+            callback.onFuriganaLog(trackKey, "furigana js disk cache hit");
+            callback.onFuriganaLoaded(trackKey, mergeFurigana(baseResult, diskCached));
+            return;
+        }
+        startFuriganaRequest(trackKey, cacheKey, baseResult, requests, callback);
+    }
+
+    private void startFuriganaRequest(
+            String trackKey,
+            String cacheKey,
+            LyricsResult baseResult,
+            List<FuriganaRequest> requests,
+            Callback callback
+    ) {
         String requestId = "f" + (++nextRequestId);
         PendingRequest pending = new PendingRequest(
                 requestId,
@@ -159,20 +207,12 @@ final class FuriganaRepository {
         evaluateWhenReady(buildRequestScript(requestId, requests));
     }
 
-    private void cancelPendingForTrack(String trackKey) {
-        String key = trackKey == null ? "" : trackKey;
-        List<String> removeIds = new ArrayList<>();
-        for (PendingRequest request : pendingRequests.values()) {
-            if (request.trackKey.equals(key)) {
-                removeIds.add(request.requestId);
-            }
+    private void cancelPendingRequests() {
+        for (PendingRequest request : new ArrayList<>(pendingRequests.values())) {
+            mainHandler.removeCallbacks(request.timeoutRunnable);
         }
-        for (String requestId : removeIds) {
-            PendingRequest request = pendingRequests.remove(requestId);
-            if (request != null) {
-                mainHandler.removeCallbacks(request.timeoutRunnable);
-            }
-        }
+        pendingRequests.clear();
+        queuedScripts.clear();
     }
 
     void clearMemoryCache() {
@@ -184,6 +224,7 @@ final class FuriganaRepository {
         if (key.isEmpty()) {
             return;
         }
+        cacheGeneration++;
         List<String> removeKeys = new ArrayList<>();
         for (String cacheKey : memoryCache.keySet()) {
             if (cacheKey.startsWith(key + "|")) {
@@ -194,23 +235,24 @@ final class FuriganaRepository {
             memoryCache.remove(cacheKey);
         }
         if (diskCache != null) {
-            diskCache.removeByKeyPrefix(key + "|");
+            executeCacheTask(() -> diskCache.removeByKeyPrefix(key + "|"));
         }
     }
 
     void clearCache() {
+        cacheGeneration++;
         memoryCache.clear();
         if (diskCache != null) {
-            diskCache.clear();
+            executeCacheTask(diskCache::clear);
         }
     }
 
     void shutdown() {
-        for (PendingRequest request : new ArrayList<>(pendingRequests.values())) {
-            mainHandler.removeCallbacks(request.timeoutRunnable);
-        }
-        pendingRequests.clear();
+        activeLoadGeneration++;
+        cacheGeneration++;
+        cancelPendingRequests();
         queuedScripts.clear();
+        cacheExecutor.shutdownNow();
         if (webView != null) {
             WebView target = webView;
             webView = null;
@@ -316,7 +358,12 @@ final class FuriganaRepository {
             LyricsResult result = buildAnnotatedResult(request.baseResult, request.requests, annotations);
             memoryCache.put(request.cacheKey, result);
             if (diskCache != null) {
-                diskCache.put(request.cacheKey, result);
+                long expectedCacheGeneration = cacheGeneration;
+                executeCacheTask(() -> {
+                    if (expectedCacheGeneration == cacheGeneration) {
+                        diskCache.put(request.cacheKey, result);
+                    }
+                });
             }
             request.callback.onFuriganaLog(request.trackKey, "furigana js response: lines=" + annotations.size());
             request.callback.onFuriganaLoaded(request.trackKey, result);
@@ -330,6 +377,17 @@ final class FuriganaRepository {
         for (PendingRequest request : pendingRequests.values()) {
             request.callback.onFuriganaLog(request.trackKey, message);
             return;
+        }
+    }
+
+    private void executeCacheTask(Runnable task) {
+        if (task == null || cacheExecutor.isShutdown()) {
+            return;
+        }
+        try {
+            cacheExecutor.execute(task);
+        } catch (RuntimeException ignored) {
+            // The repository may be shutting down while a callback is finishing.
         }
     }
 
