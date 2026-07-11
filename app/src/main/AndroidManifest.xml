@@ -31,6 +31,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".PictureInPictureActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".NowPlayingService"
             android:exported="true"

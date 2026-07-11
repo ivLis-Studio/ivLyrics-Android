@@ -6,6 +6,7 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
+import android.app.RemoteAction;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -22,6 +23,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Icon;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -415,6 +417,8 @@ public final class MainActivity extends Activity implements
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
     private boolean pictureInPictureUiActive;
+    private boolean pictureInPictureActionsInitialized;
+    private boolean pictureInPictureActionsPlaying;
     private boolean lyricsPageVisibleBeforePictureInPicture;
     private boolean youtubeBackgroundAttachedToPictureInPicture;
     private boolean pictureInPicturePinchTracking;
@@ -787,10 +791,15 @@ public final class MainActivity extends Activity implements
         pictureInPictureUiActive = isInPictureInPictureMode;
         setPictureInPictureUiVisible(isInPictureInPictureMode);
         if (isInPictureInPictureMode) {
+            pictureInPictureActionsInitialized = false;
+            NowPlayingService.register(this);
+            NowPlayingService.requestRefresh(this);
+            updatePictureInPictureActionsIfNeeded(currentTrack != null && currentTrack.playing);
             handler.removeCallbacks(ticker);
             handler.post(ticker);
             return;
         }
+        pictureInPictureActionsInitialized = false;
         if (lyricsPageVisibleBeforePictureInPicture && !isLandscapeLayout()) {
             handler.postDelayed(() -> showLyricsPage(true), 80L);
         }
@@ -1091,6 +1100,7 @@ public final class MainActivity extends Activity implements
     @Override
     public void onNowPlayingChanged(TrackSnapshot snapshot) {
         currentTrack = snapshot;
+        updatePictureInPictureActionsIfNeeded(snapshot != null && snapshot.playing);
         updatePermissionState();
         if (!isSpotifyApiConfigured()) {
             updateSpotifySetupGate(false);
@@ -7484,7 +7494,8 @@ public final class MainActivity extends Activity implements
 
     private PictureInPictureParams buildLyricsPictureInPictureParams() {
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(pictureInPictureAspectWidth(), pictureInPictureAspectHeight()));
+                .setAspectRatio(new Rational(pictureInPictureAspectWidth(), pictureInPictureAspectHeight()))
+                .setActions(buildPictureInPictureActions());
         Rect bounds = new Rect();
         if (pictureInPictureStage != null && pictureInPictureStage.copyScaledContentBoundsOnScreen(bounds)) {
             builder.setSourceRectHint(bounds);
@@ -7495,6 +7506,47 @@ public final class MainActivity extends Activity implements
             builder.setSeamlessResizeEnabled(true);
         }
         return builder.build();
+    }
+
+    private List<RemoteAction> buildPictureInPictureActions() {
+        boolean playing = currentTrack != null && currentTrack.playing;
+        List<RemoteAction> actions = new ArrayList<>(3);
+        actions.add(pictureInPictureAction(
+                PictureInPictureActionReceiver.ACTION_PREVIOUS,
+                41,
+                R.drawable.ic_pip_previous,
+                ui("button.prev_track")
+        ));
+        actions.add(pictureInPictureAction(
+                PictureInPictureActionReceiver.ACTION_TOGGLE_PLAYBACK,
+                42,
+                playing ? R.drawable.ic_pip_pause : R.drawable.ic_pip_play,
+                ui("debug.play_pause")
+        ));
+        actions.add(pictureInPictureAction(
+                PictureInPictureActionReceiver.ACTION_NEXT,
+                43,
+                R.drawable.ic_pip_next,
+                ui("button.next_track")
+        ));
+        return actions;
+    }
+
+    private RemoteAction pictureInPictureAction(String action, int requestCode, int iconResource, String label) {
+        Intent intent = new Intent(this, PictureInPictureActionReceiver.class).setAction(action);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                this,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        String safeLabel = label == null || label.trim().isEmpty() ? "ivLyrics" : label.trim();
+        return new RemoteAction(
+                Icon.createWithResource(this, iconResource),
+                safeLabel,
+                safeLabel,
+                pendingIntent
+        );
     }
 
     private int pictureInPictureAspectWidth() {
@@ -7525,6 +7577,18 @@ public final class MainActivity extends Activity implements
         } catch (RuntimeException ignored) {
             // PiP params may be rejected while the system is resizing the activity.
         }
+    }
+
+    private void updatePictureInPictureActionsIfNeeded(boolean playing) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isInPictureInPictureMode()) {
+            return;
+        }
+        if (pictureInPictureActionsInitialized && pictureInPictureActionsPlaying == playing) {
+            return;
+        }
+        pictureInPictureActionsInitialized = true;
+        pictureInPictureActionsPlaying = playing;
+        updatePictureInPictureParamsIfNeeded();
     }
 
     private void setPictureInPictureUiVisible(boolean visible) {
