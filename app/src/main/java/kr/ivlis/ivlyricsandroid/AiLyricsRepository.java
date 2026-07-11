@@ -49,6 +49,8 @@ final class AiLyricsRepository {
     );
     private static final Pattern LATIN_WORD_SEPARATOR_PATTERN = Pattern.compile("[^\\p{L}\\p{N}_]+");
     private static final String VIETNAMESE_HINTS = "ăâđêôơưạảấầẩẫậắằẳẵặếềểễệịỉọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ";
+    private static final String CZECH_UNIQUE_HINTS = "ěřů";
+    private static final String TURKISH_UNIQUE_HINTS = "ğış";
     private static final String GERMAN_HINTS = "ßü";
     private static final String SPANISH_HINTS = "ñ¿¡";
     private static final String PORTUGUESE_HINTS = "ãõ";
@@ -2291,6 +2293,9 @@ final class AiLyricsRepository {
             case "de":
                 return "Use German spelling conventions only for pronunciation guides. "
                         + "Write sounds naturally for German speakers using the Latin alphabet; do not translate meanings.";
+            case "cs":
+                return "Use Czech spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Czech speakers using the Latin alphabet and Czech diacritics; do not translate meanings.";
             case "ru":
                 return "Use Cyrillic script only for Russian pronunciation. " + langInfo.phoneticDescription;
             case "sv":
@@ -2315,6 +2320,9 @@ final class AiLyricsRepository {
             case "ms":
                 return "Use Malay spelling conventions only for pronunciation guides. "
                         + "Write sounds naturally for Malay speakers using the Latin alphabet; do not translate meanings.";
+            case "tr":
+                return "Use Turkish spelling conventions only for pronunciation guides. "
+                        + "Write sounds naturally for Turkish speakers using the Latin alphabet and Turkish diacritics; do not translate meanings.";
             default:
                 return "Write pronunciation in " + langInfo.nativeName + " spelling. " + langInfo.phoneticDescription;
         }
@@ -2344,6 +2352,8 @@ final class AiLyricsRepository {
                 return "Persian script";
             case "de":
                 return "German Latin spelling";
+            case "cs":
+                return "Czech Latin spelling";
             case "ru":
                 return "Cyrillic";
             case "sv":
@@ -2362,6 +2372,8 @@ final class AiLyricsRepository {
                 return "Indonesian Latin spelling";
             case "ms":
                 return "Malay Latin spelling";
+            case "tr":
+                return "Turkish Latin spelling";
             default:
                 return langInfo.name + " pronunciation spelling";
         }
@@ -3010,8 +3022,26 @@ final class AiLyricsRepository {
 
     private static String detectLatinLanguage(String text) {
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        Set<String> words = new HashSet<>();
+        for (String word : LATIN_WORD_SEPARATOR_PATTERN.split(lower)) {
+            if (!word.isEmpty()) {
+                words.add(word);
+            }
+        }
+        if (scoreWords(words, "jsem", "jste", "jsme", "není", "nejsem", "jsi", "můj", "moje", "tvůj", "tvoje", "láska", "srdce", "tobě", "chci", "mám", "když") >= 2) {
+            return "cs";
+        }
+        if (scoreWords(words, "ben", "sen", "biz", "siz", "değil", "için", "çok", "beni", "seni", "aşk", "kalp", "gece", "şimdi", "gibi") >= 2) {
+            return "tr";
+        }
         if (containsAnyCodePoint(lower, VIETNAMESE_HINTS)) {
             return "vi";
+        }
+        if (containsAnyCodePoint(lower, CZECH_UNIQUE_HINTS)) {
+            return "cs";
+        }
+        if (containsAnyCodePoint(lower, TURKISH_UNIQUE_HINTS)) {
+            return "tr";
         }
         if (lower.indexOf('å') >= 0) {
             return "sv";
@@ -3029,12 +3059,6 @@ final class AiLyricsRepository {
             return "fr";
         }
 
-        Set<String> words = new HashSet<>();
-        for (String word : LATIN_WORD_SEPARATOR_PATTERN.split(lower)) {
-            if (!word.isEmpty()) {
-                words.add(word);
-            }
-        }
         String best = "en";
         int bestScore = scoreWords(words, "the", "and", "you", "that", "with", "love", "your", "for", "not", "we", "are");
         int score = scoreWords(words, "que", "de", "el", "la", "y", "en", "un", "una", "mi", "tu", "no", "por");

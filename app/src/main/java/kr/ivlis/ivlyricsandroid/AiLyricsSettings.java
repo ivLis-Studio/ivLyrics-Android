@@ -218,6 +218,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             new Language("sv", "Swedish", "Svenska", "Swedish phonetic spelling"),
             new Language("pt", "Portuguese", "Português", "Portuguese phonetic spelling"),
             new Language("bn", "Bengali", "বাংলা", "Bengali script pronunciation"),
+            new Language("cs", "Czech", "Čeština", "Czech phonetic spelling"),
             new Language("it", "Italian", "Italiano", "Italian phonetic spelling"),
             new Language("th", "Thai", "ภาษาไทย", "Thai script pronunciation"),
             new Language("vi", "Vietnamese", "Tiếng Việt", "Vietnamese phonetic spelling"),
