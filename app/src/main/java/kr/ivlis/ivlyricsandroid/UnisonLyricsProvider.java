@@ -41,6 +41,8 @@ final class UnisonLyricsProvider {
     private static final Pattern LRC_TIMESTAMP_PATTERN = Pattern.compile("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]");
     private static final Pattern LRC_OFFSET_PATTERN = Pattern.compile("^\\[offset:([+-]?\\d+)]", Pattern.CASE_INSENSITIVE);
     private static final Pattern LRC_METADATA_PATTERN = Pattern.compile("^\\[(?:ar|al|ti|by|re|ve|length):", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TTML_OFFSET_TIME_PATTERN =
+            Pattern.compile("^([+-]?[\\d.]+)(ms|h|m|s)$", Pattern.CASE_INSENSITIVE);
 
     private static final SpeakerPresentation[] SPEAKER_PALETTE = new SpeakerPresentation[]{
             new SpeakerPresentation("CUSTOM", "#a8ccff", "MALE 1"),
@@ -597,7 +599,7 @@ final class UnisonLyricsProvider {
         if (input.isEmpty()) {
             return null;
         }
-        Matcher offset = Pattern.compile("^([+-]?[\\d.]+)(ms|h|m|s)$", Pattern.CASE_INSENSITIVE).matcher(input);
+        Matcher offset = TTML_OFFSET_TIME_PATTERN.matcher(input);
         if (offset.matches()) {
             try {
                 double amount = Double.parseDouble(offset.group(1));
