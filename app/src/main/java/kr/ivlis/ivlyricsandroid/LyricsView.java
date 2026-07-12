@@ -60,6 +60,7 @@ public final class LyricsView extends View {
     private static final int SPEAKER_C_COLOR = Color.rgb(255, 209, 102);
     private static final int SPEAKER_D_COLOR = Color.rgb(196, 167, 255);
     private static final int SPEAKER_SFX_COLOR = Color.rgb(244, 166, 200);
+    private static final int SPEAKER_KEY_CACHE_LIMIT = 64;
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -75,6 +76,7 @@ public final class LyricsView extends View {
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
+    private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
     private final Set<String> completedBounceKeys = new HashSet<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
     private LinearGradient bottomEdgeFadeShader;
@@ -163,6 +165,7 @@ public final class LyricsView extends View {
             emptyMessage = "";
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
+        normalizedSpeakerKeys.clear();
         invalidateDisplayLineCache();
         invalidateFrameGroupCache();
         if (softUpdate) {
@@ -3367,9 +3370,16 @@ public final class LyricsView extends View {
     }
 
     private String normalizeSpeakerKey(String speaker) {
-        String value = speaker == null ? "" : speaker.trim().toLowerCase(Locale.ROOT);
-        if (value.isEmpty()) {
+        if (speaker == null) {
             return "";
+        }
+        String cached = normalizedSpeakerKeys.get(speaker);
+        if (cached != null) {
+            return cached;
+        }
+        String value = speaker.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return cacheNormalizedSpeakerKey(speaker, "");
         }
         StringBuilder normalized = new StringBuilder(value.length());
         boolean lastDash = false;
@@ -3392,7 +3402,15 @@ public final class LyricsView extends View {
         if (length > 0 && normalized.charAt(length - 1) == '-') {
             normalized.deleteCharAt(length - 1);
         }
-        return normalized.toString();
+        return cacheNormalizedSpeakerKey(speaker, normalized.toString());
+    }
+
+    private String cacheNormalizedSpeakerKey(String speaker, String normalized) {
+        if (normalizedSpeakerKeys.size() >= SPEAKER_KEY_CACHE_LIMIT) {
+            normalizedSpeakerKeys.clear();
+        }
+        normalizedSpeakerKeys.put(speaker, normalized);
+        return normalized;
     }
 
     private int numberedSpeakerColor(String key, String prefix) {
