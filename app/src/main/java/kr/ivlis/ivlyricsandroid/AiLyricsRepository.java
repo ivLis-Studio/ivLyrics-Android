@@ -614,6 +614,7 @@ final class AiLyricsRepository {
         private final int expectedLineCount;
         private final boolean[] seen;
         private final StringBuilder pending = new StringBuilder();
+        private int newlineSearchStart;
         private int matched;
         private int duplicate;
 
@@ -644,8 +645,9 @@ final class AiLyricsRepository {
 
         private void drain(boolean flush, StreamRowSink sink) {
             while (true) {
-                int newline = firstNewlineIndex(pending);
+                int newline = firstNewlineIndex(pending, newlineSearchStart);
                 if (newline < 0) {
+                    newlineSearchStart = pending.length();
                     break;
                 }
                 String line = pending.substring(0, newline);
@@ -656,11 +658,13 @@ final class AiLyricsRepository {
                     removeLength = newline + 2;
                 }
                 pending.delete(0, removeLength);
+                newlineSearchStart = 0;
                 emitLine(line, sink);
             }
             if (flush && pending.length() > 0) {
                 String line = pending.toString();
                 pending.setLength(0);
+                newlineSearchStart = 0;
                 emitLine(line, sink);
             }
         }
@@ -682,8 +686,8 @@ final class AiLyricsRepository {
             }
         }
 
-        private static int firstNewlineIndex(StringBuilder value) {
-            for (int index = 0; index < value.length(); index++) {
+        private static int firstNewlineIndex(StringBuilder value, int startIndex) {
+            for (int index = startIndex; index < value.length(); index++) {
                 char c = value.charAt(index);
                 if (c == '\n' || c == '\r') {
                     return index;
