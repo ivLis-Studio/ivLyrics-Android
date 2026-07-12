@@ -11,6 +11,8 @@ import java.util.regex.Pattern;
 final class TrackSnapshot {
     private static final Pattern SPOTIFY_TRACK_PATTERN =
             Pattern.compile("(?:spotify:track:|open\\.spotify\\.com/track/)([A-Za-z0-9]{22})");
+    private static final Pattern ISRC_SEPARATOR_PATTERN = Pattern.compile("[\\s-]");
+    private static final Pattern VALID_ISRC_PATTERN = Pattern.compile("[A-Z]{2}[A-Z0-9]{3}\\d{7}");
 
     final String title;
     final String artist;
@@ -117,8 +119,8 @@ final class TrackSnapshot {
 
     static String normalizeIsrc(String value) {
         if (value == null) return "";
-        String normalized = value.trim().replaceAll("[\\s-]", "").toUpperCase(Locale.ROOT);
-        return normalized.matches("[A-Z]{2}[A-Z0-9]{3}\\d{7}") ? normalized : "";
+        String normalized = ISRC_SEPARATOR_PATTERN.matcher(value.trim()).replaceAll("").toUpperCase(Locale.ROOT);
+        return VALID_ISRC_PATTERN.matcher(normalized).matches() ? normalized : "";
     }
 
     private static String extractSpotifyTrackId(String value) {
