@@ -2225,7 +2225,6 @@ final class LyricsRepository {
             return;
         }
 
-        boolean hasLrclibSource = syncData.hasLrclibSource();
         List<Integer> syncLineCounts = syncData.lineCharCounts();
         boolean normalizeParentheticalLines = syncData.shouldNormalizeParentheticalLines();
         List<Integer> candidateSyncedLineCounts = candidateLineCharCounts(
@@ -2252,7 +2251,7 @@ final class LyricsRepository {
                 normalizeParentheticalLines
         ));
 
-        if (!hasLrclibSource) {
+        if (!syncData.hasLrclibSource()) {
             return;
         }
 
