@@ -75,8 +75,12 @@ final class TrackSnapshot {
     }
 
     boolean isSpotifyDjSegment() {
-        return sameMetadata(artist, "DJ X")
-                && (sameMetadata(title, "Welcome") || sameMetadata(title, "Up Next"));
+        String normalizedArtist = normalizeForKey(artist);
+        if (!normalizedArtist.equals("dj x")) {
+            return false;
+        }
+        String normalizedTitle = normalizeForKey(title);
+        return normalizedTitle.equals("welcome") || normalizedTitle.equals("up next");
     }
 
     String stableKey() {
@@ -111,10 +115,6 @@ final class TrackSnapshot {
 
     private static String normalizeForKey(String value) {
         return clean(value).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
-    }
-
-    private static boolean sameMetadata(String first, String second) {
-        return normalizeForKey(first).equals(normalizeForKey(second));
     }
 
     static String normalizeIsrc(String value) {
