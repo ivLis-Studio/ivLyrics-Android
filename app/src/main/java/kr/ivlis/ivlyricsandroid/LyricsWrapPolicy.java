@@ -13,22 +13,22 @@ final class LyricsWrapPolicy {
         if (value == null || value.isEmpty()) {
             return Collections.emptyList();
         }
-        int[] points = value.codePoints().toArray();
         List<String> runs = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean whitespace = Character.isWhitespace(points[0]);
-        for (int point : points) {
+        int point = value.codePointAt(0);
+        boolean whitespace = Character.isWhitespace(point);
+        int runStart = 0;
+        int offset = Character.charCount(point);
+        while (offset < value.length()) {
+            point = value.codePointAt(offset);
             boolean nextWhitespace = Character.isWhitespace(point);
-            if (current.length() > 0 && nextWhitespace != whitespace) {
-                runs.add(current.toString());
-                current.setLength(0);
+            if (nextWhitespace != whitespace) {
+                runs.add(value.substring(runStart, offset));
+                runStart = offset;
+                whitespace = nextWhitespace;
             }
-            current.appendCodePoint(point);
-            whitespace = nextWhitespace;
+            offset += Character.charCount(point);
         }
-        if (current.length() > 0) {
-            runs.add(current.toString());
-        }
+        runs.add(value.substring(runStart));
         return runs;
     }
 
@@ -36,15 +36,21 @@ final class LyricsWrapPolicy {
         if (value == null || value.isEmpty()) {
             return Collections.emptyList();
         }
-        int[] points = value.codePoints().toArray();
-        if (points.length < 2) {
+        int previous = value.codePointAt(0);
+        int offset = Character.charCount(previous);
+        if (offset >= value.length()) {
             return Collections.emptyList();
         }
         List<Integer> offsets = new ArrayList<>();
-        for (int index = 1; index < points.length; index++) {
-            if (canBreakBetween(points[index - 1], points[index])) {
-                offsets.add(index);
+        int pointIndex = 1;
+        while (offset < value.length()) {
+            int current = value.codePointAt(offset);
+            if (canBreakBetween(previous, current)) {
+                offsets.add(pointIndex);
             }
+            previous = current;
+            offset += Character.charCount(current);
+            pointIndex++;
         }
         return offsets;
     }
