@@ -16,6 +16,7 @@ import java.util.Locale;
 
 final class RawResponseDiskCache {
     private static final int VERSION = 1;
+    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;
     private final int maxEntries;
@@ -152,11 +153,13 @@ final class RawResponseDiskCache {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
-            for (byte item : bytes) {
-                builder.append(String.format(Locale.ROOT, "%02x", item));
+            char[] encoded = new char[bytes.length * 2];
+            for (int index = 0; index < bytes.length; index++) {
+                int valueByte = bytes[index] & 0xff;
+                encoded[index * 2] = HEX_DIGITS[valueByte >>> 4];
+                encoded[index * 2 + 1] = HEX_DIGITS[valueByte & 0x0f];
             }
-            return builder.toString();
+            return new String(encoded);
         } catch (Exception ignored) {
             return Integer.toHexString((value == null ? "" : value).hashCode());
         }
