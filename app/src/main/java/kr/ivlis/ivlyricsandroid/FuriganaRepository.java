@@ -123,7 +123,8 @@ final class FuriganaRepository {
         long loadGeneration = ++activeLoadGeneration;
         cancelPendingRequests();
         List<FuriganaRequest> requests = buildRequests(baseResult.lines);
-        if (requests.isEmpty() || !containsKanji(payloadText(requests))) {
+        String requestPayload = requests.isEmpty() ? "" : payloadText(requests);
+        if (requests.isEmpty() || !containsKanji(requestPayload)) {
             callback.onFuriganaLoaded(track.stableKey(), baseResult);
             return;
         }
@@ -132,7 +133,7 @@ final class FuriganaRepository {
         String cacheKey = trackKey
                 + "|source=kuromoji"
                 + "|version=" + CACHE_VERSION
-                + "|text=" + sha256(payloadText(requests));
+                + "|text=" + sha256(requestPayload);
         if (!bypassCache) {
             LyricsResult cached = memoryCache.get(cacheKey);
             if (cached != null) {
