@@ -74,7 +74,9 @@ final class LyricsRepository {
     private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_ARTIST_SCORE = 0.45;
-    private static final String LRCLIB_METADATA_LINE_PATTERN = "^\\s*\\[(?:ar|al|ti|au|length|by|offset|re|ve):[^\\]]*\\]\\s*$";
+    private static final Pattern LRCLIB_METADATA_LINE_PATTERN = Pattern.compile(
+            "^\\s*\\[(?:ar|al|ti|au|length|by|offset|re|ve):[^\\]]*\\]\\s*$"
+    );
     private static final Pattern COMPARABLE_APOSTROPHE_PATTERN = Pattern.compile("[\\u2018\\u2019]");
     private static final Pattern COMPARABLE_QUOTE_PATTERN = Pattern.compile("[\\u201c\\u201d]");
     private static final Pattern COMPARABLE_BRACKET_PATTERN = Pattern.compile("[()\\[\\]{}]");
@@ -2346,7 +2348,7 @@ final class LyricsRepository {
         for (String rawLine : rawLines) {
             String line = stripTimestamps ? stripLeadingLrcTimestamp(rawLine) : rawLine.trim();
             line = Normalizer.normalize(line, Normalizer.Form.NFC).trim();
-            if (line.isEmpty() || line.matches(LRCLIB_METADATA_LINE_PATTERN)) {
+            if (line.isEmpty() || LRCLIB_METADATA_LINE_PATTERN.matcher(line).matches()) {
                 continue;
             }
             lines.add(line);
