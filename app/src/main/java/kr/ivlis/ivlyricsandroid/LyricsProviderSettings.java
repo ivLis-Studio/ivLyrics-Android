@@ -25,9 +25,9 @@ final class LyricsProviderSettings {
     static final String TYPE_PLAIN = "plain";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
+            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", false, true, true, true),
             new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, false),
-            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", true, true, true, false),
-            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", false, true, true, true)
+            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", true, true, true, false)
     ));
 
     private static final String PREFS_NAME = "lyrics_provider_settings";
