@@ -13,6 +13,7 @@ final class TrackSnapshot {
     private static final int SPOTIFY_TRACK_ID_LENGTH = 22;
     private static final Pattern ISRC_SEPARATOR_PATTERN = Pattern.compile("[\\s-]");
     private static final Pattern VALID_ISRC_PATTERN = Pattern.compile("[A-Z]{2}[A-Z0-9]{3}\\d{7}");
+    private static final Pattern KEY_WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     final String title;
     final String artist;
@@ -114,7 +115,7 @@ final class TrackSnapshot {
     }
 
     private static String normalizeForKey(String value) {
-        return clean(value).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        return KEY_WHITESPACE_PATTERN.matcher(clean(value).toLowerCase(Locale.ROOT)).replaceAll(" ");
     }
 
     static String normalizeIsrc(String value) {
