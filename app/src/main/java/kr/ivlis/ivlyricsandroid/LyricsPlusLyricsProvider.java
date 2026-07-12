@@ -974,10 +974,11 @@ final class LyricsPlusLyricsProvider {
         boolean punctuation = isBoundaryPunctuation(leftChar);
         boolean scriptChange = (isCjk(leftChar) && isLatinOrNumber(rightChar))
                 || (isLatinOrNumber(leftChar) && isCjk(rightChar));
+        boolean noSpaceScriptBoundary = LyricsWrapPolicy.isSafeNoSpaceCjkBoundary(leftChar, rightChar);
         if (isLatinOrNumber(leftChar) && isLatinOrNumber(rightChar) && !whitespace && !punctuation) return null;
-        if (!whitespace && !punctuation && !scriptChange) return null;
+        if (!whitespace && !punctuation && !scriptChange && !noSpaceScriptBoundary) return null;
         return new BoundaryInfo(
-                whitespace ? 0.0 : (punctuation ? 0.25 : 2.5),
+                whitespace ? 0.0 : (punctuation ? 0.25 : (noSpaceScriptBoundary ? 1.0 : 2.5)),
                 Math.max(0L, right.startTimeMs - left.endTimeMs)
         );
     }

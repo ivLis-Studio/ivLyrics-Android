@@ -2002,7 +2002,9 @@ public final class LyricsView extends View {
         textPaint.setTextSize(textSize);
         textPaint.setTypeface(lyricTypeface);
 
-        List<TextSegment> segments = buildSegments(text, rubyText, syllables, startTimeMs, endTimeMs);
+        List<TextSegment> segments = splitSegmentsAtWhitespace(
+                buildSegments(text, rubyText, syllables, startTimeMs, endTimeMs)
+        );
         if (segments.isEmpty()) {
             return Collections.singletonList(new TextRow(Collections.singletonList(
                     new TextSegment("", 0f, 0f, 0L, 0L, 0, 1, "")
@@ -2023,7 +2025,9 @@ public final class LyricsView extends View {
 
         for (TextSegment segment : segments) {
             for (TextSegment piece : splitSegmentForWrap(segment, maxWidth)) {
-                if (currentWidth > 0f && currentWidth + piece.width > maxWidth) {
+                if (currentWidth > 0f
+                        && currentWidth + piece.width > maxWidth
+                        && canBreakBetweenSegments(current, piece)) {
                     addTrimmedRow(rows, current);
                     current = new ArrayList<>();
                     currentWidth = 0f;
@@ -2053,26 +2057,78 @@ public final class LyricsView extends View {
             return Collections.singletonList(segment);
         }
 
+        List<Integer> safeOffsets = LyricsWrapPolicy.safeBreakOffsets(segment.text);
+        if (safeOffsets.isEmpty()) {
+            return Collections.singletonList(segment);
+        }
+
+        List<List<String>> atoms = new ArrayList<>();
+        int atomStart = 0;
+        for (int offset : safeOffsets) {
+            if (offset > atomStart && offset < chars.size()) {
+                atoms.add(new ArrayList<>(chars.subList(atomStart, offset)));
+                atomStart = offset;
+            }
+        }
+        atoms.add(new ArrayList<>(chars.subList(atomStart, chars.size())));
+
         List<TextSegment> pieces = new ArrayList<>();
         List<String> current = new ArrayList<>();
         int currentStart = 0;
-        for (int index = 0; index < chars.size(); index++) {
-            String value = chars.get(index);
+        int atomOffset = 0;
+        for (List<String> atom : atoms) {
             List<String> next = new ArrayList<>(current);
-            next.add(value);
+            next.addAll(atom);
             TextSegment nextSegment = createSplitSegment(segment, next, currentStart);
             if (!current.isEmpty() && nextSegment.width > maxWidth) {
                 pieces.add(createSplitSegment(segment, current, currentStart));
                 current = new ArrayList<>();
-                currentStart = index;
+                currentStart = atomOffset;
             }
-            current.add(value);
+            current.addAll(atom);
+            atomOffset += atom.size();
         }
 
         if (!current.isEmpty()) {
             pieces.add(createSplitSegment(segment, current, currentStart));
         }
         return pieces.isEmpty() ? Collections.singletonList(segment) : pieces;
+    }
+
+    private List<TextSegment> splitSegmentsAtWhitespace(List<TextSegment> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<TextSegment> result = new ArrayList<>();
+        for (TextSegment segment : segments) {
+            List<String> runs = LyricsWrapPolicy.splitWhitespaceRuns(segment.text);
+            if (runs.size() <= 1) {
+                result.add(segment);
+                continue;
+            }
+            int offset = 0;
+            for (String run : runs) {
+                List<String> chars = splitChars(run);
+                if (!chars.isEmpty()) {
+                    result.add(createSplitSegment(segment, chars, offset));
+                    offset += chars.size();
+                }
+            }
+        }
+        return result;
+    }
+
+    private boolean canBreakBetweenSegments(List<TextSegment> left, TextSegment right) {
+        if (left == null || left.isEmpty() || right == null) {
+            return true;
+        }
+        for (int index = left.size() - 1; index >= 0; index--) {
+            TextSegment segment = left.get(index);
+            if (segment != null && segment.text != null && !segment.text.isEmpty()) {
+                return LyricsWrapPolicy.canBreakBetween(segment.text, right.text);
+            }
+        }
+        return true;
     }
 
     private TextSegment createSplitSegment(TextSegment source, List<String> chars, int sourceOffset) {
