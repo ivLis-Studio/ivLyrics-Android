@@ -10513,21 +10513,52 @@ public final class MainActivity extends Activity implements
     }
 
     private boolean isPreviewInterludeMarkerText(String text) {
-        String normalized = text == null ? "" : text
-                .replace("&nbsp;", " ")
-                .replace("&NBSP;", " ")
-                .trim();
-        if (normalized.isEmpty()) {
+        if (text == null || text.isEmpty()) {
             return true;
         }
-        for (int offset = 0; offset < normalized.length(); ) {
-            int codePoint = normalized.codePointAt(offset);
+
+        int start = 0;
+        int end = text.length();
+        while (start < end) {
+            if (text.charAt(start) <= ' ') {
+                start++;
+            } else if (isPreviewHtmlSpaceEntity(text, start, end)) {
+                start += 6;
+            } else {
+                break;
+            }
+        }
+        while (end > start) {
+            if (text.charAt(end - 1) <= ' ') {
+                end--;
+            } else if (isPreviewHtmlSpaceEntityEndingAt(text, start, end)) {
+                end -= 6;
+            } else {
+                break;
+            }
+        }
+
+        for (int offset = start; offset < end; ) {
+            if (isPreviewHtmlSpaceEntity(text, offset, end)) {
+                offset += 6;
+                continue;
+            }
+            int codePoint = text.codePointAt(offset);
             if (!isPreviewInterludeMarkerCodePoint(codePoint)) {
                 return false;
             }
             offset += Character.charCount(codePoint);
         }
         return true;
+    }
+
+    private boolean isPreviewHtmlSpaceEntity(String text, int offset, int end) {
+        return end - offset >= 6
+                && (text.startsWith("&nbsp;", offset) || text.startsWith("&NBSP;", offset));
+    }
+
+    private boolean isPreviewHtmlSpaceEntityEndingAt(String text, int start, int end) {
+        return end - start >= 6 && isPreviewHtmlSpaceEntity(text, end - 6, end);
     }
 
     private boolean isPreviewInterludeMarkerCodePoint(int codePoint) {
