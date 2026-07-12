@@ -56,6 +56,21 @@ final class AiLyricsRepository {
     private static final String SPANISH_HINTS = "ñ¿¡";
     private static final String PORTUGUESE_HINTS = "ãõ";
     private static final String FRENCH_HINTS = "æœçëïÿ";
+    private static final String LATIN_LANGUAGE_HINTS = VIETNAMESE_HINTS
+            + CZECH_UNIQUE_HINTS
+            + TURKISH_UNIQUE_HINTS
+            + "å"
+            + GERMAN_HINTS
+            + SPANISH_HINTS
+            + PORTUGUESE_HINTS
+            + FRENCH_HINTS;
+    private static final int VIETNAMESE_HINTS_END = VIETNAMESE_HINTS.length();
+    private static final int CZECH_HINTS_END = VIETNAMESE_HINTS_END + CZECH_UNIQUE_HINTS.length();
+    private static final int TURKISH_HINTS_END = CZECH_HINTS_END + TURKISH_UNIQUE_HINTS.length();
+    private static final int SWEDISH_HINTS_END = TURKISH_HINTS_END + 1;
+    private static final int GERMAN_HINTS_END = SWEDISH_HINTS_END + GERMAN_HINTS.length();
+    private static final int SPANISH_HINTS_END = GERMAN_HINTS_END + SPANISH_HINTS.length();
+    private static final int PORTUGUESE_HINTS_END = SPANISH_HINTS_END + PORTUGUESE_HINTS.length();
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -3038,29 +3053,9 @@ final class AiLyricsRepository {
         if (scoreWords(words, "ben", "sen", "biz", "siz", "değil", "için", "çok", "beni", "seni", "aşk", "kalp", "gece", "şimdi", "gibi") >= 2) {
             return "tr";
         }
-        if (containsAnyCodePoint(lower, VIETNAMESE_HINTS)) {
-            return "vi";
-        }
-        if (containsAnyCodePoint(lower, CZECH_UNIQUE_HINTS)) {
-            return "cs";
-        }
-        if (containsAnyCodePoint(lower, TURKISH_UNIQUE_HINTS)) {
-            return "tr";
-        }
-        if (lower.indexOf('å') >= 0) {
-            return "sv";
-        }
-        if (containsAnyCodePoint(lower, GERMAN_HINTS)) {
-            return "de";
-        }
-        if (containsAnyCodePoint(lower, SPANISH_HINTS)) {
-            return "es";
-        }
-        if (containsAnyCodePoint(lower, PORTUGUESE_HINTS)) {
-            return "pt";
-        }
-        if (containsAnyCodePoint(lower, FRENCH_HINTS)) {
-            return "fr";
+        String hintedLanguage = detectLatinHintLanguage(lower);
+        if (!hintedLanguage.isEmpty()) {
+            return hintedLanguage;
         }
 
         String best = "en";
@@ -3094,15 +3089,42 @@ final class AiLyricsRepository {
         return score;
     }
 
-    private static boolean containsAnyCodePoint(String text, String hints) {
+    private static String detectLatinHintLanguage(String text) {
+        int bestHint = Integer.MAX_VALUE;
         for (int offset = 0; offset < text.length(); ) {
             int codePoint = text.codePointAt(offset);
-            if (hints.indexOf(codePoint) >= 0) {
-                return true;
+            int hintIndex = LATIN_LANGUAGE_HINTS.indexOf(codePoint);
+            if (hintIndex >= 0) {
+                if (hintIndex < VIETNAMESE_HINTS_END) {
+                    return "vi";
+                } else if (hintIndex < CZECH_HINTS_END) {
+                    bestHint = Math.min(bestHint, 1);
+                } else if (hintIndex < TURKISH_HINTS_END) {
+                    bestHint = Math.min(bestHint, 2);
+                } else if (hintIndex < SWEDISH_HINTS_END) {
+                    bestHint = Math.min(bestHint, 3);
+                } else if (hintIndex < GERMAN_HINTS_END) {
+                    bestHint = Math.min(bestHint, 4);
+                } else if (hintIndex < SPANISH_HINTS_END) {
+                    bestHint = Math.min(bestHint, 5);
+                } else if (hintIndex < PORTUGUESE_HINTS_END) {
+                    bestHint = Math.min(bestHint, 6);
+                } else {
+                    bestHint = Math.min(bestHint, 7);
+                }
             }
             offset += Character.charCount(codePoint);
         }
-        return false;
+        switch (bestHint) {
+            case 1: return "cs";
+            case 2: return "tr";
+            case 3: return "sv";
+            case 4: return "de";
+            case 5: return "es";
+            case 6: return "pt";
+            case 7: return "fr";
+            default: return "";
+        }
     }
 
     private static final String SIMPLIFIED_HINTS = "这为国们会来时说对过还后个无爱声体见长门马鸟鱼龙云";
