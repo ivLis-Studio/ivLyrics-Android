@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,6 +26,7 @@ import java.util.regex.Pattern;
 
 final class FuriganaRepository {
     private static final String CACHE_VERSION = "furigana-js-kuromoji-v1";
+    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
     private static final long REQUEST_TIMEOUT_MS = 45_000L;
     private static final Pattern RUBY_TAG_PATTERN = Pattern.compile(
             "<ruby>([^<>]+)<rt>([^<>]*)</rt></ruby>",
@@ -806,11 +806,14 @@ final class FuriganaRepository {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
+            char[] encoded = new char[bytes.length * 2];
+            int offset = 0;
             for (byte item : bytes) {
-                builder.append(String.format(Locale.ROOT, "%02x", item));
+                int unsigned = item & 0xff;
+                encoded[offset++] = HEX_DIGITS[unsigned >>> 4];
+                encoded[offset++] = HEX_DIGITS[unsigned & 0x0f];
             }
-            return builder.toString();
+            return new String(encoded);
         } catch (Exception ignored) {
             return Integer.toHexString((value == null ? "" : value).hashCode());
         }
