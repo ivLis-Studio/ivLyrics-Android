@@ -57,7 +57,7 @@ final class AppI18n {
     }
 
     static String t(String lang, String key) {
-        String normalized = normalize(lang);
+        String normalized = AiLyricsSettings.normalizeLanguageCode(lang);
         Map<String, String> table = STRINGS.get(normalized);
         String value = table == null ? null : table.get(key);
         if (value != null) {
