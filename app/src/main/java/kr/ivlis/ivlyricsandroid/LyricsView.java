@@ -922,12 +922,11 @@ public final class LyricsView extends View {
     }
 
     private float activeVocalAnchorOffsetCandidate(LineLayout layout, LyricsLine line) {
-        int[] activePartRange = activeVocalPartRange(line);
-        if (activePartRange[0] < 0 || activePartRange[1] < 0) {
+        int targetPartIndex = activeVocalPartTargetIndex(line);
+        if (targetPartIndex < 0) {
             return Float.NaN;
         }
 
-        int targetPartIndex = (activePartRange[0] + activePartRange[1] + 1) / 2;
         float totalHeight = groupsHeight(layout.groups);
         float top = 0f;
         int primaryIndex = -1;
@@ -953,34 +952,38 @@ public final class LyricsView extends View {
         return targetCenter - totalHeight * 0.5f;
     }
 
-    private int[] activeVocalPartRange(LyricsLine line) {
-        int[] emptyRange = new int[]{-1, -1};
+    private int activeVocalPartTargetIndex(LyricsLine line) {
         if (line == null || line.vocalParts == null || line.vocalParts.isEmpty()) {
-            return emptyRange;
+            return -1;
         }
 
-        List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
         int firstActiveIndex = -1;
         int lastActiveIndex = -1;
-        for (int index = 0; index < parts.size(); index++) {
-            LyricsLine.VocalPart part = parts.get(index);
-            if (part == null) {
-                continue;
-            }
-
-            long startTimeMs = part.startTimeMs > 0L ? part.startTimeMs : line.startTimeMs;
-            long endTimeMs = part.endTimeMs > startTimeMs ? part.endTimeMs : Math.max(startTimeMs, line.endTimeMs);
-            if (positionMs >= startTimeMs && positionMs <= endTimeMs) {
-                if (firstActiveIndex < 0) {
-                    firstActiveIndex = index;
+        int orderedIndex = 0;
+        int partCount = line.vocalParts.size();
+        for (int rolePass = 0; rolePass < 2; rolePass++) {
+            boolean leadPass = rolePass == 0;
+            for (int sourceIndex = 0; sourceIndex < partCount; sourceIndex++) {
+                LyricsLine.VocalPart part = line.vocalParts.get(sourceIndex);
+                if ("lead".equals(part.role) != leadPass) {
+                    continue;
                 }
-                lastActiveIndex = index;
+
+                long startTimeMs = part.startTimeMs > 0L ? part.startTimeMs : line.startTimeMs;
+                long endTimeMs = part.endTimeMs > startTimeMs ? part.endTimeMs : Math.max(startTimeMs, line.endTimeMs);
+                if (positionMs >= startTimeMs && positionMs <= endTimeMs) {
+                    if (firstActiveIndex < 0) {
+                        firstActiveIndex = orderedIndex;
+                    }
+                    lastActiveIndex = orderedIndex;
+                }
+                orderedIndex++;
             }
         }
 
         return firstActiveIndex >= 0 && lastActiveIndex >= 0
-                ? new int[]{firstActiveIndex, lastActiveIndex}
-                : emptyRange;
+                ? (firstActiveIndex + lastActiveIndex + 1) / 2
+                : -1;
     }
 
     private void prepareSmoothSeekCenter() {
