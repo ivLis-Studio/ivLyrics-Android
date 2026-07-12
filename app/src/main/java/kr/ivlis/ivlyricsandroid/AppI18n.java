@@ -123,8 +123,48 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         languages.put("cs", csStrings());
+        addLyricsProviderSettingsStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addLyricsProviderSettingsStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            boolean korean = "ko".equalsIgnoreCase(language.code);
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            copy.put("section.lyrics_providers", korean ? "가사 제공자" : "Lyrics providers");
+            copy.put("section.lyrics_providers_desc", korean
+                    ? "가사 제공자의 사용 여부, 우선순위와 허용할 가사 형식을 설정합니다."
+                    : "Choose which providers are used, their priority, and the lyric formats each may provide.");
+            copy.put("setting.lyrics_type_first", korean
+                    ? "형식 우선 조회 (노래방 → 싱크 → 일반)"
+                    : "Prefer format (karaoke → synced → plain)");
+            copy.put("setting.lyrics_type_first_desc", korean
+                    ? "먼저 모든 제공자에서 노래방 가사를 찾고, 없으면 싱크 가사, 그다음 일반 가사를 찾습니다."
+                    : "Try every provider for karaoke first, then synced lyrics, then plain lyrics.");
+            copy.put("setting.prefer_sync_data_provider", korean
+                    ? "ivLyrics sync-data 제공자 우선"
+                    : "Prefer provider with ivLyrics sync-data");
+            copy.put("setting.prefer_sync_data_provider_desc", korean
+                    ? "OpenDB에 이 곡의 ISRC가 있으면 해당 sync-data를 가진 제공자를 우선 선택합니다."
+                    : "When OpenDB lists this ISRC, prioritize the provider that has ivLyrics sync-data.");
+            copy.put("lyrics_provider.author_format", korean ? "제작자: %s" : "Author: %s");
+            copy.put("lyrics_provider.enabled", korean ? "사용" : "Enabled");
+            copy.put("lyrics_provider.move_up", korean ? "우선순위 올리기" : "Move up");
+            copy.put("lyrics_provider.move_down", korean ? "우선순위 내리기" : "Move down");
+            copy.put("lyrics_provider.project", korean ? "프로젝트" : "Project");
+            copy.put("lyrics_provider.karaoke", korean ? "노래방 가사 허용" : "Allow karaoke lyrics");
+            copy.put("lyrics_provider.synced", korean ? "싱크 가사 허용" : "Allow synced lyrics");
+            copy.put("lyrics_provider.plain", korean ? "일반 가사 허용" : "Allow plain lyrics");
+            copy.put("toast.lyrics_provider_settings_saved", korean
+                    ? "가사 제공자 설정이 저장되었습니다"
+                    : "Lyrics provider settings saved");
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addBluetoothSyncOffsetStrings(Map<String, Map<String, String>> languages) {

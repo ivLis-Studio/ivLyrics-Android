@@ -3,6 +3,7 @@ package kr.ivlis.ivlyricsandroid;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 final class LyricsResult {
     final List<LyricsLine> lines;
@@ -12,6 +13,8 @@ final class LyricsResult {
     final String isrc;
     final String spotifyTrackId;
     final List<SyncContributor> contributors;
+    final String providerId;
+    final String selectionPolicyKey;
 
     LyricsResult(List<LyricsLine> lines, String providerLabel, String detail, boolean karaoke) {
         this(lines, providerLabel, detail, karaoke, "", "");
@@ -37,6 +40,20 @@ final class LyricsResult {
             String spotifyTrackId,
             List<SyncContributor> contributors
     ) {
+        this(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId, contributors, "", "");
+    }
+
+    LyricsResult(
+            List<LyricsLine> lines,
+            String providerLabel,
+            String detail,
+            boolean karaoke,
+            String isrc,
+            String spotifyTrackId,
+            List<SyncContributor> contributors,
+            String providerId,
+            String selectionPolicyKey
+    ) {
         this.lines = lines == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(lines));
@@ -48,6 +65,22 @@ final class LyricsResult {
         this.contributors = contributors == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(contributors));
+        this.providerId = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
+        this.selectionPolicyKey = selectionPolicyKey == null ? "" : selectionPolicyKey;
+    }
+
+    LyricsResult withSelection(String providerId, String selectionPolicyKey) {
+        return new LyricsResult(
+                lines,
+                providerLabel,
+                detail,
+                karaoke,
+                isrc,
+                spotifyTrackId,
+                contributors,
+                providerId,
+                selectionPolicyKey
+        );
     }
 
     static LyricsResult empty(String detail) {

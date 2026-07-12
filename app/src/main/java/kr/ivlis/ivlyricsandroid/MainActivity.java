@@ -178,6 +178,7 @@ public final class MainActivity extends Activity implements
     private YouTubeBackgroundRepository youtubeBackgroundRepository;
     private UpdateChecker updateChecker;
     private AiLyricsSettings aiLyricsSettings;
+    private LyricsProviderSettings lyricsProviderSettings;
 
     private LyricsView lyricsView;
     private LyricsView landscapeLyricsView;
@@ -275,6 +276,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout pipLyricsAlignmentButtonsContainer;
     private LinearLayout backgroundModeButtonsContainer;
     private LinearLayout providerButtonsContainer;
+    private LinearLayout lyricsProviderSettingsContainer;
     private View pollinationsAuthGroup;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
@@ -290,6 +292,8 @@ public final class MainActivity extends Activity implements
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
     private Switch karaokeDataAsLineSyncedSwitch;
+    private Switch preferSyncDataProviderSwitch;
+    private Switch preferLyricsTypeFirstSwitch;
     private Switch useSyncCreatorSpeakerColorsSwitch;
     private Switch landscapeAutoHideControlsSwitch;
     private Switch landscapeCenterNoLyricsSwitch;
@@ -434,6 +438,7 @@ public final class MainActivity extends Activity implements
     private boolean pendingOpenLyricsPageFromIntent;
     private boolean lyricsMetaLongPressTriggered;
     private Runnable lyricsMetaLongPressRunnable;
+    private Runnable pendingLyricsProviderReload;
     private boolean artworkLongPressTriggered;
     private Runnable artworkLongPressRunnable;
     private UpdateChecker.UpdateInfo pendingUpdateInfo;
@@ -453,6 +458,7 @@ public final class MainActivity extends Activity implements
         setTheme(R.style.AppTheme);
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
+        lyricsProviderSettings = new LyricsProviderSettings(this);
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
@@ -815,6 +821,10 @@ public final class MainActivity extends Activity implements
         dismissLyricsMetaMenuPopup();
         dismissTmiDialog();
         cancelArtworkLongPress();
+        if (pendingLyricsProviderReload != null) {
+            handler.removeCallbacks(pendingLyricsProviderReload);
+            pendingLyricsProviderReload = null;
+        }
         if (lyricsRepository != null) {
             lyricsRepository.shutdown();
         }
@@ -3757,6 +3767,42 @@ public final class MainActivity extends Activity implements
         });
         settingsLyricsPage.addView(karaokeBounceSwitch, topMargin(matchWrap(), dp(12)));
 
+        settingsLyricsPage.addView(sectionTitle(ui("section.lyrics_providers")), topMargin(matchWrap(), dp(24)));
+        settingsLyricsPage.addView(
+                sectionDescription(ui("section.lyrics_providers_desc")),
+                topMargin(matchWrap(), dp(8))
+        );
+
+        preferLyricsTypeFirstSwitch = settingSwitch(
+                ui("setting.lyrics_type_first"),
+                ui("setting.lyrics_type_first_desc")
+        );
+        preferLyricsTypeFirstSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || lyricsProviderSettings == null) {
+                return;
+            }
+            lyricsProviderSettings.setTypeFirst(isChecked);
+            onLyricsProviderSettingsChanged(false);
+        });
+        settingsLyricsPage.addView(preferLyricsTypeFirstSwitch, topMargin(matchWrap(), dp(12)));
+
+        preferSyncDataProviderSwitch = settingSwitch(
+                ui("setting.prefer_sync_data_provider"),
+                ui("setting.prefer_sync_data_provider_desc")
+        );
+        preferSyncDataProviderSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || lyricsProviderSettings == null) {
+                return;
+            }
+            lyricsProviderSettings.setPreferSyncDataProvider(isChecked);
+            onLyricsProviderSettingsChanged(false);
+        });
+        settingsLyricsPage.addView(preferSyncDataProviderSwitch, topMargin(matchWrap(), dp(12)));
+
+        lyricsProviderSettingsContainer = new LinearLayout(this);
+        lyricsProviderSettingsContainer.setOrientation(LinearLayout.VERTICAL);
+        settingsLyricsPage.addView(lyricsProviderSettingsContainer, topMargin(matchWrap(), dp(12)));
+
         settingsDisplayPage.addView(sectionTitle(ui("section.player")));
         settingsDisplayPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
 
@@ -4926,6 +4972,171 @@ public final class MainActivity extends Activity implements
         TextView view = label(text, 12f, Color.argb(160, 255, 255, 255), AppFonts.regular(this));
         view.setLineSpacing(dp(2), 1f);
         return view;
+    }
+
+    private void rebuildLyricsProviderSettingsUi() {
+        if (lyricsProviderSettingsContainer == null || lyricsProviderSettings == null) {
+            return;
+        }
+        LyricsProviderSettings.Snapshot snapshot = lyricsProviderSettings.snapshot();
+        lyricsProviderSettingsContainer.removeAllViews();
+        for (int index = 0; index < snapshot.order.size(); index++) {
+            LyricsProviderSettings.ProviderConfig config = snapshot.config(snapshot.order.get(index));
+            if (config == null) {
+                continue;
+            }
+            View card = buildLyricsProviderSettingsCard(config, index, snapshot.order.size());
+            lyricsProviderSettingsContainer.addView(
+                    card,
+                    index == 0 ? matchWrap() : topMargin(matchWrap(), dp(10))
+            );
+        }
+    }
+
+    private View buildLyricsProviderSettingsCard(
+            LyricsProviderSettings.ProviderConfig config,
+            int index,
+            int providerCount
+    ) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(12)));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(header, matchWrap());
+
+        LinearLayout titleColumn = new LinearLayout(this);
+        titleColumn.setOrientation(LinearLayout.VERTICAL);
+        header.addView(titleColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView title = label((index + 1) + ". " + config.provider.label, 14f, Color.WHITE, AppFonts.bold(this));
+        titleColumn.addView(title, matchWrap());
+        TextView author = label(
+                uiFormat("lyrics_provider.author_format", config.provider.author),
+                11f,
+                Color.argb(150, 255, 255, 255),
+                AppFonts.regular(this)
+        );
+        titleColumn.addView(author, topMargin(matchWrap(), dp(3)));
+
+        Switch enabledSwitch = new Switch(this);
+        enabledSwitch.setText(ui("lyrics_provider.enabled"));
+        enabledSwitch.setTextColor(Color.WHITE);
+        enabledSwitch.setTextSize(12f);
+        enabledSwitch.setTypeface(AppFonts.semiBold(this));
+        enabledSwitch.setChecked(config.enabled);
+        enabledSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || lyricsProviderSettings == null) {
+                return;
+            }
+            lyricsProviderSettings.setProviderEnabled(config.provider.id, isChecked);
+            onLyricsProviderSettingsChanged(true);
+        });
+        header.addView(enabledSwitch, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(actions, topMargin(matchWrap(), dp(10)));
+
+        TextView upButton = debugButton("↑");
+        upButton.setContentDescription(ui("lyrics_provider.move_up"));
+        upButton.setEnabled(index > 0);
+        upButton.setAlpha(index > 0 ? 1f : 0.4f);
+        upButton.setOnClickListener(view -> {
+            lyricsProviderSettings.moveProvider(config.provider.id, -1);
+            onLyricsProviderSettingsChanged(true);
+        });
+        actions.addView(upButton, new LinearLayout.LayoutParams(dp(48), dp(38)));
+
+        TextView downButton = debugButton("↓");
+        downButton.setContentDescription(ui("lyrics_provider.move_down"));
+        downButton.setEnabled(index < providerCount - 1);
+        downButton.setAlpha(index < providerCount - 1 ? 1f : 0.4f);
+        LinearLayout.LayoutParams downParams = new LinearLayout.LayoutParams(dp(48), dp(38));
+        downParams.leftMargin = dp(6);
+        actions.addView(downButton, downParams);
+        downButton.setOnClickListener(view -> {
+            lyricsProviderSettings.moveProvider(config.provider.id, 1);
+            onLyricsProviderSettingsChanged(true);
+        });
+
+        TextView projectButton = debugButton(ui("lyrics_provider.project"));
+        projectButton.setOnClickListener(view -> openExternalUrl(config.provider.projectUrl));
+        LinearLayout.LayoutParams projectParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        projectParams.leftMargin = dp(6);
+        actions.addView(projectButton, projectParams);
+
+        LinearLayout types = new LinearLayout(this);
+        types.setOrientation(LinearLayout.VERTICAL);
+        card.addView(types, topMargin(matchWrap(), dp(8)));
+        types.addView(buildLyricsProviderTypeSwitch(
+                config,
+                LyricsProviderSettings.TYPE_KARAOKE,
+                ui("lyrics_provider.karaoke")
+        ), matchWrap());
+        types.addView(buildLyricsProviderTypeSwitch(
+                config,
+                LyricsProviderSettings.TYPE_SYNCED,
+                ui("lyrics_provider.synced")
+        ), topMargin(matchWrap(), dp(4)));
+        types.addView(buildLyricsProviderTypeSwitch(
+                config,
+                LyricsProviderSettings.TYPE_PLAIN,
+                ui("lyrics_provider.plain")
+        ), topMargin(matchWrap(), dp(4)));
+        return card;
+    }
+
+    private Switch buildLyricsProviderTypeSwitch(
+            LyricsProviderSettings.ProviderConfig config,
+            String type,
+            String label
+    ) {
+        Switch typeSwitch = new Switch(this);
+        typeSwitch.setText(label);
+        typeSwitch.setTextColor(config.enabled ? Color.WHITE : Color.argb(115, 255, 255, 255));
+        typeSwitch.setTextSize(12f);
+        typeSwitch.setTypeface(AppFonts.regular(this));
+        typeSwitch.setPadding(dp(6), dp(3), dp(6), dp(3));
+        typeSwitch.setChecked(config.allows(type));
+        typeSwitch.setEnabled(config.enabled);
+        typeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || lyricsProviderSettings == null) {
+                return;
+            }
+            lyricsProviderSettings.setTypeAllowed(config.provider.id, type, isChecked);
+            onLyricsProviderSettingsChanged(false);
+        });
+        return typeSwitch;
+    }
+
+    private void onLyricsProviderSettingsChanged(boolean rebuildProviderCards) {
+        if (rebuildProviderCards) {
+            rebuildLyricsProviderSettingsUi();
+        }
+        if (lyricsRepository != null) {
+            lyricsRepository.invalidateProviderSelection();
+        }
+        showSavedToast(ui("toast.lyrics_provider_settings_saved"));
+        if (pendingLyricsProviderReload != null) {
+            handler.removeCallbacks(pendingLyricsProviderReload);
+        }
+        pendingLyricsProviderReload = () -> {
+            pendingLyricsProviderReload = null;
+            TrackSnapshot snapshot = currentTrack;
+            if (snapshot != null && snapshot.hasUsableMetadata() && lyricsRepository != null) {
+                lyricsRepository.clearCacheForTrack(snapshot.stableKey());
+            }
+            reloadCurrentLyricsFromSettings();
+        };
+        handler.postDelayed(pendingLyricsProviderReload, 250L);
     }
 
     private LinearLayout buildSpotifyApiSetupInstructions() {
@@ -7898,6 +8109,20 @@ public final class MainActivity extends Activity implements
             suppressSettingsEvents = true;
             karaokeDataAsLineSyncedSwitch.setChecked(snapshot.karaokeDataAsLineSynced);
             suppressSettingsEvents = false;
+        }
+        if (lyricsProviderSettings != null) {
+            LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
+            if (preferLyricsTypeFirstSwitch != null) {
+                suppressSettingsEvents = true;
+                preferLyricsTypeFirstSwitch.setChecked(providerSettings.typeFirst);
+                suppressSettingsEvents = false;
+            }
+            if (preferSyncDataProviderSwitch != null) {
+                suppressSettingsEvents = true;
+                preferSyncDataProviderSwitch.setChecked(providerSettings.preferSyncDataProvider);
+                suppressSettingsEvents = false;
+            }
+            rebuildLyricsProviderSettingsUi();
         }
         if (landscapeAutoHideControlsSwitch != null) {
             suppressSettingsEvents = true;

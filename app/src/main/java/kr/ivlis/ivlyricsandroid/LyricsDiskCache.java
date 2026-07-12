@@ -164,6 +164,8 @@ final class LyricsDiskCache {
         object.put("karaoke", result.karaoke);
         object.put("isrc", result.isrc);
         object.put("spotifyTrackId", result.spotifyTrackId);
+        object.put("providerId", result.providerId);
+        object.put("selectionPolicyKey", result.selectionPolicyKey);
         JSONArray contributors = new JSONArray();
         for (LyricsResult.SyncContributor contributor : result.contributors) {
             contributors.put(contributorToJson(contributor));
@@ -195,7 +197,9 @@ final class LyricsDiskCache {
                 object.optBoolean("karaoke", false),
                 object.optString("isrc", ""),
                 object.optString("spotifyTrackId", ""),
-                contributorsFromJson(object.optJSONArray("contributors"))
+                contributorsFromJson(object.optJSONArray("contributors")),
+                object.optString("providerId", ""),
+                object.optString("selectionPolicyKey", "")
         );
     }
 

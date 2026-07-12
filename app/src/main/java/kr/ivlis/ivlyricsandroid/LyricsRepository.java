@@ -28,11 +28,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 final class LyricsRepository {
@@ -85,8 +88,10 @@ final class LyricsRepository {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
+    private final AtomicLong providerPolicyGeneration = new AtomicLong();
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
+    private final LyricsProviderSettings lyricsProviderSettings;
     private final LyricsDiskCache diskCache;
     private final RawResponseDiskCache syncDataResponseCache;
     private final SharedPreferences openDbPrefs;
@@ -103,6 +108,7 @@ final class LyricsRepository {
                 ? null
                 : appContext.getSharedPreferences(SPOTIFY_TOKEN_PREFS, Context.MODE_PRIVATE);
         aiLyricsSettings = appContext == null ? null : new AiLyricsSettings(appContext);
+        lyricsProviderSettings = new LyricsProviderSettings(appContext);
         diskCache = appContext == null
                 ? null
                 : new LyricsDiskCache(appContext, "base_lyrics", 350, LYRICS_CACHE_MAX_AGE_MS);
@@ -237,6 +243,24 @@ final class LyricsRepository {
         cache.clear();
     }
 
+    private boolean isCachedResultReusable(
+            LyricsResult result,
+            LyricsProviderSettings.Snapshot settings
+    ) {
+        if (result == null || result.lines.isEmpty()) return false;
+        if ("manual".equals(result.selectionPolicyKey)) return true;
+        return settings != null && settings.cacheKey().equals(result.selectionPolicyKey);
+    }
+
+    private boolean shouldRevalidateCachedResult(
+            LyricsResult result,
+            LyricsProviderSettings.Snapshot settings,
+            TrackSnapshot track
+    ) {
+        String isrc = firstNonEmpty(result == null ? "" : result.isrc, track == null ? "" : track.isrc);
+        return LyricsProviderSelectionPlan.shouldRecheckCachedResult(result, settings, isrc);
+    }
+
     void loadLyrics(TrackSnapshot track, Callback callback) {
         if (track == null || !track.hasUsableMetadata()) {
             callback.onLyricsLoaded("", LyricsResult.empty(ui("repo.metadata_waiting")));
@@ -244,8 +268,14 @@ final class LyricsRepository {
         }
 
         String key = track.stableKey();
+        long requestGeneration = providerPolicyGeneration.get();
+        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
         LyricsResult cached = getMemoryCachedLyrics(key);
-        if (cached != null && cached.karaoke) {
+        if (!isCachedResultReusable(cached, providerSettings)) {
+            cached = null;
+            removeMemoryCachedLyrics(key);
+        }
+        if (cached != null && !shouldRevalidateCachedResult(cached, providerSettings, track)) {
             emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist);
             callback.onLyricsLoaded(key, cached);
             return;
@@ -260,30 +290,40 @@ final class LyricsRepository {
                 + " / duration=" + track.durationMs + "ms"
                 + (track.isrc.isEmpty() ? "" : " / player ISRC=" + track.isrc));
 
+        LyricsResult memoryCached = cached;
         executor.execute(() -> {
             LogSink log = message -> emitLog(key, callback, message);
-            LyricsResult reusableCached = cached;
+            LyricsResult reusableCached = memoryCached;
             try {
                 if (reusableCached == null) {
                     reusableCached = diskCache == null ? null : diskCache.get(key);
                 }
-                if (reusableCached != null && reusableCached.karaoke) {
+                if (!isCachedResultReusable(reusableCached, providerSettings)) {
+                    reusableCached = null;
+                    if (diskCache != null) diskCache.remove(key);
+                }
+                if (reusableCached != null
+                        && !shouldRevalidateCachedResult(reusableCached, providerSettings, track)) {
                     putMemoryCachedLyrics(key, reusableCached);
-                    log.write("disk cache hit: sync-data/LRCLIB lyrics"
+                    log.write("disk cache hit: provider=" + reusableCached.providerId
                             + " / contributors=" + reusableCached.contributors.size());
                     LyricsResult finalCached = reusableCached;
-                    mainHandler.post(() -> callback.onLyricsLoaded(key, finalCached));
+                    postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     return;
                 }
                 if (reusableCached != null) {
                     putMemoryCachedLyrics(key, reusableCached);
                     log.write("base lyrics disk cache hit: served immediately; rechecking OpenDB sync-data in background");
-                    if (cached == null) {
+                    if (memoryCached == null) {
                         LyricsResult finalCached = reusableCached;
-                        mainHandler.post(() -> callback.onLyricsLoaded(key, finalCached));
+                        postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     }
                 }
                 LyricsResult result = loadLyricsBlocking(track, key, callback, log, reusableCached);
+                if (requestGeneration != providerPolicyGeneration.get()) {
+                    log.write("stale provider request discarded after settings change");
+                    return;
+                }
                 if (!UnisonLyricsProvider.isUnisonResult(result)) {
                     putMemoryCachedLyrics(key, result);
                     if (diskCache != null) {
@@ -293,7 +333,7 @@ final class LyricsRepository {
                     log.write("unison cache: skipped to match provider policy");
                 }
                 if (shouldPublishRevalidatedLyrics(reusableCached, result)) {
-                    mainHandler.post(() -> callback.onLyricsLoaded(key, result));
+                    postLyricsIfCurrent(requestGeneration, callback, key, result);
                 } else {
                     log.write("background sync-data recheck complete: cached lyrics kept");
                 }
@@ -304,9 +344,30 @@ final class LyricsRepository {
                     return;
                 }
                 log.write("error: " + message);
-                mainHandler.post(() -> callback.onLyricsError(key, message));
+                mainHandler.post(() -> {
+                    if (requestGeneration == providerPolicyGeneration.get()) {
+                        callback.onLyricsError(key, message);
+                    }
+                });
             }
         });
+    }
+
+    private void postLyricsIfCurrent(
+            long requestGeneration,
+            Callback callback,
+            String key,
+            LyricsResult result
+    ) {
+        mainHandler.post(() -> {
+            if (requestGeneration == providerPolicyGeneration.get()) {
+                callback.onLyricsLoaded(key, result);
+            }
+        });
+    }
+
+    void invalidateProviderSelection() {
+        providerPolicyGeneration.incrementAndGet();
     }
 
     void shutdown() {
@@ -574,10 +635,210 @@ final class LyricsRepository {
             publishResolvedMetadata(trackKey, isrc, spotifyTrackId, callback);
         }
 
-        SyncDataResult syncData = isrc.isEmpty() ? null : fetchSyncData(isrc, track, spotifyMatch, log);
+        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
         if (cachedBase != null) {
-            return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log);
+            Set<String> syncDataProviders = isrc.isEmpty()
+                    ? Collections.emptySet()
+                    : availableSyncDataProviders(isrc, log);
+            String preferredSyncProvider = providerSettings.preferSyncDataProvider
+                    ? LyricsProviderSelectionPlan.preferredIvLyricsSyncProviderId(
+                    providerSettings,
+                    syncDataProviders
+            )
+                    : "";
+            boolean cachedProviderIsPreferred = !preferredSyncProvider.isEmpty()
+                    && preferredSyncProvider.equals(cachedBase.providerId);
+            if (!preferredSyncProvider.isEmpty()
+                    && (!cachedProviderIsPreferred || !cachedBase.karaoke)) {
+                if (cachedProviderIsPreferred
+                        && LyricsProviderSelectionPlan.canApplyIvLyricsSyncToCachedResult(
+                        cachedBase,
+                        providerSettings
+                )) {
+                    SyncDataResult syncData = fetchSyncData(isrc, track, spotifyMatch, log);
+                    return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
+                            .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+                }
+                log.write("cached provider " + cachedBase.providerId
+                        + " replaced by OpenDB sync-data provider " + preferredSyncProvider);
+                return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
+            }
+            if (LyricsProviderSelectionPlan.canApplyIvLyricsSyncToCachedResult(cachedBase, providerSettings)) {
+                SyncDataResult syncData = isrc.isEmpty() ? null : fetchSyncData(isrc, track, spotifyMatch, log);
+                return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
+                        .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+            }
+            log.write("OpenDB sync-data priority unchanged; cached provider kept: " + cachedBase.providerId);
+            return cachedBase;
         }
+
+        return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
+    }
+
+    private LyricsResult selectLyricsProvider(
+            TrackSnapshot track,
+            String isrc,
+            String spotifyTrackId,
+            SpotifyTrackMatch spotifyMatch,
+            LogSink log
+    ) {
+        LyricsProviderSettings.Snapshot settings = lyricsProviderSettings.snapshot();
+        Set<String> syncDataProviders = availableSyncDataProviders(isrc, log);
+        LyricsProviderSelectionPlan plan = LyricsProviderSelectionPlan.create(settings, syncDataProviders);
+        log.write("provider policy: " + (settings.typeFirst ? "karaoke -> synced -> plain" : "provider first")
+                + " / order=" + providerIds(plan.providers)
+                + " / opendb=" + syncDataProviders);
+
+        Map<String, ProviderCandidate> attempts = new HashMap<>();
+        for (LyricsProviderSelectionPlan.Attempt attempt : plan.attempts) {
+            LyricsProviderSettings.ProviderConfig config = attempt.config;
+            ProviderCandidate candidate = loadProviderOnce(
+                    attempts, config, track, isrc, spotifyTrackId, spotifyMatch, syncDataProviders, log
+            );
+            LyricsResult selected = resultForType(candidate, attempt.type);
+            if (selected != null) {
+                log.write("provider selected: " + config.provider.id + " / type=" + attempt.type);
+                return selected.withSelection(config.provider.id, settings.cacheKey());
+            }
+        }
+        return LyricsResult.empty(ui("repo.lyrics_not_found"));
+    }
+
+    private ProviderCandidate loadProviderOnce(
+            Map<String, ProviderCandidate> attempts,
+            LyricsProviderSettings.ProviderConfig config,
+            TrackSnapshot track,
+            String isrc,
+            String spotifyTrackId,
+            SpotifyTrackMatch spotifyMatch,
+            Set<String> syncDataProviders,
+            LogSink log
+    ) {
+        if (attempts.containsKey(config.provider.id)) return attempts.get(config.provider.id);
+        LyricsResult result = null;
+        ProviderCandidate candidate = null;
+        try {
+            if (LyricsProviderSettings.PROVIDER_LYRICS_PLUS.equals(config.provider.id)) {
+                LyricsPlusLyricsProvider.Variants variants = LyricsPlusLyricsProvider.fetchVariants(
+                        track, isrc, spotifyTrackId, log::write
+                );
+                if (variants != null) {
+                    candidate = new ProviderCandidate(variants.karaoke, variants.synced, variants.plain);
+                }
+            } else if (LyricsProviderSettings.PROVIDER_UNISON.equals(config.provider.id)) {
+                result = UnisonLyricsProvider.fetch(track, isrc, spotifyTrackId, log::write);
+            } else if (LyricsProviderSettings.PROVIDER_LRCLIB.equals(config.provider.id)) {
+                SyncDataResult syncData = !isrc.isEmpty() && config.karaoke && syncDataProviders.contains(config.provider.id)
+                        ? fetchSyncData(isrc, track, spotifyMatch, log)
+                        : null;
+                result = loadLrclibProvider(track, isrc, spotifyTrackId, spotifyMatch, syncData, log);
+            }
+        } catch (Exception error) {
+            String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            log.write(config.provider.id + " error: " + message);
+        }
+        if (candidate == null && result != null && !result.lines.isEmpty()) {
+            candidate = candidateFromResult(result);
+        }
+        attempts.put(config.provider.id, candidate);
+        return candidate;
+    }
+
+    private ProviderCandidate candidateFromResult(LyricsResult result) {
+        LyricsResult karaoke = result.karaoke ? result : null;
+        LyricsResult synced = hasTimedLyrics(result.lines) ? asLineSynced(result) : null;
+        LyricsResult plain = asPlain(result);
+        return new ProviderCandidate(karaoke, synced, plain);
+    }
+
+    private LyricsResult resultForType(ProviderCandidate candidate, String type) {
+        if (candidate == null) return null;
+        if (LyricsProviderSettings.TYPE_KARAOKE.equals(type)) return candidate.karaoke;
+        if (LyricsProviderSettings.TYPE_SYNCED.equals(type)) return candidate.synced;
+        return candidate.plain;
+    }
+
+    private LyricsResult asLineSynced(LyricsResult source) {
+        List<LyricsLine> lines = new ArrayList<>();
+        for (LyricsLine line : source.lines) {
+            if (!line.isTimed()) continue;
+            lines.add(new LyricsLine(
+                    line.startTimeMs,
+                    line.endTimeMs,
+                    line.text,
+                    Collections.emptyList(),
+                    line.speaker,
+                    line.speakerColor,
+                    line.speakerFallback,
+                    line.kind,
+                    Collections.emptyList()
+            ));
+        }
+        if (lines.isEmpty()) return null;
+        return new LyricsResult(lines, providerBaseLabel(source.providerLabel) + " synced", source.detail,
+                false, source.isrc, source.spotifyTrackId, source.contributors);
+    }
+
+    private LyricsResult asPlain(LyricsResult source) {
+        List<LyricsLine> lines = new ArrayList<>();
+        for (LyricsLine line : source.lines) {
+            if (line.text == null || line.text.trim().isEmpty()) continue;
+            lines.add(new LyricsLine(0L, 0L, line.text, Collections.emptyList(), line.speaker,
+                    line.speakerColor, line.speakerFallback, line.kind, Collections.emptyList()));
+        }
+        if (lines.isEmpty()) return null;
+        return new LyricsResult(lines, providerBaseLabel(source.providerLabel) + " plain", source.detail,
+                false, source.isrc, source.spotifyTrackId, source.contributors);
+    }
+
+    private String providerBaseLabel(String label) {
+        String value = label == null ? "" : label.trim();
+        for (String suffix : new String[]{" karaoke", " synced", " plain"}) {
+            if (value.toLowerCase(Locale.ROOT).endsWith(suffix)) {
+                return value.substring(0, value.length() - suffix.length());
+            }
+        }
+        return value;
+    }
+
+    private boolean hasTimedLyrics(List<LyricsLine> lines) {
+        for (LyricsLine line : lines) if (line.isTimed()) return true;
+        return false;
+    }
+
+    private Set<String> availableSyncDataProviders(String isrc, LogSink log) {
+        String normalized = TrackSnapshot.normalizeIsrc(isrc);
+        if (normalized.isEmpty()) return Collections.emptySet();
+        try {
+            JSONObject providerMap = loadOpenDbProviderMap(log);
+            if (providerMap == null) return Collections.emptySet();
+            Set<String> result = new LinkedHashSet<>();
+            Iterator<String> providers = providerMap.keys();
+            while (providers.hasNext()) {
+                String provider = providers.next().trim().toLowerCase(Locale.ROOT);
+                if (jsonArrayContains(providerMap.optJSONArray(provider), normalized)) result.add(provider);
+            }
+            return result;
+        } catch (Exception error) {
+            log.write("sync-data opendb error: " + error.getMessage());
+            return Collections.emptySet();
+        }
+    }
+
+    private String providerIds(List<LyricsProviderSettings.ProviderConfig> providers) {
+        List<String> ids = new ArrayList<>();
+        for (LyricsProviderSettings.ProviderConfig provider : providers) ids.add(provider.provider.id);
+        return ids.toString();
+    }
+
+    private LyricsResult loadLrclibProvider(
+            TrackSnapshot track,
+            String isrc,
+            String spotifyTrackId,
+            SpotifyTrackMatch spotifyMatch,
+            SyncDataResult syncData,
+            LogSink log
+    ) {
         LrclibCandidate candidate = null;
         boolean loadedFromSyncSource = false;
 
@@ -607,11 +868,7 @@ final class LyricsRepository {
 
         if (candidate == null) {
             log.write("result: no LRCLIB candidate selected");
-            LyricsResult unison = loadUnisonFallback(track, isrc, spotifyTrackId, log);
-            if (unison != null) {
-                return unison;
-            }
-            return LyricsResult.empty(ui("repo.lyrics_not_found"));
+            return null;
         }
         log.write("lrclib selected: " + describeLrclibCandidate(candidate)
                 + (loadedFromSyncSource ? " / source=sync-data.lrclibId" : " / source=search"));
@@ -630,11 +887,7 @@ final class LyricsRepository {
                 return LyricsResult.empty(ui("repo.instrumental"));
             }
             log.write("result: LRCLIB result has no renderable lyrics");
-            LyricsResult unison = loadUnisonFallback(track, isrc, spotifyTrackId, log);
-            if (unison != null) {
-                return unison;
-            }
-            return LyricsResult.empty(ui("repo.no_renderable_lyrics"));
+            return null;
         }
         log.write("lyrics base: lines=" + baseLines.size()
                 + " / " + (lineSynced ? "LRCLIB synced" : "LRCLIB plain"));
@@ -680,24 +933,6 @@ final class LyricsRepository {
                 spotifyTrackId,
                 Collections.emptyList()
         );
-    }
-
-    private LyricsResult loadUnisonFallback(
-            TrackSnapshot track,
-            String isrc,
-            String spotifyTrackId,
-            LogSink log
-    ) {
-        log.write("provider fallback: LRCLIB -> Unison");
-        try {
-            return UnisonLyricsProvider.fetch(track, isrc, spotifyTrackId, log::write);
-        } catch (Exception error) {
-            String message = error.getMessage() == null
-                    ? error.getClass().getSimpleName()
-                    : error.getMessage();
-            log.write("unison error: " + message);
-            return null;
-        }
     }
 
     private LyricsResult applySyncDataToCachedBase(
@@ -749,7 +984,10 @@ final class LyricsRepository {
         if (cached == null) {
             return true;
         }
-        return refreshed != null && refreshed.karaoke && !cached.karaoke;
+        return refreshed != null
+                && !refreshed.lines.isEmpty()
+                && ((refreshed.karaoke && !cached.karaoke)
+                || !refreshed.providerId.equals(cached.providerId));
     }
 
     private LyricsResult lyricsResultFromManualCandidate(LrclibCandidate candidate, TrackSnapshot track) {
@@ -779,7 +1017,7 @@ final class LyricsRepository {
                 firstNonEmpty(candidate.isrc, track == null ? "" : track.isrc),
                 track == null ? "" : track.trackId,
                 Collections.emptyList()
-        );
+        ).withSelection(LyricsProviderSettings.PROVIDER_LRCLIB, "manual");
     }
 
     private void publishSpotifyArtwork(String trackKey, SpotifyTrackMatch match, Callback callback, LogSink log) {
@@ -3080,6 +3318,18 @@ final class LyricsRepository {
         }
 
         return jaro + prefix * 0.1 * (1.0 - jaro);
+    }
+
+    private static final class ProviderCandidate {
+        final LyricsResult karaoke;
+        final LyricsResult synced;
+        final LyricsResult plain;
+
+        ProviderCandidate(LyricsResult karaoke, LyricsResult synced, LyricsResult plain) {
+            this.karaoke = karaoke;
+            this.synced = synced;
+            this.plain = plain;
+        }
     }
 
     private static final class MemoryLyricsCacheEntry {
