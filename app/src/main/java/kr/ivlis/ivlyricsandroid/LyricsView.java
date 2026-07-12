@@ -88,6 +88,7 @@ public final class LyricsView extends View {
 
     private List<LyricsLine> lines = Collections.emptyList();
     private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
+    private List<LineLayout> previousFrameLayouts = Collections.emptyList();
     private boolean displayLineCacheValid;
     private long displayLineCacheStartMs = Long.MIN_VALUE;
     private long displayLineCacheEndMs = Long.MAX_VALUE;
@@ -160,6 +161,7 @@ public final class LyricsView extends View {
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
         invalidateDisplayLineCache();
+        invalidateFrameGroupCache();
         if (softUpdate) {
             currentDisplayLineCount = Math.max(0, lines.size());
             postInvalidateOnAnimation();
@@ -357,6 +359,7 @@ public final class LyricsView extends View {
         }
         syncedLyricsKaraokeAnimationEnabled = enabled;
         rowLayoutCache.clear();
+        invalidateFrameGroupCache();
         bounceStates.clear();
         completedBounceKeys.clear();
         postInvalidateOnAnimation();
@@ -378,6 +381,7 @@ public final class LyricsView extends View {
         }
         karaokeDataAsLineSynced = enabled;
         rowLayoutCache.clear();
+        invalidateFrameGroupCache();
         bounceStates.clear();
         completedBounceKeys.clear();
         postInvalidateOnAnimation();
@@ -389,12 +393,14 @@ public final class LyricsView extends View {
         }
         japaneseFuriganaEnabled = enabled;
         rowLayoutCache.clear();
+        invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
 
     void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
         typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
         rowLayoutCache.clear();
+        invalidateFrameGroupCache();
         requestLayout();
         postInvalidateOnAnimation();
     }
@@ -406,12 +412,14 @@ public final class LyricsView extends View {
         }
         typographySizeMultiplier = safeMultiplier;
         rowLayoutCache.clear();
+        invalidateFrameGroupCache();
         requestLayout();
         postInvalidateOnAnimation();
     }
 
     void setSpeakerColorSettings(AiLyricsSettings.SpeakerColorSettings settings) {
         speakerColorSettings = settings == null ? AiLyricsSettings.SpeakerColorSettings.defaults() : settings;
+        invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
 
@@ -420,6 +428,7 @@ public final class LyricsView extends View {
             return;
         }
         useCreatorSpeakerColors = enabled;
+        invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
 
@@ -438,6 +447,7 @@ public final class LyricsView extends View {
         }
         pronunciationLoading = pronunciation;
         translationLoading = translation;
+        invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
 
@@ -525,6 +535,7 @@ public final class LyricsView extends View {
 
         if (lines.isEmpty()) {
             hitTargets.clear();
+            invalidateFrameGroupCache();
             drawEmpty(canvas);
             return;
         }
@@ -532,6 +543,7 @@ public final class LyricsView extends View {
         List<DisplayLine> displayLines = buildDisplayLines();
         if (displayLines.isEmpty()) {
             hitTargets.clear();
+            invalidateFrameGroupCache();
             drawEmpty(canvas);
             return;
         }
@@ -548,9 +560,17 @@ public final class LyricsView extends View {
             DisplayLine displayLine = displayLines.get(displayIndex);
             boolean active = displayIndex == activeIndex;
             float distance = Math.abs(displayIndex - animatedCenterIndex);
-            List<DrawGroup> groups = buildLyricGroups(displayLine, active, distance);
-            layouts.add(new LineLayout(displayIndex, displayLine, groups, groupsHeight(groups)));
+            LineLayout previousLayout = layoutAt(previousFrameLayouts, displayIndex);
+            List<DrawGroup> groups = !active
+                    && previousLayout != null
+                    && !previousLayout.active
+                    && previousLayout.displayLine == displayLine
+                    && Float.compare(previousLayout.distance, distance) == 0
+                    ? previousLayout.groups
+                    : buildLyricGroups(displayLine, active, distance);
+            layouts.add(new LineLayout(displayIndex, displayLine, active, distance, groups, groupsHeight(groups)));
         }
+        previousFrameLayouts = layouts;
 
         float centerY = getHeight() * verticalCenterBias;
         float blockGap = Math.max(sp(BLOCK_GAP_SP), getHeight() * 0.037f);
@@ -600,6 +620,7 @@ public final class LyricsView extends View {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
         if (width != oldWidth || height != oldHeight) {
             rowLayoutCache.clear();
+            invalidateFrameGroupCache();
             hitTargets.clear();
             rowPrewarmIndex = 0;
             scheduleRowPrewarm();
@@ -2888,6 +2909,10 @@ public final class LyricsView extends View {
         displayLineCacheEndMs = Long.MAX_VALUE;
     }
 
+    private void invalidateFrameGroupCache() {
+        previousFrameLayouts = Collections.emptyList();
+    }
+
     private boolean hasVisibleInterludeOverlap(List<DisplayLine> displayLines, InterludeInfo info) {
         if (displayLines == null || displayLines.isEmpty() || info == null || !info.isInterlude) {
             return false;
@@ -3663,12 +3688,23 @@ public final class LyricsView extends View {
     private static final class LineLayout {
         final int index;
         final DisplayLine displayLine;
+        final boolean active;
+        final float distance;
         final List<DrawGroup> groups;
         final float height;
 
-        LineLayout(int index, DisplayLine displayLine, List<DrawGroup> groups, float height) {
+        LineLayout(
+                int index,
+                DisplayLine displayLine,
+                boolean active,
+                float distance,
+                List<DrawGroup> groups,
+                float height
+        ) {
             this.index = index;
             this.displayLine = displayLine;
+            this.active = active;
+            this.distance = distance;
             this.groups = groups == null ? Collections.emptyList() : groups;
             this.height = Math.max(1f, height);
         }
