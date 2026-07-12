@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.ArraySet;
 import android.util.Base64;
 import android.util.Log;
 
@@ -1825,17 +1826,35 @@ final class LyricsRepository {
                 providerMap.put(provider, target);
             }
 
+            Set<String> values = new ArraySet<>(
+                    add ? target.length() + entries.length() : entries.length()
+            );
+            if (add) {
+                for (int index = 0; index < target.length(); index++) {
+                    values.add(target.optString(index, ""));
+                }
+            }
             for (int index = 0; index < entries.length(); index++) {
-                String normalizedIsrc = TrackSnapshot.normalizeIsrc(entries.optString(index, ""));
+                String rawIsrc = entries.optString(index, "");
+                String normalizedIsrc = isCanonicalOpenDbIsrc(rawIsrc)
+                        ? rawIsrc
+                        : TrackSnapshot.normalizeIsrc(rawIsrc);
                 if (normalizedIsrc.isEmpty()) {
                     continue;
                 }
                 if (add) {
-                    if (!jsonArrayContains(target, normalizedIsrc)) {
+                    if (values.add(normalizedIsrc)) {
                         target.put(normalizedIsrc);
                     }
                 } else {
-                    removeFromJsonArray(target, normalizedIsrc);
+                    values.add(normalizedIsrc);
+                }
+            }
+            if (!add && !values.isEmpty()) {
+                for (int index = target.length() - 1; index >= 0; index--) {
+                    if (values.contains(target.optString(index, ""))) {
+                        target.remove(index);
+                    }
                 }
             }
         }
@@ -1875,15 +1894,29 @@ final class LyricsRepository {
         return false;
     }
 
-    private static void removeFromJsonArray(JSONArray array, String value) throws Exception {
-        if (array == null || value == null || value.trim().isEmpty()) {
-            return;
+    private static boolean isCanonicalOpenDbIsrc(String value) {
+        if (value == null || value.length() != 12) {
+            return false;
         }
-        for (int index = array.length() - 1; index >= 0; index--) {
-            if (value.equals(array.optString(index, ""))) {
-                array.remove(index);
+        for (int index = 0; index < 2; index++) {
+            char character = value.charAt(index);
+            if (character < 'A' || character > 'Z') {
+                return false;
             }
         }
+        for (int index = 2; index < 5; index++) {
+            char character = value.charAt(index);
+            if ((character < 'A' || character > 'Z') && (character < '0' || character > '9')) {
+                return false;
+            }
+        }
+        for (int index = 5; index < 12; index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private SyncDataResult parseSyncDataResponse(String response, LogSink log, boolean fromCache) throws Exception {
