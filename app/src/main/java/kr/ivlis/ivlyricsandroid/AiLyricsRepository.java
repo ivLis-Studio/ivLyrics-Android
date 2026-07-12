@@ -43,6 +43,7 @@ final class AiLyricsRepository {
     private static final String TMI_PROMPT_VERSION = "origin-v1";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
+    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
     private static final Pattern TAGGED_OUTPUT_PATTERN = Pattern.compile(
             "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
             Pattern.CASE_INSENSITIVE
@@ -2904,11 +2905,14 @@ final class AiLyricsRepository {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder();
+            char[] encoded = new char[hashed.length * 2];
+            int offset = 0;
             for (byte b : hashed) {
-                builder.append(String.format(Locale.ROOT, "%02x", b));
+                int unsigned = b & 0xff;
+                encoded[offset++] = HEX_DIGITS[unsigned >>> 4];
+                encoded[offset++] = HEX_DIGITS[unsigned & 0x0f];
             }
-            return builder.toString();
+            return new String(encoded);
         } catch (Exception ignored) {
             return String.valueOf(value == null ? 0 : value.hashCode());
         }
