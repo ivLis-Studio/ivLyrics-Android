@@ -543,7 +543,7 @@ public final class LyricsView extends View {
         int anchorIndex = Math.max(0, Math.min(displayLines.size() - 1, (int) Math.floor(animatedCenterIndex)));
         int firstIndex = Math.max(0, anchorIndex - VISIBLE_RADIUS - 2);
         int lastIndex = Math.min(displayLines.size() - 1, anchorIndex + VISIBLE_RADIUS + 3);
-        List<LineLayout> layouts = new ArrayList<>();
+        List<LineLayout> layouts = new FrameLineLayouts();
         for (int displayIndex = firstIndex; displayIndex <= lastIndex; displayIndex++) {
             DisplayLine displayLine = displayLines.get(displayIndex);
             boolean active = displayIndex == activeIndex;
@@ -1770,6 +1770,10 @@ public final class LyricsView extends View {
     }
 
     private LineLayout layoutAt(List<LineLayout> layouts, int index) {
+        if (layouts instanceof FrameLineLayouts && !layouts.isEmpty()) {
+            int offset = index - layouts.get(0).index;
+            return offset >= 0 && offset < layouts.size() ? layouts.get(offset) : null;
+        }
         for (LineLayout layout : layouts) {
             if (layout.index == index) {
                 return layout;
@@ -3665,6 +3669,9 @@ public final class LyricsView extends View {
             this.groups = groups == null ? Collections.emptyList() : groups;
             this.height = Math.max(1f, height);
         }
+    }
+
+    private static final class FrameLineLayouts extends ArrayList<LineLayout> {
     }
 
     private static final class LineHitTarget {
