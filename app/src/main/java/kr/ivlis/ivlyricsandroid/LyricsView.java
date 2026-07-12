@@ -3167,7 +3167,7 @@ public final class LyricsView extends View {
 
         float centerIndex = segment.sourceIndex + Math.max(0, segment.sourceLength - 1) * 0.5f;
         float distance = Math.abs(centerIndex - group.activeSegmentIndex);
-        String bounceKey = group.bounceKeyPrefix + ':' + segment.sourceIndex;
+        String bounceKey = segment.bounceKey(group.bounceKeyPrefix);
         BounceState state = bounceStates.get(bounceKey);
         if (state == null && distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
             return KaraokeBounce.IDLE;
@@ -3814,6 +3814,8 @@ public final class LyricsView extends View {
         final int sourceLength;
         final String rubyText;
         float cachedRubyWidth = Float.NaN;
+        String cachedBounceKeyPrefix;
+        String cachedBounceKey;
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength) {
             this(text, width, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
@@ -3833,6 +3835,15 @@ public final class LyricsView extends View {
             this.sourceIndex = Math.max(0, sourceIndex);
             this.sourceLength = Math.max(1, sourceLength);
             this.rubyText = rubyText == null ? "" : rubyText;
+        }
+
+        String bounceKey(String prefix) {
+            String safePrefix = prefix == null ? "" : prefix;
+            if (cachedBounceKey == null || !safePrefix.equals(cachedBounceKeyPrefix)) {
+                cachedBounceKeyPrefix = safePrefix;
+                cachedBounceKey = safePrefix + ':' + sourceIndex;
+            }
+            return cachedBounceKey;
         }
     }
 
