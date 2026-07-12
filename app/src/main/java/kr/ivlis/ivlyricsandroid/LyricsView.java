@@ -22,6 +22,7 @@ import android.view.ViewConfiguration;
 import android.widget.OverScroller;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -82,6 +83,8 @@ public final class LyricsView extends View {
     private Typeface lyricTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
     private AiLyricsSettings.SpeakerColorSettings speakerColorSettings = AiLyricsSettings.SpeakerColorSettings.defaults();
+    private final int[][] numberedSpeakerColors = new int[3][5];
+    private int normalSpeakerColor;
     private boolean useCreatorSpeakerColors = true;
     private String lyricsTextAlignment = AiLyricsSettings.LYRICS_ALIGN_LEFT;
     private float typographySizeMultiplier = 1f;
@@ -419,6 +422,10 @@ public final class LyricsView extends View {
 
     void setSpeakerColorSettings(AiLyricsSettings.SpeakerColorSettings settings) {
         speakerColorSettings = settings == null ? AiLyricsSettings.SpeakerColorSettings.defaults() : settings;
+        normalSpeakerColor = 0;
+        for (int[] colors : numberedSpeakerColors) {
+            Arrays.fill(colors, 0);
+        }
         invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
@@ -3231,7 +3238,10 @@ public final class LyricsView extends View {
     }
 
     private int normalActiveColor() {
-        return speakerColorSettings.color(AiLyricsSettings.SPEAKER_COLOR_NORMAL);
+        if (normalSpeakerColor == 0) {
+            normalSpeakerColor = speakerColorSettings.color(AiLyricsSettings.SPEAKER_COLOR_NORMAL);
+        }
+        return normalSpeakerColor;
     }
 
     private int inactiveColorForSpeaker(String speaker, String speakerColor, String speakerFallback, float distance) {
@@ -3390,7 +3400,13 @@ public final class LyricsView extends View {
         if (index < 0 || index >= 5) {
             return 0;
         }
-        return speakerColorSettings.color(prefix + (index + 1));
+        int group = "male".equals(prefix) ? 0 : ("female".equals(prefix) ? 1 : 2);
+        int color = numberedSpeakerColors[group][index];
+        if (color == 0) {
+            color = speakerColorSettings.color(prefix + (index + 1));
+            numberedSpeakerColors[group][index] = color;
+        }
+        return color;
     }
 
     private int speakerIndex(String key, String prefix) {
