@@ -1025,7 +1025,7 @@ final class SyncDataApplier {
 
     private static List<String> splitChars(String value) {
         String normalized = normalize(value);
-        List<String> chars = new ArrayList<>();
+        List<String> chars = new ArrayList<>(normalized.length());
         normalized.codePoints().forEach(codePoint -> chars.add(new String(Character.toChars(codePoint))));
         return chars;
     }
