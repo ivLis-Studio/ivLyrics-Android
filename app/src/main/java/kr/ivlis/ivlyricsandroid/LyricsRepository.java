@@ -33,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 final class LyricsRepository {
     private static final String TAG = "ivLyricsDebug";
@@ -74,6 +75,10 @@ final class LyricsRepository {
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_ARTIST_SCORE = 0.45;
     private static final String LRCLIB_METADATA_LINE_PATTERN = "^\\s*\\[(?:ar|al|ti|au|length|by|offset|re|ve):[^\\]]*\\]\\s*$";
+    private static final Pattern COMPARABLE_APOSTROPHE_PATTERN = Pattern.compile("[\\u2018\\u2019]");
+    private static final Pattern COMPARABLE_QUOTE_PATTERN = Pattern.compile("[\\u201c\\u201d]");
+    private static final Pattern COMPARABLE_BRACKET_PATTERN = Pattern.compile("[()\\[\\]{}]");
+    private static final Pattern COMPARABLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -2996,13 +3001,13 @@ final class LyricsRepository {
 
     private static String normalizeComparable(String value) {
         if (value == null) return "";
-        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .toLowerCase(Locale.ROOT)
-                .trim()
-                .replaceAll("[\\u2018\\u2019]", "'")
-                .replaceAll("[\\u201c\\u201d]", "\"")
-                .replaceAll("[()\\[\\]{}]", "")
-                .replaceAll("\\s+", " ");
+                .trim();
+        normalized = COMPARABLE_APOSTROPHE_PATTERN.matcher(normalized).replaceAll("'");
+        normalized = COMPARABLE_QUOTE_PATTERN.matcher(normalized).replaceAll("\"");
+        normalized = COMPARABLE_BRACKET_PATTERN.matcher(normalized).replaceAll("");
+        return COMPARABLE_WHITESPACE_PATTERN.matcher(normalized).replaceAll(" ");
     }
 
     private static boolean sameSearchMetadata(String left, String right) {
