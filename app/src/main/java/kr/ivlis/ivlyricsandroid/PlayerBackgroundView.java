@@ -6,6 +6,7 @@ import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
@@ -25,6 +26,8 @@ public final class PlayerBackgroundView extends View {
     private Bitmap sourceArtwork;
     private Bitmap blurredArtwork;
     private Bitmap noiseBitmap;
+    private BitmapShader noiseShader;
+    private BlobShaderCache blobShaderCache;
     private LinearGradient dimmingGradientShader;
     private int dimmingGradientHeight = -1;
     private int dimmingGradientDim = Integer.MIN_VALUE;
@@ -227,37 +230,111 @@ public final class PlayerBackgroundView extends View {
         paint.setAlpha(255);
         canvas.drawRect(0f, 0f, width, height, paint);
 
-        int[] colors = new int[]{palettePrimary, paletteSecondary, paletteAccent, palettePrimary, paletteSecondary, paletteAccent};
-        float[] radii = new float[]{0.80f, 0.70f, 0.55f, 0.75f, 0.50f, 0.90f};
         for (int index = 0; index < 6; index++) {
             double speed = 0.010 + index * 0.0027;
             float cx = width * animatedValue(seconds, speed, phaseX + index * 0.83f, -0.18f, 1.18f);
             float cy = height * animatedValue(seconds, speed * 1.21, phaseY + index * 0.61f, -0.18f, 1.18f);
             int alpha = 88 - index * 5;
-            drawBlob(canvas, cx, cy, Math.max(width, height) * radii[index], colors[index], Math.max(42, alpha));
+            drawBlob(
+                    canvas,
+                    index,
+                    cx,
+                    cy,
+                    Math.max(width, height) * blobRadiusFactor(index),
+                    blobColor(index),
+                    Math.max(42, alpha)
+            );
         }
         drawDimmingGradient(canvas, width, height, 0.74f);
     }
 
-    private void drawBlob(Canvas canvas, float cx, float cy, float radius, int color, int alpha) {
-        paint.setShader(new RadialGradient(
-                cx,
-                cy,
-                Math.max(1f, radius),
-                new int[]{withAlpha(color, alpha), withAlpha(color, Math.round(alpha * 0.45f)), Color.TRANSPARENT},
-                new float[]{0f, 0.48f, 1f},
-                Shader.TileMode.CLAMP
-        ));
+    private void drawBlob(Canvas canvas, int index, float cx, float cy, float radius, int color, int alpha) {
+        if (blobShaderCache == null) {
+            blobShaderCache = new BlobShaderCache();
+        }
+        float shaderRadius = Math.max(1f, radius);
+        RadialGradient shader = blobShaderCache.shaders[index];
+        boolean rebuild = shader == null
+                || Float.compare(blobShaderCache.radii[index], shaderRadius) != 0
+                || blobShaderCache.colors[index] != color
+                || blobShaderCache.alphas[index] != alpha;
+        if (rebuild) {
+            // Preserve the original center-bound shader for the first frame after a cache change.
+            shader = new RadialGradient(
+                    cx,
+                    cy,
+                    shaderRadius,
+                    new int[]{withAlpha(color, alpha), withAlpha(color, Math.round(alpha * 0.45f)), Color.TRANSPARENT},
+                    new float[]{0f, 0.48f, 1f},
+                    Shader.TileMode.CLAMP
+            );
+            blobShaderCache.shaders[index] = shader;
+            blobShaderCache.radii[index] = shaderRadius;
+            blobShaderCache.colors[index] = color;
+            blobShaderCache.alphas[index] = alpha;
+            blobShaderCache.canonical[index] = false;
+        } else {
+            if (!blobShaderCache.canonical[index]) {
+                // Switch once to an origin-bound shader so later frames only update its matrix.
+                shader = new RadialGradient(
+                        0f,
+                        0f,
+                        shaderRadius,
+                        new int[]{withAlpha(color, alpha), withAlpha(color, Math.round(alpha * 0.45f)), Color.TRANSPARENT},
+                        new float[]{0f, 0.48f, 1f},
+                        Shader.TileMode.CLAMP
+                );
+                blobShaderCache.shaders[index] = shader;
+                blobShaderCache.canonical[index] = true;
+            }
+            if (blobShaderCache.matrix == null) {
+                blobShaderCache.matrix = new Matrix();
+            }
+            blobShaderCache.matrix.setTranslate(cx, cy);
+            shader.setLocalMatrix(blobShaderCache.matrix);
+        }
+        paint.setShader(shader);
         paint.setAlpha(255);
         canvas.drawCircle(cx, cy, radius, paint);
         paint.setShader(null);
     }
 
+    private float blobRadiusFactor(int index) {
+        switch (index) {
+            case 0:
+                return 0.80f;
+            case 1:
+                return 0.70f;
+            case 2:
+                return 0.55f;
+            case 3:
+                return 0.75f;
+            case 4:
+                return 0.50f;
+            default:
+                return 0.90f;
+        }
+    }
+
+    private int blobColor(int index) {
+        switch (index % 3) {
+            case 0:
+                return palettePrimary;
+            case 1:
+                return paletteSecondary;
+            default:
+                return paletteAccent;
+        }
+    }
+
     private void drawNoise(Canvas canvas, int width, int height) {
         if (noiseBitmap == null || noiseBitmap.isRecycled()) {
             noiseBitmap = createNoiseBitmap();
+            noiseShader = new BitmapShader(noiseBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
+        } else if (noiseShader == null) {
+            noiseShader = new BitmapShader(noiseBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
         }
-        noisePaint.setShader(new BitmapShader(noiseBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT));
+        noisePaint.setShader(noiseShader);
         noisePaint.setAlpha(34);
         canvas.drawRect(0f, 0f, width, height, noisePaint);
         noisePaint.setShader(null);
@@ -459,6 +536,15 @@ public final class PlayerBackgroundView extends View {
 
     private int clampColor(int value) {
         return Math.max(0, Math.min(255, value));
+    }
+
+    private static final class BlobShaderCache {
+        final RadialGradient[] shaders = new RadialGradient[6];
+        final float[] radii = new float[6];
+        final int[] colors = new int[6];
+        final int[] alphas = new int[6];
+        final boolean[] canonical = new boolean[6];
+        Matrix matrix;
     }
 
 }
