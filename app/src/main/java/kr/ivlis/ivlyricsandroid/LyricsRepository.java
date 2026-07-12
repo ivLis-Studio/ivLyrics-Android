@@ -2451,6 +2451,12 @@ final class LyricsRepository {
         if (candidate == null) {
             return;
         }
+        if (candidate.syncDataDecorationComputed
+                && candidate.decoratedSyncData == syncData) {
+            return;
+        }
+        candidate.syncDataDecorationComputed = true;
+        candidate.decoratedSyncData = syncData;
         candidate.preferredLyricsSource = "";
         candidate.syncLineExactMatch = false;
         candidate.exactSyncedLineMatch = false;
@@ -3363,6 +3369,8 @@ final class LyricsRepository {
         boolean syncSourceLineCountMatch;
         boolean hasOriginalLyricsScript;
         double albumMatchScore;
+        boolean syncDataDecorationComputed;
+        SyncDataResult decoratedSyncData;
 
         LrclibCandidate(
                 long id,
