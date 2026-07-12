@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 final class MainLyricPreviewView extends View {
     private static final float PRIMARY_TEXT_SP = 17f;
@@ -37,6 +38,7 @@ final class MainLyricPreviewView extends View {
     private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
     private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
     private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
+    private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -783,11 +785,11 @@ final class MainLyricPreviewView extends View {
         while (cursor < rubyText.length()) {
             int rubyStart = rubyText.indexOf("<ruby>", cursor);
             if (rubyStart < 0) {
-                currentChar += codePointCount(rubyText.substring(cursor).replaceAll("<[^>]+>", ""));
+                currentChar += codePointCount(MARKUP_TAG_PATTERN.matcher(rubyText.substring(cursor)).replaceAll(""));
                 break;
             }
             String before = rubyText.substring(cursor, rubyStart);
-            currentChar += codePointCount(before.replaceAll("<[^>]+>", ""));
+            currentChar += codePointCount(MARKUP_TAG_PATTERN.matcher(before).replaceAll(""));
 
             int baseStart = rubyStart + "<ruby>".length();
             int rtStart = rubyText.indexOf("<rt>", baseStart);
@@ -1094,16 +1096,16 @@ final class MainLyricPreviewView extends View {
         while (cursor < value.length()) {
             int rubyStart = value.indexOf("<ruby>", cursor);
             if (rubyStart < 0) {
-                builder.append(value.substring(cursor).replaceAll("<[^>]+>", ""));
+                builder.append(MARKUP_TAG_PATTERN.matcher(value.substring(cursor)).replaceAll(""));
                 break;
             }
-            builder.append(value.substring(cursor, rubyStart).replaceAll("<[^>]+>", ""));
+            builder.append(MARKUP_TAG_PATTERN.matcher(value.substring(cursor, rubyStart)).replaceAll(""));
             int baseStart = rubyStart + "<ruby>".length();
             int rtStart = value.indexOf("<rt>", baseStart);
             int rtEnd = rtStart < 0 ? -1 : value.indexOf("</rt>", rtStart);
             int rubyEnd = rtEnd < 0 ? -1 : value.indexOf("</ruby>", rtEnd);
             if (rtStart < 0 || rtEnd < 0 || rubyEnd < 0) {
-                return value.replaceAll("<[^>]+>", "");
+                return MARKUP_TAG_PATTERN.matcher(value).replaceAll("");
             }
             builder.append(value, baseStart, rtStart);
             cursor = rubyEnd + "</ruby>".length();
