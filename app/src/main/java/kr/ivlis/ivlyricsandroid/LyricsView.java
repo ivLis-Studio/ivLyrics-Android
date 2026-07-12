@@ -1922,7 +1922,11 @@ public final class LyricsView extends View {
         float rubySize = Math.max(sp(9f), group.textSize * FURIGANA_TEXT_RATIO);
         int color = fill > 0f ? group.activeColor : group.inactiveColor;
         configurePaint(scaleAlpha(color, fadeAlpha * 0.84f), group.kind, false, rubySize, false, group.typeface);
-        float rubyWidth = textPaint.measureText(segment.rubyText);
+        float rubyWidth = segment.cachedRubyWidth;
+        if (Float.isNaN(rubyWidth)) {
+            rubyWidth = textPaint.measureText(segment.rubyText);
+            segment.cachedRubyWidth = rubyWidth;
+        }
         float rubyLeft = cursor + segment.width * 0.5f - rubyWidth * 0.5f;
         float rubyBaseline = baseline - group.textSize * 0.90f;
         canvas.drawText(segment.rubyText, rubyLeft, rubyBaseline, textPaint);
@@ -3775,6 +3779,7 @@ public final class LyricsView extends View {
         final int sourceIndex;
         final int sourceLength;
         final String rubyText;
+        float cachedRubyWidth = Float.NaN;
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength) {
             this(text, width, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
