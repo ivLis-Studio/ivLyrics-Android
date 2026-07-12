@@ -44,5 +44,5 @@ __pycache__/
 *.log
 
 # Local test harnesses
-/test/
-/tests/
+**/test/
+**/tests/
