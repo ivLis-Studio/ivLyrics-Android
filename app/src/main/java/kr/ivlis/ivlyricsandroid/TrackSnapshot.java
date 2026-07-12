@@ -9,6 +9,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class TrackSnapshot {
+    private static final String SPOTIFY_TRACK_URI_PREFIX = "spotify:track:";
+    private static final int SPOTIFY_TRACK_ID_LENGTH = 22;
     private static final Pattern SPOTIFY_TRACK_PATTERN =
             Pattern.compile("(?:spotify:track:|open\\.spotify\\.com/track/)([A-Za-z0-9]{22})");
     private static final Pattern ISRC_SEPARATOR_PATTERN = Pattern.compile("[\\s-]");
@@ -125,8 +127,29 @@ final class TrackSnapshot {
 
     private static String extractSpotifyTrackId(String value) {
         if (value == null) return "";
+        int idStart = SPOTIFY_TRACK_URI_PREFIX.length();
+        int uriLength = idStart + SPOTIFY_TRACK_ID_LENGTH;
+        if (value.length() == uriLength) {
+            if (value.startsWith(SPOTIFY_TRACK_URI_PREFIX)
+                    && hasAsciiSpotifyTrackId(value, idStart)) {
+                return value.substring(idStart);
+            }
+            return "";
+        }
         Matcher matcher = SPOTIFY_TRACK_PATTERN.matcher(value);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static boolean hasAsciiSpotifyTrackId(String value, int start) {
+        for (int index = start; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if ((character < '0' || character > '9')
+                    && (character < 'A' || character > 'Z')
+                    && (character < 'a' || character > 'z')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
