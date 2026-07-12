@@ -12303,7 +12303,7 @@ public final class MainActivity extends Activity implements
         long totalSeconds = Math.max(0L, ms / 1000L);
         long minutes = totalSeconds / 60L;
         long seconds = totalSeconds % 60L;
-        return String.format(Locale.ROOT, "%d:%02d", minutes, seconds);
+        return minutes + ":" + (seconds < 10L ? "0" : "") + seconds;
     }
 
     private String formatRemaining(long position, long duration) {
