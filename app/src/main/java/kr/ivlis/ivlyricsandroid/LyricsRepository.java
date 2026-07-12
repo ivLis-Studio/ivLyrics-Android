@@ -2225,15 +2225,22 @@ final class LyricsRepository {
             return;
         }
 
+        boolean hasLrclibSource = syncData.hasLrclibSource();
         List<Integer> syncLineCounts = syncData.lineCharCounts();
         boolean normalizeParentheticalLines = syncData.shouldNormalizeParentheticalLines();
+        List<Integer> candidateSyncedLineCounts = candidateLineCharCounts(
+                candidate.syncedLyrics, true, normalizeParentheticalLines
+        );
         candidate.exactSyncedLineMatch = hasExactLineShape(
                 syncLineCounts,
-                candidateLineCharCounts(candidate.syncedLyrics, true, normalizeParentheticalLines)
+                candidateSyncedLineCounts
+        );
+        List<Integer> candidatePlainLineCounts = candidateLineCharCounts(
+                candidate.plainLyrics, false, normalizeParentheticalLines
         );
         candidate.exactPlainLineMatch = hasExactLineShape(
                 syncLineCounts,
-                candidateLineCharCounts(candidate.plainLyrics, false, normalizeParentheticalLines)
+                candidatePlainLineCounts
         );
         candidate.syncLineExactMatch = candidate.exactSyncedLineMatch || candidate.exactPlainLineMatch;
         candidate.preferredLyricsSource = candidate.exactSyncedLineMatch
@@ -2245,7 +2252,7 @@ final class LyricsRepository {
                 normalizeParentheticalLines
         ));
 
-        if (!syncData.hasLrclibSource()) {
+        if (!hasLrclibSource) {
             return;
         }
 
@@ -2255,11 +2262,11 @@ final class LyricsRepository {
         List<Integer> sourceLineCounts = syncData.sourceLineCharCounts();
         boolean sourceSyncedLineMatch = hasExactLineShape(
                 sourceLineCounts,
-                candidateLineCharCounts(candidate.syncedLyrics, true, normalizeParentheticalLines)
+                candidateSyncedLineCounts
         );
         boolean sourcePlainLineMatch = hasExactLineShape(
                 sourceLineCounts,
-                candidateLineCharCounts(candidate.plainLyrics, false, normalizeParentheticalLines)
+                candidatePlainLineCounts
         );
         if (candidate.preferredLyricsSource.isEmpty()) {
             candidate.preferredLyricsSource = sourceSyncedLineMatch
