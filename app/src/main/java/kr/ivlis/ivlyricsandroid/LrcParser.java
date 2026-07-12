@@ -19,7 +19,9 @@ final class LrcParser {
             return Collections.emptyList();
         }
 
-        List<LyricsLine> starts = new ArrayList<>();
+        List<LyricsLine> result = new ArrayList<>();
+        long previousStartMs = 0L;
+        String previousText = null;
         String[] rawLines = LINE_BREAK_PATTERN.split(lrc);
         for (String rawLine : rawLines) {
             Matcher matcher = LRC_TIME_PATTERN.matcher(rawLine);
@@ -31,19 +33,22 @@ final class LrcParser {
             String fraction = matcher.group(3);
             long millis = fractionToMillis(fraction);
             String text = matcher.group(4) == null ? "" : matcher.group(4).trim();
-            long startMs = (minutes * 60_000L) + (seconds * 1_000L) + millis;
-            starts.add(new LyricsLine(startMs, startMs, text, Collections.emptyList()));
+            long startMs = Math.max(0L, (minutes * 60_000L) + (seconds * 1_000L) + millis);
+            if (previousText != null) {
+                long fallbackEnd = durationMs > previousStartMs
+                        ? durationMs
+                        : previousStartMs + 4_000L;
+                long end = startMs > previousStartMs ? startMs : fallbackEnd;
+                result.add(new LyricsLine(previousStartMs, end, previousText, Collections.emptyList()));
+            }
+            previousStartMs = startMs;
+            previousText = text;
         }
-
-        List<LyricsLine> result = new ArrayList<>();
-        for (int index = 0; index < starts.size(); index++) {
-            LyricsLine current = starts.get(index);
-            long nextStart = index + 1 < starts.size() ? starts.get(index + 1).startTimeMs : 0L;
-            long fallbackEnd = durationMs > current.startTimeMs
+        if (previousText != null) {
+            long fallbackEnd = durationMs > previousStartMs
                     ? durationMs
-                    : current.startTimeMs + 4_000L;
-            long end = nextStart > current.startTimeMs ? nextStart : fallbackEnd;
-            result.add(new LyricsLine(current.startTimeMs, end, current.text, Collections.emptyList()));
+                    : previousStartMs + 4_000L;
+            result.add(new LyricsLine(previousStartMs, fallbackEnd, previousText, Collections.emptyList()));
         }
         return result;
     }
