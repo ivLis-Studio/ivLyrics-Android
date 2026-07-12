@@ -614,7 +614,7 @@ final class SyncDataApplier {
 
         List<Integer> actualCounts = new ArrayList<>();
         for (String line : baseLines) {
-            actualCounts.add(splitChars(line).size());
+            actualCounts.add(normalizedCodePointCount(line));
         }
 
         if (sameShape(expectedCounts, actualCounts, 0)) {
@@ -999,7 +999,7 @@ final class SyncDataApplier {
     private static List<Integer> lineCharCounts(List<String> lines) {
         List<Integer> counts = new ArrayList<>();
         for (String line : lines) {
-            counts.add(splitChars(line).size());
+            counts.add(normalizedCodePointCount(line));
         }
         return counts;
     }
@@ -1028,6 +1028,11 @@ final class SyncDataApplier {
         List<String> chars = new ArrayList<>();
         normalized.codePoints().forEach(codePoint -> chars.add(new String(Character.toChars(codePoint))));
         return chars;
+    }
+
+    private static int normalizedCodePointCount(String value) {
+        String normalized = normalize(value);
+        return normalized.codePointCount(0, normalized.length());
     }
 
     private static String joinChars(List<String> chars, int start, int end) {
