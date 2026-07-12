@@ -43,6 +43,7 @@ final class UnisonLyricsProvider {
     private static final Pattern LRC_METADATA_PATTERN = Pattern.compile("^\\[(?:ar|al|ti|by|re|ve|length):", Pattern.CASE_INSENSITIVE);
     private static final Pattern TTML_OFFSET_TIME_PATTERN =
             Pattern.compile("^([+-]?[\\d.]+)(ms|h|m|s)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern INLINE_WHITESPACE_PATTERN = Pattern.compile("[\\r\\n\\t\\f\\u000B ]+");
 
     private static final SpeakerPresentation[] SPEAKER_PALETTE = new SpeakerPresentation[]{
             new SpeakerPresentation("CUSTOM", "#a8ccff", "MALE 1"),
@@ -776,7 +777,7 @@ final class UnisonLyricsProvider {
     }
 
     private static String normalizeInlineText(String value) {
-        return (value == null ? "" : value).replaceAll("[\\r\\n\\t\\f\\u000B ]+", " ");
+        return INLINE_WHITESPACE_PATTERN.matcher(value == null ? "" : value).replaceAll(" ");
     }
 
     private static String normalizeDisplayText(String value) {
