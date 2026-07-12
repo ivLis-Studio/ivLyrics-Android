@@ -81,7 +81,21 @@ final class LrcParser {
         if (fraction == null || fraction.isEmpty()) {
             return 0L;
         }
-        String padded = (fraction + "000").substring(0, 3);
-        return parseLong(padded);
+        int firstCharacter = fraction.charAt(0);
+        boolean negative = firstCharacter == '-';
+        int index = negative || firstCharacter == '+' ? 1 : 0;
+        long millis = 0L;
+        for (; index < 3; index++) {
+            char character = index < fraction.length() ? fraction.charAt(index) : '0';
+            int digit = character - '0';
+            if (digit < 0 || digit > 9) {
+                digit = Character.digit(character, 10);
+                if (digit < 0) {
+                    return 0L;
+                }
+            }
+            millis = millis * 10L + digit;
+        }
+        return negative ? -millis : millis;
     }
 }
