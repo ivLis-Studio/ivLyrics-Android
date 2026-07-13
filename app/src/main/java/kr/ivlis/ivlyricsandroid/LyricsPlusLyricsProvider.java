@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 final class LyricsPlusLyricsProvider {
     static final String PROVIDER_ID = "lyricsplus";
@@ -42,6 +43,8 @@ final class LyricsPlusLyricsProvider {
     private static final long LONG_LINE_MIN_DURATION_MS = 500L;
     private static final int LONG_LINE_MAX_SEGMENTS = 4;
     private static final AtomicInteger NEXT_MIRROR = new AtomicInteger();
+    private static final Pattern BACKGROUND_PARENTHESES_PATTERN = Pattern.compile("[()（）]");
+    private static final Pattern INLINE_WHITESPACE_PATTERN = Pattern.compile("[\\r\\n\\t\\f\\u000B ]+");
 
     private static final SpeakerPresentation[] SPEAKER_PALETTE = new SpeakerPresentation[]{
             new SpeakerPresentation("CUSTOM", "#a8ccff", "MALE 1"),
@@ -1067,7 +1070,7 @@ final class LyricsPlusLyricsProvider {
         if (source.isEmpty()) return source;
         List<LyricsLine.Syllable> result = new ArrayList<>();
         for (LyricsLine.Syllable syllable : source) {
-            String text = syllable.text.replaceAll("[()（）]", "");
+            String text = BACKGROUND_PARENTHESES_PATTERN.matcher(syllable.text).replaceAll("");
             if (!text.isEmpty()) {
                 result.add(new LyricsLine.Syllable(text, syllable.startTimeMs, syllable.endTimeMs));
             }
@@ -1076,7 +1079,7 @@ final class LyricsPlusLyricsProvider {
     }
 
     private static String stripBackgroundParentheses(String text) {
-        return normalizeDisplayText(text.replaceAll("[()（）]", ""));
+        return normalizeDisplayText(BACKGROUND_PARENTHESES_PATTERN.matcher(text).replaceAll(""));
     }
 
     private static List<LyricsLine.Syllable> toSyllables(List<ParsedSyllable> source) {
@@ -1132,7 +1135,7 @@ final class LyricsPlusLyricsProvider {
     }
 
     private static String normalizeInlineText(String value) {
-        return (value == null ? "" : value).replaceAll("[\\r\\n\\t\\f\\u000B ]+", " ");
+        return INLINE_WHITESPACE_PATTERN.matcher(value == null ? "" : value).replaceAll(" ");
     }
 
     private static String normalizeDisplayText(String value) {
