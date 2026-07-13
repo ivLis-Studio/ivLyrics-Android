@@ -101,7 +101,8 @@ public final class LyricsView extends View {
 
     private List<LyricsLine> lines = Collections.emptyList();
     private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
-    private List<LineLayout> previousFrameLayouts = Collections.emptyList();
+    private FrameLineLayouts previousFrameLayouts = new FrameLineLayouts();
+    private FrameLineLayouts nextFrameLayouts = new FrameLineLayouts();
     private boolean displayLineCacheValid;
     private long displayLineCacheStartMs = Long.MIN_VALUE;
     private long displayLineCacheEndMs = Long.MAX_VALUE;
@@ -573,7 +574,8 @@ public final class LyricsView extends View {
         int anchorIndex = Math.max(0, Math.min(displayLines.size() - 1, (int) Math.floor(animatedCenterIndex)));
         int firstIndex = Math.max(0, anchorIndex - VISIBLE_RADIUS - 2);
         int lastIndex = Math.min(displayLines.size() - 1, anchorIndex + VISIBLE_RADIUS + 3);
-        List<LineLayout> layouts = new FrameLineLayouts();
+        FrameLineLayouts layouts = nextFrameLayouts;
+        layouts.beginFrame();
         for (int displayIndex = firstIndex; displayIndex <= lastIndex; displayIndex++) {
             DisplayLine displayLine = displayLines.get(displayIndex);
             boolean active = displayIndex == activeIndex;
@@ -586,9 +588,12 @@ public final class LyricsView extends View {
                     && Float.compare(previousLayout.distance, distance) == 0
                     ? previousLayout.groups
                     : buildLyricGroups(displayLine, active, distance);
-            layouts.add(new LineLayout(displayIndex, displayLine, active, distance, groups, groupsHeight(groups)));
+            layouts.addValues(displayIndex, displayLine, active, distance, groups, groupsHeight(groups));
         }
+        layouts.finishFrame();
+        FrameLineLayouts reusableFrameLayouts = previousFrameLayouts;
         previousFrameLayouts = layouts;
+        nextFrameLayouts = reusableFrameLayouts;
 
         float centerY = getHeight() * verticalCenterBias;
         float blockGap = Math.max(sp(BLOCK_GAP_SP), getHeight() * 0.037f);
@@ -3002,7 +3007,8 @@ public final class LyricsView extends View {
     }
 
     private void invalidateFrameGroupCache() {
-        previousFrameLayouts = Collections.emptyList();
+        previousFrameLayouts.clearReferences();
+        nextFrameLayouts.clearReferences();
     }
 
     private boolean hasVisibleInterludeOverlap(List<DisplayLine> displayLines, InterludeInfo info) {
@@ -3811,14 +3817,17 @@ public final class LyricsView extends View {
     }
 
     private static final class LineLayout {
-        final int index;
-        final DisplayLine displayLine;
-        final boolean active;
-        final float distance;
-        final List<DrawGroup> groups;
-        final float height;
+        int index;
+        DisplayLine displayLine;
+        boolean active;
+        float distance;
+        List<DrawGroup> groups = Collections.emptyList();
+        float height;
 
-        LineLayout(
+        LineLayout() {
+        }
+
+        void set(
                 int index,
                 DisplayLine displayLine,
                 boolean active,
@@ -3833,9 +3842,60 @@ public final class LyricsView extends View {
             this.groups = groups == null ? Collections.emptyList() : groups;
             this.height = Math.max(1f, height);
         }
+
+        void clearReferences() {
+            displayLine = null;
+            groups = Collections.emptyList();
+        }
     }
 
     private static final class FrameLineLayouts extends ArrayList<LineLayout> {
+        private final LineLayout[] entries = new LineLayout[VISIBLE_RADIUS * 2 + 6];
+
+        FrameLineLayouts() {
+            super(VISIBLE_RADIUS * 2 + 6);
+        }
+
+        void beginFrame() {
+            clear();
+        }
+
+        void addValues(
+                int index,
+                DisplayLine displayLine,
+                boolean active,
+                float distance,
+                List<DrawGroup> groups,
+                float height
+        ) {
+            int activeSize = size();
+            LineLayout entry;
+            if (entries[activeSize] == null) {
+                entry = new LineLayout();
+                entries[activeSize] = entry;
+            } else {
+                entry = entries[activeSize];
+            }
+            entry.set(index, displayLine, active, distance, groups, height);
+            add(entry);
+        }
+
+        void finishFrame() {
+            for (int index = size(); index < entries.length; index++) {
+                if (entries[index] != null) {
+                    entries[index].clearReferences();
+                }
+            }
+        }
+
+        void clearReferences() {
+            for (LineLayout entry : entries) {
+                if (entry != null) {
+                    entry.clearReferences();
+                }
+            }
+            clear();
+        }
     }
 
     private static final class LineHitTarget {
