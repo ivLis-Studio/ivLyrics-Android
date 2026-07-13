@@ -103,11 +103,15 @@ public final class LyricsView extends View {
 
     private List<LyricsLine> lines = Collections.emptyList();
     private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
+    private List<DisplayLine> activeDisplayIndexCacheLines;
     private FrameLineLayouts previousFrameLayouts = new FrameLineLayouts();
     private FrameLineLayouts nextFrameLayouts = new FrameLineLayouts();
     private boolean displayLineCacheValid;
     private long displayLineCacheStartMs = Long.MIN_VALUE;
     private long displayLineCacheEndMs = Long.MAX_VALUE;
+    private long activeDisplayIndexCacheStartMs = Long.MIN_VALUE;
+    private long activeDisplayIndexCacheEndMs = Long.MAX_VALUE;
+    private int activeDisplayIndexCacheValue;
     private long positionMs;
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
@@ -3032,6 +3036,10 @@ public final class LyricsView extends View {
         displayLineCacheValid = false;
         displayLineCacheStartMs = Long.MIN_VALUE;
         displayLineCacheEndMs = Long.MAX_VALUE;
+        activeDisplayIndexCacheLines = null;
+        activeDisplayIndexCacheStartMs = Long.MIN_VALUE;
+        activeDisplayIndexCacheEndMs = Long.MAX_VALUE;
+        activeDisplayIndexCacheValue = 0;
     }
 
     private void invalidateFrameGroupCache() {
@@ -3066,21 +3074,48 @@ public final class LyricsView extends View {
         if (displayLines == null || displayLines.isEmpty()) {
             return 0;
         }
+        if (activeDisplayIndexCacheLines == displayLines
+                && positionMs >= activeDisplayIndexCacheStartMs
+                && positionMs < activeDisplayIndexCacheEndMs) {
+            return activeDisplayIndexCacheValue;
+        }
 
         int fallback = 0;
+        int activeIndex = 0;
+        long cacheStartMs = Long.MIN_VALUE;
+        long cacheEndMs = Long.MAX_VALUE;
         for (int index = 0; index < displayLines.size(); index++) {
             DisplayLine displayLine = displayLines.get(index);
             if (!displayLine.isTimed()) {
-                return Math.min(index, displayLines.size() - 1);
+                activeIndex = Math.min(index, displayLines.size() - 1);
+                break;
             }
-            if (positionMs >= displayLine.startTimeMs() && positionMs < displayLine.endTimeMs()) {
-                return index;
+            long startTimeMs = displayLine.startTimeMs();
+            long endTimeMs = displayLine.endTimeMs();
+            if (startTimeMs <= positionMs) {
+                cacheStartMs = Math.max(cacheStartMs, startTimeMs);
+            } else {
+                cacheEndMs = Math.min(cacheEndMs, startTimeMs);
             }
-            if (positionMs >= displayLine.startTimeMs()) {
+            if (endTimeMs <= positionMs) {
+                cacheStartMs = Math.max(cacheStartMs, endTimeMs);
+            } else {
+                cacheEndMs = Math.min(cacheEndMs, endTimeMs);
+            }
+            if (positionMs >= startTimeMs && positionMs < endTimeMs) {
+                activeIndex = index;
+                break;
+            }
+            if (positionMs >= startTimeMs) {
                 fallback = index;
             }
+            activeIndex = fallback;
         }
-        return fallback;
+        activeDisplayIndexCacheLines = displayLines;
+        activeDisplayIndexCacheStartMs = cacheStartMs;
+        activeDisplayIndexCacheEndMs = cacheEndMs;
+        activeDisplayIndexCacheValue = activeIndex;
+        return activeIndex;
     }
 
     private InterludeInfo interludeInfoForLine(LyricsLine line, int lineIndex, int lineCount) {
