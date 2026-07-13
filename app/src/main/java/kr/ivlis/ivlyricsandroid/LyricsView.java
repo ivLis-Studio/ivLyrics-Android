@@ -64,11 +64,17 @@ public final class LyricsView extends View {
     private static final int SPEAKER_SFX_COLOR = Color.rgb(244, 166, 200);
     private static final int SPEAKER_KEY_CACHE_LIMIT = 64;
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
+    private static final float[] LOADING_SKELETON_WIDTH_FACTORS = {0.62f, 0.86f, 0.74f, 0.92f, 0.56f};
+    private static final float[] LOADING_SKELETON_SHIMMER_STOPS = {0f, 0.5f, 1f};
+    private static final int[] LOADING_SKELETON_SHIMMER_COLORS = {0x00ffffff, 0x4effffff, 0x00ffffff};
+    private static final int[] LOADING_SKELETON_ACTIVE_SHIMMER_COLORS = {0x00ffffff, 0x76ffffff, 0x00ffffff};
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint interludePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint skeletonPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final LinearGradient[] loadingSkeletonShaders = new LinearGradient[LOADING_SKELETON_WIDTH_FACTORS.length];
+    private final float[] loadingSkeletonShaderWidths = new float[LOADING_SKELETON_WIDTH_FACTORS.length];
     private final Paint emptyIconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final PorterDuffXfermode bottomEdgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
@@ -2694,17 +2700,16 @@ public final class LyricsView extends View {
         float left = contentLeft();
         float availableWidth = contentWidth();
         float centerY = getHeight() * verticalCenterBias;
-        float[] widths = {0.62f, 0.86f, 0.74f, 0.92f, 0.56f};
         float rowHeight = sp(16f);
         float activeHeight = sp(25f);
         float rowGap = sp(20f);
         float totalHeight = rowHeight * 4f + activeHeight + rowGap * 4f;
         float top = centerY - totalHeight * 0.5f;
 
-        for (int index = 0; index < widths.length; index++) {
+        for (int index = 0; index < LOADING_SKELETON_WIDTH_FACTORS.length; index++) {
             boolean active = index == 2;
             float height = active ? activeHeight : rowHeight;
-            float width = Math.max(sp(86f), availableWidth * widths[index]);
+            float width = Math.max(sp(86f), availableWidth * LOADING_SKELETON_WIDTH_FACTORS[index]);
             float rowTop = top;
             float radius = height * 0.45f;
             int baseAlpha = active ? 82 : 36;
@@ -2717,27 +2722,42 @@ public final class LyricsView extends View {
             float shimmerWidth = Math.max(sp(48f), width * 0.34f);
             float phase = ((now + index * 130L) % 1350L) / 1350f;
             float shimmerLeft = left - shimmerWidth + (width + shimmerWidth * 2f) * phase;
-            skeletonPaint.setShader(new LinearGradient(
-                    shimmerLeft,
-                    0f,
-                    shimmerLeft + shimmerWidth,
-                    0f,
-                    new int[] {
-                            Color.argb(0, 255, 255, 255),
-                            Color.argb(active ? 118 : 78, 255, 255, 255),
-                            Color.argb(0, 255, 255, 255)
-                    },
-                    new float[] {0f, 0.5f, 1f},
-                    Shader.TileMode.CLAMP
-            ));
+            skeletonPaint.setShader(loadingSkeletonShader(index, shimmerWidth, active));
             int save = canvas.save();
             canvas.clipRect(left, rowTop, left + width, rowTop + height);
-            canvas.drawRoundRect(left, rowTop, left + width, rowTop + height, radius, radius, skeletonPaint);
+            canvas.translate(shimmerLeft, 0f);
+            canvas.drawRoundRect(
+                    left - shimmerLeft,
+                    rowTop,
+                    left + width - shimmerLeft,
+                    rowTop + height,
+                    radius,
+                    radius,
+                    skeletonPaint
+            );
             canvas.restoreToCount(save);
 
             top += height + rowGap;
         }
         skeletonPaint.setShader(null);
+    }
+
+    private LinearGradient loadingSkeletonShader(int index, float width, boolean active) {
+        LinearGradient shader = loadingSkeletonShaders[index];
+        if (shader == null || Float.compare(loadingSkeletonShaderWidths[index], width) != 0) {
+            shader = new LinearGradient(
+                    0f,
+                    0f,
+                    width,
+                    0f,
+                    active ? LOADING_SKELETON_ACTIVE_SHIMMER_COLORS : LOADING_SKELETON_SHIMMER_COLORS,
+                    LOADING_SKELETON_SHIMMER_STOPS,
+                    Shader.TileMode.CLAMP
+            );
+            loadingSkeletonShaders[index] = shader;
+            loadingSkeletonShaderWidths[index] = width;
+        }
+        return shader;
     }
 
     private boolean isLoadingEmptyMessage() {
