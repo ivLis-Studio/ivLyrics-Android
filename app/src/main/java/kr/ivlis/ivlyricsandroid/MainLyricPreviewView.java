@@ -728,7 +728,7 @@ final class MainLyricPreviewView extends View {
         if (line == null || !line.hasRuby()) {
             return;
         }
-        List<RubyAnnotation> annotations = parseRubyAnnotations(line.text, line.rubyText);
+        List<RubyAnnotation> annotations = line.rubyAnnotations();
         if (annotations.isEmpty()) {
             return;
         }
@@ -783,7 +783,7 @@ final class MainLyricPreviewView extends View {
             return Collections.emptyList();
         }
         List<LyricsLine.Syllable> renderSyllables = TimedSyllableNormalizer.normalize(syllables);
-        List<RubyAnnotation> rubyAnnotations = parseRubyAnnotations(line.text, line.rubyText);
+        List<RubyAnnotation> rubyAnnotations = line.rubyAnnotations();
         List<TextSegment> segments = new ArrayList<>(renderSyllables.size());
         int charOffset = 0;
         for (int index = 0; index < renderSyllables.size(); index++) {
@@ -845,7 +845,7 @@ final class MainLyricPreviewView extends View {
         return Math.max(textWidth, rubyWidth + sp(2f));
     }
 
-    private List<RubyAnnotation> parseRubyAnnotations(String text, String rubyText) {
+    private static List<RubyAnnotation> parseRubyAnnotations(String text, String rubyText) {
         if (text == null || text.isEmpty() || rubyText == null || !rubyText.contains("<ruby>")) {
             return Collections.emptyList();
         }
@@ -1215,6 +1215,7 @@ final class MainLyricPreviewView extends View {
         final boolean rubyMarkupMatchesText;
         final int stableRowSeed;
         String cachedBounceKeyPrefix;
+        List<RubyAnnotation> cachedRubyAnnotations;
 
         PreviewLine(String text, boolean primary) {
             this(text, primary, Collections.emptyList());
@@ -1280,6 +1281,13 @@ final class MainLyricPreviewView extends View {
 
         boolean hasRuby() {
             return rubyMarkupMatchesText;
+        }
+
+        List<RubyAnnotation> rubyAnnotations() {
+            if (cachedRubyAnnotations == null) {
+                cachedRubyAnnotations = parseRubyAnnotations(text, rubyText);
+            }
+            return cachedRubyAnnotations;
         }
 
         boolean isInterlude() {
