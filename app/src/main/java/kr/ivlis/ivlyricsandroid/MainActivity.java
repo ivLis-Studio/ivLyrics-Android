@@ -10516,35 +10516,49 @@ public final class MainActivity extends Activity implements
     private PreviewEntry previewEntryAt(long positionMs) {
         List<LyricsLine> lines = currentLyricsResult.lines;
         int lineCount = lines.size();
-        for (int index = 0; index < lineCount; index++) {
-            LyricsLine line = lines.get(index);
-            if (line == null || !line.isTimed()) {
-                continue;
-            }
-            PreviewEntry markerEntry = markerInterludeEntry(line, index, lineCount);
-            if (markerEntry != null && markerEntry.contains(positionMs)) {
-                return markerEntry;
-            }
-        }
-
+        LyricsLine firstUntimedLine = null;
+        LyricsLine matchingTimedLine = null;
+        LyricsLine fallbackLine = null;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
             if (line == null) {
                 continue;
             }
-            if (!line.isTimed() && !isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
-                return PreviewEntry.line(line);
+
+            boolean timed = line.isTimed();
+            if (!timed) {
+                if (firstUntimedLine == null
+                        && !isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
+                    firstUntimedLine = line;
+                }
+                continue;
+            }
+
+            boolean interludeMarker = isPreviewInterludeMarkerText(previewInterludeCandidateText(line));
+            if (interludeMarker) {
+                PreviewEntry markerEntry = markerInterludeEntry(line, index, lineCount);
+                if (markerEntry != null && markerEntry.contains(positionMs)) {
+                    return markerEntry;
+                }
+                continue;
+            }
+
+            if (matchingTimedLine == null
+                    && positionMs >= line.startTimeMs
+                    && positionMs < line.endTimeMs) {
+                matchingTimedLine = line;
+            }
+            if (positionMs >= line.startTimeMs) {
+                fallbackLine = line;
             }
         }
 
-        for (int index = 0; index < lineCount; index++) {
-            LyricsLine line = lines.get(index);
-            if (line == null || !line.isTimed() || isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
-                continue;
-            }
-            if (positionMs >= line.startTimeMs && positionMs < line.endTimeMs) {
-                return PreviewEntry.line(line);
-            }
+        if (firstUntimedLine != null) {
+            return PreviewEntry.line(firstUntimedLine);
+        }
+
+        if (matchingTimedLine != null) {
+            return PreviewEntry.line(matchingTimedLine);
         }
 
         PreviewEntry prelude = preludeEntry(positionMs);
@@ -10557,22 +10571,10 @@ public final class MainActivity extends Activity implements
             return trailingInterlude;
         }
 
-        PreviewEntry fallback = null;
-        for (LyricsLine line : lines) {
-            if (line == null || !line.isTimed() || isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
-                continue;
-            }
-            if (positionMs >= line.startTimeMs) {
-                fallback = PreviewEntry.line(line);
-            }
-        }
-        return fallback;
+        return fallbackLine == null ? null : PreviewEntry.line(fallbackLine);
     }
 
     private PreviewEntry markerInterludeEntry(LyricsLine line, int lineIndex, int lineCount) {
-        if (line == null || !line.isTimed() || !isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
-            return null;
-        }
         long endTimeMs = Math.max(line.endTimeMs, nextPreviewRenderableLineStartAfter(lineIndex));
         long durationMs = endTimeMs > line.startTimeMs ? endTimeMs - line.startTimeMs : 0L;
         if (durationMs <= PREVIEW_INTERLUDE_MIN_DURATION_MS) {
