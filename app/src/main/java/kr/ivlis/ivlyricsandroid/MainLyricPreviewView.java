@@ -1212,6 +1212,7 @@ final class MainLyricPreviewView extends View {
         final String kind;
         final int type;
         final String slotId;
+        final boolean rubyMarkupMatchesText;
 
         PreviewLine(String text, boolean primary) {
             this(text, primary, Collections.emptyList());
@@ -1253,6 +1254,9 @@ final class MainLyricPreviewView extends View {
             this.kind = normalizeKind(kind);
             this.type = type;
             this.slotId = AiLyricsSettings.typographySlotById(slotId).id;
+            this.rubyMarkupMatchesText = type == TYPE_TEXT
+                    && this.rubyText.contains("<ruby>")
+                    && plainRubyText(this.rubyText).equals(this.text);
         }
 
         static PreviewLine interlude(String text) {
@@ -1268,7 +1272,7 @@ final class MainLyricPreviewView extends View {
         }
 
         boolean hasRuby() {
-            return type == TYPE_TEXT && rubyText.contains("<ruby>") && plainRubyText(rubyText).equals(text);
+            return rubyMarkupMatchesText;
         }
 
         boolean isInterlude() {
