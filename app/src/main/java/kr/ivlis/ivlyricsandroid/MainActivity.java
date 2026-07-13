@@ -1424,6 +1424,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         manualLrclibSearchInFlight = false;
+        lyricsLookupInFlight = false;
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
@@ -1449,6 +1450,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         manualLrclibSearchInFlight = false;
+        lyricsLookupInFlight = false;
         String detail = message == null || message.trim().isEmpty()
                 ? ui("repo.lyrics_not_found")
                 : message.trim();
@@ -1513,6 +1515,10 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
+        if (!AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)) {
+            appendLog("stale ai lyrics result discarded after base lyrics changed");
+            return;
+        }
         aiLyricsGenerating = false;
         currentLyricsResult = mergeCurrentFuriganaInto(result);
         setLyricsResultOnViews(currentLyricsResult);
@@ -1534,6 +1540,10 @@ public final class MainActivity extends Activity implements
             boolean hadError
     ) {
         if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        if (!AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)) {
+            appendLog("stale ai lyrics partial discarded after base lyrics changed");
             return;
         }
         aiLyricsGenerating = pronunciationLoading || translationLoading;
@@ -7119,9 +7129,12 @@ public final class MainActivity extends Activity implements
     }
 
     private void selectManualLrclibCandidate(LyricsRepository.ManualLrclibCandidate candidate) {
-        if (lyricsRepository == null || candidate == null) {
+        if (lyricsRepository == null || candidate == null || manualLrclibSearchInFlight) {
             return;
         }
+        lyricsRepository.invalidateProviderSelection();
+        manualLrclibSearchInFlight = true;
+        lyricsLookupInFlight = true;
         setManualLrclibStatus(ui("lyrics.lrclib_search.selecting"));
         lyricsRepository.loadManualLrclibCandidate(currentTrack, candidate, this);
     }

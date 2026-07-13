@@ -756,7 +756,7 @@ final class AiLyricsRepository {
         if (!bypassCache) {
             LyricsResult cached = cache.get(cacheKey);
             if (cached != null) {
-                cached = withBaseContributors(cached, baseResult);
+                cached = rebaseCachedSupplements(cached, baseResult);
                 cache.put(cacheKey, cached);
                 emitLog(trackKey, callback, "ai lyrics cache hit: " + settings.provider.label);
                 callback.onAiLyricsLoaded(trackKey, cached);
@@ -764,7 +764,7 @@ final class AiLyricsRepository {
             }
             LyricsResult diskCached = diskCache == null ? null : diskCache.get(cacheKey);
             if (diskCached != null) {
-                diskCached = withBaseContributors(diskCached, baseResult);
+                diskCached = rebaseCachedSupplements(diskCached, baseResult);
                 cache.put(cacheKey, diskCached);
                 emitLog(trackKey, callback, "ai lyrics disk cache hit: " + settings.provider.label);
                 callback.onAiLyricsLoaded(trackKey, diskCached);
@@ -920,28 +920,176 @@ final class AiLyricsRepository {
         }
     }
 
-    private LyricsResult withBaseContributors(LyricsResult result, LyricsResult baseResult) {
+    private LyricsResult rebaseCachedSupplements(LyricsResult result, LyricsResult baseResult) {
         if (result == null || baseResult == null) {
             return result;
         }
-        List<LyricsResult.SyncContributor> baseContributors = baseResult.contributors == null
-                ? Collections.emptyList()
-                : baseResult.contributors;
-        List<LyricsResult.SyncContributor> resultContributors = result.contributors == null
-                ? Collections.emptyList()
-                : result.contributors;
-        if (resultContributors.equals(baseContributors)) {
-            return result;
+
+        List<LyricsLine> rebasedLines = new ArrayList<>();
+        for (int index = 0; index < baseResult.lines.size(); index++) {
+            LyricsLine baseLine = baseResult.lines.get(index);
+            LyricsLine cachedLine = index < result.lines.size() ? result.lines.get(index) : null;
+            rebasedLines.add(rebaseCachedSupplementLine(baseLine, cachedLine));
+        }
+
+        String detail = baseResult.detail;
+        int aiSuffixStart = result.detail.indexOf(" AI ");
+        if (aiSuffixStart >= 0) {
+            detail += result.detail.substring(aiSuffixStart);
+        }
+        return resultWithBaseIdentity(
+                baseResult,
+                rebasedLines,
+                detail
+        );
+    }
+
+    private LyricsLine rebaseCachedSupplementLine(LyricsLine baseLine, LyricsLine cachedLine) {
+        if (baseLine == null || cachedLine == null) {
+            return baseLine;
+        }
+        if (baseLine.vocalParts == null || baseLine.vocalParts.isEmpty()) {
+            return baseLine.withSupplements(
+                    cachedLine.pronunciationText,
+                    cachedLine.translationText,
+                    baseLine.furiganaText
+            );
+        }
+
+        List<LyricsLine.VocalPart> parts = new ArrayList<>(baseLine.vocalParts.size());
+        for (int index = 0; index < baseLine.vocalParts.size(); index++) {
+            LyricsLine.VocalPart basePart = baseLine.vocalParts.get(index);
+            LyricsLine.VocalPart cachedPart = cachedLine.vocalParts != null && index < cachedLine.vocalParts.size()
+                    ? cachedLine.vocalParts.get(index)
+                    : null;
+            parts.add(cachedPart == null
+                    ? basePart
+                    : basePart.withSupplements(
+                    cachedPart.pronunciationText,
+                    cachedPart.translationText,
+                    basePart.furiganaText
+            ));
+        }
+        return new LyricsLine(
+                baseLine.startTimeMs,
+                baseLine.endTimeMs,
+                baseLine.text,
+                baseLine.syllables,
+                baseLine.speaker,
+                baseLine.speakerColor,
+                baseLine.speakerFallback,
+                baseLine.kind,
+                parts,
+                cachedLine.pronunciationText,
+                cachedLine.translationText,
+                baseLine.furiganaText
+        );
+    }
+
+    static boolean hasSameBaseLyrics(LyricsResult expected, LyricsResult candidate) {
+        if (expected == candidate) {
+            return true;
+        }
+        if (expected == null || candidate == null
+                || expected.karaoke != candidate.karaoke
+                || !expected.providerId.equals(candidate.providerId)
+                || !expected.selectionPolicyKey.equals(candidate.selectionPolicyKey)
+                || !expected.providerLabel.equals(candidate.providerLabel)
+                || !expected.isrc.equals(candidate.isrc)
+                || !expected.spotifyTrackId.equals(candidate.spotifyTrackId)
+                || expected.lines.size() != candidate.lines.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.lines.size(); index++) {
+            if (!hasSameBaseLine(expected.lines.get(index), candidate.lines.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static LyricsResult resultWithBaseIdentity(
+            LyricsResult baseResult,
+            List<LyricsLine> lines,
+            String detail
+    ) {
+        if (baseResult == null) {
+            return null;
         }
         return new LyricsResult(
-                result.lines,
-                result.providerLabel,
-                result.detail,
-                result.karaoke,
-                result.isrc,
-                result.spotifyTrackId,
-                baseContributors
+                lines,
+                baseResult.providerLabel,
+                detail,
+                baseResult.karaoke,
+                baseResult.isrc,
+                baseResult.spotifyTrackId,
+                baseResult.contributors,
+                baseResult.providerId,
+                baseResult.selectionPolicyKey
         );
+    }
+
+    private static boolean hasSameBaseLine(LyricsLine expected, LyricsLine candidate) {
+        if (expected == candidate) {
+            return true;
+        }
+        if (expected == null || candidate == null
+                || expected.startTimeMs != candidate.startTimeMs
+                || expected.endTimeMs != candidate.endTimeMs
+                || !expected.text.equals(candidate.text)
+                || !expected.speaker.equals(candidate.speaker)
+                || !expected.speakerColor.equals(candidate.speakerColor)
+                || !expected.speakerFallback.equals(candidate.speakerFallback)
+                || !expected.kind.equals(candidate.kind)
+                || !hasSameBaseSyllables(expected.syllables, candidate.syllables)
+                || expected.vocalParts.size() != candidate.vocalParts.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.vocalParts.size(); index++) {
+            if (!hasSameBaseVocalPart(expected.vocalParts.get(index), candidate.vocalParts.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasSameBaseVocalPart(
+            LyricsLine.VocalPart expected,
+            LyricsLine.VocalPart candidate
+    ) {
+        return expected == candidate || (expected != null
+                && candidate != null
+                && expected.id.equals(candidate.id)
+                && expected.role.equals(candidate.role)
+                && expected.speaker.equals(candidate.speaker)
+                && expected.speakerColor.equals(candidate.speakerColor)
+                && expected.speakerFallback.equals(candidate.speakerFallback)
+                && expected.kind.equals(candidate.kind)
+                && expected.text.equals(candidate.text)
+                && hasSameBaseSyllables(expected.syllables, candidate.syllables));
+    }
+
+    private static boolean hasSameBaseSyllables(
+            List<LyricsLine.Syllable> expected,
+            List<LyricsLine.Syllable> candidate
+    ) {
+        if (expected == candidate) {
+            return true;
+        }
+        if (expected == null || candidate == null || expected.size() != candidate.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.size(); index++) {
+            LyricsLine.Syllable expectedSyllable = expected.get(index);
+            LyricsLine.Syllable candidateSyllable = candidate.get(index);
+            if (expectedSyllable == null || candidateSyllable == null
+                    || expectedSyllable.startTimeMs != candidateSyllable.startTimeMs
+                    || expectedSyllable.endTimeMs != candidateSyllable.endTimeMs
+                    || !expectedSyllable.text.equals(candidateSyllable.text)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     void loadMetadataTranslation(
@@ -1361,14 +1509,10 @@ final class AiLyricsRepository {
                     + taskLabel
                     + " applied. source=" + sourceLang + ", pronunciation=" + pronunciationLang + ", target=" + targetLang + ".";
         }
-        return new LyricsResult(
+        return resultWithBaseIdentity(
+                baseResult,
                 merged,
-                baseResult.providerLabel,
-                detail + suffix,
-                baseResult.karaoke,
-                baseResult.isrc,
-                baseResult.spotifyTrackId,
-                baseResult.contributors
+                detail + suffix
         );
     }
 
