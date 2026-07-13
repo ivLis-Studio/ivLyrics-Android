@@ -360,6 +360,12 @@ public final class MainActivity extends Activity implements
     private String currentLyricsKey = "";
     private String currentTmiRequestKey = "";
     private String emptyLyricsPreviewKey = "";
+    private LyricsLine cachedPreviewRowsLine;
+    private AiLyricsSettings.Snapshot cachedPreviewRowsSettings;
+    private String cachedPreviewRowsSourceLang = "";
+    private int cachedPreviewRowsItems = -1;
+    private boolean cachedPreviewRowsGenerating;
+    private List<MainLyricPreviewView.PreviewLine> cachedPreviewRows = Collections.emptyList();
     private String currentArtworkKey = "";
     private String currentYouTubeBackgroundRequestKey = "";
     private String currentResolvedIsrc = "";
@@ -10536,6 +10542,7 @@ public final class MainActivity extends Activity implements
                 ? AiLyricsSettings.PREVIEW_ITEM_ORIGINAL
                 : aiLyricsSettings.snapshot().previewItems;
         if (previewItems == AiLyricsSettings.PREVIEW_ITEM_NONE) {
+            clearPreviewRowsCache();
             if (lyricPreviewContainer != null) {
                 lyricPreviewContainer.setVisibility(View.GONE);
             }
@@ -10547,6 +10554,7 @@ public final class MainActivity extends Activity implements
             lyricPreviewContainer.setVisibility(View.VISIBLE);
         }
         if (currentLyricsResult == null || currentLyricsResult.lines.isEmpty()) {
+            clearPreviewRowsCache();
             String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
             boolean loading = isLoadingLyricsPreview(detail);
             if (currentLyricsResult != null && !loading && shouldHideEmptyLyricsPreview(detail)) {
@@ -10564,12 +10572,14 @@ public final class MainActivity extends Activity implements
         resetEmptyLyricsPreviewTimer();
         PreviewEntry entry = previewEntryAt(positionMs);
         if (entry == null) {
+            clearPreviewRowsCache();
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(new MainLyricPreviewView.PreviewLine(ui("status.lyrics_waiting"), true));
             lyricPreviewView.setPreview(rows, positionMs, 0L, 0L, false);
             return;
         }
         if (entry.isInterlude()) {
+            clearPreviewRowsCache();
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(MainLyricPreviewView.PreviewLine.interlude(interludePreviewLabel(entry.interludeKind)));
             lyricPreviewView.setPreview(
@@ -10953,6 +10963,16 @@ public final class MainActivity extends Activity implements
     }
 
     private List<MainLyricPreviewView.PreviewLine> previewLines(LyricsLine line, int previewItems) {
+        AiLyricsSettings.Snapshot settings = aiLyricsSettings == null ? null : aiLyricsSettings.snapshot();
+        String sourceLang = effectiveSelectedSourceLang();
+        if (cachedPreviewRowsLine == line
+                && cachedPreviewRowsSettings == settings
+                && cachedPreviewRowsItems == previewItems
+                && cachedPreviewRowsGenerating == aiLyricsGenerating
+                && cachedPreviewRowsSourceLang.equals(sourceLang)) {
+            return cachedPreviewRows;
+        }
+
         List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
         PreviewText original = originalPreviewText(line);
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_ORIGINAL)) {
@@ -10987,7 +11007,22 @@ public final class MainActivity extends Activity implements
         if (rows.isEmpty()) {
             addPreviewRow(rows, original.text, original.rubyText, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
+        cachedPreviewRowsLine = line;
+        cachedPreviewRowsSettings = settings;
+        cachedPreviewRowsSourceLang = sourceLang;
+        cachedPreviewRowsItems = previewItems;
+        cachedPreviewRowsGenerating = aiLyricsGenerating;
+        cachedPreviewRows = rows;
         return rows;
+    }
+
+    private void clearPreviewRowsCache() {
+        cachedPreviewRowsLine = null;
+        cachedPreviewRowsSettings = null;
+        cachedPreviewRowsSourceLang = "";
+        cachedPreviewRowsItems = -1;
+        cachedPreviewRowsGenerating = false;
+        cachedPreviewRows = Collections.emptyList();
     }
 
     private void addSupplementPreviewRow(
