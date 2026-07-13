@@ -3554,7 +3554,14 @@ public final class LyricsView extends View {
         if (value == null || value.isEmpty()) {
             return false;
         }
-        return value.codePoints().allMatch(Character::isWhitespace);
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            if (!Character.isWhitespace(codePoint)) {
+                return false;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return true;
     }
 
     private int withAlpha(int color, int alpha) {
