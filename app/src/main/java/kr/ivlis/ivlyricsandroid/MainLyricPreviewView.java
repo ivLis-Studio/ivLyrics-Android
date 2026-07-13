@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
@@ -42,6 +43,19 @@ final class MainLyricPreviewView extends View {
     private static final int PREVIEW_LAYOUT_MATCH = 1;
     private static final int PREVIEW_INSTANCES_MATCH = 1 << 1;
     private static final int PREVIEW_WIDTH_INPUTS_MATCH = 1 << 2;
+    private static final int PRIMARY_KARAOKE_ACTIVE_COLOR = Color.argb(252, 255, 255, 255);
+    private static final int SECONDARY_KARAOKE_ACTIVE_COLOR = Color.argb(226, 255, 255, 255);
+    private static final int[] PRIMARY_KARAOKE_FILL_COLORS = {
+            PRIMARY_KARAOKE_ACTIVE_COLOR,
+            PRIMARY_KARAOKE_ACTIVE_COLOR,
+            Color.argb(0, 255, 255, 255)
+    };
+    private static final int[] SECONDARY_KARAOKE_FILL_COLORS = {
+            SECONDARY_KARAOKE_ACTIVE_COLOR,
+            SECONDARY_KARAOKE_ACTIVE_COLOR,
+            Color.argb(0, 255, 255, 255)
+    };
+    private static final float[] KARAOKE_FILL_STOPS = {0f, 0.34f, 1f};
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -49,6 +63,9 @@ final class MainLyricPreviewView extends View {
     private final Paint shapePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint.FontMetrics textFontMetrics = new Paint.FontMetrics();
     private final PorterDuffXfermode edgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
+    private final LinearGradient primaryKaraokeFillShader = karaokeFillShader(PRIMARY_KARAOKE_FILL_COLORS);
+    private final LinearGradient secondaryKaraokeFillShader = karaokeFillShader(SECONDARY_KARAOKE_FILL_COLORS);
+    private final Matrix karaokeFillShaderMatrix = new Matrix();
     private final List<PreviewLine> lines = new ArrayList<>();
     private final Map<PreviewLine, List<TextSegment>> textSegmentCache = new IdentityHashMap<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
@@ -630,7 +647,7 @@ final class MainLyricPreviewView extends View {
         }
 
         int inactiveColor = Color.argb(line.primary ? 116 : 96, 255, 255, 255);
-        int activeColor = Color.argb(line.primary ? 252 : 226, 255, 255, 255);
+        int activeColor = line.primary ? PRIMARY_KARAOKE_ACTIVE_COLOR : SECONDARY_KARAOKE_ACTIVE_COLOR;
         int activeSegmentIndex = activeSegmentIndex(segments, positionMs);
         float rowWidth = 0f;
         for (TextSegment segment : segments) {
@@ -698,23 +715,29 @@ final class MainLyricPreviewView extends View {
         if (safeFill < 0.995f && softWidth > 1f && clipRight > textLeft) {
             float softStart = Math.max(textLeft, fillRight - softWidth * 0.42f);
             float softEnd = Math.max(softStart + 1f, Math.min(textRight, fillRight + softWidth));
-            textPaint.setShader(new LinearGradient(
-                    softStart,
-                    0f,
-                    softEnd,
-                    0f,
-                    new int[]{
-                            activeColor,
-                            activeColor,
-                            withAlpha(activeColor, 0)
-                    },
-                    new float[]{0f, 0.34f, 1f},
-                    Shader.TileMode.CLAMP
-            ));
+            LinearGradient shader = activeColor == PRIMARY_KARAOKE_ACTIVE_COLOR
+                    ? primaryKaraokeFillShader
+                    : secondaryKaraokeFillShader;
+            karaokeFillShaderMatrix.setScale(softEnd - softStart, 1f);
+            karaokeFillShaderMatrix.postTranslate(softStart, 0f);
+            shader.setLocalMatrix(karaokeFillShaderMatrix);
+            textPaint.setShader(shader);
         }
         canvas.drawText(segment.text, textLeft, baseline + offsetY, textPaint);
         textPaint.setShader(null);
         canvas.restoreToCount(clipSave);
+    }
+
+    private static LinearGradient karaokeFillShader(int[] colors) {
+        return new LinearGradient(
+                0f,
+                0f,
+                1f,
+                0f,
+                colors,
+                KARAOKE_FILL_STOPS,
+                Shader.TileMode.CLAMP
+        );
     }
 
     private void drawPlainRubyText(
