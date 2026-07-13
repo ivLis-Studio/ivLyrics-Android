@@ -53,6 +53,8 @@ public final class LyricsView extends View {
     private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
     private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
     private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
+    private static final float[] EFFECT_TRANSLATE_X = {0f, -0.5f, 0.45f, -0.25f};
+    private static final float[] EFFECT_TRANSLATE_Y = {0f, 0.25f, -0.25f, -0.35f};
     private static final long INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long KARAOKE_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
     private static final long MANUAL_SCROLL_HOLD_MS = 4_000L;
@@ -2795,8 +2797,8 @@ public final class LyricsView extends View {
             case "effect": {
                 int step = (int) ((now / 45L) % 4L);
                 float density = getResources().getDisplayMetrics().density;
-                float dx = new float[]{0f, -0.5f, 0.45f, -0.25f}[step] * density;
-                float dy = new float[]{0f, 0.25f, -0.25f, -0.35f}[step] * density;
+                float dx = EFFECT_TRANSLATE_X[step] * density;
+                float dy = EFFECT_TRANSLATE_Y[step] * density;
                 canvas.translate(dx, dy);
                 break;
             }
