@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.RandomAccess;
 
 /** Expands provider word/chunk timings into renderer-safe user-perceived characters. */
 final class TimedSyllableNormalizer {
@@ -14,6 +15,33 @@ final class TimedSyllableNormalizer {
     static List<LyricsLine.Syllable> normalize(List<LyricsLine.Syllable> syllables) {
         if (syllables == null || syllables.isEmpty()) {
             return Collections.emptyList();
+        }
+
+        if (syllables instanceof RandomAccess) {
+            boolean containsNull = false;
+            boolean allSingleGrapheme = true;
+            for (int index = 0; index < syllables.size(); index++) {
+                LyricsLine.Syllable syllable = syllables.get(index);
+                if (syllable == null) {
+                    containsNull = true;
+                } else if (!isSingleGraphemeFast(syllable.text)) {
+                    allSingleGrapheme = false;
+                    break;
+                }
+            }
+            if (allSingleGrapheme) {
+                if (!containsNull) {
+                    return syllables;
+                }
+                List<LyricsLine.Syllable> normalized = new ArrayList<>(syllables.size());
+                for (int index = 0; index < syllables.size(); index++) {
+                    LyricsLine.Syllable syllable = syllables.get(index);
+                    if (syllable != null) {
+                        normalized.add(syllable);
+                    }
+                }
+                return normalized;
+            }
         }
 
         BreakIterator iterator = BreakIterator.getCharacterInstance(Locale.ROOT);
@@ -57,6 +85,13 @@ final class TimedSyllableNormalizer {
             }
         }
         return changed ? normalized : syllables;
+    }
+
+    private static boolean isSingleGraphemeFast(String text) {
+        if (text == null || text.length() <= 1) {
+            return true;
+        }
+        return text.length() == 2 && Character.isSurrogatePair(text.charAt(0), text.charAt(1));
     }
 
     static List<String> splitGraphemes(String text) {
