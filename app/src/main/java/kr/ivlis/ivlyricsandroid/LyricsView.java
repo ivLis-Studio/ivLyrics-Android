@@ -83,6 +83,7 @@ public final class LyricsView extends View {
     private final RectF emptyIconOval = new RectF();
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final LineHitTarget pressedTargetSnapshot = new LineHitTarget();
+    private final KaraokeBounce karaokeBounceResult = new KaraokeBounce(0f, 1f, false);
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
@@ -3327,7 +3328,7 @@ public final class LyricsView extends View {
 
         float offsetY = Math.round((-group.textSize * 0.23f * waveStrength) * 2f) / 2f;
         float scale = Math.round((1f + 0.055f * waveStrength) * 100f) / 100f;
-        return new KaraokeBounce(offsetY, scale, offsetY != 0f || scale != 1f);
+        return karaokeBounceResult.set(offsetY, scale, offsetY != 0f || scale != 1f);
     }
 
     private float easeOutCubic(float value) {
@@ -4072,15 +4073,19 @@ public final class LyricsView extends View {
 
     private static final class KaraokeBounce {
         static final KaraokeBounce IDLE = new KaraokeBounce(0f, 1f, false);
-
-        final float offsetY;
-        final float scale;
-        final boolean active;
+        float offsetY;
+        float scale;
+        boolean active;
 
         KaraokeBounce(float offsetY, float scale, boolean active) {
+            set(offsetY, scale, active);
+        }
+
+        KaraokeBounce set(float offsetY, float scale, boolean active) {
             this.offsetY = offsetY;
             this.scale = scale;
             this.active = active;
+            return this;
         }
     }
 
