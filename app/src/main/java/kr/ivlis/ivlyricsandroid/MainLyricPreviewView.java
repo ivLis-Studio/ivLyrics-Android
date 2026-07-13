@@ -39,6 +39,9 @@ final class MainLyricPreviewView extends View {
     private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
     private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
     private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
+    private static final int PREVIEW_LAYOUT_MATCH = 1;
+    private static final int PREVIEW_INSTANCES_MATCH = 1 << 1;
+    private static final int PREVIEW_WIDTH_INPUTS_MATCH = 1 << 2;
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -51,6 +54,8 @@ final class MainLyricPreviewView extends View {
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Set<String> completedBounceKeys = new HashSet<>();
     private float[] measuredLineWidths = new float[0];
+    private boolean measuredLineWidthsValid;
+    private float measuredLineWidthsScaledDensity = Float.NaN;
     private LinearGradient edgeFadeShader;
     private float edgeFadeShaderLeft = Float.NaN;
     private float edgeFadeShaderWidth = Float.NaN;
@@ -79,8 +84,10 @@ final class MainLyricPreviewView extends View {
 
     void setPreview(List<PreviewLine> nextLines, long positionMs, long startTimeMs, long endTimeMs, boolean isPlaying) {
         List<PreviewLine> safeLines = nextLines == null ? Collections.emptyList() : nextLines;
-        boolean layoutChanged = !sameLines(safeLines);
-        boolean segmentInputsChanged = !sameLineInstances(safeLines);
+        int previewMatches = comparePreviewLines(safeLines);
+        boolean layoutChanged = (previewMatches & PREVIEW_LAYOUT_MATCH) == 0;
+        boolean segmentInputsChanged = (previewMatches & PREVIEW_INSTANCES_MATCH) == 0;
+        boolean lineWidthInputsChanged = (previewMatches & PREVIEW_WIDTH_INPUTS_MATCH) == 0;
         lines.clear();
         lines.addAll(safeLines);
         basePositionMs = Math.max(0L, positionMs);
@@ -90,6 +97,9 @@ final class MainLyricPreviewView extends View {
         playing = isPlaying;
         if (segmentInputsChanged) {
             textSegmentCache.clear();
+        }
+        if (lineWidthInputsChanged) {
+            measuredLineWidthsValid = false;
         }
         if (layoutChanged) {
             bounceStates.clear();
@@ -110,6 +120,7 @@ final class MainLyricPreviewView extends View {
         }
         textScale = safeScale;
         textSegmentCache.clear();
+        measuredLineWidthsValid = false;
         requestLayout();
         postInvalidateOnAnimation();
     }
@@ -137,6 +148,7 @@ final class MainLyricPreviewView extends View {
     void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
         typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
         textSegmentCache.clear();
+        measuredLineWidthsValid = false;
         requestLayout();
         postInvalidateOnAnimation();
     }
@@ -410,23 +422,31 @@ final class MainLyricPreviewView extends View {
 
     private boolean measureLineWidths(float width) {
         int lineCount = lines.size();
-        if (measuredLineWidths.length < lineCount) {
-            measuredLineWidths = new float[lineCount];
-        }
-        boolean overflow = false;
-        for (int index = 0; index < lineCount; index++) {
-            PreviewLine line = lines.get(index);
-            if (line.isAnimatedVisual()) {
-                measuredLineWidths[index] = Float.NaN;
-                continue;
+        float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+        if (!measuredLineWidthsValid
+                || Float.compare(measuredLineWidthsScaledDensity, scaledDensity) != 0) {
+            if (measuredLineWidths.length < lineCount) {
+                measuredLineWidths = new float[lineCount];
             }
-            textPaint.setTypeface(typefaceForLine(line));
-            textPaint.setTextSize(sp(textSizeSp(line)));
-            float lineWidth = measureLineWidth(line);
-            measuredLineWidths[index] = lineWidth;
-            overflow |= lineWidth > width;
+            for (int index = 0; index < lineCount; index++) {
+                PreviewLine line = lines.get(index);
+                if (line.isAnimatedVisual()) {
+                    measuredLineWidths[index] = Float.NaN;
+                    continue;
+                }
+                textPaint.setTypeface(typefaceForLine(line));
+                textPaint.setTextSize(sp(textSizeSp(line)));
+                measuredLineWidths[index] = measureLineWidth(line);
+            }
+            measuredLineWidthsValid = true;
+            measuredLineWidthsScaledDensity = scaledDensity;
         }
-        return overflow;
+        for (int index = 0; index < lineCount; index++) {
+            if (measuredLineWidths[index] > width) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private float measureLineWidth(PreviewLine line) {
@@ -510,13 +530,17 @@ final class MainLyricPreviewView extends View {
         return Math.max(sp(7f), textSize * FURIGANA_TEXT_RATIO * 0.82f);
     }
 
-    private boolean sameLines(List<PreviewLine> nextLines) {
+    private int comparePreviewLines(List<PreviewLine> nextLines) {
         if (lines.size() != nextLines.size()) {
-            return false;
+            return 0;
         }
+        int matches = PREVIEW_LAYOUT_MATCH | PREVIEW_INSTANCES_MATCH | PREVIEW_WIDTH_INPUTS_MATCH;
         for (int index = 0; index < lines.size(); index++) {
             PreviewLine current = lines.get(index);
             PreviewLine next = nextLines.get(index);
+            if (current != next) {
+                matches &= ~PREVIEW_INSTANCES_MATCH;
+            }
             if (current.primary != next.primary
                     || current.type != next.type
                     || current.hasKaraoke() != next.hasKaraoke()
@@ -524,18 +548,33 @@ final class MainLyricPreviewView extends View {
                     || !current.slotId.equals(next.slotId)
                     || !current.rubyText.equals(next.rubyText)
                     || !current.text.equals(next.text)) {
-                return false;
+                matches &= ~PREVIEW_LAYOUT_MATCH;
+            }
+            if (current.primary != next.primary
+                    || current.type != next.type
+                    || current.hasKaraoke() != next.hasKaraoke()
+                    || !current.slotId.equals(next.slotId)
+                    || !current.text.equals(next.text)
+                    || (current.hasKaraoke() && !sameSyllableText(current.syllables, next.syllables))) {
+                matches &= ~PREVIEW_WIDTH_INPUTS_MATCH;
+            }
+            if (matches == 0) {
+                break;
             }
         }
-        return true;
+        return matches;
     }
 
-    private boolean sameLineInstances(List<PreviewLine> nextLines) {
-        if (lines.size() != nextLines.size()) {
+    private boolean sameSyllableText(List<LyricsLine.Syllable> current, List<LyricsLine.Syllable> next) {
+        if (current.size() != next.size()) {
             return false;
         }
-        for (int index = 0; index < lines.size(); index++) {
-            if (lines.get(index) != nextLines.get(index)) {
+        for (int index = 0; index < current.size(); index++) {
+            LyricsLine.Syllable currentSyllable = current.get(index);
+            LyricsLine.Syllable nextSyllable = next.get(index);
+            String currentText = currentSyllable == null || currentSyllable.text == null ? "" : currentSyllable.text;
+            String nextText = nextSyllable == null || nextSyllable.text == null ? "" : nextSyllable.text;
+            if (!currentText.equals(nextText)) {
                 return false;
             }
         }
