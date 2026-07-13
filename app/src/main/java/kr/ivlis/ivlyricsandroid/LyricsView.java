@@ -1224,6 +1224,7 @@ public final class LyricsView extends View {
                     part.role,
                     normalActiveColor()
             );
+            String groupKey = "line:" + lineIndex + ":part:" + partKey(part, index);
             groups.add(buildGroup(
                     part.text,
                     japaneseFuriganaEnabled ? part.furiganaText : "",
@@ -1236,8 +1237,8 @@ public final class LyricsView extends View {
                     part.kind,
                     partActive,
                     index,
-                    "line:" + lineIndex + ":part:" + partKey(part, index),
-                    "line:" + lineIndex + ":part:" + partKey(part, index),
+                    groupKey,
+                    groupKey,
                     AiLyricsSettings.TYPO_LYRICS_ORIGINAL
             ));
             if (partSupplements) {
