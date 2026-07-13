@@ -2486,7 +2486,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsParams.rightMargin = dp(10);
         lyricsPane.addView(landscapeLyricsView, landscapeLyricsParams);
 
-        landscapeLyricsProviderAttributionView = createLyricsProviderAttributionView();
+        landscapeLyricsProviderAttributionView = createLyricsProviderAttributionView(true);
         FrameLayout.LayoutParams attributionParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2959,7 +2959,7 @@ public final class MainActivity extends Activity implements
         lyricsParams.topMargin = dp(16);
         content.addView(lyricsView, lyricsParams);
 
-        lyricsProviderAttributionView = createLyricsProviderAttributionView();
+        lyricsProviderAttributionView = createLyricsProviderAttributionView(false);
         LinearLayout.LayoutParams attributionParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -9922,7 +9922,7 @@ public final class MainActivity extends Activity implements
         applyLandscapeNoLyricsLayout(true);
     }
 
-    private ProviderAttributionView createLyricsProviderAttributionView() {
+    private ProviderAttributionView createLyricsProviderAttributionView(boolean includeContributor) {
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.HORIZONTAL);
         container.setGravity(Gravity.CENTER);
@@ -9957,25 +9957,79 @@ public final class MainActivity extends Activity implements
         );
         valueParams.leftMargin = dp(6);
         container.addView(value, valueParams);
-        return new ProviderAttributionView(container, value);
+
+        TextView separator = null;
+        TextView contributor = null;
+        if (includeContributor) {
+            separator = label("•", 9f, Color.argb(132, 255, 255, 255), AppFonts.regular(this));
+            separator.setSingleLine(true);
+            separator.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            separator.setVisibility(View.GONE);
+            LinearLayout.LayoutParams separatorParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            separatorParams.leftMargin = dp(7);
+            separatorParams.rightMargin = dp(7);
+            container.addView(separator, separatorParams);
+
+            contributor = label("", 10f, Color.argb(174, 255, 255, 255), AppFonts.regular(this));
+            contributor.setSingleLine(true);
+            contributor.setEllipsize(TextUtils.TruncateAt.END);
+            contributor.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            contributor.setVisibility(View.GONE);
+            container.addView(contributor, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+        }
+        return new ProviderAttributionView(container, label, value, separator, contributor);
     }
 
     private void updateLyricsProviderAttribution(LyricsResult result) {
         String provider = LyricsProviderAttribution.displayName(result);
-        updateLyricsProviderAttributionView(lyricsProviderAttributionView, provider);
-        updateLyricsProviderAttributionView(landscapeLyricsProviderAttributionView, provider);
+        updateLyricsProviderAttributionView(lyricsProviderAttributionView, provider, "");
+        updateLyricsProviderAttributionView(
+                landscapeLyricsProviderAttributionView,
+                provider,
+                LyricsProviderAttribution.landscapeContributorNames(result)
+        );
     }
 
-    private void updateLyricsProviderAttributionView(ProviderAttributionView attribution, String provider) {
+    private void updateLyricsProviderAttributionView(
+            ProviderAttributionView attribution,
+            String provider,
+            String contributorNames
+    ) {
         if (attribution == null) {
             return;
         }
         String value = provider == null ? "" : provider.trim();
+        String names = contributorNames == null ? "" : contributorNames.trim();
+        String contributorCredit = value.isEmpty() || names.isEmpty()
+                ? ""
+                : uiFormat("lyrics.credit_sync_by_format", names);
         attribution.value.setText(value);
-        attribution.container.setContentDescription(value.isEmpty()
-                ? null
-                : ui("lyrics.provider_attribution_label") + " " + value);
-        attribution.container.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+        attribution.label.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+        attribution.value.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+        if (attribution.contributor != null) {
+            attribution.contributor.setText(contributorCredit);
+            attribution.contributor.setVisibility(contributorCredit.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+        if (attribution.separator != null) {
+            attribution.separator.setVisibility(
+                    !value.isEmpty() && !contributorCredit.isEmpty() ? View.VISIBLE : View.GONE
+            );
+        }
+
+        String providerDescription = value.isEmpty()
+                ? ""
+                : ui("lyrics.provider_attribution_label") + " " + value;
+        String description = contributorCredit.isEmpty()
+                ? providerDescription
+                : providerDescription + ", " + contributorCredit;
+        attribution.container.setContentDescription(description.isEmpty() ? null : description);
+        attribution.container.setVisibility(description.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private void updateLyricsContributorCredit(LyricsResult result) {
@@ -12675,11 +12729,23 @@ public final class MainActivity extends Activity implements
 
     private static final class ProviderAttributionView {
         final LinearLayout container;
+        final TextView label;
         final TextView value;
+        final TextView separator;
+        final TextView contributor;
 
-        ProviderAttributionView(LinearLayout container, TextView value) {
+        ProviderAttributionView(
+                LinearLayout container,
+                TextView label,
+                TextView value,
+                TextView separator,
+                TextView contributor
+        ) {
             this.container = container;
+            this.label = label;
             this.value = value;
+            this.separator = separator;
+            this.contributor = contributor;
         }
     }
 

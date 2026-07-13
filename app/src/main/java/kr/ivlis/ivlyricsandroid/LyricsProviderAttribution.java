@@ -3,6 +3,7 @@ package kr.ivlis.ivlyricsandroid;
 import java.util.Locale;
 
 final class LyricsProviderAttribution {
+    private static final int DEFAULT_CONTRIBUTOR_LIMIT = 3;
     private static final String[] KNOWN_PROVIDER_IDS = {
             LyricsProviderSettings.PROVIDER_LRCLIB,
             LyricsProviderSettings.PROVIDER_LYRICS_PLUS,
@@ -26,6 +27,44 @@ final class LyricsProviderAttribution {
 
         String providerLabel = result.providerLabel == null ? "" : result.providerLabel.trim();
         return providerFromLegacyLabel(providerLabel);
+    }
+
+    static String contributorNames(LyricsResult result) {
+        return contributorNames(result, DEFAULT_CONTRIBUTOR_LIMIT);
+    }
+
+    static String landscapeContributorNames(LyricsResult result) {
+        return displayName(result).isEmpty() ? "" : contributorNames(result);
+    }
+
+    static String contributorNames(LyricsResult result, int limit) {
+        if (result == null || result.lines.isEmpty() || result.contributors.isEmpty()) {
+            return "";
+        }
+
+        int visibleLimit = Math.max(1, limit);
+        int validContributorCount = 0;
+        StringBuilder visibleNames = new StringBuilder();
+        for (LyricsResult.SyncContributor contributor : result.contributors) {
+            if (contributor == null || contributor.name == null || contributor.name.trim().isEmpty()) {
+                continue;
+            }
+            validContributorCount++;
+            if (validContributorCount > visibleLimit) {
+                continue;
+            }
+            if (visibleNames.length() > 0) {
+                visibleNames.append(", ");
+            }
+            visibleNames.append(contributor.name.trim());
+        }
+        if (visibleNames.length() == 0) {
+            return "";
+        }
+        if (validContributorCount > visibleLimit) {
+            visibleNames.append(" +").append(validContributorCount - visibleLimit);
+        }
+        return visibleNames.toString();
     }
 
     private static boolean isKnownProvider(String providerId) {
