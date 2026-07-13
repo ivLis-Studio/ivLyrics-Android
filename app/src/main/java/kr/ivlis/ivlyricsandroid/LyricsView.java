@@ -82,6 +82,7 @@ public final class LyricsView extends View {
     private final RectF edgeFadeBounds = new RectF();
     private final RectF emptyIconOval = new RectF();
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
+    private final LineHitTarget pressedTargetSnapshot = new LineHitTarget();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
@@ -150,6 +151,7 @@ public final class LyricsView extends View {
     private VelocityTracker velocityTracker;
     private OnSeekListener seekListener;
     private LineHitTarget pressedTarget;
+    private int hitTargetCount;
     private boolean smoothNextSeekCenter;
     private boolean smoothSeekCenterActive;
 
@@ -190,7 +192,7 @@ public final class LyricsView extends View {
         retainedVocalAnchorSourceIndex = Integer.MIN_VALUE;
         retainedVocalAnchorOffsetPx = Float.NaN;
         retainedVocalAnchorPositionMs = Long.MIN_VALUE;
-        hitTargets.clear();
+        releaseHitTargets();
         bounceStates.clear();
         rowLayoutCache.clear();
         completedBounceKeys.clear();
@@ -553,7 +555,7 @@ public final class LyricsView extends View {
         drawBackground(canvas);
 
         if (lines.isEmpty()) {
-            hitTargets.clear();
+            releaseHitTargets();
             invalidateFrameGroupCache();
             drawEmpty(canvas);
             return;
@@ -561,7 +563,7 @@ public final class LyricsView extends View {
 
         List<DisplayLine> displayLines = buildDisplayLines();
         if (displayLines.isEmpty()) {
-            hitTargets.clear();
+            releaseHitTargets();
             invalidateFrameGroupCache();
             drawEmpty(canvas);
             return;
@@ -610,7 +612,7 @@ public final class LyricsView extends View {
         updateAnimatedVocalAnchorOffset(targetVocalAnchorOffset);
         float anchoredCenterY = centerY - animatedVocalAnchorOffsetPx;
 
-        hitTargets.clear();
+        beginHitTargetFrame();
         int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
             float baselineCenter = anchoredCenterY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
@@ -644,7 +646,7 @@ public final class LyricsView extends View {
         if (width != oldWidth || height != oldHeight) {
             rowLayoutCache.clear();
             invalidateFrameGroupCache();
-            hitTargets.clear();
+            releaseHitTargets();
             rowPrewarmIndex = 0;
             scheduleRowPrewarm();
         }
@@ -656,7 +658,7 @@ public final class LyricsView extends View {
             return super.onTouchEvent(event);
         }
         switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_DOWN: {
                 if (manualScroller != null) {
                     manualScroller.abortAnimation();
                 }
@@ -666,8 +668,15 @@ public final class LyricsView extends View {
                 touchStartY = event.getY();
                 touchLastY = touchStartY;
                 draggingLyrics = false;
-                pressedTarget = findHitTarget(event.getY());
+                LineHitTarget target = findHitTarget(event.getY());
+                if (target == null) {
+                    pressedTarget = null;
+                } else {
+                    pressedTargetSnapshot.set(target);
+                    pressedTarget = pressedTargetSnapshot;
+                }
                 return true;
+            }
             case MotionEvent.ACTION_MOVE: {
                 if (velocityTracker != null) {
                     velocityTracker.addMovement(event);
@@ -1682,18 +1691,36 @@ public final class LyricsView extends View {
             return;
         }
         float padding = Math.min(blockGap * 0.22f, sp(18f));
-        hitTargets.add(new LineHitTarget(
+        LineHitTarget target;
+        if (hitTargetCount < hitTargets.size()) {
+            target = hitTargets.get(hitTargetCount);
+        } else {
+            target = new LineHitTarget();
+            hitTargets.add(target);
+        }
+        target.set(
                 baselineCenter - layout.height * 0.5f - padding,
                 baselineCenter + layout.height * 0.5f + padding,
                 baselineCenter,
                 layout.displayLine.seekTimeMs()
-        ));
+        );
+        hitTargetCount++;
+    }
+
+    private void beginHitTargetFrame() {
+        hitTargetCount = 0;
+    }
+
+    private void releaseHitTargets() {
+        hitTargets.clear();
+        hitTargetCount = 0;
     }
 
     private LineHitTarget findHitTarget(float y) {
         LineHitTarget best = null;
         float bestDistance = Float.MAX_VALUE;
-        for (LineHitTarget target : hitTargets) {
+        for (int index = 0; index < hitTargetCount; index++) {
+            LineHitTarget target = hitTargets.get(index);
             if (y < target.top || y > target.bottom) {
                 continue;
             }
@@ -3899,12 +3926,16 @@ public final class LyricsView extends View {
     }
 
     private static final class LineHitTarget {
-        final float top;
-        final float bottom;
-        final float centerY;
-        final long seekTimeMs;
+        float top;
+        float bottom;
+        float centerY;
+        long seekTimeMs;
 
-        LineHitTarget(float top, float bottom, float centerY, long seekTimeMs) {
+        void set(LineHitTarget source) {
+            set(source.top, source.bottom, source.centerY, source.seekTimeMs);
+        }
+
+        void set(float top, float bottom, float centerY, long seekTimeMs) {
             this.top = top;
             this.bottom = bottom;
             this.centerY = centerY;
