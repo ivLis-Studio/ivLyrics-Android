@@ -21,14 +21,23 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+
 import java.io.ByteArrayInputStream;
+import java.util.Collections;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
 public final class YouTubeBackgroundView extends FrameLayout {
     private static final long SYNC_INTERVAL_MS = 500L;
-    private static final long PAUSE_DEBOUNCE_MS = 700L;
     private static final String HTML_ORIGIN = "https://xpui.app.spotify.com/";
+    private static final String YOUTUBE_COMMAND_FEEDBACK_SCRIPT =
+            "(function(){function install(){if(document.getElementById('ivlyrics-hide-command-feedback'))return true;"
+                    + "var root=document.head||document.documentElement;if(!root)return false;"
+                    + "var style=document.createElement('style');style.id='ivlyrics-hide-command-feedback';"
+                    + "style.textContent='.ytp-bezel,.ytp-bezel-text-wrapper,.ytp-pause-overlay,.ytwPlayerMiddleControlsHost{display:none!important;visibility:hidden!important;opacity:0!important}';"
+                    + "root.appendChild(style);return true;}if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});})();";
     private static final Pattern[] AD_URL_PATTERNS = new Pattern[]{
             Pattern.compile("doubleclick\\.net", Pattern.CASE_INSENSITIVE),
             Pattern.compile("googlesyndication\\.com", Pattern.CASE_INSENSITIVE),
@@ -75,7 +84,6 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private long firstLyricTimeMs;
     private int trackOffsetMs;
     private boolean playing;
-    private long pausedSinceElapsedMs = -1L;
     private boolean enabled;
     private boolean playerReady;
     private boolean syncLoopStarted;
@@ -128,6 +136,13 @@ public final class YouTubeBackgroundView extends FrameLayout {
         settings.setUseWideViewPort(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    YOUTUBE_COMMAND_FEEDBACK_SCRIPT,
+                    Collections.singleton("https://www.youtube-nocookie.com")
+            );
         }
         webView.addJavascriptInterface(new Bridge(), "AndroidYouTubeBackground");
         addView(webView, new LayoutParams(
@@ -226,11 +241,6 @@ public final class YouTubeBackgroundView extends FrameLayout {
     void setPlaybackState(long playerPositionMs, boolean playing, long firstLyricTimeMs, int trackOffsetMs) {
         this.playerPositionMs = Math.max(0L, playerPositionMs);
         this.lastPositionSetElapsedMs = SystemClock.elapsedRealtime();
-        if (playing) {
-            pausedSinceElapsedMs = -1L;
-        } else if (this.playing || pausedSinceElapsedMs < 0L) {
-            pausedSinceElapsedMs = this.lastPositionSetElapsedMs;
-        }
         this.playing = playing;
         this.firstLyricTimeMs = Math.max(0L, firstLyricTimeMs);
         this.trackOffsetMs = trackOffsetMs;
@@ -285,7 +295,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     }
 
     private void ensureVisibleState() {
-        boolean shouldShow = enabled && currentInfo != null && playerReady && isEffectivelyPlaying();
+        boolean shouldShow = enabled && currentInfo != null && playerReady && playing;
         if (lastVisibleState == shouldShow) {
             return;
         }
@@ -304,9 +314,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
             syncLoopStarted = false;
             return;
         }
-        ensureVisibleState();
-        boolean effectivePlaying = isEffectivelyPlaying();
-        long elapsed = effectivePlaying
+        long elapsed = playing
                 ? Math.max(0L, SystemClock.elapsedRealtime() - lastPositionSetElapsedMs)
                 : 0L;
         long currentPlayerPositionMs = playerPositionMs + elapsed;
@@ -319,7 +327,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 Locale.US,
                 "window.ivLyricsSyncVideo(%f,%s,%f,%f,%s,%f,%s,%s,%s);",
                 playerSeconds,
-                effectivePlaying ? "true" : "false",
+                playing ? "true" : "false",
                 firstLyricSeconds,
                 offsetSeconds,
                 currentInfo.hasCaptionStartTime ? "true" : "false",
@@ -329,14 +337,6 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 allowHardSync ? "true" : "false"
         );
         webView.evaluateJavascript(script, null);
-    }
-
-    private boolean isEffectivelyPlaying() {
-        if (playing) {
-            return true;
-        }
-        return pausedSinceElapsedMs >= 0L
-                && SystemClock.elapsedRealtime() - pausedSinceElapsedMs < PAUSE_DEBOUNCE_MS;
     }
 
     private static boolean shouldBlockUrl(String url) {
@@ -366,13 +366,13 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;}"
                 + ":root{--video-scale:" + initialScale + ";}"
                 + "#wrap{position:fixed;inset:0;overflow:hidden;background:transparent;}"
-                + "#stage{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.7778vh;min-height:100vh;transform:translate3d(-50%,-50%,0) scale(var(--video-scale));overflow:hidden;background:transparent;transition:opacity .18s ease,filter .18s ease,transform .18s ease;will-change:opacity,filter,transform;}"
+                + "#stage{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.7778vh;min-height:100vh;transform:translate3d(-50%,-50%,0) scale(var(--video-scale));overflow:hidden;background:transparent;transition:transform .18s ease;will-change:transform;}"
                 + "#player,#stage iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;transform:none!important;pointer-events:none!important;border:0!important;outline:0!important;}"
                 + "*{-webkit-tap-highlight-color:transparent!important;user-select:none!important;-webkit-user-select:none!important;}</style></head>"
                 + "<body><div id=\"wrap\"><div id=\"stage\"><div id=\"player\"></div></div></div>"
                 + "<script src=\"https://www.youtube.com/iframe_api\"></script>"
                 + "<script>"
-                + "var player=null,ready=false,lastCaptionDisable=0,lastSeekAt=0,feedbackHideTimer=null,lastDesired={videoId:'" + safeVideoId + "',startSeconds:0};"
+                + "var player=null,ready=false,lastCaptionDisable=0,lastSeekAt=0,lastDesired={videoId:'" + safeVideoId + "',startSeconds:0};"
                 + "var adPatterns=[/doubleclick\\.net/i,/googlesyndication\\.com/i,/googleads\\.g\\.doubleclick\\.net/i,/pagead(?!.*youtube\\.com\\/iframe)/i,/tpc\\.googlesyndication\\.com/i,/pubads\\.g\\.doubleclick\\.net/i,/securepubads\\.g\\.doubleclick\\.net/i,/gvt\\d+\\.com\\/ads/i,/manifest\\.googlevideo\\.com\\/api\\/manifest\\/ads/i,/googlevideo\\.com\\/videoplayback.*[&?](ctier|oad|adformat)=/i,/googlevideo\\.com\\/initplayback.*[&?](ctier|oad|adformat)=/i,/youtube\\.com\\/pagead/i,/youtube\\.com\\/ptracking/i,/youtube\\.com\\/api\\/stats\\/(ads|qoe|watchtime|playback)/i,/youtubei\\/v1\\/log_event/i,/youtubei\\/v1\\/player.*adformat/i,/youtube\\.com\\/get_video_info.*adformat/i,/youtube\\.com\\/yva_/i,/yt\\d?\\.ggpht\\.com\\/ad/i,/ytimg\\.com\\/.*ad/i,/yt3\\.ggpht\\.com\\/ytc\\/.*ad/i,/s0\\.2mdn\\.net/i,/gstaticadssl\\.googleapis\\.com/i];"
                 + "function isAdUrl(u){try{u=(typeof u==='string'?u:(u&&u.url)||'');return !!u&&adPatterns.some(function(p){return p.test(u);});}catch(e){return false;}}"
                 + "(function patchRequests(){try{var of=window.fetch;if(of&&!of.__ivl){var nf=function(r,i){var u=typeof r==='string'?r:(r&&r.url);if(isAdUrl(u))return Promise.resolve(new Response('',{status:204,statusText:'No Content'}));return of.call(this,r,i);};nf.__ivl=1;window.fetch=nf;}}catch(e){}"
@@ -382,7 +382,6 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "function disableCaptions(){try{if(player&&player.unloadModule){player.unloadModule('captions');player.unloadModule('cc');}}catch(e){}"
                 + "try{if(player&&player.setOption){player.setOption('captions','track',{});player.setOption('cc','track',{});}}catch(e){}}"
                 + "function sanitizeIframe(){try{var f=player&&player.getIframe&&player.getIframe();if(!f)return;f.setAttribute('referrerpolicy','origin');f.setAttribute('allow','autoplay; encrypted-media; picture-in-picture');f.setAttribute('tabindex','-1');f.setAttribute('aria-hidden','true');f.style.position='absolute';f.style.inset='0';f.style.width='100%';f.style.height='100%';f.style.transform='none';f.style.pointerEvents='none';f.style.border='0';}catch(e){}}"
-                + "function hideChromeFeedback(ms){try{var s=document.getElementById('stage');if(!s)return;s.style.opacity='0.72';s.style.filter='brightness(0.78)';if(feedbackHideTimer)clearTimeout(feedbackHideTimer);feedbackHideTimer=setTimeout(function(){s.style.opacity='1';s.style.filter='none';},ms||360);}catch(e){}}"
                 + "function isAdPlayback(){try{if(player&&player.getAdState&&player.getAdState()===1)return true;}catch(e){}try{return [105,106,107,108,109,110,111].indexOf(player&&player.getPlayerState&&player.getPlayerState())>=0;}catch(e){return false;}}"
                 + "function reloadDesired(){try{if(player&&player.loadVideoById&&lastDesired&&lastDesired.videoId){player.loadVideoById({videoId:lastDesired.videoId,startSeconds:lastDesired.startSeconds||0,suggestedQuality:'default'});return true;}}catch(e){}return false;}"
                 + "function suppressAds(){if(!isAdPlayback())return;try{player.mute&&player.mute();}catch(e){}try{player.setPlaybackRate&&player.setPlaybackRate(16);}catch(e){}try{player.skipAd&&player.skipAd();return;}catch(e){}try{var d=player.getDuration&&player.getDuration();if(d>0){player.seekTo(Math.max(d-0.1,0),true);return;}}catch(e){}reloadDesired();}"
@@ -401,7 +400,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "if(player.getDuration){var duration=player.getDuration();if(duration>0&&target>=duration){target=target%duration;}}"
                 + "lastDesired={videoId:'" + safeVideoId + "',startSeconds:target};"
                 + "var state=player.getPlayerState();"
-                + "if(playing){if(state!==1&&state!==3&&!isAdPlayback()){player.playVideo();}var current=player.getCurrentTime?player.getCurrentTime():0;var diff=Math.abs(current-target);if(allowHardSync&&diff>3.25&&(diff>6||now-lastSeekAt>2200)){lastSeekAt=now;hideChromeFeedback(360);player.seekTo(target,true);}}"
+                + "if(playing){if(state!==1&&state!==3&&!isAdPlayback()){player.playVideo();}var current=player.getCurrentTime?player.getCurrentTime():0;var diff=Math.abs(current-target);if(allowHardSync&&diff>3.25&&(diff>6||now-lastSeekAt>2200)){lastSeekAt=now;player.seekTo(target,true);}}"
                 + "else{if(state===1||state===3){player.pauseVideo();}}"
                 + "}catch(e){}};"
                 + "</script></body></html>";
