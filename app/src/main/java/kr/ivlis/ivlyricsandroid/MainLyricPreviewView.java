@@ -953,7 +953,7 @@ final class MainLyricPreviewView extends View {
 
         float centerIndex = segment.sourceIndex + Math.max(0, segment.sourceLength - 1) * 0.5f;
         float distance = Math.abs(centerIndex - activeSegmentIndex);
-        String bounceKey = line.bounceKeyPrefix() + ':' + segment.sourceIndex;
+        String bounceKey = segment.bounceKey(line.bounceKeyPrefix());
         BounceState state = bounceStates.get(bounceKey);
         if (state == null && distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
             return KaraokeBounce.IDLE;
@@ -1213,6 +1213,8 @@ final class MainLyricPreviewView extends View {
         final int type;
         final String slotId;
         final boolean rubyMarkupMatchesText;
+        final int stableRowSeed;
+        String cachedBounceKeyPrefix;
 
         PreviewLine(String text, boolean primary) {
             this(text, primary, Collections.emptyList());
@@ -1257,6 +1259,11 @@ final class MainLyricPreviewView extends View {
             this.rubyMarkupMatchesText = type == TYPE_TEXT
                     && this.rubyText.contains("<ruby>")
                     && plainRubyText(this.rubyText).equals(this.text);
+            int seed = 17;
+            seed = seed * 31 + this.text.hashCode();
+            seed = seed * 31 + this.rubyText.hashCode();
+            seed = seed * 31 + this.kind.hashCode();
+            this.stableRowSeed = Math.abs(seed);
         }
 
         static PreviewLine interlude(String text) {
@@ -1288,15 +1295,14 @@ final class MainLyricPreviewView extends View {
         }
 
         int rowSeed() {
-            int seed = 17;
-            seed = seed * 31 + text.hashCode();
-            seed = seed * 31 + rubyText.hashCode();
-            seed = seed * 31 + kind.hashCode();
-            return Math.abs(seed);
+            return stableRowSeed;
         }
 
         String bounceKeyPrefix() {
-            return type + ":" + rowSeed();
+            if (cachedBounceKeyPrefix == null) {
+                cachedBounceKeyPrefix = type + ":" + stableRowSeed;
+            }
+            return cachedBounceKeyPrefix;
         }
 
         private static String normalizeKind(String kind) {
@@ -1315,6 +1321,8 @@ final class MainLyricPreviewView extends View {
         final int sourceIndex;
         final int sourceLength;
         final String rubyText;
+        String cachedBounceKeyPrefix;
+        String cachedBounceKey;
 
         TextSegment(String text, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength) {
             this(text, width, width, startTimeMs, endTimeMs, sourceIndex, sourceLength, "");
@@ -1334,6 +1342,17 @@ final class MainLyricPreviewView extends View {
             this.sourceIndex = Math.max(0, sourceIndex);
             this.sourceLength = Math.max(1, sourceLength);
             this.rubyText = rubyText == null ? "" : rubyText.trim();
+        }
+
+        String bounceKey(String prefix) {
+            boolean samePrefix = prefix == null
+                    ? cachedBounceKeyPrefix == null
+                    : prefix.equals(cachedBounceKeyPrefix);
+            if (cachedBounceKey == null || !samePrefix) {
+                cachedBounceKeyPrefix = prefix;
+                cachedBounceKey = prefix + ':' + sourceIndex;
+            }
+            return cachedBounceKey;
         }
     }
 
