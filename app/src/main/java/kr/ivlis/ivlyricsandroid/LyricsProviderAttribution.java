@@ -3,6 +3,12 @@ package kr.ivlis.ivlyricsandroid;
 import java.util.Locale;
 
 final class LyricsProviderAttribution {
+    private static final String[] KNOWN_PROVIDER_IDS = {
+            LyricsProviderSettings.PROVIDER_LRCLIB,
+            LyricsProviderSettings.PROVIDER_LYRICS_PLUS,
+            LyricsProviderSettings.PROVIDER_UNISON
+    };
+
     private LyricsProviderAttribution() {
     }
 
@@ -14,30 +20,57 @@ final class LyricsProviderAttribution {
         String providerId = result.providerId == null
                 ? ""
                 : result.providerId.trim().toLowerCase(Locale.ROOT);
-        if (LyricsProviderSettings.PROVIDER_LRCLIB.equals(providerId)) {
-            return "LRCLIB";
-        }
-        if (LyricsProviderSettings.PROVIDER_LYRICS_PLUS.equals(providerId)) {
-            return "LyricsPlus";
-        }
-        if (LyricsProviderSettings.PROVIDER_UNISON.equals(providerId)) {
-            return "Unison";
+        if (isKnownProvider(providerId)) {
+            return providerId;
         }
 
         String providerLabel = result.providerLabel == null ? "" : result.providerLabel.trim();
-        if (!providerLabel.isEmpty()) {
-            return withoutLyricsTypeSuffix(providerLabel);
-        }
-        return providerId;
+        return providerFromLegacyLabel(providerLabel);
     }
 
-    private static String withoutLyricsTypeSuffix(String label) {
-        String lower = label.toLowerCase(Locale.ROOT);
-        for (String suffix : new String[]{" karaoke", " synced", " plain"}) {
-            if (lower.endsWith(suffix)) {
-                return label.substring(0, label.length() - suffix.length()).trim();
+    private static boolean isKnownProvider(String providerId) {
+        for (String knownProviderId : KNOWN_PROVIDER_IDS) {
+            if (knownProviderId.equals(providerId)) {
+                return true;
             }
         }
-        return label;
+        return false;
+    }
+
+    private static String providerFromLegacyLabel(String label) {
+        if (label.isEmpty()) {
+            return "";
+        }
+
+        String lower = label.toLowerCase(Locale.ROOT);
+        String matchedProvider = "";
+        for (String knownProviderId : KNOWN_PROVIDER_IDS) {
+            if (!containsProviderToken(lower, knownProviderId)) {
+                continue;
+            }
+            if (!matchedProvider.isEmpty()) {
+                return "";
+            }
+            matchedProvider = knownProviderId;
+        }
+        return matchedProvider;
+    }
+
+    private static boolean containsProviderToken(String label, String providerId) {
+        int offset = 0;
+        while (offset < label.length()) {
+            int index = label.indexOf(providerId, offset);
+            if (index < 0) {
+                return false;
+            }
+            int end = index + providerId.length();
+            boolean startsAtBoundary = index == 0 || !Character.isLetterOrDigit(label.charAt(index - 1));
+            boolean endsAtBoundary = end == label.length() || !Character.isLetterOrDigit(label.charAt(end));
+            if (startsAtBoundary && endsAtBoundary) {
+                return true;
+            }
+            offset = index + 1;
+        }
+        return false;
     }
 }

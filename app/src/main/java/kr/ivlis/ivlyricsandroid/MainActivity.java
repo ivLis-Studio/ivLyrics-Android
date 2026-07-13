@@ -9926,7 +9926,7 @@ public final class MainActivity extends Activity implements
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.HORIZONTAL);
         container.setGravity(Gravity.CENTER);
-        container.setAlpha(0.7f);
+        container.setAlpha(0.45f);
         container.setVisibility(View.GONE);
         container.setClickable(false);
         container.setFocusable(false);
