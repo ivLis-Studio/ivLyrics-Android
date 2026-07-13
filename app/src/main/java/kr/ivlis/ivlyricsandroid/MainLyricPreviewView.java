@@ -58,6 +58,8 @@ final class MainLyricPreviewView extends View {
     private static final float[] KARAOKE_FILL_STOPS = {0f, 0.34f, 1f};
     private static final float[] LOADING_ROW_WIDTH_FACTORS = {0.54f, 0.78f, 0.42f};
     private static final float[] LOADING_SHIMMER_STOPS = {0f, 0.5f, 1f};
+    private static final float[] EFFECT_TRANSLATE_X = {0f, -0.5f, 0.45f, -0.25f};
+    private static final float[] EFFECT_TRANSLATE_Y = {0f, 0.25f, -0.25f, -0.35f};
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1047,8 +1049,8 @@ final class MainLyricPreviewView extends View {
             case "effect": {
                 float density = getResources().getDisplayMetrics().density;
                 int step = (int) ((now / 45L) % 4L);
-                float dx = new float[]{0f, -0.5f, 0.45f, -0.25f}[step] * density;
-                float dy = new float[]{0f, 0.25f, -0.25f, -0.35f}[step] * density;
+                float dx = EFFECT_TRANSLATE_X[step] * density;
+                float dy = EFFECT_TRANSLATE_Y[step] * density;
                 canvas.translate(dx, dy);
                 break;
             }
