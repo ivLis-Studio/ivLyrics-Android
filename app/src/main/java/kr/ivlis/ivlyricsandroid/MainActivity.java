@@ -11256,10 +11256,18 @@ public final class MainActivity extends Activity implements
     }
 
     private boolean isWhitespaceSyllable(LyricsLine.Syllable syllable) {
-        return syllable == null
-                || syllable.text == null
-                || syllable.text.isEmpty()
-                || syllable.text.codePoints().allMatch(Character::isWhitespace);
+        if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
+            return true;
+        }
+        String value = syllable.text;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            if (!Character.isWhitespace(codePoint)) {
+                return false;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return true;
     }
 
     private LyricsLine.Syllable spaceSyllable(List<LyricsLine.Syllable> previous, LyricsLine.VocalPart nextPart) {
