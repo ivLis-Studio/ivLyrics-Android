@@ -3635,6 +3635,8 @@ public final class LyricsView extends View {
     }
 
     private static final class InterludeInfo {
+        private static final InterludeInfo NONE = new InterludeInfo(false, 0L, 0L, "break", false);
+
         final boolean isInterlude;
         final long startTimeMs;
         final long endTimeMs;
@@ -3642,7 +3644,7 @@ public final class LyricsView extends View {
         final boolean virtual;
 
         static InterludeInfo none() {
-            return new InterludeInfo(false, 0L, 0L, "break", false);
+            return NONE;
         }
 
         InterludeInfo(boolean isInterlude, long startTimeMs, long endTimeMs, String kind, boolean virtual) {
