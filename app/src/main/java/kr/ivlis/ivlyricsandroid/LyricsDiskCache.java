@@ -150,8 +150,22 @@ final class LyricsDiskCache {
         if (files == null || files.length <= maxEntries) {
             return;
         }
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
         int removeCount = files.length - maxEntries;
+        if (removeCount == 1) {
+            File oldest = files[0];
+            long oldestModified = oldest.lastModified();
+            for (int index = 1; index < files.length; index++) {
+                File candidate = files[index];
+                long candidateModified = candidate.lastModified();
+                if (candidateModified < oldestModified) {
+                    oldest = candidate;
+                    oldestModified = candidateModified;
+                }
+            }
+            oldest.delete();
+            return;
+        }
+        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
         for (int index = 0; index < removeCount; index++) {
             files[index].delete();
         }
