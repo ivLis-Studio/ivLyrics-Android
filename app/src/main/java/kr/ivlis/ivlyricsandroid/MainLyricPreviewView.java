@@ -66,6 +66,7 @@ final class MainLyricPreviewView extends View {
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shapePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint.FontMetrics textFontMetrics = new Paint.FontMetrics();
+    private final KaraokeBounce karaokeBounceResult = new KaraokeBounce(0f, 1f, false);
     private final PorterDuffXfermode edgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private final LinearGradient primaryKaraokeFillShader = karaokeFillShader(PRIMARY_KARAOKE_FILL_COLORS);
     private final LinearGradient secondaryKaraokeFillShader = karaokeFillShader(SECONDARY_KARAOKE_FILL_COLORS);
@@ -1031,7 +1032,7 @@ final class MainLyricPreviewView extends View {
 
         float offsetY = Math.round((-textSize * 0.23f * waveStrength) * 2f) / 2f;
         float scale = Math.round((1f + 0.055f * waveStrength) * 100f) / 100f;
-        return new KaraokeBounce(offsetY, scale, offsetY != 0f || scale != 1f);
+        return karaokeBounceResult.set(offsetY, scale, offsetY != 0f || scale != 1f);
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
@@ -1441,14 +1442,19 @@ final class MainLyricPreviewView extends View {
     private static final class KaraokeBounce {
         static final KaraokeBounce IDLE = new KaraokeBounce(0f, 1f, false);
 
-        final float offsetY;
-        final float scale;
-        final boolean active;
+        float offsetY;
+        float scale;
+        boolean active;
 
         KaraokeBounce(float offsetY, float scale, boolean active) {
+            set(offsetY, scale, active);
+        }
+
+        KaraokeBounce set(float offsetY, float scale, boolean active) {
             this.offsetY = offsetY;
             this.scale = scale;
             this.active = active;
+            return this;
         }
     }
 
