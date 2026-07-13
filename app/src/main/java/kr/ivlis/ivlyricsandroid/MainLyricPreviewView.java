@@ -56,6 +56,8 @@ final class MainLyricPreviewView extends View {
             Color.argb(0, 255, 255, 255)
     };
     private static final float[] KARAOKE_FILL_STOPS = {0f, 0.34f, 1f};
+    private static final float[] LOADING_ROW_WIDTH_FACTORS = {0.54f, 0.78f, 0.42f};
+    private static final float[] LOADING_SHIMMER_STOPS = {0f, 0.5f, 1f};
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -65,6 +67,11 @@ final class MainLyricPreviewView extends View {
     private final PorterDuffXfermode edgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private final LinearGradient primaryKaraokeFillShader = karaokeFillShader(PRIMARY_KARAOKE_FILL_COLORS);
     private final LinearGradient secondaryKaraokeFillShader = karaokeFillShader(SECONDARY_KARAOKE_FILL_COLORS);
+    private final int[] loadingShimmerColors = {
+            Color.argb(0, 255, 255, 255),
+            Color.argb(0, 255, 255, 255),
+            Color.argb(0, 255, 255, 255)
+    };
     private final Matrix karaokeFillShaderMatrix = new Matrix();
     private final List<PreviewLine> lines = new ArrayList<>();
     private final Map<PreviewLine, List<TextSegment>> textSegmentCache = new IdentityHashMap<>();
@@ -317,18 +324,19 @@ final class MainLyricPreviewView extends View {
             float width
     ) {
         long now = SystemClock.uptimeMillis();
-        float[] rowWidthFactors = {0.54f, 0.78f, 0.42f};
         float railWidth = Math.min(width * 0.72f, dp(210f));
         float railHeight = dp(4.2f);
         float railGap = dp(6.6f);
-        float totalHeight = railHeight * rowWidthFactors.length + railGap * (rowWidthFactors.length - 1);
+        float totalHeight = railHeight * LOADING_ROW_WIDTH_FACTORS.length
+                + railGap * (LOADING_ROW_WIDTH_FACTORS.length - 1);
         float startY = baseline - textSize * 0.34f - totalHeight * 0.5f;
         float radius = railHeight * 0.9f;
 
         shapePaint.setShader(null);
         shapePaint.setStyle(Paint.Style.FILL);
-        for (int index = 0; index < rowWidthFactors.length; index++) {
-            float rowWidth = Math.max(dp(42f), railWidth * rowWidthFactors[index]);
+        loadingShimmerColors[1] = Color.argb(Math.min(255, alpha), 255, 255, 255);
+        for (int index = 0; index < LOADING_ROW_WIDTH_FACTORS.length; index++) {
+            float rowWidth = Math.max(dp(42f), railWidth * LOADING_ROW_WIDTH_FACTORS[index]);
             float rowLeft = left + Math.max(0f, (width - rowWidth) * 0.5f);
             float rowTop = startY + index * (railHeight + railGap);
             shapePaint.setColor(Color.argb(index == 1 ? 76 : 46, 255, 255, 255));
@@ -342,12 +350,8 @@ final class MainLyricPreviewView extends View {
                     0f,
                     shimmerLeft + shimmerWidth,
                     0f,
-                    new int[] {
-                            Color.argb(0, 255, 255, 255),
-                            Color.argb(Math.min(255, alpha), 255, 255, 255),
-                            Color.argb(0, 255, 255, 255)
-                    },
-                    new float[] {0f, 0.5f, 1f},
+                    loadingShimmerColors,
+                    LOADING_SHIMMER_STOPS,
                     Shader.TileMode.CLAMP
             ));
             int save = canvas.save();
