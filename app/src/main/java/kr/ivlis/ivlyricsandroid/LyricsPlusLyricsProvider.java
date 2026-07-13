@@ -726,6 +726,12 @@ final class LyricsPlusLyricsProvider {
     }
 
     private static LyricsLine.VocalPart withVocalRole(LyricsLine.VocalPart source, String role) {
+        List<LyricsLine.Syllable> syllables = source.syllables;
+        String text = source.text;
+        if ("background".equals(role)) {
+            syllables = stripBackgroundSyllableParentheses(syllables);
+            text = stripBackgroundParentheses(text);
+        }
         return new LyricsLine.VocalPart(
                 source.id,
                 role,
@@ -733,8 +739,8 @@ final class LyricsPlusLyricsProvider {
                 source.speakerColor,
                 source.speakerFallback,
                 source.kind,
-                source.text,
-                source.syllables
+                text,
+                syllables
         );
     }
 
@@ -1061,22 +1067,16 @@ final class LyricsPlusLyricsProvider {
         if (source.isEmpty()) return source;
         List<LyricsLine.Syllable> result = new ArrayList<>();
         for (LyricsLine.Syllable syllable : source) {
-            String text = syllable.text;
-            if (result.isEmpty()) text = text.replaceFirst("^[\\s(（]+", "");
-            result.add(new LyricsLine.Syllable(text, syllable.startTimeMs, syllable.endTimeMs));
+            String text = syllable.text.replaceAll("[()（）]", "");
+            if (!text.isEmpty()) {
+                result.add(new LyricsLine.Syllable(text, syllable.startTimeMs, syllable.endTimeMs));
+            }
         }
-        int last = result.size() - 1;
-        LyricsLine.Syllable tail = result.get(last);
-        result.set(last, new LyricsLine.Syllable(tail.text.replaceFirst("[\\s)）]+$", ""), tail.startTimeMs, tail.endTimeMs));
         return result;
     }
 
     private static String stripBackgroundParentheses(String text) {
-        String value = normalizeDisplayText(text);
-        while ((value.startsWith("(") && value.endsWith(")")) || (value.startsWith("（") && value.endsWith("）"))) {
-            value = normalizeDisplayText(value.substring(1, value.length() - 1));
-        }
-        return value;
+        return normalizeDisplayText(text.replaceAll("[()（）]", ""));
     }
 
     private static List<LyricsLine.Syllable> toSyllables(List<ParsedSyllable> source) {
@@ -1346,18 +1346,19 @@ final class LyricsPlusLyricsProvider {
             StringBuilder id = new StringBuilder();
             StringBuilder text = new StringBuilder();
             for (ParallelPart entry : ordered) {
+                LyricsLine.VocalPart part = withVocalRole(entry.part, role);
                 if (id.length() > 0) id.append('+');
-                id.append(entry.part.id);
+                id.append(part.id);
                 if (text.length() > 0) text.append(" / ");
-                text.append(entry.part.text);
-                if (!syllables.isEmpty() && !entry.part.syllables.isEmpty()) {
+                text.append(part.text);
+                if (!syllables.isEmpty() && !part.syllables.isEmpty()) {
                     LyricsLine.Syllable previous = syllables.get(syllables.size() - 1);
-                    LyricsLine.Syllable next = entry.part.syllables.get(0);
+                    LyricsLine.Syllable next = part.syllables.get(0);
                     if (!endsWithWhitespace(previous.text) && !startsWithWhitespace(next.text)) {
                         syllables.add(new LyricsLine.Syllable(" ", next.startTimeMs, next.startTimeMs));
                     }
                 }
-                syllables.addAll(entry.part.syllables);
+                syllables.addAll(part.syllables);
             }
             LyricsLine.VocalPart first = ordered.get(0).part;
             return new LyricsLine.VocalPart(
