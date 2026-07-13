@@ -81,6 +81,9 @@ final class LyricsRepository {
     private static final Pattern LRCLIB_METADATA_LINE_PATTERN = Pattern.compile(
             "^\\s*\\[(?:ar|al|ti|au|length|by|offset|re|ve):[^\\]]*\\]\\s*$"
     );
+    private static final Pattern LRCLIB_LEADING_TIMESTAMP_PATTERN = Pattern.compile(
+            "^\\[\\d+:\\d+(?:[.,]\\d+)?\\]\\s*"
+    );
     private static final Pattern COMPARABLE_APOSTROPHE_PATTERN = Pattern.compile("[\\u2018\\u2019]");
     private static final Pattern COMPARABLE_QUOTE_PATTERN = Pattern.compile("[\\u201c\\u201d]");
     private static final Pattern COMPARABLE_BRACKET_PATTERN = Pattern.compile("[()\\[\\]{}]");
@@ -2812,7 +2815,7 @@ final class LyricsRepository {
         if (text == null) {
             return "";
         }
-        return text.replaceFirst("^\\[\\d+:\\d+(?:[.,]\\d+)?\\]\\s*", "");
+        return LRCLIB_LEADING_TIMESTAMP_PATTERN.matcher(text).replaceFirst("");
     }
 
     private static String stripLrcTimestamps(String text) {
