@@ -1082,18 +1082,24 @@ public final class LyricsView extends View {
             return;
         }
         if (line.vocalParts != null && !line.vocalParts.isEmpty()) {
-            List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
-            for (int index = 0; index < parts.size(); index++) {
-                LyricsLine.VocalPart part = parts.get(index);
-                cachedRows(
-                        "line:" + lineIndex + ":part:" + partKey(part, index) + typographyCacheKey(AiLyricsSettings.TYPO_LYRICS_ORIGINAL),
-                        part.text,
-                        japaneseFuriganaEnabled ? part.furiganaText : "",
-                        part.syllables,
-                        part.startTimeMs,
-                        part.endTimeMs,
-                        textSize
-                );
+            int renderIndex = 0;
+            for (int rolePass = 0; rolePass < 2; rolePass++) {
+                boolean leadPass = rolePass == 0;
+                for (LyricsLine.VocalPart part : line.vocalParts) {
+                    if ("lead".equals(part.role) != leadPass) {
+                        continue;
+                    }
+                    cachedRows(
+                            "line:" + lineIndex + ":part:" + partKey(part, renderIndex) + typographyCacheKey(AiLyricsSettings.TYPO_LYRICS_ORIGINAL),
+                            part.text,
+                            japaneseFuriganaEnabled ? part.furiganaText : "",
+                            part.syllables,
+                            part.startTimeMs,
+                            part.endTimeMs,
+                            textSize
+                    );
+                    renderIndex++;
+                }
             }
             return;
         }
@@ -1208,43 +1214,50 @@ public final class LyricsView extends View {
             float distance,
             boolean partSupplements
     ) {
-        List<LyricsLine.VocalPart> parts = orderVocalParts(line.vocalParts);
-        List<DrawGroup> groups = new ArrayList<>();
-        for (int index = 0; index < parts.size(); index++) {
-            LyricsLine.VocalPart part = parts.get(index);
-            boolean partActive = active && positionMs >= part.startTimeMs;
-            int inactiveColor = inactiveColorForSpeaker(
-                    part.speaker,
-                    part.speakerColor,
-                    part.speakerFallback,
-                    distance + (partActive ? 0f : 0.45f)
-            );
-            int activeColor = colorForSpeaker(
-                    part.speaker,
-                    part.speakerColor,
-                    part.speakerFallback,
-                    part.role,
-                    normalActiveColor()
-            );
-            String groupKey = "line:" + lineIndex + ":part:" + partKey(part, index);
-            groups.add(buildGroup(
-                    part.text,
-                    japaneseFuriganaEnabled ? part.furiganaText : "",
-                    part.syllables,
-                    part.startTimeMs,
-                    part.endTimeMs,
-                    MAIN_TEXT_SP,
-                    inactiveColor,
-                    activeColor,
-                    part.kind,
-                    partActive,
-                    index,
-                    groupKey,
-                    groupKey,
-                    AiLyricsSettings.TYPO_LYRICS_ORIGINAL
-            ));
-            if (partSupplements) {
-                addVocalPartSupplementGroups(groups, lineIndex, part, index, partActive, distance);
+        int groupCapacity = line.vocalParts.size() * (partSupplements ? 3 : 1);
+        List<DrawGroup> groups = new ArrayList<>(groupCapacity);
+        int renderIndex = 0;
+        for (int rolePass = 0; rolePass < 2; rolePass++) {
+            boolean leadPass = rolePass == 0;
+            for (LyricsLine.VocalPart part : line.vocalParts) {
+                if ("lead".equals(part.role) != leadPass) {
+                    continue;
+                }
+                boolean partActive = active && positionMs >= part.startTimeMs;
+                int inactiveColor = inactiveColorForSpeaker(
+                        part.speaker,
+                        part.speakerColor,
+                        part.speakerFallback,
+                        distance + (partActive ? 0f : 0.45f)
+                );
+                int activeColor = colorForSpeaker(
+                        part.speaker,
+                        part.speakerColor,
+                        part.speakerFallback,
+                        part.role,
+                        normalActiveColor()
+                );
+                String groupKey = "line:" + lineIndex + ":part:" + partKey(part, renderIndex);
+                groups.add(buildGroup(
+                        part.text,
+                        japaneseFuriganaEnabled ? part.furiganaText : "",
+                        part.syllables,
+                        part.startTimeMs,
+                        part.endTimeMs,
+                        MAIN_TEXT_SP,
+                        inactiveColor,
+                        activeColor,
+                        part.kind,
+                        partActive,
+                        renderIndex,
+                        groupKey,
+                        groupKey,
+                        AiLyricsSettings.TYPO_LYRICS_ORIGINAL
+                ));
+                if (partSupplements) {
+                    addVocalPartSupplementGroups(groups, lineIndex, part, renderIndex, partActive, distance);
+                }
+                renderIndex++;
             }
         }
         return groups;
@@ -2554,21 +2567,6 @@ public final class LyricsView extends View {
 
     private static int codePointCount(String value) {
         return value == null || value.isEmpty() ? 0 : value.codePointCount(0, value.length());
-    }
-
-    private List<LyricsLine.VocalPart> orderVocalParts(List<LyricsLine.VocalPart> parts) {
-        List<LyricsLine.VocalPart> ordered = new ArrayList<>();
-        for (LyricsLine.VocalPart part : parts) {
-            if ("lead".equals(part.role)) {
-                ordered.add(part);
-            }
-        }
-        for (LyricsLine.VocalPart part : parts) {
-            if (!"lead".equals(part.role)) {
-                ordered.add(part);
-            }
-        }
-        return ordered;
     }
 
     private void drawBackground(Canvas canvas) {
