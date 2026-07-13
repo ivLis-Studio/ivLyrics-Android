@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +47,7 @@ final class MainLyricPreviewView extends View {
     private final Paint.FontMetrics textFontMetrics = new Paint.FontMetrics();
     private final PorterDuffXfermode edgeFadeXfermode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private final List<PreviewLine> lines = new ArrayList<>();
+    private final Map<PreviewLine, List<TextSegment>> textSegmentCache = new IdentityHashMap<>();
     private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Set<String> completedBounceKeys = new HashSet<>();
     private float[] measuredLineWidths = new float[0];
@@ -78,6 +80,7 @@ final class MainLyricPreviewView extends View {
     void setPreview(List<PreviewLine> nextLines, long positionMs, long startTimeMs, long endTimeMs, boolean isPlaying) {
         List<PreviewLine> safeLines = nextLines == null ? Collections.emptyList() : nextLines;
         boolean layoutChanged = !sameLines(safeLines);
+        boolean segmentInputsChanged = !sameLineInstances(safeLines);
         lines.clear();
         lines.addAll(safeLines);
         basePositionMs = Math.max(0L, positionMs);
@@ -85,6 +88,9 @@ final class MainLyricPreviewView extends View {
         lineStartMs = Math.max(0L, startTimeMs);
         lineEndMs = Math.max(lineStartMs, endTimeMs);
         playing = isPlaying;
+        if (segmentInputsChanged) {
+            textSegmentCache.clear();
+        }
         if (layoutChanged) {
             bounceStates.clear();
             completedBounceKeys.clear();
@@ -103,6 +109,7 @@ final class MainLyricPreviewView extends View {
             return;
         }
         textScale = safeScale;
+        textSegmentCache.clear();
         requestLayout();
         postInvalidateOnAnimation();
     }
@@ -129,6 +136,7 @@ final class MainLyricPreviewView extends View {
 
     void setTypographySettings(AiLyricsSettings.TypographySettings settings) {
         typographySettings = settings == null ? AiLyricsSettings.TypographySettings.defaults() : settings;
+        textSegmentCache.clear();
         requestLayout();
         postInvalidateOnAnimation();
     }
@@ -522,6 +530,18 @@ final class MainLyricPreviewView extends View {
         return true;
     }
 
+    private boolean sameLineInstances(List<PreviewLine> nextLines) {
+        if (lines.size() != nextLines.size()) {
+            return false;
+        }
+        for (int index = 0; index < lines.size(); index++) {
+            if (lines.get(index) != nextLines.get(index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private float positiveSin(long timeMs, long periodMs) {
         return (float) ((Math.sin((timeMs % periodMs) / (double) periodMs * Math.PI * 2.0) + 1.0) * 0.5);
     }
@@ -563,7 +583,7 @@ final class MainLyricPreviewView extends View {
     }
 
     private void drawKaraokeLine(Canvas canvas, PreviewLine line, float x, float baseline, float textSize, long positionMs) {
-        List<TextSegment> segments = buildSegments(line);
+        List<TextSegment> segments = textSegments(line);
         if (segments.isEmpty()) {
             textPaint.setColor(Color.argb(line.primary ? 244 : 208, 255, 255, 255));
             canvas.drawText(line.text, x, baseline, textPaint);
@@ -743,6 +763,16 @@ final class MainLyricPreviewView extends View {
             ));
             charOffset += charLength;
         }
+        return segments;
+    }
+
+    private List<TextSegment> textSegments(PreviewLine line) {
+        List<TextSegment> cached = textSegmentCache.get(line);
+        if (cached != null) {
+            return cached;
+        }
+        List<TextSegment> segments = buildSegments(line);
+        textSegmentCache.put(line, segments);
         return segments;
     }
 
