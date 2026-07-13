@@ -2840,16 +2840,17 @@ final class LyricsRepository {
     private static String lyricsFingerprint(String text) {
         long hash = 2_166_136_261L;
         String normalized = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFC);
-        List<String> chars = new ArrayList<>();
-        normalized.codePoints().forEach(codePoint -> chars.add(new String(Character.toChars(codePoint))));
-        for (String character : chars) {
-            int codePoint = character.codePointAt(0);
+        int codePointCount = 0;
+        for (int offset = 0; offset < normalized.length(); ) {
+            int codePoint = normalized.codePointAt(offset);
             hash ^= codePoint;
             hash = (hash * 16_777_619L) & 0xffff_ffffL;
+            offset += Character.charCount(codePoint);
+            codePointCount++;
         }
         return String.format(Locale.ROOT, "lrclib-%s-%s",
                 Long.toString(hash, 36),
-                Long.toString(chars.size(), 36));
+                Long.toString(codePointCount, 36));
     }
 
     private void emitLog(String trackKey, Callback callback, String message) {
