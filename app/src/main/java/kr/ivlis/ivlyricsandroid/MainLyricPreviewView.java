@@ -743,11 +743,12 @@ final class MainLyricPreviewView extends View {
         if (syllables == null || syllables.isEmpty()) {
             return Collections.emptyList();
         }
+        List<LyricsLine.Syllable> renderSyllables = TimedSyllableNormalizer.normalize(syllables);
         List<RubyAnnotation> rubyAnnotations = parseRubyAnnotations(line.text, line.rubyText);
-        List<TextSegment> segments = new ArrayList<>(syllables.size());
+        List<TextSegment> segments = new ArrayList<>(renderSyllables.size());
         int charOffset = 0;
-        for (int index = 0; index < syllables.size(); index++) {
-            LyricsLine.Syllable syllable = syllables.get(index);
+        for (int index = 0; index < renderSyllables.size(); index++) {
+            LyricsLine.Syllable syllable = renderSyllables.get(index);
             if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
                 continue;
             }
@@ -758,7 +759,7 @@ final class MainLyricPreviewView extends View {
                     syllable.startTimeMs,
                     syllable.endTimeMs,
                     index,
-                    charLength,
+                    1,
                     rubyForRange(rubyAnnotations, charOffset, charLength)
             ));
             charOffset += charLength;

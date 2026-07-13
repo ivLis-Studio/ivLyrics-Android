@@ -2318,9 +2318,10 @@ public final class LyricsView extends View {
             return buildUntimedSegments(text, rubyAnnotations);
         }
         if (syllables != null && !syllables.isEmpty()) {
+            List<LyricsLine.Syllable> renderSyllables = TimedSyllableNormalizer.normalize(syllables);
             int charOffset = 0;
-            for (int index = 0; index < syllables.size(); index++) {
-                LyricsLine.Syllable syllable = syllables.get(index);
+            for (int index = 0; index < renderSyllables.size(); index++) {
+                LyricsLine.Syllable syllable = renderSyllables.get(index);
                 String value = syllable.text == null ? "" : syllable.text;
                 int charLength = Math.max(1, value.codePointCount(0, value.length()));
                 segments.add(createMeasuredSegment(
@@ -2328,7 +2329,7 @@ public final class LyricsView extends View {
                         syllable.startTimeMs,
                         syllable.endTimeMs,
                         index,
-                        charLength,
+                        1,
                         rubyForRange(rubyAnnotations, charOffset, charLength)
                 ));
                 charOffset += charLength;
