@@ -18,13 +18,17 @@ final class LrcParser {
         if (lrc == null || lrc.trim().isEmpty()) {
             return Collections.emptyList();
         }
+        String[] rawLines = LINE_BREAK_PATTERN.split(lrc);
+        if (rawLines.length == 1) {
+            return parseSingleSyncedLine(rawLines[0], durationMs);
+        }
 
         List<LyricsLine> result = new ArrayList<>();
         long previousStartMs = 0L;
         String previousText = null;
-        String[] rawLines = LINE_BREAK_PATTERN.split(lrc);
+        Matcher reusableMatcher = LRC_TIME_PATTERN.matcher("");
         for (String rawLine : rawLines) {
-            Matcher matcher = LRC_TIME_PATTERN.matcher(rawLine);
+            Matcher matcher = reusableMatcher.reset(rawLine);
             if (!matcher.matches()) {
                 continue;
             }
@@ -50,6 +54,22 @@ final class LrcParser {
                     : previousStartMs + 4_000L;
             result.add(new LyricsLine(previousStartMs, fallbackEnd, previousText, Collections.emptyList()));
         }
+        return result;
+    }
+
+    private static List<LyricsLine> parseSingleSyncedLine(String rawLine, long durationMs) {
+        List<LyricsLine> result = new ArrayList<>();
+        Matcher matcher = LRC_TIME_PATTERN.matcher(rawLine);
+        if (!matcher.matches()) {
+            return result;
+        }
+        long minutes = parseLong(matcher.group(1));
+        long seconds = parseLong(matcher.group(2));
+        long startMs = Math.max(0L,
+                (minutes * 60_000L) + (seconds * 1_000L) + fractionToMillis(matcher.group(3)));
+        String text = matcher.group(4) == null ? "" : matcher.group(4).trim();
+        long fallbackEnd = durationMs > startMs ? durationMs : startMs + 4_000L;
+        result.add(new LyricsLine(startMs, fallbackEnd, text, Collections.emptyList()));
         return result;
     }
 
