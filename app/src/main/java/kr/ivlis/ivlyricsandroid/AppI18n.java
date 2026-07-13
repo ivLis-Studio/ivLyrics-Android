@@ -153,6 +153,7 @@ final class AppI18n {
                     ? "OpenDB에 이 곡의 ISRC가 있으면 해당 sync-data를 가진 제공자를 우선 선택합니다."
                     : "When OpenDB lists this ISRC, prioritize the provider that has ivLyrics sync-data.");
             copy.put("lyrics_provider.author_format", korean ? "제작자: %s" : "Author: %s");
+            copy.put("lyrics.provider_attribution_label", korean ? "가사 제공자" : "Lyrics Provider");
             copy.put("lyrics_provider.enabled", korean ? "사용" : "Enabled");
             copy.put("lyrics_provider.move_up", korean ? "우선순위 올리기" : "Move up");
             copy.put("lyrics_provider.move_down", korean ? "우선순위 내리기" : "Move down");

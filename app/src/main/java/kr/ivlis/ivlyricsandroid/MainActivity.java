@@ -211,6 +211,8 @@ public final class MainActivity extends Activity implements
     private TextView lyricsTitleView;
     private TextView lyricsArtistView;
     private TextView lyricsContributorView;
+    private ProviderAttributionView lyricsProviderAttributionView;
+    private ProviderAttributionView landscapeLyricsProviderAttributionView;
     private TextView pictureInPictureTitleView;
     private TextView pictureInPictureArtistView;
     private WebView inAppBrowserWebView;
@@ -2484,6 +2486,18 @@ public final class MainActivity extends Activity implements
         landscapeLyricsParams.rightMargin = dp(10);
         lyricsPane.addView(landscapeLyricsView, landscapeLyricsParams);
 
+        landscapeLyricsProviderAttributionView = createLyricsProviderAttributionView();
+        FrameLayout.LayoutParams attributionParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        attributionParams.leftMargin = dp(12);
+        attributionParams.rightMargin = dp(12);
+        attributionParams.bottomMargin = dp(8);
+        lyricsPane.addView(landscapeLyricsProviderAttributionView.container, attributionParams);
+        updateLyricsProviderAttribution(currentLyricsResult);
+
         landscapeLyricsSupplementLoadingIndicator = createLyricsSupplementLoadingIndicator();
         FrameLayout.LayoutParams loadingParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2944,6 +2958,16 @@ public final class MainActivity extends Activity implements
         );
         lyricsParams.topMargin = dp(16);
         content.addView(lyricsView, lyricsParams);
+
+        lyricsProviderAttributionView = createLyricsProviderAttributionView();
+        LinearLayout.LayoutParams attributionParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        attributionParams.gravity = Gravity.CENTER_HORIZONTAL;
+        attributionParams.topMargin = dp(4);
+        content.addView(lyricsProviderAttributionView.container, attributionParams);
+        updateLyricsProviderAttribution(currentLyricsResult);
 
         attachPageSwipe(header, false, false);
         return page;
@@ -9893,8 +9917,65 @@ public final class MainActivity extends Activity implements
             configureLyricsViewUiText(pictureInPictureLyricsView);
             pictureInPictureLyricsView.setResult(result);
         }
+        updateLyricsProviderAttribution(result);
         updateLyricsContributorCredit(result);
         applyLandscapeNoLyricsLayout(true);
+    }
+
+    private ProviderAttributionView createLyricsProviderAttributionView() {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.HORIZONTAL);
+        container.setGravity(Gravity.CENTER);
+        container.setAlpha(0.7f);
+        container.setVisibility(View.GONE);
+        container.setClickable(false);
+        container.setFocusable(false);
+        container.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        TextView label = label(
+                ui("lyrics.provider_attribution_label"),
+                9f,
+                Color.argb(160, 255, 255, 255),
+                AppFonts.semiBold(this)
+        );
+        label.setSingleLine(true);
+        label.setAllCaps(true);
+        label.setLetterSpacing(0.04f);
+        label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        container.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView value = label("", 11f, Color.argb(190, 255, 255, 255), AppFonts.regular(this));
+        value.setSingleLine(true);
+        value.setEllipsize(TextUtils.TruncateAt.END);
+        value.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        valueParams.leftMargin = dp(6);
+        container.addView(value, valueParams);
+        return new ProviderAttributionView(container, value);
+    }
+
+    private void updateLyricsProviderAttribution(LyricsResult result) {
+        String provider = LyricsProviderAttribution.displayName(result);
+        updateLyricsProviderAttributionView(lyricsProviderAttributionView, provider);
+        updateLyricsProviderAttributionView(landscapeLyricsProviderAttributionView, provider);
+    }
+
+    private void updateLyricsProviderAttributionView(ProviderAttributionView attribution, String provider) {
+        if (attribution == null) {
+            return;
+        }
+        String value = provider == null ? "" : provider.trim();
+        attribution.value.setText(value);
+        attribution.container.setContentDescription(value.isEmpty()
+                ? null
+                : ui("lyrics.provider_attribution_label") + " " + value);
+        attribution.container.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private void updateLyricsContributorCredit(LyricsResult result) {
@@ -12590,6 +12671,16 @@ public final class MainActivity extends Activity implements
 
     private interface ChoiceHandler {
         void onChoice(String code);
+    }
+
+    private static final class ProviderAttributionView {
+        final LinearLayout container;
+        final TextView value;
+
+        ProviderAttributionView(LinearLayout container, TextView value) {
+            this.container = container;
+            this.value = value;
+        }
     }
 
     private static final class LanguageChoice {
