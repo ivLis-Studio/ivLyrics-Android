@@ -777,6 +777,11 @@ final class AiLyricsRepository {
             callback.onAiLyricsError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
             return;
         }
+        if (!settings.hasModel()) {
+            emitLog(trackKey, callback, "ai lyrics skipped: model missing for " + settings.provider.label);
+            callback.onAiLyricsError(trackKey, "AI 모델을 직접 선택해 주세요");
+            return;
+        }
 
         emitLog(trackKey, callback, "ai lyrics: provider=" + settings.provider.label
                 + " / model=" + settings.model
@@ -1123,6 +1128,11 @@ final class AiLyricsRepository {
             callback.onAiMetadataTranslationError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
             return;
         }
+        if (!settings.hasModel()) {
+            emitLog(trackKey, callback, "ai metadata skipped: model missing for " + settings.provider.label);
+            callback.onAiMetadataTranslationError(trackKey, "AI 모델을 직접 선택해 주세요");
+            return;
+        }
 
         String cacheKey = "metadata|"
                 + trackKey
@@ -1221,6 +1231,11 @@ final class AiLyricsRepository {
         if (!settings.hasApiKey()) {
             emitLog(trackKey, callback, "ai tmi skipped: API key missing for " + settings.provider.label);
             callback.onAiTmiError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
+            return;
+        }
+        if (!settings.hasModel()) {
+            emitLog(trackKey, callback, "ai tmi skipped: model missing for " + settings.provider.label);
+            callback.onAiTmiError(trackKey, "AI 모델을 직접 선택해 주세요");
             return;
         }
 
@@ -1671,6 +1686,7 @@ final class AiLyricsRepository {
             AiLyricsSettings.Snapshot settings,
             TextDeltaSink sink
     ) throws Exception {
+        PaxsenixAiModels.requireSelectedModel(settings == null ? "" : settings.model);
         List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
             throw new IOException("API 키가 필요합니다");
@@ -1722,6 +1738,7 @@ final class AiLyricsRepository {
     }
 
     private String callProviderRaw(String prompt, AiLyricsSettings.Snapshot settings) throws Exception {
+        PaxsenixAiModels.requireSelectedModel(settings == null ? "" : settings.model);
         List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
             throw new IOException("API 키가 필요합니다");

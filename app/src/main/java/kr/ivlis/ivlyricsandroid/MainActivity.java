@@ -169,6 +169,7 @@ public final class MainActivity extends Activity implements
     private final Rect mainPageRevealClip = new Rect();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService aiModelExecutor = Executors.newSingleThreadExecutor();
     private final PollinationsAuthClient pollinationsAuthClient = new PollinationsAuthClient();
     private AudioManager audioManager;
     private AudioDeviceCallback audioDeviceCallback;
@@ -322,6 +323,7 @@ public final class MainActivity extends Activity implements
     private TextView lyricsBackgroundVideoScaleValueView;
     private EditText apiKeysInput;
     private EditText modelInput;
+    private TextView paxsenixModelPickerButton;
     private EditText baseUrlInput;
     private EditText maxTokensInput;
     private EditText temperatureInput;
@@ -856,6 +858,7 @@ public final class MainActivity extends Activity implements
         destroyYouTubeBackgroundView();
         seekExecutor.shutdownNow();
         updateExecutor.shutdownNow();
+        aiModelExecutor.shutdownNow();
         super.onDestroy();
     }
 
@@ -4126,8 +4129,14 @@ public final class MainActivity extends Activity implements
         apiKeysInput = settingEditText("", true, true);
         settingsAiPage.addView(settingField(ui("field.api_key"), ui("field.api_key_desc"), apiKeysInput), topMargin(matchWrap(), dp(18)));
 
+        LinearLayout modelControls = new LinearLayout(this);
+        modelControls.setOrientation(LinearLayout.VERTICAL);
         modelInput = settingEditText("", false, false);
-        settingsAiPage.addView(settingField(ui("field.model"), ui("field.model_desc"), modelInput), topMargin(matchWrap(), dp(12)));
+        modelControls.addView(modelInput, matchWrap());
+        paxsenixModelPickerButton = debugButton(ui("button.choose_model"));
+        paxsenixModelPickerButton.setOnClickListener(view -> loadPaxsenixModels());
+        modelControls.addView(paxsenixModelPickerButton, topMargin(matchWrap(), dp(8)));
+        settingsAiPage.addView(settingGroup(ui("field.model"), ui("field.model_desc"), modelControls), topMargin(matchWrap(), dp(12)));
 
         baseUrlInput = settingEditText("", false, false);
         settingsAiPage.addView(settingField(ui("field.base_url"), ui("field.base_url_desc"), baseUrlInput), topMargin(matchWrap(), dp(12)));
@@ -6046,7 +6055,103 @@ public final class MainActivity extends Activity implements
                 setSelectableButtonState(button, selectedId != null && selectedId.equals(button.getTag()));
             }
         }
-        updatePollinationsAuthUi(aiLyricsSettings.snapshot());
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        updatePollinationsAuthUi(snapshot);
+        updatePaxsenixModelPickerUi(snapshot);
+    }
+
+    private void updatePaxsenixModelPickerUi(AiLyricsSettings.Snapshot snapshot) {
+        if (paxsenixModelPickerButton == null) return;
+        boolean visible = snapshot != null && "paxsenix".equals(snapshot.provider.id);
+        paxsenixModelPickerButton.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible && paxsenixModelPickerButton.isEnabled()) {
+            paxsenixModelPickerButton.setText(ui("button.choose_model"));
+        }
+    }
+
+    private void loadPaxsenixModels() {
+        if (aiLyricsSettings == null || paxsenixModelPickerButton == null) return;
+        applyAiSettingsFromUi(false);
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        if (!"paxsenix".equals(snapshot.provider.id)) return;
+        String apiKey = firstApiKey(snapshot.apiKeys);
+        if (apiKey.isEmpty()) {
+            showSavedToast(ui("status.ai_key_needed"));
+            return;
+        }
+
+        paxsenixModelPickerButton.setEnabled(false);
+        paxsenixModelPickerButton.setText(ui("status.model_loading"));
+        aiModelExecutor.execute(() -> {
+            List<PaxsenixAiModels.Model> models = Collections.emptyList();
+            Exception failure = null;
+            try {
+                models = PaxsenixAiModels.fetch(apiKey);
+            } catch (Exception error) {
+                failure = error;
+            }
+            List<PaxsenixAiModels.Model> loadedModels = models;
+            Exception loadFailure = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                paxsenixModelPickerButton.setEnabled(true);
+                paxsenixModelPickerButton.setText(ui("button.choose_model"));
+                if (loadFailure != null) {
+                    appendLog("paxsenix model list error: " + loadFailure.getMessage());
+                    showSavedToast(ui("toast.model_load_failed"));
+                    return;
+                }
+                if (loadedModels.isEmpty()) {
+                    showSavedToast(ui("toast.model_empty"));
+                    return;
+                }
+                showPaxsenixModelDialog(loadedModels);
+            });
+        });
+    }
+
+    private void showPaxsenixModelDialog(List<PaxsenixAiModels.Model> models) {
+        if (models == null || models.isEmpty() || isFinishing()) return;
+        String[] labels = new String[models.size()];
+        for (int index = 0; index < models.size(); index++) {
+            labels[index] = models.get(index).displayLabel();
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(ui("dialog.select_model"))
+                .setItems(labels, (dialog, which) -> {
+                    if (which < 0 || which >= models.size()) return;
+                    String modelId = models.get(which).id;
+                    modelInput.setText(modelId);
+                    modelInput.setSelection(modelId.length());
+                    aiLyricsSettings.setModel(modelId);
+                    if (aiSettingsStatusView != null) {
+                        aiSettingsStatusView.setText(ui("toast.settings_saved"));
+                    }
+                    showSavedToast(ui("toast.settings_saved"));
+                })
+                .setNegativeButton(ui("button.close"), null)
+                .show();
+    }
+
+    private String firstApiKey(String rawValue) {
+        String value = rawValue == null ? "" : rawValue.trim();
+        if (value.isEmpty()) return "";
+        if (value.startsWith("[")) {
+            try {
+                org.json.JSONArray array = new org.json.JSONArray(value);
+                for (int index = 0; index < array.length(); index++) {
+                    String key = array.optString(index, "").trim();
+                    if (!key.isEmpty()) return key;
+                }
+            } catch (Exception ignored) {
+                // Fall through to newline/comma parsing.
+            }
+        }
+        for (String item : value.split("[\\n,]")) {
+            String key = item.trim();
+            if (!key.isEmpty()) return key;
+        }
+        return "";
     }
 
     private String providerDescription(AiLyricsSettings.Provider provider) {
@@ -8210,9 +8315,13 @@ public final class MainActivity extends Activity implements
         }
         updatePollinationsAuthUi(snapshot);
         if (aiSettingsStatusView != null) {
-            aiSettingsStatusView.setText(snapshot.enabled()
-                    ? (snapshot.hasApiKey() ? ui("status.ai_lyrics_active") : ui("status.ai_key_needed"))
-                    : ui("status.ai_disabled"));
+            String status = ui("status.ai_disabled");
+            if (snapshot.enabled()) {
+                status = !snapshot.hasApiKey()
+                        ? ui("status.ai_key_needed")
+                        : (!snapshot.hasModel() ? ui("status.ai_model_needed") : ui("status.ai_lyrics_active"));
+            }
+            aiSettingsStatusView.setText(status);
         }
         updateProviderButtons();
     }
@@ -9077,6 +9186,10 @@ public final class MainActivity extends Activity implements
             renderTmiError(ui("tmi.require_key"));
             return;
         }
+        if (!settings.hasModel()) {
+            renderTmiError(ui("status.ai_model_needed"));
+            return;
+        }
         aiLyricsRepository.loadTmi(snapshot, settings, bypassCache, this);
     }
 
@@ -9566,7 +9679,8 @@ public final class MainActivity extends Activity implements
         String target = snapshot.resolveTargetLanguage(source);
         if (!snapshot.metadataTranslationEnabled
                 || AiLyricsSettings.isSameLanguage(source, target)
-                || !snapshot.hasApiKey()) {
+                || !snapshot.hasApiKey()
+                || !snapshot.hasModel()) {
             translatedTrackTitle = "";
             translatedTrackArtist = "";
             updateTrackMetadataTextViews(currentTrack);
@@ -9622,6 +9736,18 @@ public final class MainActivity extends Activity implements
             updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
             if (aiSettingsStatusView != null) {
                 aiSettingsStatusView.setText(ui("status.ai_key_needed"));
+            }
+            requestJapaneseFurigana(clearCache);
+            return;
+        }
+        if (!snapshot.hasModel()) {
+            aiLyricsGenerating = false;
+            currentLyricsResult = currentBaseLyricsResult;
+            setLyricsResultOnViews(currentLyricsResult);
+            setLyricsSupplementLoading(false, false, false);
+            updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
+            if (aiSettingsStatusView != null) {
+                aiSettingsStatusView.setText(ui("status.ai_model_needed"));
             }
             requestJapaneseFurigana(clearCache);
             return;
@@ -11119,7 +11245,7 @@ public final class MainActivity extends Activity implements
             return false;
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        if (!snapshot.hasApiKey()) {
+        if (!snapshot.hasApiKey() || !snapshot.hasModel()) {
             return false;
         }
         String source = effectiveSelectedSourceLang();

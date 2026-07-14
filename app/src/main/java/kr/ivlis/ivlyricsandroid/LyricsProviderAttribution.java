@@ -6,6 +6,7 @@ final class LyricsProviderAttribution {
     private static final int DEFAULT_CONTRIBUTOR_LIMIT = 3;
     private static final String[] KNOWN_PROVIDER_IDS = {
             LyricsProviderSettings.PROVIDER_LRCLIB,
+            LyricsProviderSettings.PROVIDER_PAXSENIX,
             LyricsProviderSettings.PROVIDER_LYRICS_PLUS,
             LyricsProviderSettings.PROVIDER_UNISON
     };

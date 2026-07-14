@@ -150,6 +150,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     "https://console.groq.com/keys"
             ),
             new Provider(
+                    "paxsenix",
+                    "paxsenix",
+                    "Paxsenix OpenAI 호환 API",
+                    "https://api.paxsenix.org/v1",
+                    "",
+                    "https://api.paxsenix.org/dashboard"
+            ),
+            new Provider(
                     "perplexity",
                     "Perplexity",
                     "Sonar API 사용",
@@ -1584,6 +1592,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 return true;
             }
             return !apiKeys.trim().isEmpty();
+        }
+
+        boolean hasModel() {
+            return model != null && !model.trim().isEmpty();
         }
 
         boolean hasSpotifyApiCredentials() {

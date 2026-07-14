@@ -722,7 +722,14 @@ final class LyricsRepository {
         LyricsResult result = null;
         ProviderCandidate candidate = null;
         try {
-            if (LyricsProviderSettings.PROVIDER_LYRICS_PLUS.equals(config.provider.id)) {
+            if (LyricsProviderSettings.PROVIDER_PAXSENIX.equals(config.provider.id)) {
+                PaxsenixLyricsProvider.Variants variants = PaxsenixLyricsProvider.fetchVariants(
+                        track, isrc, spotifyTrackId, log::write
+                );
+                if (variants != null) {
+                    candidate = new ProviderCandidate(variants.karaoke, variants.synced, variants.plain);
+                }
+            } else if (LyricsProviderSettings.PROVIDER_LYRICS_PLUS.equals(config.provider.id)) {
                 LyricsPlusLyricsProvider.Variants variants = LyricsPlusLyricsProvider.fetchVariants(
                         track, isrc, spotifyTrackId, log::write
                 );

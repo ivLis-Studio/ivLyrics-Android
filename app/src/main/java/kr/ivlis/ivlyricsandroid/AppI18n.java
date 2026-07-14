@@ -124,6 +124,7 @@ final class AppI18n {
         addTmiStrings(languages);
         languages.put("cs", csStrings());
         addLyricsProviderSettingsStrings(languages);
+        addPaxsenixProviderStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -165,6 +166,72 @@ final class AppI18n {
                     ? "가사 제공자 설정이 저장되었습니다"
                     : "Lyrics provider settings saved");
             languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addPaxsenixProviderStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) continue;
+            String[] values = paxsenixStrings(language.code);
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            copy.put("provider.desc.paxsenix", values[0]);
+            copy.put("button.choose_model", values[1]);
+            copy.put("status.model_loading", values[2]);
+            copy.put("dialog.select_model", values[3]);
+            copy.put("toast.model_load_failed", values[4]);
+            copy.put("toast.model_empty", values[5]);
+            copy.put("status.ai_model_needed", values[6]);
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] paxsenixStrings(String language) {
+        switch (language) {
+            case "ko":
+                return new String[]{"Paxsenix OpenAI 호환 API", "모델 목록에서 선택", "모델 불러오는 중…", "Paxsenix 모델 선택", "모델 목록을 불러오지 못했습니다", "사용 가능한 모델이 없습니다", "AI 모델을 직접 선택해 주세요"};
+            case "ja":
+                return new String[]{"Paxsenix OpenAI互換API", "モデル一覧から選択", "モデルを読み込み中…", "Paxsenixモデルを選択", "モデル一覧を読み込めませんでした", "利用可能なモデルがありません", "AIモデルを選択してください"};
+            case "zh-CN":
+                return new String[]{"Paxsenix OpenAI 兼容 API", "从模型列表中选择", "正在加载模型…", "选择 Paxsenix 模型", "无法加载模型列表", "没有可用模型", "请选择 AI 模型"};
+            case "zh-TW":
+                return new String[]{"Paxsenix OpenAI 相容 API", "從模型清單中選擇", "正在載入模型…", "選擇 Paxsenix 模型", "無法載入模型清單", "沒有可用模型", "請選擇 AI 模型"};
+            case "es":
+                return new String[]{"API de Paxsenix compatible con OpenAI", "Elegir de la lista", "Cargando modelos…", "Elegir modelo de Paxsenix", "No se pudo cargar la lista de modelos", "No hay modelos disponibles", "Selecciona un modelo de IA"};
+            case "fr":
+                return new String[]{"API Paxsenix compatible OpenAI", "Choisir dans la liste", "Chargement des modèles…", "Choisir un modèle Paxsenix", "Impossible de charger les modèles", "Aucun modèle disponible", "Sélectionnez un modèle IA"};
+            case "de":
+                return new String[]{"OpenAI-kompatible Paxsenix-API", "Aus Modellliste wählen", "Modelle werden geladen…", "Paxsenix-Modell wählen", "Modellliste konnte nicht geladen werden", "Keine Modelle verfügbar", "Bitte ein KI-Modell auswählen"};
+            case "ru":
+                return new String[]{"OpenAI-совместимый API Paxsenix", "Выбрать из списка", "Загрузка моделей…", "Выберите модель Paxsenix", "Не удалось загрузить список моделей", "Нет доступных моделей", "Выберите модель ИИ"};
+            case "pt":
+                return new String[]{"API Paxsenix compatível com OpenAI", "Escolher da lista", "Carregando modelos…", "Escolher modelo Paxsenix", "Falha ao carregar modelos", "Nenhum modelo disponível", "Selecione um modelo de IA"};
+            case "it":
+                return new String[]{"API Paxsenix compatibile con OpenAI", "Scegli dall'elenco", "Caricamento modelli…", "Scegli modello Paxsenix", "Impossibile caricare i modelli", "Nessun modello disponibile", "Seleziona un modello IA"};
+            case "hi":
+                return new String[]{"Paxsenix OpenAI-संगत API", "मॉडल सूची से चुनें", "मॉडल लोड हो रहे हैं…", "Paxsenix मॉडल चुनें", "मॉडल सूची लोड नहीं हुई", "कोई मॉडल उपलब्ध नहीं है", "AI मॉडल चुनें"};
+            case "ar":
+                return new String[]{"واجهة Paxsenix المتوافقة مع OpenAI", "اختر من قائمة النماذج", "جارٍ تحميل النماذج…", "اختر نموذج Paxsenix", "تعذر تحميل قائمة النماذج", "لا توجد نماذج متاحة", "يرجى اختيار نموذج ذكاء اصطناعي"};
+            case "fa":
+                return new String[]{"API سازگار با OpenAI در Paxsenix", "انتخاب از فهرست مدل‌ها", "در حال بارگیری مدل‌ها…", "انتخاب مدل Paxsenix", "فهرست مدل‌ها بارگیری نشد", "مدلی در دسترس نیست", "یک مدل هوش مصنوعی انتخاب کنید"};
+            case "sv":
+                return new String[]{"Paxsenix OpenAI-kompatibla API", "Välj från modellistan", "Läser in modeller…", "Välj Paxsenix-modell", "Kunde inte läsa in modeller", "Inga modeller är tillgängliga", "Välj en AI-modell"};
+            case "bn":
+                return new String[]{"Paxsenix OpenAI-সামঞ্জস্যপূর্ণ API", "মডেল তালিকা থেকে বাছুন", "মডেল লোড হচ্ছে…", "Paxsenix মডেল বাছুন", "মডেল তালিকা লোড করা যায়নি", "কোনো মডেল উপলভ্য নেই", "একটি AI মডেল বাছুন"};
+            case "th":
+                return new String[]{"Paxsenix API ที่เข้ากันได้กับ OpenAI", "เลือกจากรายการโมเดล", "กำลังโหลดโมเดล…", "เลือกโมเดล Paxsenix", "โหลดรายการโมเดลไม่สำเร็จ", "ไม่มีโมเดลที่ใช้ได้", "โปรดเลือกโมเดล AI"};
+            case "vi":
+                return new String[]{"API Paxsenix tương thích OpenAI", "Chọn từ danh sách", "Đang tải mô hình…", "Chọn mô hình Paxsenix", "Không thể tải danh sách mô hình", "Không có mô hình khả dụng", "Hãy chọn một mô hình AI"};
+            case "id":
+                return new String[]{"API Paxsenix yang kompatibel dengan OpenAI", "Pilih dari daftar model", "Memuat model…", "Pilih model Paxsenix", "Gagal memuat daftar model", "Tidak ada model tersedia", "Pilih model AI"};
+            case "ms":
+                return new String[]{"API Paxsenix serasi OpenAI", "Pilih daripada senarai", "Memuatkan model…", "Pilih model Paxsenix", "Gagal memuatkan senarai model", "Tiada model tersedia", "Pilih model AI"};
+            case "cs":
+                return new String[]{"API Paxsenix kompatibilní s OpenAI", "Vybrat ze seznamu", "Načítání modelů…", "Vybrat model Paxsenix", "Seznam modelů se nepodařilo načíst", "Nejsou dostupné žádné modely", "Vyberte model AI"};
+            case "tr":
+                return new String[]{"Paxsenix OpenAI uyumlu API", "Model listesinden seç", "Modeller yükleniyor…", "Paxsenix modeli seç", "Model listesi yüklenemedi", "Kullanılabilir model yok", "Bir AI modeli seçin"};
+            default:
+                return new String[]{"Paxsenix OpenAI-compatible API", "Choose from model list", "Loading models…", "Choose a Paxsenix model", "Could not load the model list", "No models are available", "Select an AI model"};
         }
     }
 

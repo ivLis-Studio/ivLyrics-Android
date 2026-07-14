@@ -17,6 +17,7 @@ import java.util.Set;
 
 final class LyricsProviderSettings {
     static final String PROVIDER_LYRICS_PLUS = "lyricsplus";
+    static final String PROVIDER_PAXSENIX = "paxsenix";
     static final String PROVIDER_UNISON = "unison";
     static final String PROVIDER_LRCLIB = "lrclib";
 
@@ -25,9 +26,10 @@ final class LyricsProviderSettings {
     static final String TYPE_PLAIN = "plain";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
-            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", false, true, true, true),
-            new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, false),
-            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", true, true, true, false)
+            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true, true),
+            new Provider(PROVIDER_PAXSENIX, "Lyrically (Paxsenix)", "default", PaxsenixLyricsProvider.PROJECT_URL, true, true, true, true, false),
+            new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, true, false),
+            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", false, true, true, true, false)
     ));
 
     private static final String PREFS_NAME = "lyrics_provider_settings";
@@ -51,7 +53,7 @@ final class LyricsProviderSettings {
         for (Provider provider : PROVIDERS) {
             configs.put(provider.id, new ProviderConfig(
                     provider,
-                    readBoolean(KEY_ENABLED_PREFIX + provider.id, true),
+                    readBoolean(KEY_ENABLED_PREFIX + provider.id, provider.defaultEnabled),
                     readBoolean(typeKey(provider.id, TYPE_KARAOKE), true),
                     readBoolean(typeKey(provider.id, TYPE_SYNCED), true),
                     readBoolean(typeKey(provider.id, TYPE_PLAIN), true)
@@ -115,6 +117,23 @@ final class LyricsProviderSettings {
                 }
             }
         }
+        return completeProviderOrder(result);
+    }
+
+    static List<String> completeProviderOrder(List<String> storedOrder) {
+        List<String> result = new ArrayList<>();
+        Set<String> known = new LinkedHashSet<>();
+        for (Provider provider : PROVIDERS) known.add(provider.id);
+        if (storedOrder != null) {
+            for (String providerId : storedOrder) {
+                String id = normalizeProviderId(providerId);
+                if (known.contains(id) && !result.contains(id)) result.add(id);
+            }
+        }
+        if (!result.isEmpty() && !result.contains(PROVIDER_PAXSENIX)) {
+            int lrclibIndex = result.indexOf(PROVIDER_LRCLIB);
+            result.add(lrclibIndex >= 0 ? lrclibIndex + 1 : 0, PROVIDER_PAXSENIX);
+        }
         for (Provider provider : PROVIDERS) {
             if (!result.contains(provider.id)) {
                 result.add(provider.id);
@@ -165,6 +184,7 @@ final class LyricsProviderSettings {
         final String label;
         final String author;
         final String projectUrl;
+        final boolean defaultEnabled;
         final boolean nativeKaraoke;
         final boolean synced;
         final boolean plain;
@@ -175,6 +195,7 @@ final class LyricsProviderSettings {
                 String label,
                 String author,
                 String projectUrl,
+                boolean defaultEnabled,
                 boolean nativeKaraoke,
                 boolean synced,
                 boolean plain,
@@ -184,6 +205,7 @@ final class LyricsProviderSettings {
             this.label = label;
             this.author = author;
             this.projectUrl = projectUrl;
+            this.defaultEnabled = defaultEnabled;
             this.nativeKaraoke = nativeKaraoke;
             this.synced = synced;
             this.plain = plain;
