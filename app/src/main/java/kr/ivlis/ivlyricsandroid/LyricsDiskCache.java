@@ -18,7 +18,7 @@ import java.util.Locale;
 
 final class LyricsDiskCache {
     private static final int VERSION = 1;
-    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 8;
+    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 9;
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;

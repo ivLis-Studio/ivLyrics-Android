@@ -371,16 +371,14 @@ final class LyricsPlusLyricsProvider {
             for (int rightIndex = leftIndex + 1; rightIndex < count; rightIndex++) {
                 ParsedLine right = lines.get(rightIndex);
                 if (right.startTimeMs >= left.endTimeMs) break;
-                long overlap = Math.min(left.endTimeMs, right.endTimeMs) - Math.max(left.startTimeMs, right.startTimeMs);
-                if (overlap <= 0L) continue;
+                long overlap = ParallelVocalLineMerger.overlapMs(
+                        parallelSource(left),
+                        parallelSource(right)
+                );
+                if (overlap < ParallelVocalLineMerger.MIN_COMPONENT_OVERLAP_MS) continue;
                 union(parents, leftIndex, rightIndex);
-                if (overlap >= 30L
-                        && !left.singer.isEmpty()
-                        && !right.singer.isEmpty()
-                        && !left.singer.equals(right.singer)) {
-                    parallelSeed[leftIndex] = true;
-                    parallelSeed[rightIndex] = true;
-                }
+                parallelSeed[leftIndex] = true;
+                parallelSeed[rightIndex] = true;
             }
         }
 
@@ -619,113 +617,25 @@ final class LyricsPlusLyricsProvider {
             long forcedStart,
             long forcedEnd
     ) {
-        List<ParallelPart> leadEntries = new ArrayList<>();
-        List<ParallelPart> explicitBackgroundEntries = new ArrayList<>();
+        List<ParallelVocalLineMerger.SourceLine> sources = new ArrayList<>();
         for (ParsedLine line : sourceLines) {
-            if (!line.inlineVocalParts.isEmpty()) {
-                for (LyricsLine.VocalPart part : line.inlineVocalParts) {
-                    ParallelPart entry = new ParallelPart(part, line);
-                    if ("lead".equals(part.role)) leadEntries.add(entry);
-                    else explicitBackgroundEntries.add(entry);
-                }
-            } else {
-                leadEntries.add(new ParallelPart(vocalPart(
-                        line.lineKey + "-lead",
-                        "lead",
-                        line.singer,
-                        line.presentation,
-                        line.text,
-                        line.syllables
-                ), line));
-            }
+            sources.add(parallelSource(line));
         }
-        leadEntries.sort((left, right) -> {
-            int byTime = Long.compare(left.part.startTimeMs, right.part.startTimeMs);
-            return byTime != 0 ? byTime : Integer.compare(left.source.sourceIndex, right.source.sourceIndex);
-        });
-
-        Map<String, List<ParallelLane>> singerLanes = new LinkedHashMap<>();
-        List<ParallelLane> lanes = new ArrayList<>();
-        for (ParallelPart entry : leadEntries) {
-            String singerKey = entry.source.singer.isEmpty()
-                    ? "line:" + entry.source.lineKey
-                    : entry.source.singer;
-            List<ParallelLane> candidates = singerLanes.computeIfAbsent(singerKey, ignored -> new ArrayList<>());
-            ParallelLane lane = null;
-            for (ParallelLane candidate : candidates) {
-                if (candidate.endTime <= entry.part.startTimeMs) {
-                    lane = candidate;
-                    break;
-                }
-            }
-            if (lane == null) {
-                lane = new ParallelLane(singerKey, entry.source.singer);
-                candidates.add(lane);
-                lanes.add(lane);
-            }
-            lane.add(entry);
-        }
-
-        ParallelLane strongest = strongestLane(lanes, "");
-        ParallelLane preferred = strongestLane(lanes, preferredSinger);
-        ParallelLane leadLane = strongest;
-        if (preferred != null && strongest != null && preferred.duration * 2L >= strongest.duration) {
-            leadLane = preferred;
-        }
-        if (leadLane == null) {
-            ParsedLine fallback = sourceLines.get(0);
-            return fallback.toKaraokeLine();
-        }
-
-        List<ParallelLane> backgroundLanes = new ArrayList<>();
-        for (ParallelLane lane : lanes) if (lane != leadLane) backgroundLanes.add(lane);
-        backgroundLanes.sort((left, right) -> {
-            int byTime = Long.compare(left.startTime, right.startTime);
-            return byTime != 0 ? byTime : Integer.compare(left.firstSourceIndex(), right.firstSourceIndex());
-        });
-
-        List<LyricsLine.VocalPart> parts = new ArrayList<>();
-        parts.add(leadLane.toVocalPart("lead"));
-        for (ParallelLane lane : backgroundLanes) parts.add(lane.toVocalPart("background"));
-        explicitBackgroundEntries.sort((left, right) -> Long.compare(
-                left.part.startTimeMs,
-                right.part.startTimeMs
-        ));
-        for (ParallelPart entry : explicitBackgroundEntries) {
-            parts.add(withVocalRole(entry.part, "background"));
-        }
-
-        StringBuilder text = new StringBuilder();
-        long start = Long.MAX_VALUE;
-        long end = 0L;
-        for (LyricsLine.VocalPart part : parts) {
-            if (text.length() > 0) text.append(" / ");
-            text.append(part.text);
-            start = Math.min(start, part.startTimeMs);
-            end = Math.max(end, part.endTimeMs);
-        }
-        if (forcedStart >= 0L) start = forcedStart;
-        if (forcedEnd >= start) end = forcedEnd;
-        SpeakerPresentation presentation = leadLane.entries.get(0).source.presentation;
-        return new LyricsLine(start, Math.max(start + 1L, end), text.toString(), Collections.emptyList(),
-                presentation.speaker, presentation.color, presentation.fallback, "vocal", parts);
+        return ParallelVocalLineMerger.mergeComponent(
+                sources,
+                preferredSinger,
+                forcedStart,
+                forcedEnd
+        );
     }
 
-    private static ParallelLane strongestLane(List<ParallelLane> lanes, String singer) {
-        ParallelLane best = null;
-        for (ParallelLane lane : lanes) {
-            if (singer != null && !singer.isEmpty() && !singer.equals(lane.singer)) continue;
-            if (best == null
-                    || lane.duration > best.duration
-                    || (lane.duration == best.duration && lane.entries.size() > best.entries.size())
-                    || (lane.duration == best.duration && lane.entries.size() == best.entries.size()
-                    && lane.startTime < best.startTime)
-                    || (lane.duration == best.duration && lane.entries.size() == best.entries.size()
-                    && lane.startTime == best.startTime && lane.firstSourceIndex() < best.firstSourceIndex())) {
-                best = lane;
-            }
-        }
-        return best;
+    private static ParallelVocalLineMerger.SourceLine parallelSource(ParsedLine line) {
+        return ParallelVocalLineMerger.source(
+                line.sourceIndex,
+                line.lineKey,
+                line.singer,
+                line.toKaraokeLine()
+        );
     }
 
     private static LyricsLine.VocalPart withVocalRole(LyricsLine.VocalPart source, String role) {
@@ -1300,80 +1210,6 @@ final class LyricsPlusLyricsProvider {
             if (maximumDelay != other.maximumDelay) return maximumDelay < other.maximumDelay;
             if (distance != other.distance) return distance < other.distance;
             return leftEndTime > other.leftEndTime;
-        }
-    }
-
-    private static final class ParallelPart {
-        final LyricsLine.VocalPart part;
-        final ParsedLine source;
-
-        ParallelPart(LyricsLine.VocalPart part, ParsedLine source) {
-            this.part = part;
-            this.source = source;
-        }
-    }
-
-    private static final class ParallelLane {
-        final String key;
-        final String singer;
-        final List<ParallelPart> entries = new ArrayList<>();
-        long startTime = Long.MAX_VALUE;
-        long endTime;
-        long duration;
-
-        ParallelLane(String key, String singer) {
-            this.key = key;
-            this.singer = singer == null ? "" : singer;
-        }
-
-        void add(ParallelPart entry) {
-            entries.add(entry);
-            startTime = Math.min(startTime, entry.part.startTimeMs);
-            endTime = Math.max(endTime, entry.part.endTimeMs);
-            duration += Math.max(0L, entry.part.endTimeMs - entry.part.startTimeMs);
-        }
-
-        int firstSourceIndex() {
-            int result = Integer.MAX_VALUE;
-            for (ParallelPart entry : entries) result = Math.min(result, entry.source.sourceIndex);
-            return result;
-        }
-
-        LyricsLine.VocalPart toVocalPart(String role) {
-            List<ParallelPart> ordered = new ArrayList<>(entries);
-            ordered.sort((left, right) -> {
-                int byTime = Long.compare(left.part.startTimeMs, right.part.startTimeMs);
-                return byTime != 0 ? byTime : Integer.compare(left.source.sourceIndex, right.source.sourceIndex);
-            });
-            List<LyricsLine.Syllable> syllables = new ArrayList<>();
-            StringBuilder id = new StringBuilder();
-            StringBuilder text = new StringBuilder();
-            for (ParallelPart entry : ordered) {
-                LyricsLine.VocalPart part = withVocalRole(entry.part, role);
-                if (id.length() > 0) id.append('+');
-                id.append(part.id);
-                if (text.length() > 0) text.append(" / ");
-                text.append(part.text);
-                if (!syllables.isEmpty() && !part.syllables.isEmpty()) {
-                    LyricsLine.Syllable previous = syllables.get(syllables.size() - 1);
-                    LyricsLine.Syllable next = part.syllables.get(0);
-                    if (!endsWithWhitespace(previous.text) && !startsWithWhitespace(next.text)) {
-                        syllables.add(new LyricsLine.Syllable(" ", next.startTimeMs, next.startTimeMs));
-                    }
-                }
-                syllables.addAll(part.syllables);
-            }
-            LyricsLine.VocalPart first = ordered.get(0).part;
-            return new LyricsLine.VocalPart(
-                    id.toString(),
-                    role,
-                    first.speaker,
-                    first.speakerColor,
-                    first.speakerFallback,
-                    first.kind,
-                    text.toString(),
-                    syllables
-            );
         }
     }
 

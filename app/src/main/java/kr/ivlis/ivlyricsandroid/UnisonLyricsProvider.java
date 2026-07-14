@@ -230,7 +230,7 @@ final class UnisonLyricsProvider {
         }
     }
 
-    private static ParsedLyrics parseTtmlLyrics(String ttml, long durationMs) throws Exception {
+    static ParsedLyrics parseTtmlLyrics(String ttml, long durationMs) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setExpandEntityReferences(false);
@@ -372,6 +372,9 @@ final class UnisonLyricsProvider {
             }
 
             parsedLines.add(new ParsedLine(
+                    lineIndex,
+                    lineKey,
+                    lineAgent,
                     resolvedStart,
                     resolvedEnd,
                     displayText,
@@ -388,6 +391,7 @@ final class UnisonLyricsProvider {
             karaoke = karaoke || line.hasWordTiming;
         }
         List<LyricsLine> lines = new ArrayList<>();
+        List<ParallelVocalLineMerger.SourceLine> overlapSources = new ArrayList<>();
         for (ParsedLine line : parsedLines) {
             List<LyricsLine.Syllable> syllables = line.syllables;
             if (karaoke && syllables.isEmpty() && line.vocalParts.isEmpty()) {
@@ -395,7 +399,7 @@ final class UnisonLyricsProvider {
                         line.text, line.startTimeMs, line.endTimeMs
                 ));
             }
-            lines.add(new LyricsLine(
+            LyricsLine outputLine = new LyricsLine(
                     line.startTimeMs,
                     line.endTimeMs,
                     line.text,
@@ -405,8 +409,18 @@ final class UnisonLyricsProvider {
                     line.speaker.fallback,
                     "vocal",
                     karaoke ? line.vocalParts : Collections.emptyList()
-            ));
+            );
+            lines.add(outputLine);
+            if (karaoke) {
+                overlapSources.add(ParallelVocalLineMerger.source(
+                        line.sourceIndex,
+                        line.lineKey,
+                        line.laneKey,
+                        outputLine
+                ));
+            }
         }
+        if (karaoke) lines = ParallelVocalLineMerger.mergeOverlaps(overlapSources);
         return new ParsedLyrics(lines, karaoke, !lines.isEmpty());
     }
 
@@ -960,6 +974,9 @@ final class UnisonLyricsProvider {
     }
 
     private static final class ParsedLine {
+        final int sourceIndex;
+        final String lineKey;
+        final String laneKey;
         final long startTimeMs;
         final long endTimeMs;
         final String text;
@@ -969,6 +986,9 @@ final class UnisonLyricsProvider {
         final boolean hasWordTiming;
 
         ParsedLine(
+                int sourceIndex,
+                String lineKey,
+                String laneKey,
                 long startTimeMs,
                 long endTimeMs,
                 String text,
@@ -977,6 +997,9 @@ final class UnisonLyricsProvider {
                 List<LyricsLine.VocalPart> vocalParts,
                 boolean hasWordTiming
         ) {
+            this.sourceIndex = sourceIndex;
+            this.lineKey = lineKey;
+            this.laneKey = laneKey;
             this.startTimeMs = startTimeMs;
             this.endTimeMs = endTimeMs;
             this.text = text;
@@ -987,7 +1010,7 @@ final class UnisonLyricsProvider {
         }
     }
 
-    private static final class ParsedLyrics {
+    static final class ParsedLyrics {
         final List<LyricsLine> lines;
         final boolean karaoke;
         final boolean synced;
