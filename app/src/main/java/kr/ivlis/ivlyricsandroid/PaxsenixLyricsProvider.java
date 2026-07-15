@@ -513,15 +513,14 @@ final class PaxsenixLyricsProvider {
         Set<Integer> result = new HashSet<>();
         JSONArray lines = payload.optJSONArray("lyrics");
         if (!isTargetStructuredPayload(payload) || lines == null) return result;
-        int creditAnchorIndex = leadingCreditAnchorIndex(lines, referenceLines, title);
+        int creditAnchorIndex = leadingCreditAnchorIndex(lines, referenceLines);
         boolean anchored = false;
         boolean creditContinuationAllowed = false;
-        int limit = Math.min(lines.length(), 24);
+        int limit = lines.length();
         for (int index = 0; index < limit; index++) {
             JSONObject line = lines.optJSONObject(index);
             if (line == null) break;
             long start = lineStart(line);
-            if (index == 0 && start >= 30_000L) break;
             String text = structuredLineText(line, referenceLines.get(start));
             boolean creditAnchoredPrefix = index <= creditAnchorIndex;
             boolean titleHeader = index == 0 && isTitleArtistHeader(text, title, artist);
@@ -538,47 +537,18 @@ final class PaxsenixLyricsProvider {
 
     private static int leadingCreditAnchorIndex(
             JSONArray lines,
-            Map<Long, String> referenceLines,
-            String title
+            Map<Long, String> referenceLines
     ) {
-        int limit = Math.min(lines.length(), 4);
-        List<String> entries = new ArrayList<>();
+        int limit = Math.min(lines.length(), 10);
         for (int index = 0; index < limit; index++) {
             JSONObject line = lines.optJSONObject(index);
-            if (line == null) return -1;
+            if (line == null) break;
             long start = lineStart(line);
-            if (start >= 30_000L) return -1;
-            entries.add(structuredLineText(line, referenceLines.get(start)));
-        }
-
-        int firstCreditIndex = -1;
-        for (int index = 0; index < entries.size(); index++) {
-            if (isDefiniteCreditMetadata(entries.get(index))) {
-                firstCreditIndex = index;
-                break;
+            if (isCreditMetadata(structuredLineText(line, referenceLines.get(start)))) {
+                return index;
             }
         }
-        if (firstCreditIndex <= 0) return firstCreditIndex;
-
-        StringBuilder leadingText = new StringBuilder();
-        for (int index = 0; index < firstCreditIndex; index++) {
-            if (leadingText.length() > 0) leadingText.append(' ');
-            leadingText.append(entries.get(index));
-        }
-        String expectedTitle = metadataIdentity(title);
-        String combinedLeading = metadataIdentity(leadingText.toString());
-        if (metadataIdentitiesOverlap(expectedTitle, combinedLeading)) return firstCreditIndex;
-
-        int consecutiveStrongCredits = 0;
-        for (int index = firstCreditIndex;
-             index < entries.size() && isDefiniteCreditMetadata(entries.get(index));
-             index++) {
-            consecutiveStrongCredits++;
-        }
-        return consecutiveStrongCredits >= 2
-                && isTitleArtistSeparatorHeader(entries.get(firstCreditIndex - 1))
-                ? firstCreditIndex
-                : -1;
+        return -1;
     }
 
     private static boolean metadataIdentitiesOverlap(String expected, String actual) {
@@ -692,7 +662,7 @@ final class PaxsenixLyricsProvider {
             String word = words.group();
             if (CREDIT_NAME_CONNECTORS.contains(word.toLowerCase(Locale.ROOT))) continue;
             hasSignificantWord = true;
-            boolean nameWord = isCapitalizedNameWord(word);
+            boolean nameWord = isCapitalizedNameWord(word) || isMixedCaseContributorAlias(word);
             if (nameWord) hasNameWord = true;
             else everySignificantWordIsName = false;
         }
@@ -724,6 +694,18 @@ final class PaxsenixLyricsProvider {
             offset += Character.charCount(point);
         }
         return word.matches("\\d+");
+    }
+
+    private static boolean isMixedCaseContributorAlias(String word) {
+        boolean hasLowercase = false;
+        boolean hasUppercase = false;
+        for (int offset = 0; offset < word.length(); ) {
+            int point = word.codePointAt(offset);
+            if (Character.isLowerCase(point)) hasLowercase = true;
+            else if (Character.isUpperCase(point) || Character.isTitleCase(point)) hasUppercase = true;
+            offset += Character.charCount(point);
+        }
+        return hasLowercase && hasUppercase;
     }
 
     static boolean isCreditContinuationMetadata(String text) {
