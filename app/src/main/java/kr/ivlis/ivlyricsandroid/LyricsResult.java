@@ -91,13 +91,28 @@ final class LyricsResult {
         final String name;
         final String userHash;
         final boolean profileAvailable;
+        final boolean anonymous;
+        final boolean isPrivate;
 
         SyncContributor(String name, String userHash, boolean profileAvailable) {
+            this(name, userHash, profileAvailable, false, false);
+        }
+
+        SyncContributor(
+                String name,
+                String userHash,
+                boolean profileAvailable,
+                boolean anonymous,
+                boolean isPrivate
+        ) {
             String safeName = name == null ? "" : name.trim();
             String safeHash = userHash == null ? "" : userHash.trim();
-            this.name = safeName.isEmpty() ? "Anonymous" : safeName;
-            this.userHash = safeHash;
-            this.profileAvailable = profileAvailable && !safeHash.isEmpty();
+            boolean hidesIdentity = anonymous || isPrivate;
+            this.name = hidesIdentity || safeName.isEmpty() ? "Anonymous" : safeName;
+            this.userHash = hidesIdentity ? "" : safeHash;
+            this.profileAvailable = !hidesIdentity && profileAvailable && !safeHash.isEmpty();
+            this.anonymous = hidesIdentity || ("Anonymous".equalsIgnoreCase(this.name) && this.userHash.isEmpty());
+            this.isPrivate = isPrivate;
         }
     }
 }

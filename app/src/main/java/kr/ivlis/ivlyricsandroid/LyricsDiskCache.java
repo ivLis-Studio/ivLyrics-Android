@@ -18,12 +18,11 @@ import java.util.Locale;
 
 final class LyricsDiskCache {
     private static final int VERSION = 1;
-    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 9;
+    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 11;
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;
     private final int maxEntries;
-    private final boolean baseLyricsCache;
     private final long maxAgeMs;
 
     LyricsDiskCache(Context context, String namespace, int maxEntries) {
@@ -35,7 +34,6 @@ final class LyricsDiskCache {
         String safeNamespace = safeNamespace(namespace);
         this.directory = new File(root, "lyrics_cache/" + safeNamespace);
         this.maxEntries = Math.max(16, maxEntries);
-        this.baseLyricsCache = "base_lyrics".equals(safeNamespace);
         this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
 
@@ -49,8 +47,7 @@ final class LyricsDiskCache {
             if (object.optInt("version", 0) != VERSION) {
                 return null;
             }
-            if (baseLyricsCache
-                    && object.optInt("contributorSchemaVersion", 0) < BASE_CONTRIBUTOR_SCHEMA_VERSION) {
+            if (object.optInt("contributorSchemaVersion", 0) < BASE_CONTRIBUTOR_SCHEMA_VERSION) {
                 return null;
             }
             long savedAtMs = object.optLong("savedAtMs", 0L);
@@ -81,9 +78,7 @@ final class LyricsDiskCache {
             }
             JSONObject object = resultToJson(result);
             object.put("version", VERSION);
-            if (baseLyricsCache) {
-                object.put("contributorSchemaVersion", BASE_CONTRIBUTOR_SCHEMA_VERSION);
-            }
+            object.put("contributorSchemaVersion", BASE_CONTRIBUTOR_SCHEMA_VERSION);
             object.put("cacheKey", key);
             object.put("savedAtMs", System.currentTimeMillis());
             File file = fileForKey(key);
@@ -219,9 +214,15 @@ final class LyricsDiskCache {
 
     private static JSONObject contributorToJson(LyricsResult.SyncContributor contributor) throws Exception {
         JSONObject object = new JSONObject();
-        object.put("name", contributor.name);
-        object.put("userHash", contributor.userHash);
-        object.put("profileAvailable", contributor.profileAvailable);
+        // A contributor can make their profile private while this seven-day
+        // cache is still valid. Keep one anonymous object per list slot, but
+        // never persist an identity that could become stale on another device.
+        object.put("name", "Anonymous");
+        object.put("userHash", "");
+        object.put("profileAvailable", false);
+        object.put("anonymous", true);
+        object.put("isPrivate", contributor.isPrivate);
+        object.put("identityRedacted", true);
         return object;
     }
 
@@ -238,7 +239,9 @@ final class LyricsDiskCache {
             contributors.add(new LyricsResult.SyncContributor(
                     object.optString("name", ""),
                     object.optString("userHash", ""),
-                    object.optBoolean("profileAvailable", false)
+                    object.optBoolean("profileAvailable", false),
+                    object.optBoolean("anonymous", false),
+                    object.optBoolean("isPrivate", false)
             ));
         }
         return contributors;

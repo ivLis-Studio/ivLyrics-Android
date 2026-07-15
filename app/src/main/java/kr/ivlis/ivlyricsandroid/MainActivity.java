@@ -163,13 +163,13 @@ public final class MainActivity extends Activity implements
         }
     };
     private final List<String> logLines = new ArrayList<>();
-    private final Map<String, String> creatorProfileUrlCache = Collections.synchronizedMap(new HashMap<>());
     private final Map<String, TextView> speakerColorValueViews = new LinkedHashMap<>();
     private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
     private final Rect mainPageRevealClip = new Rect();
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService aiModelExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService creatorPrivacyExecutor = Executors.newSingleThreadExecutor();
     private final PollinationsAuthClient pollinationsAuthClient = new PollinationsAuthClient();
     private AudioManager audioManager;
     private AudioDeviceCallback audioDeviceCallback;
@@ -180,6 +180,7 @@ public final class MainActivity extends Activity implements
     private UpdateChecker updateChecker;
     private AiLyricsSettings aiLyricsSettings;
     private LyricsProviderSettings lyricsProviderSettings;
+    private CreatorPrivacyRepository creatorPrivacyRepository;
 
     private LyricsView lyricsView;
     private LyricsView landscapeLyricsView;
@@ -307,6 +308,7 @@ public final class MainActivity extends Activity implements
     private Switch lyricsTrackBackgroundOverrideSwitch;
     private Switch lyricsBackgroundNoiseSwitch;
     private Switch lyricsBackgroundReduceMotionSwitch;
+    private Switch creatorProfilePrivacySwitch;
     private SeekBar backgroundBrightnessSeekBar;
     private SeekBar backgroundBlurSeekBar;
     private SeekBar backgroundVideoScaleSeekBar;
@@ -344,6 +346,9 @@ public final class MainActivity extends Activity implements
     private TextView spotifySetupStatusView;
     private TextView lyricsManualSearchStatusView;
     private TextView updateStatusView;
+    private TextView creatorPrivacyStatusView;
+    private TextView creatorPrivacyAccountButton;
+    private TextView creatorPrivacyRefreshButton;
     private TextView onboardingWelcomeText;
     private TextView onboardingStepLabel;
     private TextView onboardingBackButton;
@@ -427,6 +432,10 @@ public final class MainActivity extends Activity implements
     private volatile boolean pollinationsAuthInFlight;
     private boolean updateCheckInFlight;
     private boolean updateDownloadInFlight;
+    private boolean creatorPrivacyRequestInFlight;
+    private boolean creatorPrivacyLoginInProgress;
+    private boolean creatorPrivacyLoaded;
+    private boolean creatorProfilePrivate;
     private boolean automaticUpdateCheckStarted;
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
@@ -469,6 +478,7 @@ public final class MainActivity extends Activity implements
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
         lyricsProviderSettings = new LyricsProviderSettings(this);
+        creatorPrivacyRepository = new CreatorPrivacyRepository(this);
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
@@ -859,6 +869,7 @@ public final class MainActivity extends Activity implements
         seekExecutor.shutdownNow();
         updateExecutor.shutdownNow();
         aiModelExecutor.shutdownNow();
+        creatorPrivacyExecutor.shutdownNow();
         super.onDestroy();
     }
 
@@ -3013,12 +3024,25 @@ public final class MainActivity extends Activity implements
                 if (request == null || request.getUrl() == null || !request.isForMainFrame()) {
                     return false;
                 }
-                return shouldOpenBrowserNavigationExternally(request.getUrl().toString());
+                String url = request.getUrl().toString();
+                if (consumeCreatorPrivacyLoginRedirect(url)) {
+                    return true;
+                }
+                if (creatorPrivacyLoginInProgress && isCreatorPrivacyLoginWebUrl(url)) {
+                    return false;
+                }
+                return shouldOpenBrowserNavigationExternally(url);
             }
 
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (consumeCreatorPrivacyLoginRedirect(url)) {
+                    return true;
+                }
+                if (creatorPrivacyLoginInProgress && isCreatorPrivacyLoginWebUrl(url)) {
+                    return false;
+                }
                 return shouldOpenBrowserNavigationExternally(url);
             }
 
@@ -4178,6 +4202,12 @@ public final class MainActivity extends Activity implements
         settingsToolsPage.addView(sectionTitle(ui("section.tools")));
         settingsToolsPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
 
+        settingsToolsPage.addView(settingGroup(
+                ui("creator_privacy.section"),
+                ui("creator_privacy.section_desc"),
+                buildCreatorPrivacyControl()
+        ), topMargin(matchWrap(), dp(16)));
+
         updateStatusView = label(ui("update.status_idle"), 12f, Color.argb(180, 255, 255, 255), AppFonts.regular(this));
         updateStatusView.setLineSpacing(dp(2), 1f);
 
@@ -4989,6 +5019,9 @@ public final class MainActivity extends Activity implements
         setSettingsPageVisibility(settingsAiPage, SETTINGS_TAB_AI.equals(next));
         setSettingsPageVisibility(settingsToolsPage, SETTINGS_TAB_TOOLS.equals(next));
         updateSettingsTabButtons();
+        if (SETTINGS_TAB_TOOLS.equals(next)) {
+            refreshCreatorPrivacy(false);
+        }
         if (changed && settingsScrollView != null) {
             settingsScrollView.scrollTo(0, 0);
         }
@@ -5336,6 +5369,303 @@ public final class MainActivity extends Activity implements
         view.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(12)));
         view.setLineSpacing(dp(3), 1f);
         return view;
+    }
+
+    private View buildCreatorPrivacyControl() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        creatorProfilePrivacySwitch = settingSwitch(
+                ui("creator_privacy.private_title"),
+                ui("creator_privacy.private_desc")
+        );
+        creatorProfilePrivacySwitch.setBackgroundColor(Color.TRANSPARENT);
+        creatorProfilePrivacySwitch.setPadding(0, dp(2), 0, dp(8));
+        creatorProfilePrivacySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || creatorPrivacyRepository == null) {
+                return;
+            }
+            if (!creatorPrivacyRepository.hasAuthenticatedSession()) {
+                setCreatorPrivacySwitchChecked(false);
+                showSavedToast(ui("creator_privacy.login_required"));
+                beginCreatorPrivacyLogin();
+                return;
+            }
+            updateCreatorPrivacy(isChecked);
+        });
+        content.addView(creatorProfilePrivacySwitch, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        creatorPrivacyStatusView = label(
+                "",
+                11f,
+                Color.argb(170, 255, 255, 255),
+                AppFonts.regular(this)
+        );
+        creatorPrivacyStatusView.setLineSpacing(dp(2), 1f);
+        content.addView(creatorPrivacyStatusView, topMargin(matchWrap(), dp(2)));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        content.addView(actions, topMargin(matchWrap(), dp(10)));
+
+        creatorPrivacyAccountButton = primaryButton("");
+        creatorPrivacyAccountButton.setOnClickListener(view -> {
+            if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+                return;
+            }
+            if (creatorPrivacyRepository.hasAuthenticatedSession()) {
+                disconnectCreatorPrivacyAccount();
+                return;
+            }
+            beginCreatorPrivacyLogin();
+        });
+        actions.addView(creatorPrivacyAccountButton, weightedButtonParams(1.35f, dp(4)));
+
+        creatorPrivacyRefreshButton = debugButton(ui("creator_privacy.refresh"));
+        creatorPrivacyRefreshButton.setOnClickListener(view -> refreshCreatorPrivacy(true));
+        actions.addView(creatorPrivacyRefreshButton, weightedButtonParams(0.8f, dp(4)));
+
+        updateCreatorPrivacyControls();
+        return content;
+    }
+
+    private void updateCreatorPrivacyControls() {
+        if (creatorPrivacyRepository == null) {
+            return;
+        }
+        boolean authenticated = creatorPrivacyRepository.hasAuthenticatedSession();
+        boolean controlsEnabled = authenticated && creatorPrivacyLoaded && !creatorPrivacyRequestInFlight;
+        if (creatorProfilePrivacySwitch != null) {
+            setCreatorPrivacySwitchChecked(authenticated && creatorPrivacyLoaded && creatorProfilePrivate);
+            creatorProfilePrivacySwitch.setEnabled(controlsEnabled);
+            creatorProfilePrivacySwitch.setAlpha(authenticated ? 1f : 0.58f);
+        }
+        if (creatorPrivacyStatusView != null) {
+            String status;
+            if (creatorPrivacyRequestInFlight) {
+                status = ui("creator_privacy.status_loading");
+            } else if (!authenticated) {
+                status = ui("creator_privacy.status_signed_out");
+            } else if (!creatorPrivacyLoaded) {
+                status = ui("creator_privacy.status_not_loaded");
+            } else {
+                status = creatorProfilePrivate
+                        ? ui("creator_privacy.status_private")
+                        : ui("creator_privacy.status_public");
+            }
+            creatorPrivacyStatusView.setText(status);
+        }
+        if (creatorPrivacyAccountButton != null) {
+            creatorPrivacyAccountButton.setText(authenticated
+                    ? ui("creator_privacy.disconnect")
+                    : ui("creator_privacy.login"));
+            creatorPrivacyAccountButton.setEnabled(!creatorPrivacyRequestInFlight);
+            creatorPrivacyAccountButton.setAlpha(creatorPrivacyRequestInFlight ? 0.55f : 1f);
+        }
+        if (creatorPrivacyRefreshButton != null) {
+            boolean enabled = authenticated && !creatorPrivacyRequestInFlight;
+            creatorPrivacyRefreshButton.setEnabled(enabled);
+            creatorPrivacyRefreshButton.setAlpha(enabled ? 1f : 0.45f);
+        }
+    }
+
+    private void setCreatorPrivacySwitchChecked(boolean checked) {
+        if (creatorProfilePrivacySwitch == null || creatorProfilePrivacySwitch.isChecked() == checked) {
+            return;
+        }
+        boolean previousSuppression = suppressSettingsEvents;
+        suppressSettingsEvents = true;
+        creatorProfilePrivacySwitch.setChecked(checked);
+        suppressSettingsEvents = previousSuppression;
+    }
+
+    private void refreshCreatorPrivacy(boolean announceFailure) {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+            return;
+        }
+        if (!creatorPrivacyRepository.hasAuthenticatedSession()) {
+            creatorPrivacyLoaded = false;
+            creatorProfilePrivate = false;
+            updateCreatorPrivacyControls();
+            return;
+        }
+        creatorPrivacyRequestInFlight = true;
+        updateCreatorPrivacyControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                CreatorPrivacyRepository.Privacy privacy = creatorPrivacyRepository.getPrivacy(languageTag);
+                handler.post(() -> {
+                    boolean visibilityChanged = !creatorPrivacyLoaded
+                            || creatorProfilePrivate != privacy.isPrivate;
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoaded = true;
+                    creatorProfilePrivate = privacy.isPrivate;
+                    updateCreatorPrivacyControls();
+                    if (visibilityChanged) {
+                        clearCreatorIdentityCachesAndReload();
+                    }
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoaded = false;
+                    updateCreatorPrivacyControls();
+                    appendLog("creator privacy load failed: " + error.getMessage());
+                    if (announceFailure) {
+                        showSavedToast(error instanceof CreatorPrivacyRepository.AuthenticationException
+                                ? ui("creator_privacy.login_required")
+                                : ui("creator_privacy.load_failed"));
+                    }
+                });
+            }
+        });
+    }
+
+    private void updateCreatorPrivacy(boolean isPrivate) {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+            return;
+        }
+        boolean previousValue = creatorProfilePrivate;
+        creatorPrivacyRequestInFlight = true;
+        creatorProfilePrivate = isPrivate;
+        updateCreatorPrivacyControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                CreatorPrivacyRepository.Privacy privacy = creatorPrivacyRepository.setPrivacy(isPrivate, languageTag);
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoaded = true;
+                    creatorProfilePrivate = privacy.isPrivate;
+                    updateCreatorPrivacyControls();
+                    clearCreatorIdentityCachesAndReload();
+                    showSavedToast(privacy.isPrivate
+                            ? ui("creator_privacy.saved_private")
+                            : ui("creator_privacy.saved_public"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorProfilePrivate = previousValue;
+                    creatorPrivacyLoaded = creatorPrivacyRepository.hasAuthenticatedSession();
+                    updateCreatorPrivacyControls();
+                    appendLog("creator privacy update failed: " + error.getMessage());
+                    showSavedToast(error instanceof CreatorPrivacyRepository.AuthenticationException
+                            ? ui("creator_privacy.login_required")
+                            : ui("creator_privacy.save_failed"));
+                });
+            }
+        });
+    }
+
+    private void beginCreatorPrivacyLogin() {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight || creatorPrivacyLoginInProgress) {
+            return;
+        }
+        creatorPrivacyRequestInFlight = true;
+        updateCreatorPrivacyControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                CreatorPrivacyRepository.LoginStart start = creatorPrivacyRepository.startDiscordLogin(languageTag);
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoginInProgress = true;
+                    updateCreatorPrivacyControls();
+                    openInAppBrowser(start.authorizeUrl);
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoginInProgress = false;
+                    updateCreatorPrivacyControls();
+                    appendLog("creator privacy login start failed: " + error.getMessage());
+                    showSavedToast(ui("creator_privacy.login_failed"));
+                });
+            }
+        });
+    }
+
+    private void disconnectCreatorPrivacyAccount() {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+            return;
+        }
+        creatorPrivacyRequestInFlight = true;
+        updateCreatorPrivacyControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                creatorPrivacyRepository.logout(languageTag);
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoaded = false;
+                    creatorProfilePrivate = false;
+                    updateCreatorPrivacyControls();
+                    showSavedToast(ui("creator_privacy.disconnected"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    updateCreatorPrivacyControls();
+                    appendLog("creator privacy logout failed: " + error.getMessage());
+                    showSavedToast(ui("creator_privacy.logout_failed"));
+                });
+            }
+        });
+    }
+
+    private void finishCreatorPrivacyLogin(String loginToken) {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+            return;
+        }
+        creatorPrivacyRequestInFlight = true;
+        updateCreatorPrivacyControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                creatorPrivacyRepository.finishDiscordLogin(loginToken, languageTag);
+                handler.post(() -> {
+                    creatorPrivacyLoginInProgress = false;
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoaded = false;
+                    showInAppBrowser(false);
+                    updateCreatorPrivacyControls();
+                    showSavedToast(ui("creator_privacy.login_success"));
+                    refreshCreatorPrivacy(false);
+                });
+            } catch (Exception error) {
+                handler.post(() -> {
+                    creatorPrivacyRequestInFlight = false;
+                    creatorPrivacyLoginInProgress = false;
+                    showInAppBrowser(false);
+                    updateCreatorPrivacyControls();
+                    appendLog("creator privacy login finish failed: " + error.getMessage());
+                    showSavedToast(ui("creator_privacy.login_failed"));
+                });
+            }
+        });
+    }
+
+    private void clearCreatorIdentityCachesAndReload() {
+        if (lyricsRepository != null) {
+            lyricsRepository.clearCache();
+        }
+        if (aiLyricsRepository != null) {
+            aiLyricsRepository.clearCache();
+        }
+        if (furiganaRepository != null) {
+            furiganaRepository.clearCache();
+        }
+        reloadCurrentLyricsFromSettings();
+    }
+
+    private String currentUiLanguageTag() {
+        return aiLyricsSettings == null ? "en" : aiLyricsSettings.snapshot().uiLang;
     }
 
     private LinearLayout settingField(String title, String subtitle, EditText input) {
@@ -9566,6 +9896,9 @@ public final class MainActivity extends Activity implements
             handler.removeCallbacks(landscapeControlsAutoHideRunnable);
             setLandscapeControlsVisible(true, true);
             populateAiSettingsUi();
+            if (SETTINGS_TAB_TOOLS.equals(activeSettingsTab)) {
+                refreshCreatorPrivacy(false);
+            }
             settingsPanel.setVisibility(View.VISIBLE);
             settingsPanel.setAlpha(0f);
             settingsPanel.bringToFront();
@@ -10124,7 +10457,7 @@ public final class MainActivity extends Activity implements
         updateLyricsProviderAttributionView(
                 landscapeLyricsProviderAttributionView,
                 provider,
-                LyricsProviderAttribution.landscapeContributorNames(result)
+                LyricsProviderAttribution.landscapeContributorNames(result, ui("lyrics.credit_anonymous"))
         );
     }
 
@@ -10221,12 +10554,13 @@ public final class MainActivity extends Activity implements
             if (contributor == null || contributor.name.isEmpty()) {
                 continue;
             }
-            int start = text.toString().indexOf(contributor.name, searchFrom);
+            String displayName = contributorDisplayName(contributor);
+            int start = text.toString().indexOf(displayName, searchFrom);
             if (start < 0) {
                 continue;
             }
-            int end = start + contributor.name.length();
-            if (contributor.profileAvailable && !contributor.userHash.isEmpty()) {
+            int end = start + displayName.length();
+            if (!contributor.anonymous && contributor.profileAvailable && !contributor.userHash.isEmpty()) {
                 text.setSpan(new ClickableSpan() {
                     @Override
                     public void onClick(View widget) {
@@ -10260,7 +10594,7 @@ public final class MainActivity extends Activity implements
             if (builder.length() > 0) {
                 builder.append(", ");
             }
-            builder.append(contributor.name);
+            builder.append(contributorDisplayName(contributor));
         }
         if (contributors.size() > count) {
             builder.append(" +").append(contributors.size() - count);
@@ -10275,34 +10609,46 @@ public final class MainActivity extends Activity implements
         int count = Math.min(Math.max(1, limit), contributors.size());
         for (int index = 0; index < count; index++) {
             LyricsResult.SyncContributor contributor = contributors.get(index);
-            if (contributor != null && contributor.profileAvailable && !contributor.userHash.isEmpty()) {
+            if (contributor != null
+                    && !contributor.anonymous
+                    && contributor.profileAvailable
+                    && !contributor.userHash.isEmpty()) {
                 return true;
             }
         }
         return false;
     }
 
+    private String contributorDisplayName(LyricsResult.SyncContributor contributor) {
+        if (contributor == null || contributor.anonymous || contributor.isPrivate) {
+            return ui("lyrics.credit_anonymous");
+        }
+        String name = contributor.name == null ? "" : contributor.name.trim();
+        return name.isEmpty() ? ui("lyrics.credit_anonymous") : name;
+    }
+
     private void openSyncContributorProfile(LyricsResult.SyncContributor contributor) {
-        if (contributor == null || contributor.userHash.isEmpty()) {
+        if (contributor == null
+                || contributor.anonymous
+                || contributor.isPrivate
+                || contributor.userHash.isEmpty()) {
             return;
         }
         String fallbackUrl = syncContributorProfileUrl(contributor.userHash);
-        String cachedUrl = creatorProfileUrlCache.get(contributor.userHash);
-        if (cachedUrl != null && !cachedUrl.isEmpty()) {
-            openContributorProfileUrl(cachedUrl);
-            return;
-        }
         seekExecutor.execute(() -> {
-            String url = fallbackUrl;
+            String url = "";
             try {
                 url = fetchSyncContributorProfileUrl(contributor.userHash, fallbackUrl);
-                creatorProfileUrlCache.put(contributor.userHash, url);
             } catch (Exception error) {
                 String message = "sync creator profile lookup failed: " + error.getMessage();
                 handler.post(() -> appendLog(message));
             }
             String finalUrl = url;
-            handler.post(() -> openContributorProfileUrl(finalUrl));
+            handler.post(() -> {
+                if (finalUrl != null && !finalUrl.trim().isEmpty()) {
+                    openContributorProfileUrl(finalUrl);
+                }
+            });
         });
     }
 
@@ -10324,13 +10670,23 @@ public final class MainActivity extends Activity implements
         connection.setRequestProperty("Pragma", "no-cache");
         try {
             int status = connection.getResponseCode();
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED
+                    || status == HttpURLConnection.HTTP_FORBIDDEN
+                    || status == HttpURLConnection.HTTP_NOT_FOUND) {
+                return "";
+            }
             if (status < 200 || status >= 300) {
                 throw new IOException("HTTP " + status);
             }
             JSONObject root = new JSONObject(readSyncContributorProfileBody(connection.getInputStream()));
             JSONObject data = root.optJSONObject("data");
             if (!root.optBoolean("success", false) || data == null) {
-                return fallbackUrl;
+                return "";
+            }
+            if (data.optBoolean("anonymous", false)
+                    || data.optBoolean("isPrivate", false)
+                    || (data.has("profilePublic") && !data.optBoolean("profilePublic", true))) {
+                return "";
             }
             String identifier = "";
             JSONObject account = data.optJSONObject("account");
@@ -11535,6 +11891,13 @@ public final class MainActivity extends Activity implements
     }
 
     private void showInAppBrowser(boolean show) {
+        if (!show && creatorPrivacyLoginInProgress) {
+            creatorPrivacyLoginInProgress = false;
+            if (creatorPrivacyRepository != null) {
+                creatorPrivacyRepository.cancelDiscordLogin();
+            }
+            updateCreatorPrivacyControls();
+        }
         if (inAppBrowserPage == null || show == inAppBrowserVisible) {
             return;
         }
@@ -12036,6 +12399,50 @@ public final class MainActivity extends Activity implements
         }
         openExternalBrowserUrl(safeUrl);
         return true;
+    }
+
+    private boolean consumeCreatorPrivacyLoginRedirect(String url) {
+        if (!creatorPrivacyLoginInProgress) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url == null ? "" : url.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            if (!"spotify".equals(scheme) || !"ivlyrics".equals(host)) {
+                return false;
+            }
+            String action = uri.getQueryParameter("action");
+            String loginToken = uri.getQueryParameter("loginToken");
+            if (!"discord-auth".equals(action) || loginToken == null || loginToken.trim().isEmpty()) {
+                return false;
+            }
+            finishCreatorPrivacyLogin(loginToken);
+            return true;
+        } catch (Exception error) {
+            appendLog("creator privacy login redirect failed: " + error.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isCreatorPrivacyLoginWebUrl(String url) {
+        try {
+            Uri uri = Uri.parse(url == null ? "" : url.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!"https".equals(scheme)) {
+                return false;
+            }
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            return host.equals("discord.com")
+                    || host.endsWith(".discord.com")
+                    || host.equals("discordapp.com")
+                    || host.endsWith(".discordapp.com")
+                    || host.equals("ivl.is")
+                    || host.equals("lyrics.ivl.is")
+                    || host.equals("lyrics.api.ivl.is");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean isSameLyricsProfileNavigation(String nextUrl, String initialUrl) {

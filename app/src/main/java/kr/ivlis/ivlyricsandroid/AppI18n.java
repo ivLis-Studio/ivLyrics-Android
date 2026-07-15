@@ -123,10 +123,302 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         languages.put("cs", csStrings());
+        addCreatorPrivacyStrings(languages);
         addLyricsProviderSettingsStrings(languages);
         addPaxsenixProviderStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addCreatorPrivacyStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "creator_privacy.section",
+                "creator_privacy.section_desc",
+                "creator_privacy.private_title",
+                "creator_privacy.private_desc",
+                "creator_privacy.status_loading",
+                "creator_privacy.status_signed_out",
+                "creator_privacy.status_not_loaded",
+                "creator_privacy.status_private",
+                "creator_privacy.status_public",
+                "creator_privacy.disconnect",
+                "creator_privacy.login",
+                "creator_privacy.refresh",
+                "creator_privacy.login_required",
+                "creator_privacy.disconnected",
+                "creator_privacy.logout_failed",
+                "creator_privacy.load_failed",
+                "creator_privacy.saved_private",
+                "creator_privacy.saved_public",
+                "creator_privacy.save_failed",
+                "creator_privacy.login_failed",
+                "creator_privacy.login_success",
+                "lyrics.credit_anonymous"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            String[] values = creatorPrivacyStrings(language.code);
+            if (values.length != keys.length) {
+                throw new IllegalStateException("Invalid creator privacy translations: " + language.code);
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], values[index]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] creatorPrivacyStrings(String language) {
+        switch (language) {
+            case "ko": return new String[] {
+                    "싱크 제작자 프로필", "공개 가사 목록에서 내 제작자 정보를 표시할지 설정합니다.",
+                    "프로필 비공개", "켜면 목록은 유지되지만 이름, 프로필 사진과 프로필 링크가 익명으로 표시됩니다.",
+                    "프로필 공개 설정을 확인하는 중…", "Discord에 로그인하면 내 프로필 공개 설정을 변경할 수 있습니다.",
+                    "새로고침하여 현재 공개 설정을 확인하세요.", "현재 비공개 · 목록에는 익명으로 표시됩니다.",
+                    "현재 공개 · 이름과 프로필이 표시됩니다.", "로그아웃", "Discord로 로그인", "새로고침",
+                    "내 프로필 설정을 변경하려면 Discord 로그인이 필요합니다.", "제작자 계정에서 로그아웃했습니다.",
+                    "로그아웃하지 못했습니다. 연결 상태를 유지합니다.",
+                    "프로필 공개 설정을 불러오지 못했습니다.", "프로필을 비공개로 전환했습니다.",
+                    "프로필을 공개로 전환했습니다.", "프로필 공개 설정을 저장하지 못했습니다.",
+                    "Discord 로그인에 실패했습니다.", "Discord 로그인이 완료되었습니다.", "익명"
+            };
+            case "zh-CN": return new String[] {
+                    "同步创作者资料", "设置是否在公开歌词列表中显示你的创作者信息。",
+                    "隐藏个人资料", "开启后列表仍会保留，但姓名、头像和资料链接会匿名显示。",
+                    "正在检查资料可见性…", "登录 Discord 后可更改你的资料可见性。",
+                    "刷新以查看当前可见性。", "当前为私密 · 在列表中匿名显示。",
+                    "当前为公开 · 显示姓名和个人资料。", "退出登录", "使用 Discord 登录", "刷新",
+                    "需要登录 Discord 才能更改你的资料设置。", "已退出创作者账户。",
+                    "无法退出登录。连接状态已保留。",
+                    "无法加载资料可见性。", "资料已设为私密。", "资料已设为公开。",
+                    "无法保存资料可见性。", "Discord 登录失败。", "Discord 登录成功。", "匿名"
+            };
+            case "zh-TW": return new String[] {
+                    "同步創作者個人檔案", "設定是否在公開歌詞清單中顯示你的創作者資訊。",
+                    "隱藏個人檔案", "開啟後清單仍會保留，但名稱、頭像與個人檔案連結會匿名顯示。",
+                    "正在檢查個人檔案可見性…", "登入 Discord 後可變更你的個人檔案可見性。",
+                    "重新整理以查看目前可見性。", "目前為私人 · 在清單中匿名顯示。",
+                    "目前為公開 · 顯示名稱與個人檔案。", "登出", "使用 Discord 登入", "重新整理",
+                    "必須登入 Discord 才能變更你的個人檔案設定。", "已登出創作者帳號。",
+                    "無法登出。連線狀態已保留。",
+                    "無法載入個人檔案可見性。", "個人檔案已設為私人。", "個人檔案已設為公開。",
+                    "無法儲存個人檔案可見性。", "Discord 登入失敗。", "Discord 登入完成。", "匿名"
+            };
+            case "ja": return new String[] {
+                    "同期クリエイタープロフィール", "公開歌詞一覧にクリエイター情報を表示するか設定します。",
+                    "プロフィールを非公開", "オンにしても一覧は残りますが、名前、画像、リンクは匿名表示になります。",
+                    "公開設定を確認中…", "Discord にログインすると公開設定を変更できます。",
+                    "更新して現在の公開設定を確認してください。", "現在は非公開 · 一覧では匿名表示です。",
+                    "現在は公開 · 名前とプロフィールが表示されます。", "ログアウト", "Discord でログイン", "更新",
+                    "設定を変更するには Discord ログインが必要です。", "クリエイターアカウントからログアウトしました。",
+                    "ログアウトできませんでした。接続状態を維持します。",
+                    "公開設定を読み込めませんでした。", "プロフィールを非公開にしました。", "プロフィールを公開しました。",
+                    "公開設定を保存できませんでした。", "Discord ログインに失敗しました。", "Discord ログインが完了しました。", "匿名"
+            };
+            case "hi": return new String[] {
+                    "सिंक निर्माता प्रोफ़ाइल", "चुनें कि सार्वजनिक गीत सूची में आपकी निर्माता जानकारी दिखे या नहीं।",
+                    "प्रोफ़ाइल निजी रखें", "चालू होने पर सूची बनी रहती है, लेकिन नाम, फ़ोटो और प्रोफ़ाइल लिंक गुमनाम दिखते हैं।",
+                    "प्रोफ़ाइल दृश्यता जाँची जा रही है…", "अपनी प्रोफ़ाइल दृश्यता बदलने के लिए Discord से लॉग इन करें।",
+                    "मौजूदा दृश्यता देखने के लिए रीफ़्रेश करें।", "अभी निजी · सूचियों में गुमनाम।",
+                    "अभी सार्वजनिक · नाम और प्रोफ़ाइल दिखाई देते हैं।", "लॉग आउट", "Discord से लॉग इन", "रीफ़्रेश",
+                    "प्रोफ़ाइल सेटिंग बदलने के लिए Discord लॉगिन आवश्यक है।", "निर्माता खाते से लॉग आउट किया गया।",
+                    "लॉग आउट नहीं हो सका। खाता जुड़ा रहेगा।",
+                    "प्रोफ़ाइल दृश्यता लोड नहीं हुई।", "प्रोफ़ाइल निजी कर दी गई।", "प्रोफ़ाइल सार्वजनिक कर दी गई।",
+                    "प्रोफ़ाइल दृश्यता सहेजी नहीं जा सकी।", "Discord लॉगिन विफल रहा।", "Discord लॉगिन पूरा हुआ।", "गुमनाम"
+            };
+            case "es": return new String[] {
+                    "Perfil de creador de sync", "Elige si tu información de creador aparece en las listas públicas de letras.",
+                    "Perfil privado", "La lista se mantiene, pero el nombre, la foto y el enlace del perfil se muestran como anónimos.",
+                    "Comprobando la visibilidad…", "Inicia sesión con Discord para cambiar la visibilidad de tu perfil.",
+                    "Actualiza para consultar la visibilidad actual.", "Privado · apareces como anónimo en las listas.",
+                    "Público · se muestran tu nombre y perfil.", "Cerrar sesión", "Iniciar con Discord", "Actualizar",
+                    "Debes iniciar sesión con Discord para cambiar esta opción.", "Sesión de creador cerrada.",
+                    "No se pudo cerrar la sesión. La cuenta seguirá conectada.",
+                    "No se pudo cargar la visibilidad.", "Perfil cambiado a privado.", "Perfil cambiado a público.",
+                    "No se pudo guardar la visibilidad.", "Error al iniciar sesión con Discord.", "Sesión de Discord iniciada.", "Anónimo"
+            };
+            case "fr": return new String[] {
+                    "Profil de créateur de sync", "Choisis si tes informations apparaissent dans les listes publiques de paroles.",
+                    "Profil privé", "La liste reste visible, mais le nom, la photo et le lien du profil deviennent anonymes.",
+                    "Vérification de la visibilité…", "Connecte-toi avec Discord pour modifier la visibilité de ton profil.",
+                    "Actualise pour vérifier la visibilité actuelle.", "Privé · affiché anonymement dans les listes.",
+                    "Public · le nom et le profil sont affichés.", "Déconnexion", "Connexion avec Discord", "Actualiser",
+                    "La connexion Discord est requise pour modifier ce réglage.", "Déconnecté du compte créateur.",
+                    "Échec de la déconnexion. Le compte reste connecté.",
+                    "Impossible de charger la visibilité.", "Profil rendu privé.", "Profil rendu public.",
+                    "Impossible d’enregistrer la visibilité.", "Échec de la connexion Discord.", "Connexion Discord terminée.", "Anonyme"
+            };
+            case "ar": return new String[] {
+                    "ملف منشئ المزامنة", "اختر ما إذا كانت معلوماتك تظهر في قوائم الكلمات العامة.",
+                    "جعل الملف خاصًا", "تبقى العناصر في القائمة، لكن الاسم والصورة والرابط تظهر كمجهولة.",
+                    "جارٍ التحقق من ظهور الملف…", "سجّل الدخول عبر Discord لتغيير ظهور ملفك.",
+                    "حدّث للتحقق من الإعداد الحالي.", "خاص حاليًا · يظهر كمجهول في القوائم.",
+                    "عام حاليًا · يظهر الاسم والملف.", "تسجيل الخروج", "الدخول عبر Discord", "تحديث",
+                    "يلزم تسجيل الدخول عبر Discord لتغيير هذا الإعداد.", "تم تسجيل الخروج من حساب المنشئ.",
+                    "تعذر تسجيل الخروج. سيبقى الحساب متصلًا.",
+                    "تعذر تحميل إعداد الظهور.", "تم جعل الملف خاصًا.", "تم جعل الملف عامًا.",
+                    "تعذر حفظ إعداد الظهور.", "فشل تسجيل الدخول عبر Discord.", "اكتمل تسجيل الدخول عبر Discord.", "مجهول"
+            };
+            case "fa": return new String[] {
+                    "نمایه سازنده همگام‌سازی", "انتخاب کنید اطلاعات سازنده شما در فهرست عمومی ترانه‌ها نمایش داده شود یا نه.",
+                    "نمایه خصوصی", "فهرست باقی می‌ماند، اما نام، تصویر و پیوند نمایه ناشناس نمایش داده می‌شود.",
+                    "در حال بررسی نمایش نمایه…", "برای تغییر نمایش نمایه با Discord وارد شوید.",
+                    "برای دیدن وضعیت فعلی تازه‌سازی کنید.", "اکنون خصوصی · در فهرست‌ها ناشناس است.",
+                    "اکنون عمومی · نام و نمایه نمایش داده می‌شود.", "خروج", "ورود با Discord", "تازه‌سازی",
+                    "برای تغییر این تنظیم ورود با Discord لازم است.", "از حساب سازنده خارج شدید.",
+                    "خروج انجام نشد. حساب متصل می‌ماند.",
+                    "نمایش نمایه بارگیری نشد.", "نمایه خصوصی شد.", "نمایه عمومی شد.",
+                    "نمایش نمایه ذخیره نشد.", "ورود Discord ناموفق بود.", "ورود Discord کامل شد.", "ناشناس"
+            };
+            case "de": return new String[] {
+                    "Sync-Creator-Profil", "Lege fest, ob deine Creator-Informationen in öffentlichen Lyrics-Listen erscheinen.",
+                    "Profil privat", "Die Einträge bleiben sichtbar, Name, Bild und Profillink werden jedoch anonymisiert.",
+                    "Profilsichtbarkeit wird geprüft…", "Melde dich mit Discord an, um die Sichtbarkeit zu ändern.",
+                    "Aktualisiere, um die aktuelle Sichtbarkeit zu prüfen.", "Derzeit privat · in Listen anonym.",
+                    "Derzeit öffentlich · Name und Profil sichtbar.", "Abmelden", "Mit Discord anmelden", "Aktualisieren",
+                    "Zum Ändern ist eine Discord-Anmeldung erforderlich.", "Vom Creator-Konto abgemeldet.",
+                    "Abmeldung fehlgeschlagen. Das Konto bleibt verbunden.",
+                    "Profilsichtbarkeit konnte nicht geladen werden.", "Profil ist jetzt privat.", "Profil ist jetzt öffentlich.",
+                    "Profilsichtbarkeit konnte nicht gespeichert werden.", "Discord-Anmeldung fehlgeschlagen.", "Discord-Anmeldung abgeschlossen.", "Anonym"
+            };
+            case "ru": return new String[] {
+                    "Профиль автора синхронизации", "Выберите, показывать ли ваши данные автора в публичных списках текстов.",
+                    "Скрыть профиль", "Записи останутся в списках, но имя, фото и ссылка будут анонимными.",
+                    "Проверяем видимость профиля…", "Войдите через Discord, чтобы изменить видимость профиля.",
+                    "Обновите, чтобы проверить текущую видимость.", "Сейчас скрыт · в списках анонимно.",
+                    "Сейчас открыт · имя и профиль видны.", "Выйти", "Войти через Discord", "Обновить",
+                    "Для изменения настройки нужен вход через Discord.", "Вы вышли из аккаунта автора.",
+                    "Не удалось выйти. Аккаунт останется подключённым.",
+                    "Не удалось загрузить видимость.", "Профиль сделан приватным.", "Профиль сделан публичным.",
+                    "Не удалось сохранить видимость.", "Не удалось войти через Discord.", "Вход через Discord выполнен.", "Аноним"
+            };
+            case "sv": return new String[] {
+                    "Profil för sync-skapare", "Välj om din skaparinformation ska visas i offentliga textlistor.",
+                    "Privat profil", "Listposterna finns kvar, men namn, bild och profillänk visas anonymt.",
+                    "Kontrollerar profilsynlighet…", "Logga in med Discord för att ändra profilsynligheten.",
+                    "Uppdatera för att kontrollera aktuell synlighet.", "Privat · visas anonymt i listor.",
+                    "Offentlig · namn och profil visas.", "Logga ut", "Logga in med Discord", "Uppdatera",
+                    "Discord-inloggning krävs för att ändra inställningen.", "Utloggad från skaparkontot.",
+                    "Det gick inte att logga ut. Kontot förblir anslutet.",
+                    "Kunde inte läsa profilsynligheten.", "Profilen är nu privat.", "Profilen är nu offentlig.",
+                    "Kunde inte spara profilsynligheten.", "Discord-inloggningen misslyckades.", "Discord-inloggningen är klar.", "Anonym"
+            };
+            case "pt": return new String[] {
+                    "Perfil de criador de sync", "Escolha se suas informações aparecem nas listas públicas de letras.",
+                    "Perfil privado", "As entradas continuam visíveis, mas nome, foto e link ficam anônimos.",
+                    "Verificando a visibilidade…", "Entre com Discord para mudar a visibilidade do perfil.",
+                    "Atualize para verificar a visibilidade atual.", "Privado · exibido anonimamente nas listas.",
+                    "Público · nome e perfil são exibidos.", "Sair", "Entrar com Discord", "Atualizar",
+                    "É necessário entrar com Discord para mudar esta opção.", "Você saiu da conta de criador.",
+                    "Não foi possível sair. A conta continuará conectada.",
+                    "Não foi possível carregar a visibilidade.", "Perfil alterado para privado.", "Perfil alterado para público.",
+                    "Não foi possível salvar a visibilidade.", "Falha ao entrar com Discord.", "Login do Discord concluído.", "Anônimo"
+            };
+            case "bn": return new String[] {
+                    "সিঙ্ক নির্মাতা প্রোফাইল", "পাবলিক লিরিক তালিকায় আপনার নির্মাতা তথ্য দেখানো হবে কি না বেছে নিন।",
+                    "প্রোফাইল ব্যক্তিগত", "তালিকা থাকবে, তবে নাম, ছবি ও প্রোফাইল লিংক বেনামে দেখাবে।",
+                    "প্রোফাইল দৃশ্যমানতা যাচাই হচ্ছে…", "দৃশ্যমানতা বদলাতে Discord দিয়ে লগ ইন করুন।",
+                    "বর্তমান অবস্থা দেখতে রিফ্রেশ করুন।", "এখন ব্যক্তিগত · তালিকায় বেনাম।",
+                    "এখন পাবলিক · নাম ও প্রোফাইল দেখা যায়।", "লগ আউট", "Discord দিয়ে লগ ইন", "রিফ্রেশ",
+                    "এই সেটিং বদলাতে Discord লগইন প্রয়োজন।", "নির্মাতা অ্যাকাউন্ট থেকে লগ আউট হয়েছে।",
+                    "লগ আউট করা যায়নি। অ্যাকাউন্ট সংযুক্ত থাকবে।",
+                    "দৃশ্যমানতা লোড করা যায়নি।", "প্রোফাইল ব্যক্তিগত করা হয়েছে।", "প্রোফাইল পাবলিক করা হয়েছে।",
+                    "দৃশ্যমানতা সংরক্ষণ করা যায়নি।", "Discord লগইন ব্যর্থ হয়েছে।", "Discord লগইন সম্পন্ন।", "বেনাম"
+            };
+            case "cs": return new String[] {
+                    "Profil tvůrce synchronizace", "Zvolte, zda se mají vaše údaje zobrazovat ve veřejných seznamech textů.",
+                    "Soukromý profil", "Položky zůstanou v seznamu, ale jméno, obrázek a odkaz budou anonymní.",
+                    "Kontrola viditelnosti profilu…", "Pro změnu viditelnosti se přihlaste přes Discord.",
+                    "Obnovte pro kontrolu aktuální viditelnosti.", "Nyní soukromý · v seznamech anonymně.",
+                    "Nyní veřejný · jméno a profil jsou viditelné.", "Odhlásit", "Přihlásit přes Discord", "Obnovit",
+                    "Pro změnu nastavení je nutné přihlášení přes Discord.", "Odhlášeno z účtu tvůrce.",
+                    "Odhlášení se nezdařilo. Účet zůstane připojený.",
+                    "Viditelnost profilu se nepodařilo načíst.", "Profil je nyní soukromý.", "Profil je nyní veřejný.",
+                    "Viditelnost profilu se nepodařilo uložit.", "Přihlášení přes Discord selhalo.", "Přihlášení přes Discord dokončeno.", "Anonymní"
+            };
+            case "it": return new String[] {
+                    "Profilo creator sync", "Scegli se mostrare le tue informazioni nelle liste pubbliche dei testi.",
+                    "Profilo privato", "Le voci restano visibili, ma nome, foto e link del profilo diventano anonimi.",
+                    "Controllo della visibilità…", "Accedi con Discord per cambiare la visibilità del profilo.",
+                    "Aggiorna per verificare la visibilità attuale.", "Privato · mostrato anonimamente nelle liste.",
+                    "Pubblico · nome e profilo sono visibili.", "Esci", "Accedi con Discord", "Aggiorna",
+                    "Per modificare questa opzione devi accedere con Discord.", "Disconnesso dall’account creator.",
+                    "Disconnessione non riuscita. L’account resterà collegato.",
+                    "Impossibile caricare la visibilità.", "Profilo reso privato.", "Profilo reso pubblico.",
+                    "Impossibile salvare la visibilità.", "Accesso Discord non riuscito.", "Accesso Discord completato.", "Anonimo"
+            };
+            case "th": return new String[] {
+                    "โปรไฟล์ผู้สร้างซิงก์", "เลือกว่าจะแสดงข้อมูลผู้สร้างของคุณในรายการเนื้อเพลงสาธารณะหรือไม่",
+                    "โปรไฟล์ส่วนตัว", "รายการยังคงอยู่ แต่ชื่อ รูป และลิงก์โปรไฟล์จะแสดงแบบไม่ระบุตัวตน",
+                    "กำลังตรวจสอบการมองเห็น…", "เข้าสู่ระบบด้วย Discord เพื่อเปลี่ยนการมองเห็นโปรไฟล์",
+                    "รีเฟรชเพื่อตรวจสอบการตั้งค่าปัจจุบัน", "ขณะนี้เป็นส่วนตัว · แสดงแบบไม่ระบุตัวตน",
+                    "ขณะนี้เป็นสาธารณะ · แสดงชื่อและโปรไฟล์", "ออกจากระบบ", "เข้าสู่ระบบด้วย Discord", "รีเฟรช",
+                    "ต้องเข้าสู่ระบบ Discord เพื่อเปลี่ยนการตั้งค่านี้", "ออกจากบัญชีผู้สร้างแล้ว",
+                    "ออกจากระบบไม่สำเร็จ บัญชียังคงเชื่อมต่ออยู่",
+                    "โหลดการมองเห็นโปรไฟล์ไม่ได้", "ตั้งโปรไฟล์เป็นส่วนตัวแล้ว", "ตั้งโปรไฟล์เป็นสาธารณะแล้ว",
+                    "บันทึกการมองเห็นโปรไฟล์ไม่ได้", "เข้าสู่ระบบ Discord ไม่สำเร็จ", "เข้าสู่ระบบ Discord สำเร็จ", "ไม่ระบุตัวตน"
+            };
+            case "vi": return new String[] {
+                    "Hồ sơ người tạo đồng bộ", "Chọn có hiển thị thông tin người tạo trong danh sách lời công khai hay không.",
+                    "Hồ sơ riêng tư", "Mục vẫn nằm trong danh sách, nhưng tên, ảnh và liên kết hồ sơ sẽ được ẩn danh.",
+                    "Đang kiểm tra quyền hiển thị…", "Đăng nhập bằng Discord để đổi quyền hiển thị hồ sơ.",
+                    "Làm mới để kiểm tra trạng thái hiện tại.", "Hiện riêng tư · hiển thị ẩn danh trong danh sách.",
+                    "Hiện công khai · tên và hồ sơ được hiển thị.", "Đăng xuất", "Đăng nhập Discord", "Làm mới",
+                    "Cần đăng nhập Discord để thay đổi cài đặt này.", "Đã đăng xuất tài khoản người tạo.",
+                    "Không thể đăng xuất. Tài khoản sẽ vẫn được kết nối.",
+                    "Không tải được quyền hiển thị.", "Đã chuyển hồ sơ sang riêng tư.", "Đã chuyển hồ sơ sang công khai.",
+                    "Không lưu được quyền hiển thị.", "Đăng nhập Discord thất bại.", "Đăng nhập Discord hoàn tất.", "Ẩn danh"
+            };
+            case "id": return new String[] {
+                    "Profil kreator sinkron", "Pilih apakah info kreator ditampilkan di daftar lirik publik.",
+                    "Profil privat", "Entri tetap ada, tetapi nama, foto, dan tautan profil ditampilkan anonim.",
+                    "Memeriksa visibilitas profil…", "Masuk dengan Discord untuk mengubah visibilitas profil.",
+                    "Segarkan untuk memeriksa visibilitas saat ini.", "Saat ini privat · anonim di daftar.",
+                    "Saat ini publik · nama dan profil ditampilkan.", "Keluar", "Masuk dengan Discord", "Segarkan",
+                    "Login Discord diperlukan untuk mengubah pengaturan ini.", "Keluar dari akun kreator.",
+                    "Gagal keluar. Akun akan tetap terhubung.",
+                    "Tidak dapat memuat visibilitas profil.", "Profil dijadikan privat.", "Profil dijadikan publik.",
+                    "Tidak dapat menyimpan visibilitas profil.", "Login Discord gagal.", "Login Discord selesai.", "Anonim"
+            };
+            case "ms": return new String[] {
+                    "Profil pencipta segerak", "Pilih sama ada maklumat pencipta dipaparkan dalam senarai lirik awam.",
+                    "Profil peribadi", "Entri kekal dalam senarai, tetapi nama, gambar dan pautan profil dipaparkan tanpa nama.",
+                    "Menyemak keterlihatan profil…", "Log masuk dengan Discord untuk mengubah keterlihatan profil.",
+                    "Muat semula untuk menyemak keadaan semasa.", "Kini peribadi · dipaparkan tanpa nama.",
+                    "Kini awam · nama dan profil dipaparkan.", "Log keluar", "Log masuk dengan Discord", "Muat semula",
+                    "Log masuk Discord diperlukan untuk mengubah tetapan ini.", "Telah log keluar daripada akaun pencipta.",
+                    "Log keluar gagal. Akaun akan kekal disambungkan.",
+                    "Keterlihatan profil tidak dapat dimuatkan.", "Profil kini peribadi.", "Profil kini awam.",
+                    "Keterlihatan profil tidak dapat disimpan.", "Log masuk Discord gagal.", "Log masuk Discord selesai.", "Tanpa nama"
+            };
+            case "tr": return new String[] {
+                    "Senkron oluşturucu profili", "Oluşturucu bilgilerinizin herkese açık söz listelerinde gösterilip gösterilmeyeceğini seçin.",
+                    "Profili gizli tut", "Kayıtlar listede kalır; ad, fotoğraf ve profil bağlantısı anonim görünür.",
+                    "Profil görünürlüğü kontrol ediliyor…", "Görünürlüğü değiştirmek için Discord ile giriş yapın.",
+                    "Geçerli görünürlüğü kontrol etmek için yenileyin.", "Şu anda gizli · listelerde anonim.",
+                    "Şu anda herkese açık · ad ve profil görünür.", "Çıkış yap", "Discord ile giriş", "Yenile",
+                    "Bu ayarı değiştirmek için Discord girişi gereklidir.", "Oluşturucu hesabından çıkış yapıldı.",
+                    "Çıkış yapılamadı. Hesap bağlı kalacak.",
+                    "Profil görünürlüğü yüklenemedi.", "Profil gizli yapıldı.", "Profil herkese açıldı.",
+                    "Profil görünürlüğü kaydedilemedi.", "Discord girişi başarısız.", "Discord girişi tamamlandı.", "Anonim"
+            };
+            case "en":
+            default: return new String[] {
+                    "Sync creator profile", "Choose whether your creator identity appears in public lyrics listings.",
+                    "Private profile", "Your entries stay listed, but your name, photo, and profile link are shown anonymously.",
+                    "Checking profile visibility…", "Sign in with Discord to change your profile visibility.",
+                    "Refresh to check the current visibility.", "Currently private · shown anonymously in listings.",
+                    "Currently public · your name and profile are shown.", "Sign out", "Sign in with Discord", "Refresh",
+                    "Discord login is required to change your profile settings.", "Signed out of the creator account.",
+                    "Could not sign out. The account will remain connected.",
+                    "Could not load profile visibility.", "Profile changed to private.", "Profile changed to public.",
+                    "Could not save profile visibility.", "Discord login failed.", "Discord login complete.", "Anonymous"
+            };
+        }
     }
 
     private static void addLyricsProviderSettingsStrings(Map<String, Map<String, String>> languages) {

@@ -35,10 +35,20 @@ final class LyricsProviderAttribution {
     }
 
     static String landscapeContributorNames(LyricsResult result) {
-        return displayName(result).isEmpty() ? "" : contributorNames(result);
+        return landscapeContributorNames(result, "Anonymous");
+    }
+
+    static String landscapeContributorNames(LyricsResult result, String anonymousLabel) {
+        return displayName(result).isEmpty()
+                ? ""
+                : contributorNames(result, DEFAULT_CONTRIBUTOR_LIMIT, anonymousLabel);
     }
 
     static String contributorNames(LyricsResult result, int limit) {
+        return contributorNames(result, limit, "Anonymous");
+    }
+
+    static String contributorNames(LyricsResult result, int limit, String anonymousLabel) {
         if (result == null || result.lines.isEmpty() || result.contributors.isEmpty()) {
             return "";
         }
@@ -57,7 +67,10 @@ final class LyricsProviderAttribution {
             if (visibleNames.length() > 0) {
                 visibleNames.append(", ");
             }
-            visibleNames.append(contributor.name.trim());
+            String name = contributor.anonymous
+                    ? (anonymousLabel == null || anonymousLabel.trim().isEmpty() ? "Anonymous" : anonymousLabel.trim())
+                    : contributor.name.trim();
+            visibleNames.append(name);
         }
         if (visibleNames.length() == 0) {
             return "";

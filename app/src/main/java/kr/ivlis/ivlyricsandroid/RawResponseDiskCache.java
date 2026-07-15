@@ -15,7 +15,9 @@ import java.util.Comparator;
 import java.util.Locale;
 
 final class RawResponseDiskCache {
-    private static final int VERSION = 1;
+    // v2 invalidates sync-data responses that may contain contributor identity
+    // fields written by older builds.
+    private static final int VERSION = 2;
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;

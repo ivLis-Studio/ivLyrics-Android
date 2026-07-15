@@ -236,7 +236,48 @@ final class LyricsRepository {
         if (key == null || key.trim().isEmpty() || result == null || result.lines.isEmpty()) {
             return;
         }
-        cache.put(key, new MemoryLyricsCacheEntry(result, System.currentTimeMillis()));
+        cache.put(key, new MemoryLyricsCacheEntry(
+                redactContributorIdentitiesForCache(result),
+                System.currentTimeMillis()
+        ));
+    }
+
+    private static LyricsResult redactContributorIdentitiesForCache(LyricsResult result) {
+        if (result == null || result.contributors.isEmpty()) {
+            return result;
+        }
+        List<LyricsResult.SyncContributor> redacted = new ArrayList<>();
+        for (LyricsResult.SyncContributor contributor : result.contributors) {
+            if (contributor == null) continue;
+            redacted.add(new LyricsResult.SyncContributor(
+                    "Anonymous",
+                    "",
+                    false,
+                    true,
+                    contributor.isPrivate
+            ));
+        }
+        return new LyricsResult(
+                result.lines,
+                result.providerLabel,
+                result.detail,
+                result.karaoke,
+                result.isrc,
+                result.spotifyTrackId,
+                redacted,
+                result.providerId,
+                result.selectionPolicyKey
+        );
+    }
+
+    private static boolean hasRedactedContributorSlots(LyricsResult result) {
+        if (result == null || result.contributors.isEmpty()) return false;
+        for (LyricsResult.SyncContributor contributor : result.contributors) {
+            if (contributor != null && contributor.anonymous && contributor.userHash.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private synchronized void removeMemoryCachedLyrics(String key) {
@@ -262,6 +303,9 @@ final class LyricsRepository {
             TrackSnapshot track
     ) {
         String isrc = firstNonEmpty(result == null ? "" : result.isrc, track == null ? "" : track.isrc);
+        if (hasRedactedContributorSlots(result) && !TrackSnapshot.normalizeIsrc(isrc).isEmpty()) {
+            return true;
+        }
         return LyricsProviderSelectionPlan.shouldRecheckCachedResult(result, settings, isrc);
     }
 
@@ -672,6 +716,19 @@ final class LyricsRepository {
                 return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
                         .withSelection(cachedBase.providerId, providerSettings.cacheKey());
             }
+            if (cachedBase.karaoke
+                    && hasRedactedContributorSlots(cachedBase)
+                    && syncDataProviders.contains(cachedBase.providerId)
+                    && !isrc.isEmpty()) {
+                SyncDataResult currentSyncData = fetchSyncData(isrc, track, spotifyMatch, log);
+                if (currentSyncData != null) {
+                    log.write("sync-data contributors refreshed for cached lyrics: count="
+                            + currentSyncData.contributors.size());
+                    return withContributors(cachedBase, currentSyncData.contributors)
+                            .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+                }
+                log.write("sync-data contributor refresh failed; anonymous cache slots kept");
+            }
             log.write("OpenDB sync-data priority unchanged; cached provider kept: " + cachedBase.providerId);
             return cachedBase;
         }
@@ -998,7 +1055,47 @@ final class LyricsRepository {
         return refreshed != null
                 && !refreshed.lines.isEmpty()
                 && ((refreshed.karaoke && !cached.karaoke)
-                || !refreshed.providerId.equals(cached.providerId));
+                || !refreshed.providerId.equals(cached.providerId)
+                || !sameContributors(refreshed.contributors, cached.contributors));
+    }
+
+    private static LyricsResult withContributors(
+            LyricsResult result,
+            List<LyricsResult.SyncContributor> contributors
+    ) {
+        return new LyricsResult(
+                result.lines,
+                result.providerLabel,
+                result.detail,
+                result.karaoke,
+                result.isrc,
+                result.spotifyTrackId,
+                contributors,
+                result.providerId,
+                result.selectionPolicyKey
+        );
+    }
+
+    private static boolean sameContributors(
+            List<LyricsResult.SyncContributor> left,
+            List<LyricsResult.SyncContributor> right
+    ) {
+        if (left == right) return true;
+        if (left == null || right == null || left.size() != right.size()) return false;
+        for (int index = 0; index < left.size(); index++) {
+            LyricsResult.SyncContributor a = left.get(index);
+            LyricsResult.SyncContributor b = right.get(index);
+            if (a == b) continue;
+            if (a == null || b == null
+                    || !a.name.equals(b.name)
+                    || !a.userHash.equals(b.userHash)
+                    || a.profileAvailable != b.profileAvailable
+                    || a.anonymous != b.anonymous
+                    || a.isPrivate != b.isPrivate) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private LyricsResult lyricsResultFromManualCandidate(LrclibCandidate candidate, TrackSnapshot track) {
@@ -1607,19 +1704,25 @@ final class LyricsRepository {
             }
             String cacheKey = syncDataCacheKey(isrc);
             String cachedResponse = syncDataResponseCache == null ? "" : syncDataResponseCache.get(cacheKey);
-            if (!cachedResponse.isEmpty()) {
+            boolean cachedIdentityRedacted = cachedResponse.contains("\"identityRedacted\":true");
+            if (!cachedResponse.isEmpty() && !cachedIdentityRedacted) {
                 log.write("sync-data cache hit: isrc=" + normalizedIsrc);
                 return parseSyncDataResponse(cachedResponse, log, true);
             }
+            if (cachedIdentityRedacted) {
+                log.write("sync-data timing cache hit; refreshing contributor privacy metadata");
+            }
 
             boolean bypassServerCache = shouldBypassSyncDataServerCache(normalizedIsrc);
-            if (bypassServerCache) {
-                if (isOpenDbUnavailable(log)) {
-                    log.write("sync-data opendb: unavailable after cache clear, skip direct sync-data request");
+            if (!cachedIdentityRedacted) {
+                if (bypassServerCache) {
+                    if (isOpenDbUnavailable(log)) {
+                        log.write("sync-data opendb: unavailable after cache clear, skip direct sync-data request");
+                        return null;
+                    }
+                } else if (!shouldRequestSyncDataFromOpenDb(normalizedIsrc, LRCLIB_PROVIDER_ID, log)) {
                     return null;
                 }
-            } else if (!shouldRequestSyncDataFromOpenDb(normalizedIsrc, LRCLIB_PROVIDER_ID, log)) {
-                return null;
             }
 
             Map<String, String> params = new HashMap<>();
@@ -1644,7 +1747,10 @@ final class LyricsRepository {
             String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers);
             SyncDataResult result = parseSyncDataResponse(response, log, false);
             if (syncDataResponseCache != null && !cacheKey.isEmpty()) {
-                syncDataResponseCache.put(cacheKey, response);
+                String persistentResponse = redactSyncDataContributorIdentitiesForCache(response);
+                if (!persistentResponse.isEmpty()) {
+                    syncDataResponseCache.put(cacheKey, persistentResponse);
+                }
             }
             return result;
         } catch (Exception error) {
@@ -3221,6 +3327,92 @@ final class LyricsRepository {
         return parseSyncContributors(combined);
     }
 
+    static String redactSyncDataContributorIdentitiesForCache(String response) {
+        if (response == null || response.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            JSONObject root = new JSONObject(response);
+            redactContributorIdentityContainers(root);
+            return root.toString();
+        } catch (Exception ignored) {
+            // An unparseable response must not be written to disk verbatim,
+            // because doing so could retain an identity we failed to inspect.
+            return "";
+        }
+    }
+
+    private static void redactContributorIdentityContainers(Object node) throws Exception {
+        if (node instanceof JSONArray) {
+            JSONArray array = (JSONArray) node;
+            for (int index = 0; index < array.length(); index++) {
+                Object item = array.opt(index);
+                if (item instanceof JSONObject || item instanceof JSONArray) {
+                    redactContributorIdentityContainers(item);
+                }
+            }
+            return;
+        }
+        if (!(node instanceof JSONObject)) {
+            return;
+        }
+
+        JSONObject object = (JSONObject) node;
+        List<String> keys = new ArrayList<>();
+        java.util.Iterator<String> iterator = object.keys();
+        while (iterator.hasNext()) {
+            keys.add(iterator.next());
+        }
+
+        for (String key : keys) {
+            Object value = object.opt(key);
+            if ("contributors".equals(key) || "creators".equals(key) || "authors".equals(key)) {
+                if (value instanceof JSONArray) {
+                    JSONArray source = (JSONArray) value;
+                    JSONArray redacted = new JSONArray();
+                    for (int index = 0; index < source.length(); index++) {
+                        redacted.put(redactedContributorForCache(source.opt(index)));
+                    }
+                    object.put(key, redacted);
+                } else if (value != null && value != JSONObject.NULL) {
+                    object.put(key, redactedContributorForCache(value));
+                }
+                continue;
+            }
+            if ("creator".equals(key) && value != null && value != JSONObject.NULL) {
+                object.put(key, redactedContributorForCache(value));
+                continue;
+            }
+            if (value instanceof JSONObject || value instanceof JSONArray) {
+                redactContributorIdentityContainers(value);
+            }
+        }
+    }
+
+    private static JSONObject redactedContributorForCache(Object raw) throws Exception {
+        boolean isPrivate = raw instanceof JSONObject && (
+                ((JSONObject) raw).optBoolean("isPrivate", false)
+                        || ((JSONObject) raw).optBoolean("private", false)
+                        || (((JSONObject) raw).has("profilePublic")
+                        && !((JSONObject) raw).optBoolean("profilePublic", true))
+        );
+        return new JSONObject()
+                .put("name", "Anonymous")
+                .put("displayName", "Anonymous")
+                .put("userHash", JSONObject.NULL)
+                .put("avatarUrl", JSONObject.NULL)
+                .put("linked", false)
+                .put("profileAvailable", false)
+                .put("spotifyUserId", JSONObject.NULL)
+                .put("spotifyDisplayName", JSONObject.NULL)
+                .put("spotifyProfileUrl", JSONObject.NULL)
+                .put("profileUrl", JSONObject.NULL)
+                .put("identifier", JSONObject.NULL)
+                .put("anonymous", true)
+                .put("isPrivate", isPrivate)
+                .put("identityRedacted", true);
+    }
+
     private static void appendContributorEntries(JSONArray target, JSONObject object, String key) {
         if (target == null || object == null || key == null) {
             return;
@@ -3254,10 +3446,18 @@ final class LyricsRepository {
             String name;
             String userHash = "";
             boolean profileAvailable = false;
+            boolean anonymous = false;
+            boolean isPrivate = false;
+            boolean explicitAnonymousIdentity = false;
             if (raw instanceof String) {
                 name = ((String) raw).trim();
             } else if (raw instanceof JSONObject) {
                 JSONObject object = (JSONObject) raw;
+                isPrivate = object.optBoolean("isPrivate", false)
+                        || object.optBoolean("private", false)
+                        || (object.has("profilePublic") && !object.optBoolean("profilePublic", true));
+                anonymous = object.optBoolean("anonymous", false) || isPrivate;
+                explicitAnonymousIdentity = anonymous || isPrivate;
                 name = firstNonEmpty(
                         firstNonEmpty(
                                 firstNonEmpty(object.optString("name", ""), object.optString("nickname", "")),
@@ -3273,24 +3473,43 @@ final class LyricsRepository {
                 profileAvailable = object.has("profileAvailable")
                         ? object.optBoolean("profileAvailable", false)
                         : !userHash.isEmpty();
+                if (object.has("linked") && !object.optBoolean("linked", false)) {
+                    profileAvailable = false;
+                }
             } else {
                 continue;
+            }
+            if (anonymous || isPrivate) {
+                name = "Anonymous";
+                userHash = "";
+                profileAvailable = false;
             }
             if (name == null || name.trim().isEmpty()) {
                 name = "Anonymous";
             }
             String key = userHash.isEmpty() ? "name:" + name.trim().toLowerCase(Locale.ROOT) : userHash;
-            boolean anonymous = "anonymous".equalsIgnoreCase(name.trim()) && userHash.isEmpty();
-            if (anonymous) {
+            boolean anonymousIdentity = anonymous
+                    || isPrivate
+                    || ("anonymous".equalsIgnoreCase(name.trim()) && userHash.isEmpty());
+            boolean legacyAnonymousIdentity = anonymousIdentity && !explicitAnonymousIdentity;
+            if (legacyAnonymousIdentity) {
                 if (anonymousAdded) {
                     continue;
                 }
                 anonymousAdded = true;
-            } else if (seen.contains(key)) {
+            } else if (!explicitAnonymousIdentity && seen.contains(key)) {
                 continue;
             }
-            seen.add(key);
-            result.add(new LyricsResult.SyncContributor(name, userHash, profileAvailable));
+            if (!explicitAnonymousIdentity) {
+                seen.add(key);
+            }
+            result.add(new LyricsResult.SyncContributor(
+                    name,
+                    userHash,
+                    profileAvailable,
+                    anonymousIdentity,
+                    isPrivate
+            ));
         }
         return result.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(result);
     }
