@@ -237,19 +237,26 @@ final class LyricsRepository {
             return;
         }
         cache.put(key, new MemoryLyricsCacheEntry(
-                redactContributorIdentitiesForCache(result),
+                result,
                 System.currentTimeMillis()
         ));
     }
 
-    private static LyricsResult redactContributorIdentitiesForCache(LyricsResult result) {
+    static LyricsResult withoutCachedContributorIdentities(LyricsResult result) {
         if (result == null || result.contributors.isEmpty()) {
             return result;
         }
-        List<LyricsResult.SyncContributor> redacted = new ArrayList<>();
+        return withContributors(result, Collections.emptyList());
+    }
+
+    static LyricsResult privacySafeContributorFallback(LyricsResult result) {
+        if (result == null || result.contributors.isEmpty()) {
+            return result;
+        }
+        List<LyricsResult.SyncContributor> anonymous = new ArrayList<>();
         for (LyricsResult.SyncContributor contributor : result.contributors) {
             if (contributor == null) continue;
-            redacted.add(new LyricsResult.SyncContributor(
+            anonymous.add(new LyricsResult.SyncContributor(
                     "Anonymous",
                     "",
                     false,
@@ -257,27 +264,7 @@ final class LyricsRepository {
                     contributor.isPrivate
             ));
         }
-        return new LyricsResult(
-                result.lines,
-                result.providerLabel,
-                result.detail,
-                result.karaoke,
-                result.isrc,
-                result.spotifyTrackId,
-                redacted,
-                result.providerId,
-                result.selectionPolicyKey
-        );
-    }
-
-    private static boolean hasRedactedContributorSlots(LyricsResult result) {
-        if (result == null || result.contributors.isEmpty()) return false;
-        for (LyricsResult.SyncContributor contributor : result.contributors) {
-            if (contributor != null && contributor.anonymous && contributor.userHash.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
+        return withContributors(result, anonymous);
     }
 
     private synchronized void removeMemoryCachedLyrics(String key) {
@@ -303,7 +290,9 @@ final class LyricsRepository {
             TrackSnapshot track
     ) {
         String isrc = firstNonEmpty(result == null ? "" : result.isrc, track == null ? "" : track.isrc);
-        if (hasRedactedContributorSlots(result) && !TrackSnapshot.normalizeIsrc(isrc).isEmpty()) {
+        if (result != null
+                && !result.contributors.isEmpty()
+                && !TrackSnapshot.normalizeIsrc(isrc).isEmpty()) {
             return true;
         }
         return LyricsProviderSelectionPlan.shouldRecheckCachedResult(result, settings, isrc);
@@ -325,12 +314,12 @@ final class LyricsRepository {
         }
         if (cached != null && !shouldRevalidateCachedResult(cached, providerSettings, track)) {
             emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist);
-            callback.onLyricsLoaded(key, cached);
+            callback.onLyricsLoaded(key, privacySafeContributorFallback(cached));
             return;
         }
         if (cached != null) {
             emitLog(key, callback, "cache hit: base lyrics served immediately; rechecking OpenDB sync-data in background");
-            callback.onLyricsLoaded(key, cached);
+            callback.onLyricsLoaded(key, withoutCachedContributorIdentities(cached));
         }
 
         emitLog(key, callback, "track: \"" + track.title + "\" / \"" + track.artist + "\""
@@ -352,10 +341,11 @@ final class LyricsRepository {
                 }
                 if (reusableCached != null
                         && !shouldRevalidateCachedResult(reusableCached, providerSettings, track)) {
-                    putMemoryCachedLyrics(key, reusableCached);
+                    LyricsResult safeCached = privacySafeContributorFallback(reusableCached);
+                    putMemoryCachedLyrics(key, safeCached);
                     log.write("disk cache hit: provider=" + reusableCached.providerId
                             + " / contributors=" + reusableCached.contributors.size());
-                    LyricsResult finalCached = reusableCached;
+                    LyricsResult finalCached = safeCached;
                     postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     return;
                 }
@@ -363,7 +353,7 @@ final class LyricsRepository {
                     putMemoryCachedLyrics(key, reusableCached);
                     log.write("base lyrics disk cache hit: served immediately; rechecking OpenDB sync-data in background");
                     if (memoryCached == null) {
-                        LyricsResult finalCached = reusableCached;
+                        LyricsResult finalCached = withoutCachedContributorIdentities(reusableCached);
                         postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     }
                 }
@@ -380,7 +370,8 @@ final class LyricsRepository {
                 } else {
                     log.write("unison cache: skipped to match provider policy");
                 }
-                if (shouldPublishRevalidatedLyrics(reusableCached, result)) {
+                LyricsResult cachedPresentation = withoutCachedContributorIdentities(reusableCached);
+                if (shouldPublishRevalidatedLyrics(cachedPresentation, result)) {
                     postLyricsIfCurrent(requestGeneration, callback, key, result);
                 } else {
                     log.write("background sync-data recheck complete: cached lyrics kept");
@@ -388,7 +379,11 @@ final class LyricsRepository {
             } catch (Exception error) {
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
                 if (reusableCached != null) {
-                    log.write("background sync-data recheck error: " + message + "; cached lyrics kept");
+                    LyricsResult safeFallback = privacySafeContributorFallback(reusableCached);
+                    putMemoryCachedLyrics(key, safeFallback);
+                    postLyricsIfCurrent(requestGeneration, callback, key, safeFallback);
+                    log.write("background sync-data recheck error: " + message
+                            + "; cached timing kept with anonymous contributor fallback");
                     return;
                 }
                 log.write("error: " + message);
@@ -703,7 +698,13 @@ final class LyricsRepository {
                         cachedBase,
                         providerSettings
                 )) {
-                    SyncDataResult syncData = fetchSyncData(isrc, track, spotifyMatch, log);
+                    SyncDataResult syncData = fetchSyncData(
+                            isrc,
+                            track,
+                            spotifyMatch,
+                            log,
+                            !cachedBase.contributors.isEmpty()
+                    );
                     return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
                             .withSelection(cachedBase.providerId, providerSettings.cacheKey());
                 }
@@ -712,25 +713,33 @@ final class LyricsRepository {
                 return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
             }
             if (LyricsProviderSelectionPlan.canApplyIvLyricsSyncToCachedResult(cachedBase, providerSettings)) {
-                SyncDataResult syncData = isrc.isEmpty() ? null : fetchSyncData(isrc, track, spotifyMatch, log);
+                SyncDataResult syncData = isrc.isEmpty()
+                        ? null
+                        : fetchSyncData(
+                                isrc,
+                                track,
+                                spotifyMatch,
+                                log,
+                                !cachedBase.contributors.isEmpty()
+                        );
                 return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
                         .withSelection(cachedBase.providerId, providerSettings.cacheKey());
             }
             if (cachedBase.karaoke
-                    && hasRedactedContributorSlots(cachedBase)
+                    && !cachedBase.contributors.isEmpty()
                     && syncDataProviders.contains(cachedBase.providerId)
                     && !isrc.isEmpty()) {
-                SyncDataResult currentSyncData = fetchSyncData(isrc, track, spotifyMatch, log);
+                SyncDataResult currentSyncData = fetchSyncData(isrc, track, spotifyMatch, log, true);
                 if (currentSyncData != null) {
                     log.write("sync-data contributors refreshed for cached lyrics: count="
                             + currentSyncData.contributors.size());
                     return withContributors(cachedBase, currentSyncData.contributors)
                             .withSelection(cachedBase.providerId, providerSettings.cacheKey());
                 }
-                log.write("sync-data contributor refresh failed; anonymous cache slots kept");
+                log.write("sync-data contributor refresh failed; using anonymous contributor fallback");
             }
             log.write("OpenDB sync-data priority unchanged; cached provider kept: " + cachedBase.providerId);
-            return cachedBase;
+            return privacySafeContributorFallback(cachedBase);
         }
 
         return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
@@ -1044,7 +1053,9 @@ final class LyricsRepository {
                 false,
                 firstNonEmpty(isrc, cachedBase.isrc),
                 firstNonEmpty(spotifyTrackId, cachedBase.spotifyTrackId),
-                cachedBase.contributors
+                syncData == null
+                        ? privacySafeContributorFallback(cachedBase).contributors
+                        : syncData.contributors
         );
     }
 
@@ -1697,6 +1708,16 @@ final class LyricsRepository {
     }
 
     private SyncDataResult fetchSyncData(String isrc, TrackSnapshot track, SpotifyTrackMatch spotifyMatch, LogSink log) {
+        return fetchSyncData(isrc, track, spotifyMatch, log, false);
+    }
+
+    private SyncDataResult fetchSyncData(
+            String isrc,
+            TrackSnapshot track,
+            SpotifyTrackMatch spotifyMatch,
+            LogSink log,
+            boolean refreshContributorPrivacy
+    ) {
         try {
             String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
             if (normalizedIsrc.isEmpty()) {
@@ -1705,7 +1726,7 @@ final class LyricsRepository {
             String cacheKey = syncDataCacheKey(isrc);
             String cachedResponse = syncDataResponseCache == null ? "" : syncDataResponseCache.get(cacheKey);
             boolean cachedIdentityRedacted = cachedResponse.contains("\"identityRedacted\":true");
-            if (!cachedResponse.isEmpty() && !cachedIdentityRedacted) {
+            if (!refreshContributorPrivacy && !cachedResponse.isEmpty() && !cachedIdentityRedacted) {
                 log.write("sync-data cache hit: isrc=" + normalizedIsrc);
                 return parseSyncDataResponse(cachedResponse, log, true);
             }
@@ -1714,7 +1735,10 @@ final class LyricsRepository {
             }
 
             boolean bypassServerCache = shouldBypassSyncDataServerCache(normalizedIsrc);
-            if (!cachedIdentityRedacted) {
+            if (refreshContributorPrivacy) {
+                log.write("sync-data contributor privacy refresh: using current server privacy revision");
+            }
+            if (!cachedIdentityRedacted && !refreshContributorPrivacy) {
                 if (bypassServerCache) {
                     if (isOpenDbUnavailable(log)) {
                         log.write("sync-data opendb: unavailable after cache clear, skip direct sync-data request");
