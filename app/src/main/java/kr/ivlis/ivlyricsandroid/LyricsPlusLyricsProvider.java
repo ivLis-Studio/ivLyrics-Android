@@ -1062,8 +1062,10 @@ final class LyricsPlusLyricsProvider {
 
     private static double measureDisplayWidth(String value) {
         double width = 0.0;
-        int[] codePoints = (value == null ? "" : value).codePoints().toArray();
-        for (int codePoint : codePoints) {
+        String text = value == null ? "" : value;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
             int type = Character.getType(codePoint);
             if (type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK) continue;
             if (Character.isWhitespace(codePoint)) width += 0.33;
@@ -1078,15 +1080,27 @@ final class LyricsPlusLyricsProvider {
     }
 
     private static int firstMeaningfulCodePoint(String value) {
-        return value == null ? -1 : value.codePoints().filter(cp -> !Character.isWhitespace(cp)
-                && Character.getType(cp) != Character.NON_SPACING_MARK).findFirst().orElse(-1);
+        if (value == null) return -1;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            if (!Character.isWhitespace(codePoint)
+                    && Character.getType(codePoint) != Character.NON_SPACING_MARK) {
+                return codePoint;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return -1;
     }
 
     private static int lastMeaningfulCodePoint(String value) {
         if (value == null) return -1;
-        int[] points = value.codePoints().toArray();
-        for (int index = points.length - 1; index >= 0; index--) {
-            if (!Character.isWhitespace(points[index]) && Character.getType(points[index]) != Character.NON_SPACING_MARK) return points[index];
+        for (int offset = value.length(); offset > 0; ) {
+            int codePoint = value.codePointBefore(offset);
+            if (!Character.isWhitespace(codePoint)
+                    && Character.getType(codePoint) != Character.NON_SPACING_MARK) {
+                return codePoint;
+            }
+            offset -= Character.charCount(codePoint);
         }
         return -1;
     }
