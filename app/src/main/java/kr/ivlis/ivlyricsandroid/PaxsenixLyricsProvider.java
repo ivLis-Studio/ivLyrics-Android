@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
 /** Lyrics provider backed by the public Lyrically service. */
 final class PaxsenixLyricsProvider {
     static final String PROJECT_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3Jn");
+    static final String TEXT_CACHE_REVISION = "entities-v1";
 
     private static final String CATALOG_SEARCH_URL = decode("aHR0cHM6Ly9pdHVuZXMuYXBwbGUuY29tL3NlYXJjaA==");
     private static final String STRUCTURED_SEARCH_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2t1Z291L3NlYXJjaA==");
@@ -53,6 +54,9 @@ final class PaxsenixLyricsProvider {
     );
     private static final Pattern COMPARABLE_NON_ALPHANUMERIC_PATTERN = Pattern.compile("[^\\p{L}\\p{N}]+");
     private static final Pattern COMPARABLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
+    private static final Pattern LYRIC_ENTITY_PATTERN = Pattern.compile(
+            "&(?:#([xX][0-9A-Fa-f]+|[0-9]+)|([A-Za-z]+));"
+    );
     private static final Pattern CONTRIBUTOR_ALPHANUMERIC_PATTERN = Pattern.compile(".*[\\p{L}\\p{N}].*");
     private static final Pattern CONTRIBUTOR_ALLOWED_CHARACTERS_PATTERN = Pattern.compile(
             "[\\p{L}\\p{M}\\p{N}\\s.'’‘`´&+()\\-·・]+"
@@ -255,7 +259,7 @@ final class PaxsenixLyricsProvider {
 
         String lrc = payload.optString("lrc", "");
         if (!lrc.isEmpty()) {
-            List<LyricsLine> syncedLines = LrcParser.parseSynced(lrc, durationMs);
+            List<LyricsLine> syncedLines = LrcParser.parseSynced(decodeLyricEntities(lrc), durationMs);
             if (!syncedLines.isEmpty()) {
                 return buildVariants(null, syncedLines, toPlainLines(syncedLines), isrc, spotifyTrackId);
             }
@@ -266,7 +270,7 @@ final class PaxsenixLyricsProvider {
         if (plain.isEmpty() && payload.opt("lyrics") instanceof String) {
             plain = payload.optString("lyrics", "");
         }
-        List<LyricsLine> plainLines = LrcParser.parsePlain(plain);
+        List<LyricsLine> plainLines = LrcParser.parsePlain(decodeLyricEntities(plain));
         return plainLines.isEmpty() ? null : buildVariants(null, null, plainLines, isrc, spotifyTrackId);
     }
 
@@ -340,7 +344,7 @@ final class PaxsenixLyricsProvider {
             background = capSyllables(background, end);
             String leadText = joinSyllables(lead);
             if (leadText.isEmpty() && !(source.opt("text") instanceof JSONArray)) {
-                leadText = source.optString("text", "").trim();
+                leadText = decodeLyricEntities(source.optString("text", "")).trim();
             }
             String backgroundText = joinSyllables(background);
             if (leadText.isEmpty() && backgroundText.isEmpty()) continue;
@@ -446,7 +450,7 @@ final class PaxsenixLyricsProvider {
         for (int index = 0; index < items.length(); index++) {
             JSONObject item = items.optJSONObject(index);
             if (item == null) continue;
-            String text = item.optString("text", "");
+            String text = decodeLyricEntities(item.optString("text", ""));
             if (text.isEmpty()) continue;
             JSONObject next = items.optJSONObject(index + 1);
             if (boundaries != null) {
@@ -469,7 +473,9 @@ final class PaxsenixLyricsProvider {
         StringBuilder tokenText = new StringBuilder();
         for (int index = 0; index < items.length(); index++) {
             JSONObject item = items.optJSONObject(index);
-            String compact = normalizeSpacingCharacters(item == null ? "" : item.optString("text", ""));
+            String compact = normalizeSpacingCharacters(
+                    item == null ? "" : decodeLyricEntities(item.optString("text", ""))
+            );
             if (compact.isEmpty()) return null;
             tokenText.append(compact);
         }
@@ -492,10 +498,10 @@ final class PaxsenixLyricsProvider {
         if (next == null || item.optBoolean("part", true) || Character.isWhitespace(text.charAt(text.length() - 1))) {
             return false;
         }
-        String nextText = next.optString("text", "");
+        String nextText = decodeLyricEntities(next.optString("text", ""));
         if (nextText.isEmpty() || Character.isWhitespace(nextText.charAt(0))) return false;
         int first = nextText.codePointAt(0);
-        if (",.;:!?%)]}".indexOf(first) >= 0) return false;
+        if (",.;:!?%)]}'\u2019".indexOf(first) >= 0) return false;
         int last = text.codePointBefore(text.length());
         return "-‐‑‒–—'’".indexOf(last) < 0;
     }
@@ -511,7 +517,9 @@ final class PaxsenixLyricsProvider {
             if (!match.matches()) continue;
             try {
                 long timestamp = Long.parseLong(match.group(1));
-                result.put(timestamp, REFERENCE_TOKEN_PATTERN.matcher(match.group(3)).replaceAll(""));
+                result.put(timestamp, decodeLyricEntities(
+                        REFERENCE_TOKEN_PATTERN.matcher(match.group(3)).replaceAll("")
+                ));
             } catch (NumberFormatException ignored) {
                 // Ignore malformed reference timestamps.
             }
@@ -768,14 +776,14 @@ final class PaxsenixLyricsProvider {
         if (referenceText != null && !referenceText.trim().isEmpty()) return referenceText.trim();
         Object text = line.opt("text");
         if (text instanceof JSONArray) return joinJsonText((JSONArray) text).trim();
-        return text == null ? "" : String.valueOf(text).trim();
+        return text == null ? "" : decodeLyricEntities(String.valueOf(text)).trim();
     }
 
     private static String joinJsonText(JSONArray values) {
         StringBuilder builder = new StringBuilder();
         for (int index = 0; index < values.length(); index++) {
             JSONObject item = values.optJSONObject(index);
-            if (item != null) builder.append(item.optString("text", ""));
+            if (item != null) builder.append(decodeLyricEntities(item.optString("text", "")));
         }
         return builder.toString();
     }
@@ -1033,6 +1041,54 @@ final class PaxsenixLyricsProvider {
 
     private static String decode(String value) {
         return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Decodes exactly one layer of the XML/HTML entities that can occur in
+     * Lyrically lyric text. Unknown entities and ordinary ampersands are kept
+     * verbatim, and replacement text is never scanned a second time.
+     */
+    static String decodeLyricEntities(String value) {
+        if (value == null || value.indexOf('&') < 0) return value == null ? "" : value;
+        Matcher matcher = LYRIC_ENTITY_PATTERN.matcher(value);
+        StringBuffer result = new StringBuffer(value.length());
+        boolean found = false;
+        while (matcher.find()) {
+            String replacement = decodeLyricEntity(matcher.group(1), matcher.group(2));
+            if (replacement == null) replacement = matcher.group();
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+            found = true;
+        }
+        if (!found) return value;
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private static String decodeLyricEntity(String numeric, String named) {
+        if (numeric != null) {
+            try {
+                boolean hexadecimal = numeric.charAt(0) == 'x' || numeric.charAt(0) == 'X';
+                long parsed = Long.parseLong(
+                        hexadecimal ? numeric.substring(1) : numeric,
+                        hexadecimal ? 16 : 10
+                );
+                if (parsed <= 0L || parsed > Character.MAX_CODE_POINT) return null;
+                int codePoint = (int) parsed;
+                if (!Character.isValidCodePoint(codePoint)
+                        || (codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE)) {
+                    return null;
+                }
+                return new String(Character.toChars(codePoint));
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+        if ("amp".equals(named)) return "&";
+        if ("apos".equals(named)) return "'";
+        if ("quot".equals(named)) return "\"";
+        if ("lt".equals(named)) return "<";
+        if ("gt".equals(named)) return ">";
+        return null;
     }
 
     private static long toMilliseconds(Object value, long fallback) {

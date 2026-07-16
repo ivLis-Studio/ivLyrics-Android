@@ -282,5 +282,13 @@ final class LyricsProviderSettings {
             }
             return builder.toString();
         }
+
+        String cacheKeyForProvider(String providerId) {
+            String base = cacheKey();
+            if (PROVIDER_PAXSENIX.equals(normalizeProviderId(providerId))) {
+                return base + "|paxsenix-text:" + PaxsenixLyricsProvider.TEXT_CACHE_REVISION;
+            }
+            return base;
+        }
     }
 }

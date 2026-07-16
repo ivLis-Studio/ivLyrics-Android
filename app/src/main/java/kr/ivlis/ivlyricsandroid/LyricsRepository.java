@@ -275,13 +275,14 @@ final class LyricsRepository {
         cache.clear();
     }
 
-    private boolean isCachedResultReusable(
+    static boolean isCachedResultReusable(
             LyricsResult result,
             LyricsProviderSettings.Snapshot settings
     ) {
         if (result == null || result.lines.isEmpty()) return false;
         if ("manual".equals(result.selectionPolicyKey)) return true;
-        return settings != null && settings.cacheKey().equals(result.selectionPolicyKey);
+        return settings != null
+                && settings.cacheKeyForProvider(result.providerId).equals(result.selectionPolicyKey);
     }
 
     private boolean shouldRevalidateCachedResult(
@@ -706,7 +707,10 @@ final class LyricsRepository {
                             !cachedBase.contributors.isEmpty()
                     );
                     return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
-                            .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+                            .withSelection(
+                                    cachedBase.providerId,
+                                    providerSettings.cacheKeyForProvider(cachedBase.providerId)
+                            );
                 }
                 log.write("cached provider " + cachedBase.providerId
                         + " replaced by OpenDB sync-data provider " + preferredSyncProvider);
@@ -723,7 +727,10 @@ final class LyricsRepository {
                                 !cachedBase.contributors.isEmpty()
                         );
                 return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
-                        .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+                        .withSelection(
+                                cachedBase.providerId,
+                                providerSettings.cacheKeyForProvider(cachedBase.providerId)
+                        );
             }
             if (cachedBase.karaoke
                     && !cachedBase.contributors.isEmpty()
@@ -734,7 +741,10 @@ final class LyricsRepository {
                     log.write("sync-data contributors refreshed for cached lyrics: count="
                             + currentSyncData.contributors.size());
                     return withContributors(cachedBase, currentSyncData.contributors)
-                            .withSelection(cachedBase.providerId, providerSettings.cacheKey());
+                            .withSelection(
+                                    cachedBase.providerId,
+                                    providerSettings.cacheKeyForProvider(cachedBase.providerId)
+                            );
                 }
                 log.write("sync-data contributor refresh failed; using anonymous contributor fallback");
             }
@@ -768,7 +778,10 @@ final class LyricsRepository {
             LyricsResult selected = resultForType(candidate, attempt.type);
             if (selected != null) {
                 log.write("provider selected: " + config.provider.id + " / type=" + attempt.type);
-                return selected.withSelection(config.provider.id, settings.cacheKey());
+                return selected.withSelection(
+                        config.provider.id,
+                        settings.cacheKeyForProvider(config.provider.id)
+                );
             }
         }
         return LyricsResult.empty(ui("repo.lyrics_not_found"));
