@@ -2353,9 +2353,20 @@ public final class LyricsView extends View {
     }
 
     private float visibleWidth(List<TextSegment> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return 0f;
+        }
+        int start = 0;
+        int end = segments.size();
+        while (start < end && isWhitespace(segments.get(start).text)) {
+            start++;
+        }
+        while (end > start && isWhitespace(segments.get(end - 1).text)) {
+            end--;
+        }
         float width = 0f;
-        for (TextSegment segment : trimWhitespaceSegments(segments)) {
-            width += segment.width;
+        for (int index = start; index < end; index++) {
+            width += segments.get(index).width;
         }
         return width;
     }
