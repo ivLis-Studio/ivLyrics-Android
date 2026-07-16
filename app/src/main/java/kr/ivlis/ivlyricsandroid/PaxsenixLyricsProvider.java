@@ -45,6 +45,13 @@ final class PaxsenixLyricsProvider {
             "\\s+-\\s+(?:remaster(?:ed)?|live|version|edit|mix).*$",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern CONTRIBUTOR_ALPHANUMERIC_PATTERN = Pattern.compile(".*[\\p{L}\\p{N}].*");
+    private static final Pattern CONTRIBUTOR_ALLOWED_CHARACTERS_PATTERN = Pattern.compile(
+            "[\\p{L}\\p{M}\\p{N}\\s.'’‘`´&+()\\-·・]+"
+    );
+    private static final Pattern CONTRIBUTOR_WORD_PATTERN = Pattern.compile(
+            "[\\p{L}\\p{M}\\p{N}]+(?:[.'’‘`´-][\\p{L}\\p{M}\\p{N}]+)*"
+    );
 
     private static final SpeakerPresentation[] SPEAKER_PALETTE = new SpeakerPresentation[]{
             new SpeakerPresentation("CUSTOM", "#a8ccff", "MALE 1"),
@@ -644,15 +651,13 @@ final class PaxsenixLyricsProvider {
     private static boolean isContributorNameSegment(String text, boolean requireEveryWord) {
         String normalized = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFKC).trim();
         if (normalized.isEmpty() || normalized.length() > 64
-                || !normalized.matches(".*[\\p{L}\\p{N}].*")
-                || !normalized.matches("[\\p{L}\\p{M}\\p{N}\\s.'’‘`´&+()\\-·・]+")) {
+                || !CONTRIBUTOR_ALPHANUMERIC_PATTERN.matcher(normalized).matches()
+                || !CONTRIBUTOR_ALLOWED_CHARACTERS_PATTERN.matcher(normalized).matches()) {
             return false;
         }
         if (containsEastAsianScript(normalized)) return true;
 
-        Matcher words = Pattern.compile(
-                "[\\p{L}\\p{M}\\p{N}]+(?:[.'’‘`´-][\\p{L}\\p{M}\\p{N}]+)*"
-        ).matcher(normalized);
+        Matcher words = CONTRIBUTOR_WORD_PATTERN.matcher(normalized);
         int wordCount = 0;
         boolean hasSignificantWord = false;
         boolean hasNameWord = false;
