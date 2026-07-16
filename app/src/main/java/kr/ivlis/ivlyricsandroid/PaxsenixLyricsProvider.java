@@ -40,6 +40,8 @@ final class PaxsenixLyricsProvider {
     private static final int REQUEST_TIMEOUT_MS = 9_000;
     private static final Pattern REFERENCE_LINE_PATTERN = Pattern.compile("^\\[(\\d+),(\\d+)](.*)$");
     private static final Pattern REFERENCE_TOKEN_PATTERN = Pattern.compile("<\\d+,\\d+,\\d+>");
+    private static final Pattern REFERENCE_WHITESPACE_BOUNDARY_PATTERN = Pattern.compile("(?<=\\s)|(?=\\s)");
+    private static final Pattern REFERENCE_LINE_SPLIT_PATTERN = Pattern.compile("\\r?\\n");
     private static final Pattern BRACKETED_TITLE_PART_PATTERN = Pattern.compile("\\([^)]*\\)|\\[[^]]*]");
     private static final Pattern TITLE_SUFFIX_PATTERN = Pattern.compile(
             "\\s+-\\s+(?:remaster(?:ed)?|live|version|edit|mix).*$",
@@ -475,7 +477,7 @@ final class PaxsenixLyricsProvider {
 
         Set<Integer> boundaries = new HashSet<>();
         int count = 0;
-        String[] segments = referenceText.split("(?<=\\s)|(?=\\s)");
+        String[] segments = REFERENCE_WHITESPACE_BOUNDARY_PATTERN.split(referenceText);
         for (String segment : segments) {
             if (segment.trim().isEmpty()) {
                 if (count > 0) boundaries.add(count);
@@ -504,7 +506,7 @@ final class PaxsenixLyricsProvider {
         if (rawData == null) rawData = payload.optJSONObject("rawData");
         String rawText = rawData == null ? "" : rawData.optString("lyrics_text", "");
         Map<Long, String> result = new LinkedHashMap<>();
-        for (String line : rawText.split("\\r?\\n")) {
+        for (String line : REFERENCE_LINE_SPLIT_PATTERN.split(rawText)) {
             Matcher match = REFERENCE_LINE_PATTERN.matcher(line);
             if (!match.matches()) continue;
             try {
@@ -973,10 +975,10 @@ final class PaxsenixLyricsProvider {
     }
 
     private static String normalizeSpacingCharacters(String value) {
-        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC)
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC)
                 .replace('“', '"').replace('”', '"').replace('„', '"').replace('‟', '"')
-                .replace('‘', '\'').replace('’', '\'').replace('‚', '\'').replace('‛', '\'')
-                .replaceAll("\\s+", "");
+                .replace('‘', '\'').replace('’', '\'').replace('‚', '\'').replace('‛', '\'');
+        return COMPARABLE_WHITESPACE_PATTERN.matcher(normalized).replaceAll("");
     }
 
     private static String searchTerm(TrackSnapshot track) {
