@@ -45,6 +45,12 @@ final class PaxsenixLyricsProvider {
             "\\s+-\\s+(?:remaster(?:ed)?|live|version|edit|mix).*$",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern COMPARABLE_APOSTROPHE_PATTERN = Pattern.compile("[’‘`´]");
+    private static final Pattern COMPARABLE_FEAT_PATTERN = Pattern.compile(
+            "(?i)\\b(feat(?:uring)?|ft)\\.?\\b"
+    );
+    private static final Pattern COMPARABLE_NON_ALPHANUMERIC_PATTERN = Pattern.compile("[^\\p{L}\\p{N}]+");
+    private static final Pattern COMPARABLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final Pattern CONTRIBUTOR_ALPHANUMERIC_PATTERN = Pattern.compile(".*[\\p{L}\\p{N}].*");
     private static final Pattern CONTRIBUTOR_ALLOWED_CHARACTERS_PATTERN = Pattern.compile(
             "[\\p{L}\\p{M}\\p{N}\\s.'’‘`´&+()\\-·・]+"
@@ -949,13 +955,12 @@ final class PaxsenixLyricsProvider {
     }
 
     private static String normalizeComparable(String value) {
-        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[’‘`´]", "'")
-                .replaceAll("(?i)\\b(feat(?:uring)?|ft)\\.?\\b", " ")
-                .replaceAll("[^\\p{L}\\p{N}]+", " ")
-                .trim()
-                .replaceAll("\\s+", " ");
+        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT);
+        normalized = COMPARABLE_APOSTROPHE_PATTERN.matcher(normalized).replaceAll("'");
+        normalized = COMPARABLE_FEAT_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = COMPARABLE_NON_ALPHANUMERIC_PATTERN.matcher(normalized).replaceAll(" ").trim();
+        return COMPARABLE_WHITESPACE_PATTERN.matcher(normalized).replaceAll(" ");
     }
 
     private static String normalizeTitleCore(String value) {
