@@ -2797,7 +2797,10 @@ final class LyricsRepository {
                 : (!"plain".equals(preferredSource) && candidate.plainLyrics == null && candidate.syncedLyrics != null);
         String text = useSynced
                 ? stripLrcTimestamps(candidate.syncedLyrics)
-                : firstNonEmpty(candidate.plainLyrics, stripLrcTimestamps(candidate.syncedLyrics));
+                : firstNonEmpty(
+                        candidate.plainLyrics,
+                        stripLrcTimestampsIfNeeded(candidate.plainLyrics, candidate.syncedLyrics)
+                );
         List<String> lines = comparableLyricsLines(text, false, normalizeParentheticalLines);
         return joinLinesForFingerprint(lines);
     }
@@ -2960,6 +2963,13 @@ final class LyricsRepository {
             return "";
         }
         return text.replaceAll("(?m)^\\[\\d+:\\d+(?:[.,]\\d+)?\\]\\s*", "").trim();
+    }
+
+    private static String stripLrcTimestampsIfNeeded(String plainLyrics, String syncedLyrics) {
+        if (plainLyrics != null && !plainLyrics.trim().isEmpty()) {
+            return "";
+        }
+        return stripLrcTimestamps(syncedLyrics);
     }
 
     private static String joinLinesForFingerprint(List<String> lines) {
