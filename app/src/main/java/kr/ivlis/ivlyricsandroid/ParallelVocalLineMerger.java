@@ -32,9 +32,13 @@ final class ParallelVocalLineMerger {
     }
 
     static long overlapMs(SourceLine left, SourceLine right) {
+        return overlapMs(effectiveParts(left), effectiveParts(right));
+    }
+
+    private static long overlapMs(List<PartEntry> leftParts, List<PartEntry> rightParts) {
         long overlap = 0L;
-        for (PartEntry leftPart : effectiveParts(left)) {
-            for (PartEntry rightPart : effectiveParts(right)) {
+        for (PartEntry leftPart : leftParts) {
+            for (PartEntry rightPart : rightParts) {
                 overlap = Math.max(overlap, overlapMs(leftPart.part, rightPart.part));
             }
         }
@@ -64,15 +68,30 @@ final class ParallelVocalLineMerger {
         int count = lines.size();
         int[] parents = new int[count];
         boolean[] seeds = new boolean[count];
+        List<List<PartEntry>> preparedParts = new ArrayList<>(count);
+        long[] minimumPartStarts = new long[count];
+        long[] maximumPartEnds = new long[count];
         for (int index = 0; index < count; index++) parents[index] = index;
+        for (int index = 0; index < count; index++) {
+            SourceLine source = lines.get(index);
+            List<PartEntry> parts = effectiveParts(source);
+            preparedParts.add(parts);
+            long start = Long.MAX_VALUE;
+            long end = 0L;
+            for (PartEntry entry : parts) {
+                start = Math.min(start, entry.part.startTimeMs);
+                end = Math.max(end, entry.part.endTimeMs);
+            }
+            minimumPartStarts[index] = start == Long.MAX_VALUE ? source.line.startTimeMs : start;
+            maximumPartEnds[index] = end == 0L ? source.line.endTimeMs : end;
+        }
 
         for (int leftIndex = 0; leftIndex < count; leftIndex++) {
-            SourceLine left = lines.get(leftIndex);
-            long leftEnd = maximumPartEnd(left);
+            List<PartEntry> leftParts = preparedParts.get(leftIndex);
+            long leftEnd = maximumPartEnds[leftIndex];
             for (int rightIndex = leftIndex + 1; rightIndex < count; rightIndex++) {
-                SourceLine right = lines.get(rightIndex);
-                if (minimumPartStart(right) >= leftEnd) break;
-                long overlap = overlapMs(left, right);
+                if (minimumPartStarts[rightIndex] >= leftEnd) break;
+                long overlap = overlapMs(leftParts, preparedParts.get(rightIndex));
                 if (overlap < MIN_COMPONENT_OVERLAP_MS) continue;
                 union(parents, leftIndex, rightIndex);
                 seeds[leftIndex] = true;
