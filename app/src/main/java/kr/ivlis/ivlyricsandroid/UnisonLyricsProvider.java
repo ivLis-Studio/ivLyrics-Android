@@ -43,7 +43,6 @@ final class UnisonLyricsProvider {
     private static final Pattern LRC_METADATA_PATTERN = Pattern.compile("^\\[(?:ar|al|ti|by|re|ve|length):", Pattern.CASE_INSENSITIVE);
     private static final Pattern TTML_OFFSET_TIME_PATTERN =
             Pattern.compile("^([+-]?[\\d.]+)(ms|h|m|s)$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern INLINE_WHITESPACE_PATTERN = Pattern.compile("[\\r\\n\\t\\f\\u000B ]+");
 
     private static final SpeakerPresentation[] SPEAKER_PALETTE = new SpeakerPresentation[]{
             new SpeakerPresentation("CUSTOM", "#a8ccff", "MALE 1"),
@@ -791,7 +790,50 @@ final class UnisonLyricsProvider {
     }
 
     private static String normalizeInlineText(String value) {
-        return INLINE_WHITESPACE_PATTERN.matcher(value == null ? "" : value).replaceAll(" ");
+        String input = value == null ? "" : value;
+        int firstChange = -1;
+        for (int index = 0; index < input.length(); index++) {
+            char character = input.charAt(index);
+            if (!isInlineWhitespace(character)) {
+                continue;
+            }
+            int end = index + 1;
+            while (end < input.length() && isInlineWhitespace(input.charAt(end))) {
+                end++;
+            }
+            if (character != ' ' || end > index + 1) {
+                firstChange = index;
+                break;
+            }
+            index = end - 1;
+        }
+        if (firstChange < 0) {
+            return input;
+        }
+
+        StringBuilder normalized = new StringBuilder(input.length());
+        normalized.append(input, 0, firstChange);
+        for (int index = firstChange; index < input.length(); index++) {
+            char character = input.charAt(index);
+            if (!isInlineWhitespace(character)) {
+                normalized.append(character);
+                continue;
+            }
+            normalized.append(' ');
+            while (index + 1 < input.length() && isInlineWhitespace(input.charAt(index + 1))) {
+                index++;
+            }
+        }
+        return normalized.toString();
+    }
+
+    private static boolean isInlineWhitespace(char character) {
+        return character == ' '
+                || character == '\r'
+                || character == '\n'
+                || character == '\t'
+                || character == '\f'
+                || character == '\u000B';
     }
 
     private static String normalizeDisplayText(String value) {
