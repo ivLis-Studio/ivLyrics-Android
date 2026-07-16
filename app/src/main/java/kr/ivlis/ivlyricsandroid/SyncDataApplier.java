@@ -129,7 +129,7 @@ final class SyncDataApplier {
             double avgCharDuration = Math.max(0.2, lineDurationSec / Math.max(1, line.chars.size()));
             double lastCharMaxDuration = Math.max(0.5, Math.min(1.5, avgCharDuration * 2.5));
 
-            TimedSyllables timedLine = buildLineSyllables(line, lineText, lineEndMs, lastCharMaxDuration);
+            TimedSyllables timedLine = buildLineSyllables(line, fullChars, lineEndMs, lastCharMaxDuration);
             if (timedLine.syllables.isEmpty()) {
                 continue;
             }
@@ -196,12 +196,11 @@ final class SyncDataApplier {
 
     private static TimedSyllables buildLineSyllables(
             SyncLine line,
-            String lineText,
+            List<String> fullChars,
             long lineEndMs,
             double lastCharMaxDuration
     ) {
-        List<String> chars = splitChars(lineText);
-        int charCount = Math.min(line.chars.size(), chars.size());
+        int charCount = Math.min(line.chars.size(), line.end - line.start + 1);
         if (charCount == 0) {
             return new TimedSyllables(Collections.emptyList(), lineEndMs);
         }
@@ -218,7 +217,11 @@ final class SyncDataApplier {
                 charEndMs = Math.min(lineEndMs, naturalEndMs);
                 adjustedEndMs = charEndMs;
             }
-            syllables.add(new LyricsLine.Syllable(chars.get(charIndex), charStartMs, charEndMs));
+            syllables.add(new LyricsLine.Syllable(
+                    fullChars.get(line.start + charIndex),
+                    charStartMs,
+                    charEndMs
+            ));
         }
         return new TimedSyllables(syllables, adjustedEndMs);
     }
