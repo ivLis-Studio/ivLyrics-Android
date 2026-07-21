@@ -55,6 +55,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityManager;
+import android.view.animation.DecelerateInterpolator;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -202,6 +203,7 @@ public final class MainActivity extends Activity implements
     private View inAppBrowserHandleView;
     private FrameLayout settingsPanel;
     private FrameLayout pictureInPicturePage;
+    private VinylPlayerModeView vinylPlayerModeView;
     private ScaledPictureInPictureFrameLayout pictureInPictureStage;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
@@ -446,6 +448,7 @@ public final class MainActivity extends Activity implements
     private boolean youtubeBackgroundAttachedToPictureInPicture;
     private boolean pictureInPicturePinchTracking;
     private boolean pictureInPicturePinchTriggered;
+    private boolean vinylModeVisible;
     private float pictureInPicturePinchStartDistance;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
@@ -707,6 +710,9 @@ public final class MainActivity extends Activity implements
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        if (vinylModeVisible) {
+            return super.dispatchTouchEvent(event);
+        }
         if (handlePictureInPicturePinch(event)) {
             return true;
         }
@@ -866,6 +872,9 @@ public final class MainActivity extends Activity implements
         unregisterAudioDeviceCallback();
         destroyInAppBrowserWebView();
         destroyYouTubeBackgroundView();
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.release();
+        }
         seekExecutor.shutdownNow();
         updateExecutor.shutdownNow();
         aiModelExecutor.shutdownNow();
@@ -884,6 +893,11 @@ public final class MainActivity extends Activity implements
         if (tmiDialog != null && tmiDialog.isShowing()) {
             lastBackPressElapsedMs = 0L;
             dismissTmiDialog();
+            return;
+        }
+        if (vinylModeVisible) {
+            lastBackPressElapsedMs = 0L;
+            showVinylMode(false);
             return;
         }
         if (isLyricsMetaMenuPopupVisible()) {
@@ -1142,6 +1156,12 @@ public final class MainActivity extends Activity implements
         spotifySetupRequired = false;
 
         if (snapshot == null || !snapshot.hasUsableMetadata()) {
+            if (vinylPlayerModeView != null) {
+                vinylPlayerModeView.setTrack(null, null, false);
+            }
+            if (vinylModeVisible) {
+                showVinylMode(false);
+            }
             titleView.setText("ivLyrics");
             artistView.setText(ui("status.waiting_spotify"));
             applyNowPlayingTextColors();
@@ -1188,6 +1208,9 @@ public final class MainActivity extends Activity implements
 
         String nextKey = snapshot.stableKey();
         boolean trackChanged = !nextKey.equals(currentLyricsKey);
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.setTrack(snapshot, snapshot.artwork, trackChanged);
+        }
         if (trackChanged) {
             currentArtworkFromSpotify = false;
             translatedTrackTitle = "";
@@ -1204,6 +1227,9 @@ public final class MainActivity extends Activity implements
             updateArtwork(snapshot.artwork, artworkKey);
         }
         long playerPosition = currentPlaybackPosition(snapshot);
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.setPlayback(playerPosition, snapshot.durationMs, snapshot.playing);
+        }
         updateProgressViews(playerPosition, snapshot.durationMs);
         setLyricsPlaybackPositionOnViews(lyricsPlaybackPosition(playerPosition, snapshot.durationMs));
         setLyricsTrackDurationOnViews(snapshot.durationMs);
@@ -1726,6 +1752,17 @@ public final class MainActivity extends Activity implements
         );
         root.addView(lyricsPage, lyricsPageParams);
 
+        vinylPlayerModeView = buildVinylPlayerModeView();
+        root.addView(vinylPlayerModeView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        if (vinylModeVisible) {
+            if (mainPage != null) mainPage.setVisibility(View.INVISIBLE);
+            if (lyricsPage != null) lyricsPage.setVisibility(View.INVISIBLE);
+            vinylPlayerModeView.show(false);
+        }
+
         debugPanel = buildDebugPanel();
         root.addView(debugPanel, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1758,6 +1795,131 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return root;
+    }
+
+    private VinylPlayerModeView buildVinylPlayerModeView() {
+        VinylPlayerModeView view = new VinylPlayerModeView(this);
+        view.setUiText(
+                ui("vinyl.mode"),
+                ui("vinyl.close_hint"),
+                ui("vinyl.record_hint"),
+                ui("vinyl.tonearm_hint"),
+                ui("vinyl.tmi_hint")
+        );
+        view.setListener(new VinylPlayerModeView.Listener() {
+            @Override
+            public void onClose() {
+                showVinylMode(false);
+            }
+
+            @Override
+            public void onTogglePlayback() {
+                runTransportCommand(() -> NowPlayingService.togglePlayback());
+            }
+
+            @Override
+            public void onSeek(long positionMs) {
+                seekPlayerToPosition(positionMs);
+            }
+
+            @Override
+            public void onStopPlayback() {
+                if (currentTrack != null && currentTrack.playing) {
+                    runTransportCommand(() -> NowPlayingService.togglePlayback());
+                }
+            }
+
+            @Override
+            public void onShowTmi() {
+                showTmiForCurrentTrack(false);
+            }
+        });
+        if (aiLyricsSettings != null) {
+            AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
+            view.lyricView().setKaraokeBounceEffectEnabled(settings.karaokeBounceEffectEnabled);
+            view.lyricView().setKaraokeDataAsLineSynced(settings.karaokeDataAsLineSynced);
+            view.lyricView().setTypographySettings(settings.typography);
+        }
+        view.setLoadingText(vinylLoadingText(), false);
+        if (currentTrack != null && currentTrack.hasUsableMetadata()) {
+            view.setTrack(currentTrack, currentArtworkBitmap, false);
+            view.setPlayback(
+                    currentPlaybackPosition(currentTrack),
+                    currentTrack.durationMs,
+                    currentTrack.playing
+            );
+        }
+        return view;
+    }
+
+    private void showVinylMode(boolean show) {
+        if (show && (currentTrack == null || !currentTrack.hasUsableMetadata())) {
+            Toast.makeText(this, ui("status.waiting_current_track"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (vinylPlayerModeView == null || show == vinylModeVisible) {
+            return;
+        }
+        lastBackPressElapsedMs = 0L;
+        vinylModeVisible = show;
+        if (show) {
+            cancelArtworkLongPress();
+            vinylPlayerModeView.setTrack(currentTrack, currentArtworkBitmap, false);
+            vinylPlayerModeView.setPlayback(
+                    currentPlaybackPosition(currentTrack),
+                    currentTrack.durationMs,
+                    currentTrack.playing
+            );
+            updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
+            vinylPlayerModeView.show(true);
+            fadeNormalPlayer(false);
+            return;
+        }
+        fadeNormalPlayer(true);
+        vinylPlayerModeView.hide(true, this::requestDefaultRemoteFocusAfterVinylClose);
+    }
+
+    private void fadeNormalPlayer(boolean show) {
+        if (mainPage != null) {
+            mainPage.animate().cancel();
+            if (show) {
+                mainPage.setVisibility(View.VISIBLE);
+                mainPage.setAlpha(0f);
+                mainPage.setScaleX(0.985f);
+                mainPage.setScaleY(0.985f);
+                mainPage.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(360L)
+                        .setInterpolator(new DecelerateInterpolator(1.45f))
+                        .start();
+            } else {
+                mainPage.animate()
+                        .alpha(0f)
+                        .scaleX(0.985f)
+                        .scaleY(0.985f)
+                        .setDuration(260L)
+                        .withEndAction(() -> {
+                            if (vinylModeVisible && mainPage != null) {
+                                mainPage.setVisibility(View.INVISIBLE);
+                            }
+                        })
+                        .start();
+            }
+        }
+        if (lyricsPage != null && vinylModeVisible) {
+            lyricsPage.setVisibility(View.INVISIBLE);
+        }
+    }
+
+    private void requestDefaultRemoteFocusAfterVinylClose() {
+        if (mainPage != null) {
+            mainPage.setAlpha(1f);
+            mainPage.setScaleX(1f);
+            mainPage.setScaleY(1f);
+        }
+        requestDefaultRemoteFocus(false);
     }
 
     private YouTubeBackgroundView reusableYouTubeBackgroundView() {
@@ -4780,6 +4942,9 @@ public final class MainActivity extends Activity implements
         destroyInAppBrowserWebView();
         inAppBrowserVisible = false;
         inAppBrowserInitialUrl = "";
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.release();
+        }
         setContentView(buildContentView());
         activeSettingsTab = normalizeSettingsTab(previousSettingsTab);
         switchSettingsTab(activeSettingsTab);
@@ -4890,6 +5055,13 @@ public final class MainActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+        if (vinylModeVisible) {
+            mainPage.setVisibility(View.INVISIBLE);
+            lyricsPage.setVisibility(View.INVISIBLE);
+            if (vinylPlayerModeView != null) {
+                vinylPlayerModeView.bringToFront();
+            }
+        }
     }
 
     private void restoreNowPlayingViewsAfterUiLanguageChange() {
@@ -7192,6 +7364,9 @@ public final class MainActivity extends Activity implements
         applyTypographyToTextView(lyricsArtistView, typography, AiLyricsSettings.TYPO_LYRICS_HEADER_ARTIST, 14f);
         if (lyricPreviewView != null) {
             lyricPreviewView.setTypographySettings(typography);
+        }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setTypographySettings(typography);
         }
         if (lyricsView != null) {
             lyricsView.setTypographySettings(typography);
@@ -9583,6 +9758,15 @@ public final class MainActivity extends Activity implements
         close.setOnClickListener(view -> dismissTmiDialog());
         header.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
+        TextView disclaimer = label(
+                ui("tmi.disclaimer"),
+                11.5f,
+                Color.argb(154, 255, 255, 255),
+                AppFonts.regular(this)
+        );
+        disclaimer.setLineSpacing(0f, 1.12f);
+        shell.addView(disclaimer, topMargin(matchWrap(), dp(10)));
+
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
         scrollView.setClipToPadding(false);
@@ -10317,6 +10501,27 @@ public final class MainActivity extends Activity implements
             pictureInPictureLyricsView.setSupplementLoading(pronunciation, translation);
         }
         updateLyricsSupplementLoadingIndicator(pronunciation || translation || furigana);
+        updateVinylLoadingIndicator(true);
+    }
+
+    private String vinylLoadingText() {
+        if (lyricsSupplementTranslationLoading) {
+            return ui("loading.translation");
+        }
+        if (lyricsSupplementPronunciationLoading || lyricsSupplementFuriganaLoading) {
+            return ui("loading.pronunciation");
+        }
+        String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
+        if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
+            return ui("status.lyrics_loading");
+        }
+        return "";
+    }
+
+    private void updateVinylLoadingIndicator(boolean animate) {
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.setLoadingText(vinylLoadingText(), animate);
+        }
     }
 
     private void updateLyricsSupplementLoadingIndicator(boolean visible) {
@@ -10835,6 +11040,9 @@ public final class MainActivity extends Activity implements
         if (lyricPreviewView != null) {
             lyricPreviewView.setKaraokeBounceEffectEnabled(enabled);
         }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setKaraokeBounceEffectEnabled(enabled);
+        }
     }
 
     private void setKaraokeDataAsLineSyncedOnViews(boolean enabled) {
@@ -10849,6 +11057,9 @@ public final class MainActivity extends Activity implements
         }
         if (lyricPreviewView != null) {
             lyricPreviewView.setKaraokeDataAsLineSynced(enabled);
+        }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setKaraokeDataAsLineSynced(enabled);
         }
     }
 
@@ -10981,6 +11192,9 @@ public final class MainActivity extends Activity implements
             return;
         }
         long position = currentPlaybackPosition(snapshot);
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.setPlayback(position, snapshot.durationMs, snapshot.playing);
+        }
         long lyricsPosition = lyricsPlaybackPosition(position, snapshot.durationMs);
         setLyricsPlaybackPositionOnActiveView(lyricsPosition);
         if (playerProgressView != null && playerProgressView.isShown()) {
@@ -11017,9 +11231,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateLyricPreview(long positionMs) {
-        if (lyricPreviewView == null) {
+        if (lyricPreviewView == null && vinylPlayerModeView == null) {
             return;
         }
+        updateVinylLoadingIndicator(true);
         int previewItems = aiLyricsSettings == null
                 ? AiLyricsSettings.PREVIEW_ITEM_ORIGINAL
                 : aiLyricsSettings.snapshot().previewItems;
@@ -11029,7 +11244,7 @@ public final class MainActivity extends Activity implements
                 lyricPreviewContainer.setVisibility(View.GONE);
             }
             resetEmptyLyricsPreviewTimer();
-            lyricPreviewView.clear();
+            clearLyricPreviewViews();
             return;
         }
         if (lyricPreviewContainer != null) {
@@ -11040,7 +11255,7 @@ public final class MainActivity extends Activity implements
             String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
             boolean loading = isLoadingLyricsPreview(detail);
             if (currentLyricsResult != null && !loading && shouldHideEmptyLyricsPreview(detail)) {
-                lyricPreviewView.clear();
+                clearLyricPreviewViews();
                 return;
             }
             if (loading || currentLyricsResult == null) {
@@ -11048,7 +11263,7 @@ public final class MainActivity extends Activity implements
             }
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(emptyPreviewLine(detail));
-            lyricPreviewView.setPreview(rows, positionMs, 0L, 0L, loading);
+            setLyricPreviewOnViews(rows, positionMs, 0L, 0L, loading);
             return;
         }
         resetEmptyLyricsPreviewTimer();
@@ -11057,14 +11272,14 @@ public final class MainActivity extends Activity implements
             clearPreviewRowsCache();
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(new MainLyricPreviewView.PreviewLine(ui("status.lyrics_waiting"), true));
-            lyricPreviewView.setPreview(rows, positionMs, 0L, 0L, false);
+            setLyricPreviewOnViews(rows, positionMs, 0L, 0L, false);
             return;
         }
         if (entry.isInterlude()) {
             clearPreviewRowsCache();
             List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
             rows.add(MainLyricPreviewView.PreviewLine.interlude(interludePreviewLabel(entry.interludeKind)));
-            lyricPreviewView.setPreview(
+            setLyricPreviewOnViews(
                     rows,
                     positionMs,
                     entry.startTimeMs,
@@ -11075,13 +11290,37 @@ public final class MainActivity extends Activity implements
         }
         LyricsLine line = entry.line;
         List<MainLyricPreviewView.PreviewLine> rows = previewLines(line, previewItems);
-        lyricPreviewView.setPreview(
+        setLyricPreviewOnViews(
                 rows,
                 positionMs,
                 line.startTimeMs,
                 line.endTimeMs,
                 currentTrack != null && currentTrack.playing
         );
+    }
+
+    private void clearLyricPreviewViews() {
+        if (lyricPreviewView != null) {
+            lyricPreviewView.clear();
+        }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().clear();
+        }
+    }
+
+    private void setLyricPreviewOnViews(
+            List<MainLyricPreviewView.PreviewLine> rows,
+            long positionMs,
+            long lineStartMs,
+            long lineEndMs,
+            boolean playing
+    ) {
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setPreview(rows, positionMs, lineStartMs, lineEndMs, playing);
+        }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setPreview(rows, positionMs, lineStartMs, lineEndMs, playing);
+        }
     }
 
     private MainLyricPreviewView.PreviewLine emptyPreviewLine(String detail) {
@@ -11128,7 +11367,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void clearExpiredEmptyLyricsPreview() {
-        if (lyricPreviewView == null || emptyLyricsPreviewKey.isEmpty()) {
+        if ((lyricPreviewView == null && vinylPlayerModeView == null) || emptyLyricsPreviewKey.isEmpty()) {
             return;
         }
         if (currentLyricsResult == null || !currentLyricsResult.lines.isEmpty()) {
@@ -11140,7 +11379,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         if (SystemClock.uptimeMillis() - emptyLyricsPreviewShownAtMs >= EMPTY_LYRICS_PREVIEW_VISIBLE_MS) {
-            lyricPreviewView.clear();
+            clearLyricPreviewViews();
         }
     }
 
@@ -12640,6 +12879,8 @@ public final class MainActivity extends Activity implements
         makeRemoteFocusable(view);
         view.setClickable(true);
         view.setLongClickable(true);
+        view.setContentDescription(ui("vinyl.open_hint") + ". " + ui("vinyl.tmi_hint"));
+        view.setOnClickListener(target -> showVinylMode(true));
         view.setOnTouchListener((target, event) -> {
             if (artworkVelocityTracker != null) {
                 artworkVelocityTracker.addMovement(event);
@@ -12685,6 +12926,7 @@ public final class MainActivity extends Activity implements
                         return true;
                     }
                     float dx = event.getRawX() - artworkSwipeStartX;
+                    float dy = event.getRawY() - artworkSwipeStartY;
                     float velocityX = artworkVelocityX();
                     boolean shouldSwitch = artworkSwipeDragging
                             && (Math.abs(dx) > target.getWidth() * 0.18f || Math.abs(velocityX) > dp(900));
@@ -12692,6 +12934,8 @@ public final class MainActivity extends Activity implements
                         runTransportCommand(dx < 0f
                                 ? () -> NowPlayingService.skipToNext()
                                 : () -> NowPlayingService.skipToPrevious());
+                    } else if (!artworkSwipeDragging && Math.hypot(dx, dy) <= dp(12)) {
+                        target.performClick();
                     }
                     settleArtworkSwipe(target);
                     recycleArtworkVelocityTracker();
@@ -12968,6 +13212,9 @@ public final class MainActivity extends Activity implements
 
     private void updateArtwork(Bitmap artwork, String artworkKey) {
         currentArtworkBitmap = artwork;
+        if (vinylPlayerModeView != null && currentTrack != null) {
+            vinylPlayerModeView.setArtwork(currentTrack.stableKey(), artwork);
+        }
         if (backgroundView != null) {
             backgroundView.setArtwork(artwork, artworkKey);
         }

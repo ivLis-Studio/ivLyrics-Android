@@ -123,6 +123,7 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         languages.put("cs", csStrings());
+        addVinylStrings(languages);
         addCreatorPrivacyStrings(languages);
         addLyricsProviderSettingsStrings(languages);
         addPaxsenixProviderStrings(languages);
@@ -712,6 +713,179 @@ final class AppI18n {
             }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
+    }
+
+    private static void addVinylStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            String[] values = vinylStrings(language.code);
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] vinylStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return vinylStringValues(
+                        "LP 모드", "탭하여 LP 모드 열기", "앨범을 탭하여 돌아가기",
+                        "LP를 탭하여 재생 또는 일시정지", "톤암을 드래그하여 재생 위치 이동",
+                        "앨범을 길게 눌러 TMI 열기", "AI로 생성된 TMI는 정확하지 않을 수 있습니다."
+                );
+            case "zh-CN":
+                return vinylStringValues(
+                        "黑胶模式", "轻点打开黑胶模式", "轻点封面返回",
+                        "轻点唱片播放或暂停", "拖动唱臂调整播放位置",
+                        "长按封面打开 TMI", "AI 生成的 TMI 可能不完全准确。"
+                );
+            case "zh-TW":
+                return vinylStringValues(
+                        "黑膠模式", "點一下開啟黑膠模式", "點一下封面返回",
+                        "點一下唱片播放或暫停", "拖曳唱臂調整播放位置",
+                        "長按封面開啟 TMI", "AI 產生的 TMI 可能不完全準確。"
+                );
+            case "ja":
+                return vinylStringValues(
+                        "LP モード", "タップして LP モードを開く", "ジャケットをタップして戻る",
+                        "レコードをタップして再生または一時停止", "トーンアームをドラッグして再生位置を変更",
+                        "ジャケットを長押しして TMI を開く", "AI が生成した TMI は正確でない場合があります。"
+                );
+            case "hi":
+                return vinylStringValues(
+                        "विनाइल मोड", "विनाइल मोड खोलने के लिए टैप करें", "वापस जाने के लिए एल्बम कवर पर टैप करें",
+                        "चलाने या रोकने के लिए रिकॉर्ड पर टैप करें", "प्लेबैक की स्थिति बदलने के लिए टोनआर्म खींचें",
+                        "TMI खोलने के लिए एल्बम कवर को देर तक दबाएँ", "AI से बनाया गया TMI हमेशा सटीक नहीं हो सकता।"
+                );
+            case "es":
+                return vinylStringValues(
+                        "Modo vinilo", "Toca para abrir el modo vinilo", "Toca la portada para volver",
+                        "Toca el disco para reproducir o pausar", "Arrastra el brazo para cambiar la posición de reproducción",
+                        "Mantén pulsada la portada para abrir TMI", "El TMI generado por IA puede no ser siempre preciso."
+                );
+            case "fr":
+                return vinylStringValues(
+                        "Mode vinyle", "Touchez pour ouvrir le mode vinyle", "Touchez la pochette pour revenir",
+                        "Touchez le disque pour lire ou mettre en pause", "Faites glisser le bras de lecture pour changer de position",
+                        "Appuyez longuement sur la pochette pour ouvrir TMI", "Le TMI généré par l’IA peut ne pas toujours être exact."
+                );
+            case "ar":
+                return vinylStringValues(
+                        "وضع الأسطوانة", "اضغط لفتح وضع الأسطوانة", "اضغط على الغلاف للعودة",
+                        "اضغط على الأسطوانة للتشغيل أو الإيقاف المؤقت", "اسحب ذراع التشغيل لتغيير موضع التشغيل",
+                        "اضغط مطولًا على الغلاف لفتح TMI", "قد لا تكون معلومات TMI التي أنشأها الذكاء الاصطناعي دقيقة دائمًا."
+                );
+            case "fa":
+                return vinylStringValues(
+                        "حالت وینیل", "برای باز کردن حالت وینیل ضربه بزنید", "برای بازگشت روی جلد آلبوم ضربه بزنید",
+                        "برای پخش یا مکث روی صفحه بزنید", "برای جابه‌جایی زمان پخش، بازوی گرامافون را بکشید",
+                        "برای باز کردن TMI، جلد آلبوم را نگه دارید", "TMI تولیدشده با هوش مصنوعی ممکن است همیشه دقیق نباشد."
+                );
+            case "de":
+                return vinylStringValues(
+                        "Vinylmodus", "Tippen, um den Vinylmodus zu öffnen", "Auf das Cover tippen, um zurückzukehren",
+                        "Auf die Platte tippen, um die Wiedergabe zu starten oder zu pausieren", "Tonarm ziehen, um die Wiedergabeposition zu ändern",
+                        "Cover gedrückt halten, um TMI zu öffnen", "KI-generierte TMI-Informationen sind möglicherweise nicht immer korrekt."
+                );
+            case "ru":
+                return vinylStringValues(
+                        "Режим винила", "Коснитесь, чтобы открыть режим винила", "Коснитесь обложки, чтобы вернуться",
+                        "Коснитесь пластинки, чтобы включить или приостановить воспроизведение", "Перетащите тонарм, чтобы изменить позицию воспроизведения",
+                        "Удерживайте обложку, чтобы открыть TMI", "Информация TMI, созданная ИИ, может быть не всегда точной."
+                );
+            case "sv":
+                return vinylStringValues(
+                        "Vinylläge", "Tryck för att öppna vinylläget", "Tryck på omslaget för att gå tillbaka",
+                        "Tryck på skivan för att spela upp eller pausa", "Dra tonarmen för att ändra uppspelningsposition",
+                        "Håll ned omslaget för att öppna TMI", "AI-genererad TMI-information är kanske inte alltid korrekt."
+                );
+            case "pt":
+                return vinylStringValues(
+                        "Modo vinil", "Toque para abrir o modo vinil", "Toque na capa para voltar",
+                        "Toque no disco para reproduzir ou pausar", "Arraste o braço para alterar a posição da reprodução",
+                        "Mantenha a capa pressionada para abrir o TMI", "As informações TMI geradas por IA podem nem sempre ser precisas."
+                );
+            case "bn":
+                return vinylStringValues(
+                        "ভিনাইল মোড", "ভিনাইল মোড খুলতে ট্যাপ করুন", "ফিরে যেতে অ্যালবাম কভারে ট্যাপ করুন",
+                        "প্লে বা বিরতি দিতে রেকর্ডে ট্যাপ করুন", "প্লেব্যাকের অবস্থান বদলাতে টোনআর্ম টেনে নিন",
+                        "TMI খুলতে অ্যালবাম কভার চেপে ধরে রাখুন", "AI-তৈরি TMI সব সময় সঠিক নাও হতে পারে।"
+                );
+            case "cs":
+                return vinylStringValues(
+                        "Vinylový režim", "Klepnutím otevřete vinylový režim", "Klepnutím na obal se vrátíte",
+                        "Klepnutím na desku spustíte nebo pozastavíte přehrávání", "Přetažením raménka změníte pozici přehrávání",
+                        "Podržením obalu otevřete TMI", "TMI vytvořené umělou inteligencí nemusí být vždy přesné."
+                );
+            case "it":
+                return vinylStringValues(
+                        "Modalità vinile", "Tocca per aprire la modalità vinile", "Tocca la copertina per tornare indietro",
+                        "Tocca il disco per riprodurre o mettere in pausa", "Trascina il braccio per cambiare la posizione di riproduzione",
+                        "Tieni premuta la copertina per aprire TMI", "Le informazioni TMI generate dall'IA potrebbero non essere sempre accurate."
+                );
+            case "th":
+                return vinylStringValues(
+                        "โหมดแผ่นเสียง", "แตะเพื่อเปิดโหมดแผ่นเสียง", "แตะปกอัลบั้มเพื่อกลับ",
+                        "แตะแผ่นเสียงเพื่อเล่นหรือหยุดชั่วคราว", "ลากโทนอาร์มเพื่อเปลี่ยนตำแหน่งการเล่น",
+                        "แตะปกอัลบั้มค้างไว้เพื่อเปิด TMI", "TMI ที่สร้างโดย AI อาจไม่ถูกต้องเสมอไป"
+                );
+            case "vi":
+                return vinylStringValues(
+                        "Chế độ đĩa than", "Chạm để mở chế độ đĩa than", "Chạm vào bìa album để quay lại",
+                        "Chạm vào đĩa để phát hoặc tạm dừng", "Kéo cần máy hát để thay đổi vị trí phát",
+                        "Nhấn giữ bìa album để mở TMI", "TMI do AI tạo có thể không phải lúc nào cũng chính xác."
+                );
+            case "id":
+                return vinylStringValues(
+                        "Mode vinil", "Ketuk untuk membuka mode vinil", "Ketuk sampul album untuk kembali",
+                        "Ketuk piringan untuk memutar atau menjeda", "Seret lengan pemutar untuk mengubah posisi pemutaran",
+                        "Tekan lama sampul album untuk membuka TMI", "TMI yang dibuat AI mungkin tidak selalu akurat."
+                );
+            case "ms":
+                return vinylStringValues(
+                        "Mod vinil", "Ketik untuk membuka mod vinil", "Ketik kulit album untuk kembali",
+                        "Ketik piring hitam untuk main atau jeda", "Seret lengan pikap untuk menukar kedudukan main balik",
+                        "Tekan lama kulit album untuk membuka TMI", "TMI yang dijana AI mungkin tidak sentiasa tepat."
+                );
+            case "tr":
+                return vinylStringValues(
+                        "Plak modu", "Plak modunu açmak için dokunun", "Geri dönmek için albüm kapağına dokunun",
+                        "Oynatmak veya duraklatmak için plağa dokunun", "Oynatma konumunu değiştirmek için pikap kolunu sürükleyin",
+                        "TMI'ı açmak için albüm kapağını basılı tutun", "Yapay zekâ tarafından oluşturulan TMI her zaman doğru olmayabilir."
+                );
+            case "en":
+            default:
+                return vinylStringValues(
+                        "Vinyl mode", "Tap to open vinyl mode", "Tap the cover to return",
+                        "Tap the record to play or pause", "Drag the tonearm to seek",
+                        "Hold the cover to open TMI", "AI-generated TMI may not always be accurate."
+                );
+        }
+    }
+
+    private static String[] vinylStringValues(
+            String mode,
+            String openHint,
+            String closeHint,
+            String recordHint,
+            String tonearmHint,
+            String tmiHint,
+            String tmiDisclaimer
+    ) {
+        return new String[] {
+                "vinyl.mode", mode,
+                "vinyl.open_hint", openHint,
+                "vinyl.close_hint", closeHint,
+                "vinyl.record_hint", recordHint,
+                "vinyl.tonearm_hint", tonearmHint,
+                "vinyl.tmi_hint", tmiHint,
+                "tmi.disclaimer", tmiDisclaimer
+        };
     }
 
     private static String[] karaokeLineModeStrings(String lang) {
