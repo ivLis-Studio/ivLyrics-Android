@@ -146,6 +146,8 @@ public final class MainActivity extends Activity implements
     private static final int PIP_PINCH_TRIGGER_DISTANCE_DP = 56;
     private static final long REMOTE_SEEK_STEP_MS = 5_000L;
     private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
+    private static final long PENDING_SEEK_HOLD_MS = 2_500L;
+    private static final long PENDING_SEEK_ACK_TOLERANCE_MS = 2_500L;
     private static final String[] ONBOARDING_WELCOME_MESSAGES = {
             "ivLyrics에 오신 것을 환영합니다",
             "Welcome to ivLyrics",
@@ -1216,9 +1218,18 @@ public final class MainActivity extends Activity implements
         String nextKey = snapshot.stableKey();
         boolean trackChanged = !nextKey.equals(currentLyricsKey);
         if (vinylPlayerModeView != null) {
-            vinylPlayerModeView.setTrack(snapshot, snapshot.artwork, trackChanged);
+            // Keep the Spotify API artwork already applied to this track. Media-session
+            // snapshots can keep publishing a smaller notification bitmap and must not
+            // downgrade the LP cover after the high-resolution image arrives.
+            Bitmap vinylArtwork = !trackChanged && currentArtworkFromSpotify && currentArtworkBitmap != null
+                    ? currentArtworkBitmap
+                    : snapshot.artwork;
+            vinylPlayerModeView.setTrack(snapshot, vinylArtwork, trackChanged);
         }
         if (trackChanged) {
+            // A seek belongs to the track it was issued for. Clear it before
+            // calculating the first progress frame of the incoming track.
+            pendingSeekPositionMs = -1L;
             currentArtworkFromSpotify = false;
             translatedTrackTitle = "";
             translatedTrackArtist = "";
@@ -1258,7 +1269,6 @@ public final class MainActivity extends Activity implements
             selectedRuleSourceLang = "auto";
             updateLyricsLanguageSettingsUi();
             resetManualLrclibSearchForTrack(snapshot);
-            pendingSeekPositionMs = -1L;
             sourceView.setText(ui("status.lyrics_loading"));
             statusView.setText(snapshot.isrc.isEmpty()
                     ? ui("status.lyrics_lookup_spotify")
@@ -13333,9 +13343,17 @@ public final class MainActivity extends Activity implements
         long position = snapshot.positionNow();
         if (pendingSeekPositionMs >= 0L) {
             long now = SystemClock.uptimeMillis();
-            long elapsed = now - pendingSeekUptimeMs;
-            if (elapsed <= 1200L) {
-                position = pendingSeekPositionMs + (snapshot.playing ? elapsed : 0L);
+            long elapsed = Math.max(0L, now - pendingSeekUptimeMs);
+            long optimisticPosition = pendingSeekPositionMs + (snapshot.playing ? elapsed : 0L);
+            if (snapshot.durationMs > 0L) {
+                optimisticPosition = Math.min(snapshot.durationMs, optimisticPosition);
+            }
+            boolean acknowledged = Math.abs(position - pendingSeekPositionMs) <= PENDING_SEEK_ACK_TOLERANCE_MS
+                    || Math.abs(position - optimisticPosition) <= PENDING_SEEK_ACK_TOLERANCE_MS;
+            if (acknowledged) {
+                pendingSeekPositionMs = -1L;
+            } else if (elapsed <= PENDING_SEEK_HOLD_MS) {
+                position = optimisticPosition;
             } else {
                 pendingSeekPositionMs = -1L;
             }
