@@ -726,6 +726,10 @@ final class AppI18n {
             for (int index = 0; index + 1 < values.length; index += 2) {
                 copy.put(values[index], values[index + 1]);
             }
+            String[] settingsValues = vinylSettingsStrings(language.code);
+            for (int index = 0; index + 1 < settingsValues.length; index += 2) {
+                copy.put(settingsValues[index], settingsValues[index + 1]);
+            }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
@@ -885,6 +889,444 @@ final class AppI18n {
                 "vinyl.tonearm_hint", tonearmHint,
                 "vinyl.tmi_hint", tmiHint,
                 "tmi.disclaimer", tmiDisclaimer
+        };
+    }
+
+    private static String[] vinylSettingsStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return vinylSettingsStringValues(
+                        "전체화면",
+                        "LP 모드의 크기, 모션, 하단 가사 글꼴을 조정합니다.",
+                        "앨범 커버 크기",
+                        "LP 모드의 앨범 커버 크기를 조절합니다.",
+                        "LP 판 크기",
+                        "LP 모드의 LP 판 크기를 조절합니다.",
+                        "LP 애니메이션",
+                        "재생·정지, 회전, 등장 및 곡 전환 애니메이션을 사용합니다.",
+                        "LP 원문",
+                        "LP 아래에 표시되는 원문 가사의 크기와 굵기를 조절합니다.",
+                        "LP 발음",
+                        "LP 아래에 표시되는 발음 가사의 크기와 굵기를 조절합니다.",
+                        "LP 번역",
+                        "LP 아래에 표시되는 번역 가사의 크기와 굵기를 조절합니다.",
+                        "LP 아래에 표시되는 원문, 발음, 번역의 글꼴을 각각 조절합니다."
+                );
+            case "zh-CN":
+                return vinylSettingsStringValues(
+                        "全屏",
+                        "调整黑胶模式的尺寸、动效和底部歌词字体。",
+                        "专辑封面大小",
+                        "调整黑胶模式中的专辑封面大小。",
+                        "唱片大小",
+                        "调整黑胶模式中的唱片大小。",
+                        "黑胶动画",
+                        "启用播放/暂停、唱片旋转、入场和切歌动画。",
+                        "黑胶原文",
+                        "调整黑胶唱片下方原文歌词的字号和字重。",
+                        "黑胶注音",
+                        "调整黑胶唱片下方注音歌词的字号和字重。",
+                        "黑胶翻译",
+                        "调整黑胶唱片下方翻译歌词的字号和字重。",
+                        "分别调整黑胶唱片下方原文、注音和翻译的字体。"
+                );
+            case "zh-TW":
+                return vinylSettingsStringValues(
+                        "全螢幕",
+                        "調整黑膠模式的大小、動效與底部歌詞字型。",
+                        "專輯封面大小",
+                        "調整黑膠模式中的專輯封面大小。",
+                        "唱片大小",
+                        "調整黑膠模式中的唱片大小。",
+                        "黑膠動畫",
+                        "啟用播放/暫停、唱片旋轉、進場與切歌動畫。",
+                        "黑膠原文",
+                        "調整黑膠唱片下方原文歌詞的字級與字重。",
+                        "黑膠注音",
+                        "調整黑膠唱片下方注音歌詞的字級與字重。",
+                        "黑膠翻譯",
+                        "調整黑膠唱片下方翻譯歌詞的字級與字重。",
+                        "分別調整黑膠唱片下方原文、注音與翻譯的字型。"
+                );
+            case "ja":
+                return vinylSettingsStringValues(
+                        "フルスクリーン",
+                        "LP モードのサイズ、アニメーション、下部歌詞のフォントを調整します。",
+                        "アルバムジャケットのサイズ",
+                        "LP モードのアルバムジャケットのサイズを調整します。",
+                        "レコードのサイズ",
+                        "LP モードのレコードのサイズを調整します。",
+                        "LP アニメーション",
+                        "再生・一時停止、回転、登場、曲変更のアニメーションを使用します。",
+                        "LP 原文",
+                        "LP の下に表示する原文歌詞のサイズと太さを調整します。",
+                        "LP 発音",
+                        "LP の下に表示する発音歌詞のサイズと太さを調整します。",
+                        "LP 翻訳",
+                        "LP の下に表示する翻訳歌詞のサイズと太さを調整します。",
+                        "LP の下に表示する原文・発音・翻訳のフォントを個別に調整します。"
+                );
+            case "hi":
+                return vinylSettingsStringValues(
+                        "पूर्ण स्क्रीन",
+                        "विनाइल मोड का आकार, ऐनिमेशन और नीचे दिखने वाले गीतों का फ़ॉन्ट बदलें।",
+                        "एल्बम कवर का आकार",
+                        "विनाइल मोड में एल्बम कवर का आकार बदलें।",
+                        "रिकॉर्ड का आकार",
+                        "विनाइल मोड में रिकॉर्ड का आकार बदलें।",
+                        "विनाइल ऐनिमेशन",
+                        "चलाने/रोकने, रिकॉर्ड घुमाने, प्रवेश और गीत बदलने के ऐनिमेशन चालू करें।",
+                        "विनाइल मूल",
+                        "विनाइल के नीचे मूल गीत के आकार और मोटाई को बदलें।",
+                        "विनाइल उच्चारण",
+                        "विनाइल के नीचे उच्चारण के आकार और मोटाई को बदलें।",
+                        "विनाइल अनुवाद",
+                        "विनाइल के नीचे अनुवाद के आकार और मोटाई को बदलें।",
+                        "विनाइल के नीचे दिखने वाले मूल, उच्चारण और अनुवाद के फ़ॉन्ट अलग-अलग बदलें।"
+                );
+            case "es":
+                return vinylSettingsStringValues(
+                        "Pantalla completa",
+                        "Personaliza el tamaño, las animaciones y la tipografía inferior del modo vinilo.",
+                        "Tamaño de la portada",
+                        "Ajusta el tamaño de la portada en el modo vinilo.",
+                        "Tamaño del disco",
+                        "Ajusta el tamaño del disco en el modo vinilo.",
+                        "Animaciones del vinilo",
+                        "Usa animaciones de reproducción, pausa, giro, entrada y cambio de canción.",
+                        "Original del vinilo",
+                        "Ajusta el tamaño y el grosor de la letra original bajo el vinilo.",
+                        "Pronunciación del vinilo",
+                        "Ajusta el tamaño y el grosor de la pronunciación bajo el vinilo.",
+                        "Traducción del vinilo",
+                        "Ajusta el tamaño y el grosor de la traducción bajo el vinilo.",
+                        "Ajusta por separado las fuentes del original, la pronunciación y la traducción bajo el vinilo."
+                );
+            case "fr":
+                return vinylSettingsStringValues(
+                        "Plein écran",
+                        "Personnalisez la taille, les animations et la typographie inférieure du mode vinyle.",
+                        "Taille de la pochette",
+                        "Ajuste la taille de la pochette en mode vinyle.",
+                        "Taille du disque",
+                        "Ajuste la taille du disque en mode vinyle.",
+                        "Animations du vinyle",
+                        "Active les animations de lecture, pause, rotation, entrée et changement de morceau.",
+                        "Original du vinyle",
+                        "Ajuste la taille et la graisse des paroles originales sous le vinyle.",
+                        "Prononciation du vinyle",
+                        "Ajuste la taille et la graisse de la prononciation sous le vinyle.",
+                        "Traduction du vinyle",
+                        "Ajuste la taille et la graisse de la traduction sous le vinyle.",
+                        "Ajustez séparément les polices de l’original, de la prononciation et de la traduction sous le vinyle."
+                );
+            case "ar":
+                return vinylSettingsStringValues(
+                        "ملء الشاشة",
+                        "خصّص حجم وضع الأسطوانة وحركته وخط الكلمات السفلية.",
+                        "حجم غلاف الألبوم",
+                        "يضبط حجم غلاف الألبوم في وضع الأسطوانة.",
+                        "حجم الأسطوانة",
+                        "يضبط حجم الأسطوانة في وضع الأسطوانة.",
+                        "حركات الأسطوانة",
+                        "استخدم حركات التشغيل والإيقاف والدوران والظهور وتغيير الأغنية.",
+                        "النص الأصلي للأسطوانة",
+                        "اضبط حجم وسمك الكلمات الأصلية أسفل الأسطوانة.",
+                        "نطق الأسطوانة",
+                        "اضبط حجم وسمك النطق أسفل الأسطوانة.",
+                        "ترجمة الأسطوانة",
+                        "اضبط حجم وسمك الترجمة أسفل الأسطوانة.",
+                        "اضبط خطوط النص الأصلي والنطق والترجمة الظاهرة أسفل الأسطوانة كلًا على حدة."
+                );
+            case "fa":
+                return vinylSettingsStringValues(
+                        "تمام‌صفحه",
+                        "اندازه، پویانمایی و قلم متن پایین حالت وینیل را شخصی‌سازی کنید.",
+                        "اندازه جلد آلبوم",
+                        "اندازه جلد آلبوم را در حالت وینیل تنظیم می‌کند.",
+                        "اندازه صفحه وینیل",
+                        "اندازه صفحه را در حالت وینیل تنظیم می‌کند.",
+                        "پویانمایی‌های وینیل",
+                        "پویانمایی پخش، مکث، چرخش، ورود و تعویض آهنگ را فعال می‌کند.",
+                        "متن اصلی وینیل",
+                        "اندازه و ضخامت متن اصلی زیر وینیل را تنظیم کنید.",
+                        "تلفظ وینیل",
+                        "اندازه و ضخامت تلفظ زیر وینیل را تنظیم کنید.",
+                        "ترجمه وینیل",
+                        "اندازه و ضخامت ترجمه زیر وینیل را تنظیم کنید.",
+                        "قلم متن اصلی، تلفظ و ترجمه زیر وینیل را جداگانه تنظیم کنید."
+                );
+            case "de":
+                return vinylSettingsStringValues(
+                        "Vollbild",
+                        "Passe Größe, Animationen und die untere Liedtext-Typografie des Vinylmodus an.",
+                        "Covergröße",
+                        "Passt die Größe des Albumcovers im Vinylmodus an.",
+                        "Plattengröße",
+                        "Passt die Größe der Schallplatte im Vinylmodus an.",
+                        "Vinyl-Animationen",
+                        "Aktiviert Animationen für Wiedergabe, Pause, Drehung, Einblenden und Titelwechsel.",
+                        "Vinyl-Original",
+                        "Passt Größe und Stärke des Originaltexts unter der Platte an.",
+                        "Vinyl-Aussprache",
+                        "Passt Größe und Stärke der Aussprache unter der Platte an.",
+                        "Vinyl-Übersetzung",
+                        "Passt Größe und Stärke der Übersetzung unter der Platte an.",
+                        "Passe die Schriften für Original, Aussprache und Übersetzung unter der Platte getrennt an."
+                );
+            case "ru":
+                return vinylSettingsStringValues(
+                        "Полный экран",
+                        "Настройте размер, анимацию и шрифт нижней строки в режиме винила.",
+                        "Размер обложки",
+                        "Настраивает размер обложки альбома в режиме винила.",
+                        "Размер пластинки",
+                        "Настраивает размер пластинки в режиме винила.",
+                        "Анимации винила",
+                        "Включает анимации запуска, паузы, вращения, появления и смены трека.",
+                        "Оригинал на виниле",
+                        "Настройте размер и начертание оригинального текста под пластинкой.",
+                        "Произношение на виниле",
+                        "Настройте размер и начертание произношения под пластинкой.",
+                        "Перевод на виниле",
+                        "Настройте размер и начертание перевода под пластинкой.",
+                        "Отдельно настройте шрифты оригинала, произношения и перевода под пластинкой."
+                );
+            case "sv":
+                return vinylSettingsStringValues(
+                        "Helskärm",
+                        "Anpassa storlek, animationer och typografi för den nedre textraden i vinylläget.",
+                        "Omslagsstorlek",
+                        "Justerar albumomslagets storlek i vinylläget.",
+                        "Skivstorlek",
+                        "Justerar vinylskivans storlek i vinylläget.",
+                        "Vinylanimationer",
+                        "Använd animationer för uppspelning, paus, rotation, entré och låtbyte.",
+                        "Vinyl original",
+                        "Justera storlek och vikt för originaltexten under skivan.",
+                        "Vinyl uttal",
+                        "Justera storlek och vikt för uttalet under skivan.",
+                        "Vinyl översättning",
+                        "Justera storlek och vikt för översättningen under skivan.",
+                        "Justera typsnitten för original, uttal och översättning under skivan separat."
+                );
+            case "pt":
+                return vinylSettingsStringValues(
+                        "Tela cheia",
+                        "Personalize o tamanho, as animações e a tipografia inferior do modo vinil.",
+                        "Tamanho da capa",
+                        "Ajusta o tamanho da capa do álbum no modo vinil.",
+                        "Tamanho do disco",
+                        "Ajusta o tamanho do disco no modo vinil.",
+                        "Animações do vinil",
+                        "Usa animações de reprodução, pausa, rotação, entrada e troca de faixa.",
+                        "Original do vinil",
+                        "Ajuste o tamanho e o peso da letra original abaixo do vinil.",
+                        "Pronúncia do vinil",
+                        "Ajuste o tamanho e o peso da pronúncia abaixo do vinil.",
+                        "Tradução do vinil",
+                        "Ajuste o tamanho e o peso da tradução abaixo do vinil.",
+                        "Ajuste separadamente as fontes do original, da pronúncia e da tradução abaixo do vinil."
+                );
+            case "bn":
+                return vinylSettingsStringValues(
+                        "পূর্ণস্ক্রিন",
+                        "ভিনাইল মোডের আকার, অ্যানিমেশন ও নিচের গানের ফন্ট কাস্টমাইজ করুন।",
+                        "অ্যালবাম কভারের আকার",
+                        "ভিনাইল মোডে অ্যালবাম কভারের আকার ঠিক করুন।",
+                        "রেকর্ডের আকার",
+                        "ভিনাইল মোডে রেকর্ডের আকার ঠিক করুন।",
+                        "ভিনাইল অ্যানিমেশন",
+                        "প্লে, বিরতি, ঘূর্ণন, প্রবেশ ও গান বদলের অ্যানিমেশন ব্যবহার করুন।",
+                        "ভিনাইল মূল",
+                        "ভিনাইলের নিচে মূল গানের আকার ও ওজন ঠিক করুন।",
+                        "ভিনাইল উচ্চারণ",
+                        "ভিনাইলের নিচে উচ্চারণের আকার ও ওজন ঠিক করুন।",
+                        "ভিনাইল অনুবাদ",
+                        "ভিনাইলের নিচে অনুবাদের আকার ও ওজন ঠিক করুন।",
+                        "ভিনাইলের নিচে মূল, উচ্চারণ ও অনুবাদের ফন্ট আলাদাভাবে ঠিক করুন।"
+                );
+            case "cs":
+                return vinylSettingsStringValues(
+                        "Celá obrazovka",
+                        "Přizpůsobte velikost, animace a typografii spodního textu ve vinylovém režimu.",
+                        "Velikost obalu",
+                        "Upraví velikost obalu alba ve vinylovém režimu.",
+                        "Velikost desky",
+                        "Upraví velikost vinylové desky ve vinylovém režimu.",
+                        "Animace vinylu",
+                        "Použije animace přehrávání, pauzy, otáčení, příchodu a změny skladby.",
+                        "Vinyl – originál",
+                        "Upravte velikost a řez původního textu pod deskou.",
+                        "Vinyl – výslovnost",
+                        "Upravte velikost a řez výslovnosti pod deskou.",
+                        "Vinyl – překlad",
+                        "Upravte velikost a řez překladu pod deskou.",
+                        "Samostatně upravte písma originálu, výslovnosti a překladu pod deskou."
+                );
+            case "it":
+                return vinylSettingsStringValues(
+                        "Schermo intero",
+                        "Personalizza dimensioni, animazioni e tipografia inferiore della modalità vinile.",
+                        "Dimensione copertina",
+                        "Regola la dimensione della copertina in modalità vinile.",
+                        "Dimensione disco",
+                        "Regola la dimensione del disco in modalità vinile.",
+                        "Animazioni vinile",
+                        "Usa le animazioni di riproduzione, pausa, rotazione, ingresso e cambio brano.",
+                        "Originale vinile",
+                        "Regola dimensione e peso del testo originale sotto il vinile.",
+                        "Pronuncia vinile",
+                        "Regola dimensione e peso della pronuncia sotto il vinile.",
+                        "Traduzione vinile",
+                        "Regola dimensione e peso della traduzione sotto il vinile.",
+                        "Regola separatamente i font di originale, pronuncia e traduzione sotto il vinile."
+                );
+            case "th":
+                return vinylSettingsStringValues(
+                        "เต็มหน้าจอ",
+                        "ปรับแต่งขนาด แอนิเมชัน และแบบอักษรเนื้อเพลงด้านล่างของโหมดแผ่นเสียง",
+                        "ขนาดปกอัลบั้ม",
+                        "ปรับขนาดปกอัลบั้มในโหมดแผ่นเสียง",
+                        "ขนาดแผ่นเสียง",
+                        "ปรับขนาดแผ่นเสียงในโหมดแผ่นเสียง",
+                        "แอนิเมชันแผ่นเสียง",
+                        "ใช้แอนิเมชันเล่น หยุด หมุน ปรากฏ และเปลี่ยนเพลง",
+                        "ต้นฉบับแผ่นเสียง",
+                        "ปรับขนาดและน้ำหนักของเนื้อเพลงต้นฉบับใต้แผ่นเสียง",
+                        "คำอ่านแผ่นเสียง",
+                        "ปรับขนาดและน้ำหนักของคำอ่านใต้แผ่นเสียง",
+                        "คำแปลแผ่นเสียง",
+                        "ปรับขนาดและน้ำหนักของคำแปลใต้แผ่นเสียง",
+                        "ปรับแบบอักษรต้นฉบับ คำอ่าน และคำแปลใต้แผ่นเสียงแยกกัน"
+                );
+            case "vi":
+                return vinylSettingsStringValues(
+                        "Toàn màn hình",
+                        "Tùy chỉnh kích thước, chuyển động và phông lời bên dưới của chế độ đĩa than.",
+                        "Kích thước bìa album",
+                        "Điều chỉnh kích thước bìa album trong chế độ đĩa than.",
+                        "Kích thước đĩa",
+                        "Điều chỉnh kích thước đĩa trong chế độ đĩa than.",
+                        "Hoạt ảnh đĩa than",
+                        "Dùng hoạt ảnh phát, tạm dừng, xoay, xuất hiện và chuyển bài.",
+                        "Lời gốc đĩa than",
+                        "Điều chỉnh cỡ và độ đậm của lời gốc bên dưới đĩa.",
+                        "Phiên âm đĩa than",
+                        "Điều chỉnh cỡ và độ đậm của phiên âm bên dưới đĩa.",
+                        "Bản dịch đĩa than",
+                        "Điều chỉnh cỡ và độ đậm của bản dịch bên dưới đĩa.",
+                        "Điều chỉnh riêng phông chữ cho lời gốc, phiên âm và bản dịch bên dưới đĩa."
+                );
+            case "id":
+                return vinylSettingsStringValues(
+                        "Layar penuh",
+                        "Sesuaikan ukuran, animasi, dan tipografi lirik bawah pada mode vinil.",
+                        "Ukuran sampul album",
+                        "Menyesuaikan ukuran sampul album dalam mode vinil.",
+                        "Ukuran piringan",
+                        "Menyesuaikan ukuran piringan dalam mode vinil.",
+                        "Animasi vinil",
+                        "Gunakan animasi putar, jeda, rotasi, masuk, dan pergantian lagu.",
+                        "Teks asli vinil",
+                        "Sesuaikan ukuran dan ketebalan lirik asli di bawah piringan.",
+                        "Pelafalan vinil",
+                        "Sesuaikan ukuran dan ketebalan pelafalan di bawah piringan.",
+                        "Terjemahan vinil",
+                        "Sesuaikan ukuran dan ketebalan terjemahan di bawah piringan.",
+                        "Sesuaikan font teks asli, pelafalan, dan terjemahan di bawah piringan secara terpisah."
+                );
+            case "ms":
+                return vinylSettingsStringValues(
+                        "Skrin penuh",
+                        "Sesuaikan saiz, animasi dan tipografi lirik bawah bagi mod vinil.",
+                        "Saiz kulit album",
+                        "Melaraskan saiz kulit album dalam mod vinil.",
+                        "Saiz piring hitam",
+                        "Melaraskan saiz piring hitam dalam mod vinil.",
+                        "Animasi vinil",
+                        "Gunakan animasi main, jeda, putaran, kemunculan dan pertukaran lagu.",
+                        "Teks asal vinil",
+                        "Laraskan saiz dan ketebalan lirik asal di bawah piring hitam.",
+                        "Sebutan vinil",
+                        "Laraskan saiz dan ketebalan sebutan di bawah piring hitam.",
+                        "Terjemahan vinil",
+                        "Laraskan saiz dan ketebalan terjemahan di bawah piring hitam.",
+                        "Laraskan fon teks asal, sebutan dan terjemahan di bawah piring hitam secara berasingan."
+                );
+            case "tr":
+                return vinylSettingsStringValues(
+                        "Tam ekran",
+                        "Plak modunun boyutunu, animasyonlarını ve alttaki şarkı sözü yazı tipini özelleştirin.",
+                        "Albüm kapağı boyutu",
+                        "Plak modundaki albüm kapağının boyutunu ayarlar.",
+                        "Plak boyutu",
+                        "Plak modundaki plağın boyutunu ayarlar.",
+                        "Plak animasyonları",
+                        "Oynatma, duraklatma, dönme, giriş ve parça geçişi animasyonlarını kullanır.",
+                        "Plak özgün metni",
+                        "Plağın altındaki özgün sözlerin boyutunu ve kalınlığını ayarlayın.",
+                        "Plak telaffuzu",
+                        "Plağın altındaki telaffuzun boyutunu ve kalınlığını ayarlayın.",
+                        "Plak çevirisi",
+                        "Plağın altındaki çevirinin boyutunu ve kalınlığını ayarlayın.",
+                        "Plağın altında görünen özgün metin, telaffuz ve çeviri yazı tiplerini ayrı ayrı ayarlayın."
+                );
+            case "en":
+            default:
+                return vinylSettingsStringValues(
+                        "Fullscreen",
+                        "Customize the LP mode size, motion, and bottom lyric typography.",
+                        "Album cover size",
+                        "Adjusts the album cover size in LP mode.",
+                        "Record size",
+                        "Adjusts the vinyl record size in LP mode.",
+                        "LP animations",
+                        "Use play/pause, record spin, entrance, and track-change animations.",
+                        "LP original",
+                        "Adjust the size and weight of the original lyric below the LP.",
+                        "LP pronunciation",
+                        "Adjust the size and weight of the pronunciation below the LP.",
+                        "LP translation",
+                        "Adjust the size and weight of the translation below the LP.",
+                        "Adjust the fonts for the original, pronunciation, and translation shown below the LP."
+                );
+        }
+    }
+
+    private static String[] vinylSettingsStringValues(
+            String fullscreenTab,
+            String subtitle,
+            String albumSize,
+            String albumSizeDesc,
+            String recordSize,
+            String recordSizeDesc,
+            String animations,
+            String animationsDesc,
+            String original,
+            String originalDesc,
+            String pronunciation,
+            String pronunciationDesc,
+            String translation,
+            String translationDesc,
+            String typographyDesc
+    ) {
+        return new String[] {
+                "tab.fullscreen", fullscreenTab,
+                "vinyl.settings.subtitle", subtitle,
+                "vinyl.settings.album_size", albumSize,
+                "vinyl.settings.album_size_desc", albumSizeDesc,
+                "vinyl.settings.record_size", recordSize,
+                "vinyl.settings.record_size_desc", recordSizeDesc,
+                "vinyl.settings.animations", animations,
+                "vinyl.settings.animations_desc", animationsDesc,
+                "typography.slot.vinyl_original", original,
+                "typography.slot.vinyl_original_desc", originalDesc,
+                "typography.slot.vinyl_pronunciation", pronunciation,
+                "typography.slot.vinyl_pronunciation_desc", pronunciationDesc,
+                "typography.slot.vinyl_translation", translation,
+                "typography.slot.vinyl_translation_desc", translationDesc,
+                "vinyl.settings.typography_desc", typographyDesc
         };
     }
 
@@ -3370,7 +3812,7 @@ final class AppI18n {
                 "toast.back_exit", "뒤로가기를 한 번 더 누르면 종료됩니다",
                 "toast.ui_language_saved", "앱 표시 언어 저장됨",
                 "settings.title", "설정",
-                "settings.subtitle", "가사, 화면, AI, 도구 설정",
+                "settings.subtitle", "가사, 화면, 전체화면, AI, 도구 설정",
                 "tab.lyrics", "가사",
                 "tab.display", "화면",
                 "tab.ai", "AI",
@@ -3606,7 +4048,7 @@ final class AppI18n {
                 "toast.back_exit", "Press Back again to exit",
                 "toast.ui_language_saved", "App language saved",
                 "settings.title", "Settings",
-                "settings.subtitle", "Lyrics, display, AI, and tools",
+                "settings.subtitle", "Lyrics, display, fullscreen, AI, and tools",
                 "tab.lyrics", "Lyrics",
                 "tab.display", "Display",
                 "tab.ai", "AI",
@@ -3842,7 +4284,7 @@ final class AppI18n {
                 "toast.back_exit", "再次返回即可退出",
                 "toast.ui_language_saved", "应用语言已保存",
                 "settings.title", "设置",
-                "settings.subtitle", "歌词、显示、AI 和工具设置",
+                "settings.subtitle", "歌词、显示、全屏、AI 和工具设置",
                 "tab.lyrics", "歌词",
                 "tab.display", "显示",
                 "tab.ai", "AI",
@@ -4076,7 +4518,7 @@ final class AppI18n {
                 "toast.back_exit", "再次按返回退出",
                 "toast.ui_language_saved", "已儲存應用程式語言",
                 "settings.title", "設定",
-                "settings.subtitle", "歌詞、顯示、AI、工具",
+                "settings.subtitle", "歌詞、顯示、全螢幕、AI、工具",
                 "tab.lyrics", "歌詞",
                 "tab.display", "展示",
                 "tab.ai", "人工智慧",
@@ -4310,7 +4752,7 @@ final class AppI18n {
                 "toast.back_exit", "もう一度戻ると終了します",
                 "toast.ui_language_saved", "アプリ表示言語を保存しました",
                 "settings.title", "設定",
-                "settings.subtitle", "歌詞、表示、AI、ツール設定",
+                "settings.subtitle", "歌詞、表示、全画面、AI、ツール設定",
                 "tab.lyrics", "歌詞",
                 "tab.display", "表示",
                 "tab.ai", "AI",
@@ -4544,7 +4986,7 @@ final class AppI18n {
                 "toast.back_exit", "बाहर निकलने के लिए फिर से वापस दबाएँ",
                 "toast.ui_language_saved", "ऐप की भाषा सहेजी गई",
                 "settings.title", "सेटिंग्स",
-                "settings.subtitle", "गीत, डिस्प्ले, AI और उपकरण",
+                "settings.subtitle", "गीत, डिस्प्ले, फ़ुलस्क्रीन, AI और उपकरण",
                 "tab.lyrics", "गीत",
                 "tab.display", "डिस्प्ले",
                 "tab.ai", "AI",
@@ -4778,7 +5220,7 @@ final class AppI18n {
                 "toast.back_exit", "Presione Atrás nuevamente para salir",
                 "toast.ui_language_saved", "Idioma de la aplicación guardado",
                 "settings.title", "Ajustes",
-                "settings.subtitle", "Letras, pantalla, IA y herramientas",
+                "settings.subtitle", "Letras, pantalla, pantalla completa, IA y herramientas",
                 "tab.lyrics", "Letras",
                 "tab.display", "Pantalla",
                 "tab.ai", "AI",
@@ -5012,7 +5454,7 @@ final class AppI18n {
                 "toast.back_exit", "Appuyez à nouveau sur Retour pour quitter",
                 "toast.ui_language_saved", "Langue de l'application enregistrée",
                 "settings.title", "Paramètres",
-                "settings.subtitle", "Paroles, affichage, IA et outils",
+                "settings.subtitle", "Paroles, affichage, plein écran, IA et outils",
                 "tab.lyrics", "Paroles",
                 "tab.display", "Affichage",
                 "tab.ai", "AI",
@@ -5246,7 +5688,7 @@ final class AppI18n {
                 "toast.back_exit", "اضغط على \"رجوع\" مرة أخرى للخروج من",
                 "toast.ui_language_saved", "تم حفظ لغة التطبيق",
                 "settings.title", "إعدادات",
-                "settings.subtitle", "كلمات الأغاني والعرض والذكاء الاصطناعي والأدوات",
+                "settings.subtitle", "كلمات الأغاني والعرض وملء الشاشة والذكاء الاصطناعي والأدوات",
                 "tab.lyrics", "كلمات",
                 "tab.display", "العرض",
                 "tab.ai", "AI",
@@ -5480,7 +5922,7 @@ final class AppI18n {
                 "toast.back_exit", "برای خروج دوباره Back را فشار دهید",
                 "toast.ui_language_saved", "زبان برنامه ذخیره شد",
                 "settings.title", "تنظیمات",
-                "settings.subtitle", "متن ترانه، صفحه نمایش، هوش مصنوعی و ابزار",
+                "settings.subtitle", "متن ترانه، صفحه نمایش، تمام‌صفحه، هوش مصنوعی و ابزار",
                 "tab.lyrics", "متن ترانه",
                 "tab.display", "نمایش",
                 "tab.ai", "هوش مصنوعی",
@@ -5714,7 +6156,7 @@ final class AppI18n {
                 "toast.back_exit", "Drücken Sie erneut „Zurück“, um den Vorgang zu beenden.",
                 "toast.ui_language_saved", "App-Sprache gespeichert.",
                 "settings.title", "Einstellungen",
-                "settings.subtitle", "Liedtext, Anzeige, KI und Werkzeuge.",
+                "settings.subtitle", "Liedtext, Anzeige, Vollbild, KI und Werkzeuge.",
                 "tab.lyrics", "Liedtext.",
                 "tab.display", "Anzeige.",
                 "tab.ai", "AI.",
@@ -5948,7 +6390,7 @@ final class AppI18n {
                 "toast.back_exit", "Нажмите «Назад» еще раз, чтобы выйти",
                 "toast.ui_language_saved", "Язык приложения сохранен",
                 "settings.title", "Настройки",
-                "settings.subtitle", "Тексты, дисплей, искусственный интеллект и инструменты",
+                "settings.subtitle", "Тексты, дисплей, полноэкранный режим, искусственный интеллект и инструменты",
                 "tab.lyrics", "Текст",
                 "tab.display", "Отображение",
                 "tab.ai", "AI",
@@ -6182,7 +6624,7 @@ final class AppI18n {
                 "toast.back_exit", "Tryck på Tillbaka igen för att avsluta",
                 "toast.ui_language_saved", "Appens språk har sparats",
                 "settings.title", "Inställningar",
-                "settings.subtitle", "Texter, display, AI och verktyg",
+                "settings.subtitle", "Texter, display, helskärm, AI och verktyg",
                 "tab.lyrics", "Text",
                 "tab.display", "Visa",
                 "tab.ai", "AI",
@@ -6416,7 +6858,7 @@ final class AppI18n {
                 "toast.back_exit", "Pressione Voltar novamente para sair",
                 "toast.ui_language_saved", "Idioma do aplicativo salvo",
                 "settings.title", "Configurações",
-                "settings.subtitle", "Letras, exibição, AI e ferramentas",
+                "settings.subtitle", "Letras, exibição, tela cheia, IA e ferramentas",
                 "tab.lyrics", "Letras",
                 "tab.display", "Exibir",
                 "tab.ai", "AI",
@@ -6650,7 +7092,7 @@ final class AppI18n {
                 "toast.back_exit", "প্রস্থান করতে আবার ব্যাক টিপুন",
                 "toast.ui_language_saved", "অ্যাপের ভাষা সংরক্ষিত",
                 "settings.title", "সেটিংস",
-                "settings.subtitle", "লিরিক্স, ডিসপ্লে, এআই এবং টুলস",
+                "settings.subtitle", "লিরিক্স, ডিসপ্লে, পূর্ণস্ক্রিন, এআই এবং টুলস",
                 "tab.lyrics", "গানের কথা",
                 "tab.display", "প্রদর্শন",
                 "tab.ai", "এআই",
@@ -6884,7 +7326,7 @@ final class AppI18n {
                 "toast.back_exit", "Premi di nuovo Indietro per uscire",
                 "toast.ui_language_saved", "Lingua dell'app salvata",
                 "settings.title", "Impostazioni",
-                "settings.subtitle", "Testi, display, AI e strumenti",
+                "settings.subtitle", "Testi, display, schermo intero, IA e strumenti",
                 "tab.lyrics", "Testi",
                 "tab.display", "Display",
                 "tab.ai", "AI",
@@ -7118,7 +7560,7 @@ final class AppI18n {
                 "toast.back_exit", "กด Back อีกครั้งเพื่อออกจาก",
                 "toast.ui_language_saved", "ภาษาที่บันทึกไว้ของแอป",
                 "settings.title", "การตั้งค่า",
-                "settings.subtitle", "เนื้อเพลง การแสดงผล AI และเครื่องมือ",
+                "settings.subtitle", "เนื้อเพลง การแสดงผล เต็มหน้าจอ AI และเครื่องมือ",
                 "tab.lyrics", "เนื้อเพลง",
                 "tab.display", "จอแสดงผล",
                 "tab.ai", "AI",
@@ -7352,7 +7794,7 @@ final class AppI18n {
                 "toast.back_exit", "Nhấn Quay lại lần nữa để thoát",
                 "toast.ui_language_saved", "Đã lưu ngôn ngữ ứng dụng",
                 "settings.title", "Cài đặt",
-                "settings.subtitle", "Lời bài hát, màn hình, AI và công cụ",
+                "settings.subtitle", "Lời bài hát, màn hình, toàn màn hình, AI và công cụ",
                 "tab.lyrics", "Lời bài hát",
                 "tab.display", "Hiển thị",
                 "tab.ai", "AI",
@@ -7586,7 +8028,7 @@ final class AppI18n {
                 "toast.back_exit", "Tekan Kembali lagi untuk keluar",
                 "toast.ui_language_saved", "Bahasa aplikasi disimpan",
                 "settings.title", "Pengaturan",
-                "settings.subtitle", "Lirik, tampilan, AI, dan alat",
+                "settings.subtitle", "Lirik, tampilan, layar penuh, AI, dan alat",
                 "tab.lyrics", "Lirik",
                 "tab.display", "Tampilan",
                 "tab.ai", "AI",
@@ -7820,7 +8262,7 @@ final class AppI18n {
                 "toast.back_exit", "Tekan Kembali sekali lagi untuk keluar",
                 "toast.ui_language_saved", "Bahasa apl disimpan",
                 "settings.title", "tetapan",
-                "settings.subtitle", "Lirik, paparan, AI dan alatan",
+                "settings.subtitle", "Lirik, paparan, skrin penuh, AI dan alatan",
                 "tab.lyrics", "Lirik",
                 "tab.display", "Paparan",
                 "tab.ai", "AI",
@@ -8054,7 +8496,7 @@ final class AppI18n {
                 "toast.back_exit", "Opětovným stisknutím tlačítka Zpět opustíte nabídku",
                 "toast.ui_language_saved", "Jazyk aplikace byl uložen",
                 "settings.title", "Nastavení",
-                "settings.subtitle", "Texty, zobrazení, AI a nástroje",
+                "settings.subtitle", "Texty, zobrazení, celá obrazovka, AI a nástroje",
                 "tab.lyrics", "Text písně",
                 "tab.display", "Zobrazení",
                 "tab.ai", "AI",
@@ -8485,7 +8927,7 @@ final class AppI18n {
                 "toast.back_exit", "Çıkmak için Geri'ye tekrar basın",
                 "toast.ui_language_saved", "Uygulama dili kaydedildi",
                 "settings.title", "Ayarlar",
-                "settings.subtitle", "Sözler, görünüm, AI ve araçlar",
+                "settings.subtitle", "Sözler, görünüm, tam ekran, AI ve araçlar",
                 "tab.lyrics", "Sözler",
                 "tab.display", "Görünüm",
                 "tab.ai", "AI",

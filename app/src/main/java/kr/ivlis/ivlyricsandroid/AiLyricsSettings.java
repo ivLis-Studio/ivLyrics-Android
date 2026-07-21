@@ -62,6 +62,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
+    static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
+    static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
+    static final String KEY_VINYL_ANIMATIONS_ENABLED = "vinyl_animations_enabled";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
     static final String KEY_USE_SYNC_CREATOR_SPEAKER_COLORS = "use_sync_creator_speaker_colors";
     static final String KEY_LYRICS_TEXT_ALIGNMENT = "lyrics_text_alignment";
@@ -89,6 +92,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String TYPO_LYRICS_ORIGINAL = "lyrics_original";
     static final String TYPO_LYRICS_PRONUNCIATION = "lyrics_pronunciation";
     static final String TYPO_LYRICS_TRANSLATION = "lyrics_translation";
+    static final String TYPO_VINYL_ORIGINAL = "vinyl_original";
+    static final String TYPO_VINYL_PRONUNCIATION = "vinyl_pronunciation";
+    static final String TYPO_VINYL_TRANSLATION = "vinyl_translation";
     static final String TYPO_WEIGHT_REGULAR = "regular";
     static final String TYPO_WEIGHT_SEMIBOLD = "semibold";
     static final String TYPO_WEIGHT_BOLD = "bold";
@@ -192,6 +198,12 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             new TypographySlot(TYPO_LYRICS_PRONUNCIATION, "typography.slot.lyrics_pronunciation", "typography.slot.lyrics_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
             new TypographySlot(TYPO_LYRICS_TRANSLATION, "typography.slot.lyrics_translation", "typography.slot.lyrics_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
     ));
+    static final List<TypographySlot> VINYL_TYPOGRAPHY_SLOTS = Collections.unmodifiableList(Arrays.asList(
+            new TypographySlot(TYPO_VINYL_ORIGINAL, "typography.slot.vinyl_original", "typography.slot.vinyl_original_desc", 100, TYPO_WEIGHT_BOLD),
+            new TypographySlot(TYPO_VINYL_PRONUNCIATION, "typography.slot.vinyl_pronunciation", "typography.slot.vinyl_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_VINYL_TRANSLATION, "typography.slot.vinyl_translation", "typography.slot.vinyl_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
+    ));
+    private static final List<TypographySlot> ALL_TYPOGRAPHY_SLOTS = allTypographySlots();
     static final List<SpeakerColorSlot> SPEAKER_COLOR_SLOTS = Collections.unmodifiableList(Arrays.asList(
             new SpeakerColorSlot(SPEAKER_COLOR_NORMAL, "speaker_color.normal", "#ffffff"),
             new SpeakerColorSlot("duet1", "speaker_color.duet", "#e4d8ff"),
@@ -287,6 +299,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 typographySettings(),
+                vinylSettings(),
                 speakerColorSettings(),
                 prefs.getBoolean(KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, true),
                 normalizeLyricsTextAlignment(prefs.getString(KEY_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
@@ -332,6 +345,18 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 normalizeTypographyWeight(weight, slot.defaultWeight)
         ));
         saveTypographySettings(new TypographySettings(next));
+    }
+
+    void setVinylAlbumSizePercent(int sizePercent) {
+        prefs.edit().putInt(KEY_VINYL_ALBUM_SIZE_PERCENT, clampInt(sizePercent, 70, 140)).apply();
+    }
+
+    void setVinylRecordSizePercent(int sizePercent) {
+        prefs.edit().putInt(KEY_VINYL_RECORD_SIZE_PERCENT, clampInt(sizePercent, 70, 140)).apply();
+    }
+
+    void setVinylAnimationsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_VINYL_ANIMATIONS_ENABLED, enabled).apply();
     }
 
     void setSpeakerColors(Map<String, String> colors) {
@@ -715,7 +740,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             } catch (JSONException ignored) {
             }
         }
-        for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+        for (TypographySlot slot : ALL_TYPOGRAPHY_SLOTS) {
             TypographyStyle style = null;
             if (object != null) {
                 JSONObject slotObject = object.optJSONObject(slot.id);
@@ -730,6 +755,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             styles.put(slot.id, style == null ? slot.defaultStyle() : style);
         }
         return new TypographySettings(styles);
+    }
+
+    private VinylSettings vinylSettings() {
+        return new VinylSettings(
+                prefs.getInt(KEY_VINYL_ALBUM_SIZE_PERCENT, 100),
+                prefs.getInt(KEY_VINYL_RECORD_SIZE_PERCENT, 100),
+                prefs.getBoolean(KEY_VINYL_ANIMATIONS_ENABLED, true)
+        );
     }
 
     private SpeakerColorSettings speakerColorSettings() {
@@ -753,7 +786,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         try {
             JSONObject object = new JSONObject();
             TypographySettings safe = typography == null ? TypographySettings.defaults() : typography;
-            for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+            for (TypographySlot slot : ALL_TYPOGRAPHY_SLOTS) {
                 TypographyStyle style = safe.style(slot.id);
                 JSONObject slotObject = new JSONObject();
                 slotObject.put("size", style.sizePercent);
@@ -1018,12 +1051,18 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     static TypographySlot typographySlotById(String slotId) {
         String normalized = slotId == null ? "" : slotId.trim();
-        for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+        for (TypographySlot slot : ALL_TYPOGRAPHY_SLOTS) {
             if (slot.id.equals(normalized)) {
                 return slot;
             }
         }
         return TYPOGRAPHY_SLOTS.get(0);
+    }
+
+    private static List<TypographySlot> allTypographySlots() {
+        List<TypographySlot> slots = new ArrayList<>(TYPOGRAPHY_SLOTS);
+        slots.addAll(VINYL_TYPOGRAPHY_SLOTS);
+        return Collections.unmodifiableList(slots);
     }
 
     static String normalizeBackgroundMode(String mode) {
@@ -1354,7 +1393,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
         TypographySettings(Map<String, TypographyStyle> styles) {
             Map<String, TypographyStyle> values = new LinkedHashMap<>();
-            for (TypographySlot slot : TYPOGRAPHY_SLOTS) {
+            for (TypographySlot slot : ALL_TYPOGRAPHY_SLOTS) {
                 TypographyStyle style = styles == null ? null : styles.get(slot.id);
                 values.put(slot.id, style == null ? slot.defaultStyle() : new TypographyStyle(style.sizePercent, style.weight, slot));
             }
@@ -1369,6 +1408,30 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             TypographySlot slot = typographySlotById(slotId);
             TypographyStyle style = styles.get(slot.id);
             return style == null ? slot.defaultStyle() : style;
+        }
+
+        TypographySettings forVinylPreview() {
+            Map<String, TypographyStyle> values = new LinkedHashMap<>(styles);
+            values.put(TYPO_MAIN_PREVIEW_ORIGINAL, style(TYPO_VINYL_ORIGINAL));
+            values.put(TYPO_MAIN_PREVIEW_PRONUNCIATION, style(TYPO_VINYL_PRONUNCIATION));
+            values.put(TYPO_MAIN_PREVIEW_TRANSLATION, style(TYPO_VINYL_TRANSLATION));
+            return new TypographySettings(values);
+        }
+    }
+
+    static final class VinylSettings {
+        final int albumSizePercent;
+        final int recordSizePercent;
+        final boolean animationsEnabled;
+
+        VinylSettings(int albumSizePercent, int recordSizePercent, boolean animationsEnabled) {
+            this.albumSizePercent = clampInt(albumSizePercent, 70, 140);
+            this.recordSizePercent = clampInt(recordSizePercent, 70, 140);
+            this.animationsEnabled = animationsEnabled;
+        }
+
+        static VinylSettings defaults() {
+            return new VinylSettings(100, 100, true);
         }
     }
 
@@ -1490,6 +1553,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
         final TypographySettings typography;
+        final VinylSettings vinyl;
         final SpeakerColorSettings speakerColors;
         final boolean useSyncCreatorSpeakerColors;
         final String lyricsTextAlignment;
@@ -1526,6 +1590,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
                 TypographySettings typography,
+                VinylSettings vinyl,
                 SpeakerColorSettings speakerColors,
                 boolean useSyncCreatorSpeakerColors,
                 String lyricsTextAlignment,
@@ -1565,6 +1630,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
             this.typography = typography == null ? TypographySettings.defaults() : typography;
+            this.vinyl = vinyl == null ? VinylSettings.defaults() : vinyl;
             this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
             this.useSyncCreatorSpeakerColors = useSyncCreatorSpeakerColors;
             this.lyricsTextAlignment = normalizeLyricsTextAlignment(lyricsTextAlignment);

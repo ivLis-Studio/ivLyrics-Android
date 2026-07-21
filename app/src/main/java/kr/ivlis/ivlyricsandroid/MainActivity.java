@@ -116,6 +116,7 @@ public final class MainActivity extends Activity implements
     private static final long EMPTY_LYRICS_PREVIEW_VISIBLE_MS = 3_000L;
     private static final String SETTINGS_TAB_LYRICS = "lyrics";
     private static final String SETTINGS_TAB_DISPLAY = "display";
+    private static final String SETTINGS_TAB_FULLSCREEN = "fullscreen";
     private static final String SETTINGS_TAB_AI = "ai";
     private static final String SETTINGS_TAB_TOOLS = "tools";
     private static final String LYRICS_POPUP_TAB_LANGUAGE = "language";
@@ -274,6 +275,7 @@ public final class MainActivity extends Activity implements
     private LinearLayout settingsTabButtonsContainer;
     private LinearLayout settingsLyricsPage;
     private LinearLayout settingsDisplayPage;
+    private LinearLayout settingsFullscreenPage;
     private LinearLayout settingsAiPage;
     private LinearLayout settingsToolsPage;
     private LinearLayout previewModeButtonsContainer;
@@ -307,6 +309,7 @@ public final class MainActivity extends Activity implements
     private Switch pipShowArtworkSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
+    private Switch vinylAnimationsSwitch;
     private Switch lyricsTrackBackgroundOverrideSwitch;
     private Switch lyricsBackgroundNoiseSwitch;
     private Switch lyricsBackgroundReduceMotionSwitch;
@@ -315,6 +318,8 @@ public final class MainActivity extends Activity implements
     private SeekBar backgroundBlurSeekBar;
     private SeekBar backgroundVideoScaleSeekBar;
     private SeekBar pipLyricsSizeSeekBar;
+    private SeekBar vinylAlbumSizeSeekBar;
+    private SeekBar vinylRecordSizeSeekBar;
     private SeekBar lyricsBackgroundBrightnessSeekBar;
     private SeekBar lyricsBackgroundBlurSeekBar;
     private SeekBar lyricsBackgroundVideoScaleSeekBar;
@@ -322,6 +327,8 @@ public final class MainActivity extends Activity implements
     private TextView backgroundBlurValueView;
     private TextView backgroundVideoScaleValueView;
     private TextView pipLyricsSizeValueView;
+    private TextView vinylAlbumSizeValueView;
+    private TextView vinylRecordSizeValueView;
     private TextView lyricsBackgroundBrightnessValueView;
     private TextView lyricsBackgroundBlurValueView;
     private TextView lyricsBackgroundVideoScaleValueView;
@@ -1838,7 +1845,7 @@ public final class MainActivity extends Activity implements
             AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
             view.lyricView().setKaraokeBounceEffectEnabled(settings.karaokeBounceEffectEnabled);
             view.lyricView().setKaraokeDataAsLineSynced(settings.karaokeDataAsLineSynced);
-            view.lyricView().setTypographySettings(settings.typography);
+            view.setCustomization(settings.vinyl, settings.typography);
         }
         view.setLoadingText(vinylLoadingText(), false);
         if (currentTrack != null && currentTrack.hasUsableMetadata()) {
@@ -1880,9 +1887,16 @@ public final class MainActivity extends Activity implements
     }
 
     private void fadeNormalPlayer(boolean show) {
+        boolean animationsEnabled = aiLyricsSettings == null
+                || aiLyricsSettings.snapshot().vinyl.animationsEnabled;
         if (mainPage != null) {
             mainPage.animate().cancel();
-            if (show) {
+            if (!animationsEnabled) {
+                mainPage.setAlpha(1f);
+                mainPage.setScaleX(1f);
+                mainPage.setScaleY(1f);
+                mainPage.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
+            } else if (show) {
                 mainPage.setVisibility(View.VISIBLE);
                 mainPage.setAlpha(0f);
                 mainPage.setScaleX(0.985f);
@@ -3843,15 +3857,28 @@ public final class MainActivity extends Activity implements
         settingsTabButtonsContainer = new LinearLayout(this);
         settingsTabButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
         settingsTabButtonsContainer.setGravity(Gravity.CENTER_VERTICAL);
-        content.addView(settingsTabButtonsContainer, topMargin(matchWrap(), dp(18)));
+        HorizontalScrollView settingsTabsScroll = new HorizontalScrollView(this);
+        settingsTabsScroll.setHorizontalScrollBarEnabled(false);
+        settingsTabsScroll.setFillViewport(false);
+        settingsTabsScroll.setClipToPadding(false);
+        settingsTabsScroll.addView(
+                settingsTabButtonsContainer,
+                new HorizontalScrollView.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+        );
+        content.addView(settingsTabsScroll, topMargin(matchWrap(), dp(18)));
         buildSettingsTabs();
 
         settingsLyricsPage = settingsPage();
         settingsDisplayPage = settingsPage();
+        settingsFullscreenPage = settingsPage();
         settingsAiPage = settingsPage();
         settingsToolsPage = settingsPage();
         content.addView(settingsLyricsPage, topMargin(matchWrap(), dp(18)));
         content.addView(settingsDisplayPage, topMargin(matchWrap(), dp(18)));
+        content.addView(settingsFullscreenPage, topMargin(matchWrap(), dp(18)));
         content.addView(settingsAiPage, topMargin(matchWrap(), dp(18)));
         content.addView(settingsToolsPage, topMargin(matchWrap(), dp(18)));
 
@@ -4292,6 +4319,8 @@ public final class MainActivity extends Activity implements
                 buildBackgroundSolidColorControl()
         );
         settingsDisplayPage.addView(backgroundSolidColorGroup, topMargin(matchWrap(), dp(12)));
+
+        buildVinylSettingsPage();
 
         settingsAiPage.addView(sectionTitle(ui("section.ai_lyrics")));
         settingsAiPage.addView(sectionDescription(ui("section.ai_lyrics_desc")), topMargin(matchWrap(), dp(8)));
@@ -5148,6 +5177,84 @@ public final class MainActivity extends Activity implements
                 .start();
     }
 
+    private void buildVinylSettingsPage() {
+        if (settingsFullscreenPage == null) {
+            return;
+        }
+        settingsFullscreenPage.addView(sectionTitle(ui("vinyl.mode")));
+        settingsFullscreenPage.addView(
+                sectionDescription(ui("vinyl.settings.subtitle")),
+                topMargin(matchWrap(), dp(8))
+        );
+
+        vinylAlbumSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        vinylAlbumSizeSeekBar = new SeekBar(this);
+        vinylAlbumSizeSeekBar.setMax(70);
+        vinylAlbumSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = progress + 70;
+                if (vinylAlbumSizeValueView != null) vinylAlbumSizeValueView.setText(value + "%");
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                aiLyricsSettings.setVinylAlbumSizePercent(value);
+                applyVinylSettings(aiLyricsSettings.snapshot());
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                showSavedToast(ui("toast.settings_saved"));
+            }
+        });
+        settingsFullscreenPage.addView(settingGroup(
+                ui("vinyl.settings.album_size"),
+                ui("vinyl.settings.album_size_desc"),
+                buildSliderRow(vinylAlbumSizeSeekBar, vinylAlbumSizeValueView)
+        ), topMargin(matchWrap(), dp(12)));
+
+        vinylRecordSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        vinylRecordSizeSeekBar = new SeekBar(this);
+        vinylRecordSizeSeekBar.setMax(70);
+        vinylRecordSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = progress + 70;
+                if (vinylRecordSizeValueView != null) vinylRecordSizeValueView.setText(value + "%");
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                aiLyricsSettings.setVinylRecordSizePercent(value);
+                applyVinylSettings(aiLyricsSettings.snapshot());
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                showSavedToast(ui("toast.settings_saved"));
+            }
+        });
+        settingsFullscreenPage.addView(settingGroup(
+                ui("vinyl.settings.record_size"),
+                ui("vinyl.settings.record_size_desc"),
+                buildSliderRow(vinylRecordSizeSeekBar, vinylRecordSizeValueView)
+        ), topMargin(matchWrap(), dp(12)));
+
+        vinylAnimationsSwitch = settingSwitch(
+                ui("vinyl.settings.animations"),
+                ui("vinyl.settings.animations_desc")
+        );
+        vinylAnimationsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setVinylAnimationsEnabled(isChecked);
+            applyVinylSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsFullscreenPage.addView(vinylAnimationsSwitch, topMargin(matchWrap(), dp(12)));
+
+        settingsFullscreenPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
+        settingsFullscreenPage.addView(sectionDescription(ui("vinyl.settings.typography_desc")), topMargin(matchWrap(), dp(8)));
+        settingsFullscreenPage.addView(
+                buildTypographySettingsList(AiLyricsSettings.VINYL_TYPOGRAPHY_SLOTS),
+                topMargin(matchWrap(), dp(12))
+        );
+    }
+
     private LinearLayout settingsPage() {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -5162,6 +5269,7 @@ public final class MainActivity extends Activity implements
         settingsTabButtonsContainer.removeAllViews();
         addSettingsTabButton(SETTINGS_TAB_LYRICS, ui("tab.lyrics"));
         addSettingsTabButton(SETTINGS_TAB_DISPLAY, ui("tab.display"));
+        addSettingsTabButton(SETTINGS_TAB_FULLSCREEN, ui("tab.fullscreen"));
         addSettingsTabButton(SETTINGS_TAB_AI, ui("tab.ai"));
         addSettingsTabButton(SETTINGS_TAB_TOOLS, ui("tab.tools"));
         updateSettingsTabButtons();
@@ -5174,8 +5282,12 @@ public final class MainActivity extends Activity implements
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
         button.setPadding(dp(10), 0, dp(10), 0);
+        button.setMinWidth(dp(104));
         button.setOnClickListener(view -> switchSettingsTab(tabId));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(42)
+        );
         if (settingsTabButtonsContainer.getChildCount() > 0) {
             params.leftMargin = dp(8);
         }
@@ -5188,6 +5300,7 @@ public final class MainActivity extends Activity implements
         activeSettingsTab = next;
         setSettingsPageVisibility(settingsLyricsPage, SETTINGS_TAB_LYRICS.equals(next));
         setSettingsPageVisibility(settingsDisplayPage, SETTINGS_TAB_DISPLAY.equals(next));
+        setSettingsPageVisibility(settingsFullscreenPage, SETTINGS_TAB_FULLSCREEN.equals(next));
         setSettingsPageVisibility(settingsAiPage, SETTINGS_TAB_AI.equals(next));
         setSettingsPageVisibility(settingsToolsPage, SETTINGS_TAB_TOOLS.equals(next));
         updateSettingsTabButtons();
@@ -5211,6 +5324,7 @@ public final class MainActivity extends Activity implements
 
     private String normalizeSettingsTab(String tabId) {
         if (SETTINGS_TAB_DISPLAY.equals(tabId)
+                || SETTINGS_TAB_FULLSCREEN.equals(tabId)
                 || SETTINGS_TAB_AI.equals(tabId)
                 || SETTINGS_TAB_TOOLS.equals(tabId)) {
             return tabId;
@@ -5937,9 +6051,13 @@ public final class MainActivity extends Activity implements
     }
 
     private LinearLayout buildTypographySettingsList() {
+        return buildTypographySettingsList(AiLyricsSettings.TYPOGRAPHY_SLOTS);
+    }
+
+    private LinearLayout buildTypographySettingsList(List<AiLyricsSettings.TypographySlot> slots) {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        for (AiLyricsSettings.TypographySlot slot : AiLyricsSettings.TYPOGRAPHY_SLOTS) {
+        for (AiLyricsSettings.TypographySlot slot : slots) {
             View control = buildTypographySlotControl(slot);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -7366,7 +7484,7 @@ public final class MainActivity extends Activity implements
             lyricPreviewView.setTypographySettings(typography);
         }
         if (vinylPlayerModeView != null) {
-            vinylPlayerModeView.lyricView().setTypographySettings(typography);
+            vinylPlayerModeView.setCustomization(snapshot.vinyl, typography);
         }
         if (lyricsView != null) {
             lyricsView.setTypographySettings(typography);
@@ -7384,6 +7502,13 @@ public final class MainActivity extends Activity implements
             pictureInPictureLyricsView.setTypographySettings(typography);
             pictureInPictureLyricsView.setTypographySizeMultiplier(snapshot.pipLyricsSizePercent / 100f);
         }
+    }
+
+    private void applyVinylSettings(AiLyricsSettings.Snapshot snapshot) {
+        if (snapshot == null || vinylPlayerModeView == null) {
+            return;
+        }
+        vinylPlayerModeView.setCustomization(snapshot.vinyl, snapshot.typography);
     }
 
     private void applyLyricsTextAlignmentSetting(AiLyricsSettings.Snapshot snapshot) {
@@ -8712,6 +8837,23 @@ public final class MainActivity extends Activity implements
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
         rebuildLanguageSettingsUi(snapshot);
+        if (vinylAlbumSizeSeekBar != null) {
+            vinylAlbumSizeSeekBar.setProgress(snapshot.vinyl.albumSizePercent - 70);
+        }
+        if (vinylAlbumSizeValueView != null) {
+            vinylAlbumSizeValueView.setText(snapshot.vinyl.albumSizePercent + "%");
+        }
+        if (vinylRecordSizeSeekBar != null) {
+            vinylRecordSizeSeekBar.setProgress(snapshot.vinyl.recordSizePercent - 70);
+        }
+        if (vinylRecordSizeValueView != null) {
+            vinylRecordSizeValueView.setText(snapshot.vinyl.recordSizePercent + "%");
+        }
+        if (vinylAnimationsSwitch != null) {
+            suppressSettingsEvents = true;
+            vinylAnimationsSwitch.setChecked(snapshot.vinyl.animationsEnabled);
+            suppressSettingsEvents = false;
+        }
         if (apiKeysInput != null) {
             apiKeysInput.setText(snapshot.apiKeys);
         }

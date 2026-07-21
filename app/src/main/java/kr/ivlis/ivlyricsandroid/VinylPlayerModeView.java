@@ -129,11 +129,23 @@ final class VinylPlayerModeView extends FrameLayout {
         surface.setPlayback(positionMs, durationMs, playing);
     }
 
+    void setCustomization(
+            AiLyricsSettings.VinylSettings vinylSettings,
+            AiLyricsSettings.TypographySettings typographySettings
+    ) {
+        surface.setCustomization(vinylSettings);
+        AiLyricsSettings.TypographySettings typography = typographySettings == null
+                ? AiLyricsSettings.TypographySettings.defaults()
+                : typographySettings;
+        lyricView.setTypographySettings(typography.forVinylPreview());
+    }
+
     MainLyricPreviewView lyricView() {
         return lyricView;
     }
 
     void setLoadingText(String text, boolean animate) {
+        animate = animate && surface.animationsEnabled();
         String value = text == null ? "" : text.trim();
         loadingView.animate().cancel();
         if (value.isEmpty()) {
@@ -165,6 +177,7 @@ final class VinylPlayerModeView extends FrameLayout {
     }
 
     void show(boolean animate) {
+        animate = animate && surface.animationsEnabled();
         if (animate) {
             surface.startEntrance();
         } else {
@@ -192,6 +205,7 @@ final class VinylPlayerModeView extends FrameLayout {
     }
 
     void hide(boolean animate, Runnable endAction) {
+        animate = animate && surface.animationsEnabled();
         animate().cancel();
         if (!animate) {
             setVisibility(GONE);
@@ -316,6 +330,9 @@ final class VinylPlayerModeView extends FrameLayout {
         private long positionMs;
         private long durationMs;
         private boolean playing;
+        private boolean animationsEnabled = true;
+        private float albumScale = 1f;
+        private float recordScale = 1f;
         private long spinFrameUptimeMs;
         private float spinDegrees;
         private boolean scrubbingTonearm;
@@ -358,6 +375,34 @@ final class VinylPlayerModeView extends FrameLayout {
             this.recordHint = recordHint;
             this.tonearmHint = tonearmHint;
             this.tmiHint = tmiHint;
+        }
+
+        boolean animationsEnabled() {
+            return animationsEnabled;
+        }
+
+        void setCustomization(AiLyricsSettings.VinylSettings settings) {
+            AiLyricsSettings.VinylSettings safe = settings == null
+                    ? AiLyricsSettings.VinylSettings.defaults()
+                    : settings;
+            albumScale = safe.albumSizePercent / 100f;
+            recordScale = safe.recordSizePercent / 100f;
+            animationsEnabled = safe.animationsEnabled;
+            spinFrameUptimeMs = 0L;
+            if (!animationsEnabled) {
+                if (trackAnimator != null) trackAnimator.cancel();
+                if (playAnimator != null) playAnimator.cancel();
+                if (entranceAnimator != null) entranceAnimator.cancel();
+                trackAnimator = null;
+                playAnimator = null;
+                entranceAnimator = null;
+                if (incomingTrack != null) displayedTrack = incomingTrack;
+                incomingTrack = null;
+                trackProgress = 0f;
+                playProgress = playing ? 1f : 0f;
+                entranceProgress = 1f;
+            }
+            invalidate();
         }
 
         void startEntrance() {
@@ -406,7 +451,7 @@ final class VinylPlayerModeView extends FrameLayout {
                 invalidate();
                 return;
             }
-            if (!animateChange || !isShown()) {
+            if (!animationsEnabled || !animateChange || !isShown()) {
                 displayedTrack = next;
                 incomingTrack = null;
                 trackProgress = 0f;
@@ -463,6 +508,12 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private void animatePlayProgress(float target) {
             if (playAnimator != null) playAnimator.cancel();
+            if (!animationsEnabled) {
+                playAnimator = null;
+                playProgress = target;
+                invalidate();
+                return;
+            }
             playAnimator = ValueAnimator.ofFloat(playProgress, target);
             playAnimator.setDuration(target > playProgress ? 1120L : 880L);
             playAnimator.setInterpolator(new DecelerateInterpolator(1.35f));
@@ -497,7 +548,7 @@ final class VinylPlayerModeView extends FrameLayout {
             if (incomingTrack != null) drawIncomingTrack(canvas, geometry);
             drawTonearm(canvas, geometry.record);
 
-            if (playing || trackAnimator != null || entranceAnimator != null) {
+            if (animationsEnabled && (playing || trackAnimator != null || entranceAnimator != null)) {
                 postInvalidateOnAnimation();
             }
         }
@@ -537,6 +588,11 @@ final class VinylPlayerModeView extends FrameLayout {
             float size = landscape
                     ? Math.min(width * 0.34f, availableHeight * 0.72f)
                     : Math.min(width * 0.78f, availableHeight * 0.46f);
+            float maxScale = Math.max(1f, Math.max(albumScale, recordScale));
+            size = Math.min(size, availableHeight * 0.92f / maxScale);
+            if (!landscape) {
+                size = Math.min(size, width * 0.94f / maxScale);
+            }
             size = Math.max(dp(170), size);
 
             float easedEntrance = smoothStep(0f, 1f, entrance);
@@ -575,8 +631,8 @@ final class VinylPlayerModeView extends FrameLayout {
                 coverY += entryOffset;
                 recordY += entryOffset;
                 return new SceneGeometry(
-                        new RectF(coverX, coverY, coverX + coverSize, coverY + coverSize),
-                        new RectF(recordX, recordY, recordX + size, recordY + size),
+                        scaleRect(new RectF(coverX, coverY, coverX + coverSize, coverY + coverSize), albumScale),
+                        scaleRect(new RectF(recordX, recordY, recordX + size, recordY + size), recordScale),
                         lerp(0f, -3f, smoothStep(0.28f, 1f, expansion)) + lerp(-2f, 0f, easedEntrance)
                 );
             }
@@ -584,8 +640,8 @@ final class VinylPlayerModeView extends FrameLayout {
             coverY += entryOffset;
             recordY += entryOffset;
             return new SceneGeometry(
-                    new RectF(coverX, coverY, coverX + size, coverY + size),
-                    new RectF(recordX, recordY, recordX + size, recordY + size),
+                    scaleRect(new RectF(coverX, coverY, coverX + size, coverY + size), albumScale),
+                    scaleRect(new RectF(recordX, recordY, recordX + size, recordY + size), recordScale),
                     lerp(0f, -5f, smoothStep(0.28f, 1f, expansion)) + lerp(-2f, 0f, easedEntrance)
             );
         }
@@ -1051,7 +1107,7 @@ final class VinylPlayerModeView extends FrameLayout {
             if (spinFrameUptimeMs == 0L) spinFrameUptimeMs = now;
             long elapsed = Math.max(0L, now - spinFrameUptimeMs);
             spinFrameUptimeMs = now;
-            if (playing && playProgress >= 0.96f && !scrubbingTonearm) {
+            if (animationsEnabled && playing && playProgress >= 0.96f && !scrubbingTonearm) {
                 spinDegrees = (spinDegrees + elapsed * 0.009f) % 360f;
             }
         }
@@ -1104,6 +1160,17 @@ final class VinylPlayerModeView extends FrameLayout {
                     lerp(from.top, to.top, progress),
                     lerp(from.right, to.right, progress),
                     lerp(from.bottom, to.bottom, progress)
+            );
+        }
+
+        private static RectF scaleRect(RectF source, float scale) {
+            float halfWidth = source.width() * Math.max(0.7f, Math.min(1.4f, scale)) * 0.5f;
+            float halfHeight = source.height() * Math.max(0.7f, Math.min(1.4f, scale)) * 0.5f;
+            return new RectF(
+                    source.centerX() - halfWidth,
+                    source.centerY() - halfHeight,
+                    source.centerX() + halfWidth,
+                    source.centerY() + halfHeight
             );
         }
 
