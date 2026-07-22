@@ -312,6 +312,7 @@ public final class MainActivity extends Activity implements
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
     private Switch vinylAnimationsSwitch;
+    private Switch vinylLyricsSwitch;
     private Switch lyricsTrackBackgroundOverrideSwitch;
     private Switch lyricsBackgroundNoiseSwitch;
     private Switch lyricsBackgroundReduceMotionSwitch;
@@ -5257,6 +5258,18 @@ public final class MainActivity extends Activity implements
         });
         settingsFullscreenPage.addView(vinylAnimationsSwitch, topMargin(matchWrap(), dp(12)));
 
+        vinylLyricsSwitch = settingSwitch(
+                ui("vinyl.settings.lyrics"),
+                ui("vinyl.settings.lyrics_desc")
+        );
+        vinylLyricsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setVinylLyricsEnabled(isChecked);
+            applyVinylSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsFullscreenPage.addView(vinylLyricsSwitch, topMargin(matchWrap(), dp(12)));
+
         settingsFullscreenPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
         settingsFullscreenPage.addView(sectionDescription(ui("vinyl.settings.typography_desc")), topMargin(matchWrap(), dp(8)));
         settingsFullscreenPage.addView(
@@ -8862,6 +8875,11 @@ public final class MainActivity extends Activity implements
         if (vinylAnimationsSwitch != null) {
             suppressSettingsEvents = true;
             vinylAnimationsSwitch.setChecked(snapshot.vinyl.animationsEnabled);
+            suppressSettingsEvents = false;
+        }
+        if (vinylLyricsSwitch != null) {
+            suppressSettingsEvents = true;
+            vinylLyricsSwitch.setChecked(snapshot.vinyl.lyricsEnabled);
             suppressSettingsEvents = false;
         }
         if (apiKeysInput != null) {

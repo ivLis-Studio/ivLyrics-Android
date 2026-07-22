@@ -65,6 +65,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
     static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
     static final String KEY_VINYL_ANIMATIONS_ENABLED = "vinyl_animations_enabled";
+    static final String KEY_VINYL_LYRICS_ENABLED = "vinyl_lyrics_enabled";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
     static final String KEY_USE_SYNC_CREATOR_SPEAKER_COLORS = "use_sync_creator_speaker_colors";
     static final String KEY_LYRICS_TEXT_ALIGNMENT = "lyrics_text_alignment";
@@ -199,9 +200,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             new TypographySlot(TYPO_LYRICS_TRANSLATION, "typography.slot.lyrics_translation", "typography.slot.lyrics_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
     ));
     static final List<TypographySlot> VINYL_TYPOGRAPHY_SLOTS = Collections.unmodifiableList(Arrays.asList(
-            new TypographySlot(TYPO_VINYL_ORIGINAL, "typography.slot.vinyl_original", "typography.slot.vinyl_original_desc", 100, TYPO_WEIGHT_BOLD),
-            new TypographySlot(TYPO_VINYL_PRONUNCIATION, "typography.slot.vinyl_pronunciation", "typography.slot.vinyl_pronunciation_desc", 100, TYPO_WEIGHT_SEMIBOLD),
-            new TypographySlot(TYPO_VINYL_TRANSLATION, "typography.slot.vinyl_translation", "typography.slot.vinyl_translation_desc", 100, TYPO_WEIGHT_SEMIBOLD)
+            new TypographySlot(TYPO_VINYL_ORIGINAL, "typography.slot.vinyl_original", "typography.slot.vinyl_original_desc", 70, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_VINYL_PRONUNCIATION, "typography.slot.vinyl_pronunciation", "typography.slot.vinyl_pronunciation_desc", 70, TYPO_WEIGHT_SEMIBOLD),
+            new TypographySlot(TYPO_VINYL_TRANSLATION, "typography.slot.vinyl_translation", "typography.slot.vinyl_translation_desc", 70, TYPO_WEIGHT_SEMIBOLD)
     ));
     private static final List<TypographySlot> ALL_TYPOGRAPHY_SLOTS = allTypographySlots();
     static final List<SpeakerColorSlot> SPEAKER_COLOR_SLOTS = Collections.unmodifiableList(Arrays.asList(
@@ -357,6 +358,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setVinylAnimationsEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_VINYL_ANIMATIONS_ENABLED, enabled).apply();
+    }
+
+    void setVinylLyricsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_VINYL_LYRICS_ENABLED, enabled).apply();
     }
 
     void setSpeakerColors(Map<String, String> colors) {
@@ -761,7 +766,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         return new VinylSettings(
                 prefs.getInt(KEY_VINYL_ALBUM_SIZE_PERCENT, 100),
                 prefs.getInt(KEY_VINYL_RECORD_SIZE_PERCENT, 100),
-                prefs.getBoolean(KEY_VINYL_ANIMATIONS_ENABLED, true)
+                prefs.getBoolean(KEY_VINYL_ANIMATIONS_ENABLED, true),
+                prefs.getBoolean(KEY_VINYL_LYRICS_ENABLED, true)
         );
     }
 
@@ -1423,15 +1429,17 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final int albumSizePercent;
         final int recordSizePercent;
         final boolean animationsEnabled;
+        final boolean lyricsEnabled;
 
-        VinylSettings(int albumSizePercent, int recordSizePercent, boolean animationsEnabled) {
+        VinylSettings(int albumSizePercent, int recordSizePercent, boolean animationsEnabled, boolean lyricsEnabled) {
             this.albumSizePercent = clampInt(albumSizePercent, 70, 140);
             this.recordSizePercent = clampInt(recordSizePercent, 70, 140);
             this.animationsEnabled = animationsEnabled;
+            this.lyricsEnabled = lyricsEnabled;
         }
 
         static VinylSettings defaults() {
-            return new VinylSettings(100, 100, true);
+            return new VinylSettings(100, 100, true, true);
         }
     }
 

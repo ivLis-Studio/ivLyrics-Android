@@ -133,7 +133,15 @@ final class VinylPlayerModeView extends FrameLayout {
             AiLyricsSettings.VinylSettings vinylSettings,
             AiLyricsSettings.TypographySettings typographySettings
     ) {
-        surface.setCustomization(vinylSettings);
+        AiLyricsSettings.VinylSettings vinyl = vinylSettings == null
+                ? AiLyricsSettings.VinylSettings.defaults()
+                : vinylSettings;
+        surface.setCustomization(vinyl);
+        int nextVisibility = vinyl.lyricsEnabled ? VISIBLE : GONE;
+        if (lyricView.getVisibility() != nextVisibility) {
+            lyricView.setVisibility(nextVisibility);
+            requestLayout();
+        }
         AiLyricsSettings.TypographySettings typography = typographySettings == null
                 ? AiLyricsSettings.TypographySettings.defaults()
                 : typographySettings;
@@ -245,10 +253,12 @@ final class VinylPlayerModeView extends FrameLayout {
                 MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
         );
         int lyricHeight = width > height ? dp(104) : dp(132);
-        lyricView.measure(
-                MeasureSpec.makeMeasureSpec(Math.max(0, width - dp(36)), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(lyricHeight, MeasureSpec.EXACTLY)
-        );
+        if (lyricView.getVisibility() != GONE) {
+            lyricView.measure(
+                    MeasureSpec.makeMeasureSpec(Math.max(0, width - dp(36)), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(lyricHeight, MeasureSpec.EXACTLY)
+            );
+        }
         loadingView.measure(
                 MeasureSpec.makeMeasureSpec(Math.max(0, width - dp(36)), MeasureSpec.AT_MOST),
                 MeasureSpec.makeMeasureSpec(dp(34), MeasureSpec.EXACTLY)
@@ -261,9 +271,11 @@ final class VinylPlayerModeView extends FrameLayout {
         int height = bottom - top;
         surface.layout(0, 0, width, height);
         int side = dp(18);
-        int lyricBottom = width > height ? dp(10) : dp(18);
-        int lyricHeight = lyricView.getMeasuredHeight();
-        lyricView.layout(side, height - lyricBottom - lyricHeight, width - side, height - lyricBottom);
+        if (lyricView.getVisibility() != GONE) {
+            int lyricBottom = width > height ? dp(10) : dp(18);
+            int lyricHeight = lyricView.getMeasuredHeight();
+            lyricView.layout(side, height - lyricBottom - lyricHeight, width - side, height - lyricBottom);
+        }
         int loadingTop = width > height ? dp(14) : dp(20);
         loadingView.layout(
                 side,
@@ -331,6 +343,7 @@ final class VinylPlayerModeView extends FrameLayout {
         private long durationMs;
         private boolean playing;
         private boolean animationsEnabled = true;
+        private boolean lyricsEnabled = true;
         private float albumScale = 1f;
         private float recordScale = 1f;
         private long spinFrameUptimeMs;
@@ -388,6 +401,7 @@ final class VinylPlayerModeView extends FrameLayout {
             albumScale = safe.albumSizePercent / 100f;
             recordScale = safe.recordSizePercent / 100f;
             animationsEnabled = safe.animationsEnabled;
+            lyricsEnabled = safe.lyricsEnabled;
             spinFrameUptimeMs = 0L;
             if (!animationsEnabled) {
                 if (trackAnimator != null) trackAnimator.cancel();
@@ -583,7 +597,7 @@ final class VinylPlayerModeView extends FrameLayout {
             float width = getWidth();
             float height = getHeight();
             boolean landscape = isLandscape();
-            float lyricReserve = landscape ? dp(112) : dp(154);
+            float lyricReserve = lyricsEnabled ? (landscape ? dp(112) : dp(154)) : 0f;
             float availableHeight = Math.max(dp(260), height - lyricReserve);
             float size = landscape
                     ? Math.min(width * 0.34f, availableHeight * 0.72f)
