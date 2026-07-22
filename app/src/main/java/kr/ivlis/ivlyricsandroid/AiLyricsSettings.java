@@ -65,6 +65,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
     static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
     static final String KEY_VINYL_ANIMATIONS_ENABLED = "vinyl_animations_enabled";
+    static final String KEY_VINYL_CENTER_ROTATION_ENABLED = "vinyl_center_rotation_enabled";
     static final String KEY_VINYL_LYRICS_ENABLED = "vinyl_lyrics_enabled";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
     static final String KEY_USE_SYNC_CREATOR_SPEAKER_COLORS = "use_sync_creator_speaker_colors";
@@ -358,6 +359,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setVinylAnimationsEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_VINYL_ANIMATIONS_ENABLED, enabled).apply();
+    }
+
+    void setVinylCenterRotationEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_VINYL_CENTER_ROTATION_ENABLED, enabled).apply();
     }
 
     void setVinylLyricsEnabled(boolean enabled) {
@@ -767,6 +772,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getInt(KEY_VINYL_ALBUM_SIZE_PERCENT, 100),
                 prefs.getInt(KEY_VINYL_RECORD_SIZE_PERCENT, 100),
                 prefs.getBoolean(KEY_VINYL_ANIMATIONS_ENABLED, true),
+                prefs.getBoolean(KEY_VINYL_CENTER_ROTATION_ENABLED, true),
                 prefs.getBoolean(KEY_VINYL_LYRICS_ENABLED, true)
         );
     }
@@ -1429,17 +1435,25 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final int albumSizePercent;
         final int recordSizePercent;
         final boolean animationsEnabled;
+        final boolean centerRotationEnabled;
         final boolean lyricsEnabled;
 
-        VinylSettings(int albumSizePercent, int recordSizePercent, boolean animationsEnabled, boolean lyricsEnabled) {
+        VinylSettings(
+                int albumSizePercent,
+                int recordSizePercent,
+                boolean animationsEnabled,
+                boolean centerRotationEnabled,
+                boolean lyricsEnabled
+        ) {
             this.albumSizePercent = clampInt(albumSizePercent, 70, 140);
             this.recordSizePercent = clampInt(recordSizePercent, 70, 140);
             this.animationsEnabled = animationsEnabled;
+            this.centerRotationEnabled = centerRotationEnabled;
             this.lyricsEnabled = lyricsEnabled;
         }
 
         static VinylSettings defaults() {
-            return new VinylSettings(100, 100, true, true);
+            return new VinylSettings(100, 100, true, true, true);
         }
     }
 

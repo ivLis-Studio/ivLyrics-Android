@@ -343,6 +343,7 @@ final class VinylPlayerModeView extends FrameLayout {
         private long durationMs;
         private boolean playing;
         private boolean animationsEnabled = true;
+        private boolean centerRotationEnabled = true;
         private boolean lyricsEnabled = true;
         private float albumScale = 1f;
         private float recordScale = 1f;
@@ -401,6 +402,7 @@ final class VinylPlayerModeView extends FrameLayout {
             albumScale = safe.albumSizePercent / 100f;
             recordScale = safe.recordSizePercent / 100f;
             animationsEnabled = safe.animationsEnabled;
+            centerRotationEnabled = safe.centerRotationEnabled;
             lyricsEnabled = safe.lyricsEnabled;
             spinFrameUptimeMs = 0L;
             if (!animationsEnabled) {
@@ -723,6 +725,10 @@ final class VinylPlayerModeView extends FrameLayout {
                 float inset = bounds.width() * (0.035f + index * 0.0113f);
                 canvas.drawOval(new RectF(bounds.left + inset, bounds.top + inset,
                         bounds.right - inset, bounds.bottom - inset), groovePaint);
+            }
+
+            if (!centerRotationEnabled) {
+                canvas.rotate(-spinDegrees, bounds.centerX(), bounds.centerY());
             }
 
             float labelRadius = bounds.width() * 0.2235f;

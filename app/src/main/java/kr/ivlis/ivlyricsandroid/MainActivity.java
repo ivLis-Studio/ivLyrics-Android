@@ -312,6 +312,7 @@ public final class MainActivity extends Activity implements
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
     private Switch vinylAnimationsSwitch;
+    private Switch vinylCenterRotationSwitch;
     private Switch vinylLyricsSwitch;
     private Switch lyricsTrackBackgroundOverrideSwitch;
     private Switch lyricsBackgroundNoiseSwitch;
@@ -5258,6 +5259,18 @@ public final class MainActivity extends Activity implements
         });
         settingsFullscreenPage.addView(vinylAnimationsSwitch, topMargin(matchWrap(), dp(12)));
 
+        vinylCenterRotationSwitch = settingSwitch(
+                ui("vinyl.settings.center_rotation"),
+                ui("vinyl.settings.center_rotation_desc")
+        );
+        vinylCenterRotationSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setVinylCenterRotationEnabled(isChecked);
+            applyVinylSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        settingsFullscreenPage.addView(vinylCenterRotationSwitch, topMargin(matchWrap(), dp(12)));
+
         vinylLyricsSwitch = settingSwitch(
                 ui("vinyl.settings.lyrics"),
                 ui("vinyl.settings.lyrics_desc")
@@ -8875,6 +8888,11 @@ public final class MainActivity extends Activity implements
         if (vinylAnimationsSwitch != null) {
             suppressSettingsEvents = true;
             vinylAnimationsSwitch.setChecked(snapshot.vinyl.animationsEnabled);
+            suppressSettingsEvents = false;
+        }
+        if (vinylCenterRotationSwitch != null) {
+            suppressSettingsEvents = true;
+            vinylCenterRotationSwitch.setChecked(snapshot.vinyl.centerRotationEnabled);
             suppressSettingsEvents = false;
         }
         if (vinylLyricsSwitch != null) {
