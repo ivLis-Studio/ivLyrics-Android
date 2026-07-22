@@ -315,6 +315,10 @@ final class VinylPlayerModeView extends FrameLayout {
         private static final float TONEARM_PARK_DEGREES = -14f;
         private static final float TONEARM_EJECT_DEGREES = -8.2f;
         private static final float TONEARM_CUE_PLAY_DEGREES = -7.2f;
+        private static final float TONEARM_LINEAR_REST_PROGRESS = -0.44f;
+        private static final float TONEARM_LINEAR_EJECT_PROGRESS = -0.2f;
+        private static final float TONEARM_LINEAR_CUE_PLAY_PROGRESS = -0.08f;
+        private static final float TONEARM_LINEAR_TRAVEL = 95f;
         private static final float TONEARM_VIEWBOX_HEIGHT = 620f;
         private static final float TONEARM_PIVOT_SVG_X = 183f;
         private static final float TONEARM_PIVOT_SVG_Y = 64f;
@@ -347,6 +351,9 @@ final class VinylPlayerModeView extends FrameLayout {
         private boolean lyricsEnabled = true;
         private float albumScale = 1f;
         private float recordScale = 1f;
+        private String tonearmStyle = AiLyricsSettings.VINYL_TONEARM_STYLE_S;
+        private String tonearmFinish = AiLyricsSettings.VINYL_TONEARM_FINISH_WHITE;
+        private float tonearmScale = 1f;
         private long spinFrameUptimeMs;
         private float spinDegrees;
         private boolean scrubbingTonearm;
@@ -357,6 +364,8 @@ final class VinylPlayerModeView extends FrameLayout {
         private float dragTonearmRotation;
         private float dragRawTonearmRotation;
         private float dragPointerAngleOffset;
+        private float dragRawTonearmProgress;
+        private float dragPointerProgressOffset;
         private float dragStartPointerX;
         private float dragStartPointerY;
         private boolean dragStartedPlaying;
@@ -365,6 +374,8 @@ final class VinylPlayerModeView extends FrameLayout {
         private float pivotY;
         private float needleX;
         private float needleY;
+        private float linearTonearmOuterX;
+        private float tonearmDrawScale;
         private Runnable longPressRunnable;
         private String closeHint = "";
         private String recordHint = "";
@@ -404,6 +415,9 @@ final class VinylPlayerModeView extends FrameLayout {
             animationsEnabled = safe.animationsEnabled;
             centerRotationEnabled = safe.centerRotationEnabled;
             lyricsEnabled = safe.lyricsEnabled;
+            tonearmStyle = safe.tonearmStyle;
+            tonearmFinish = safe.tonearmFinish;
+            tonearmScale = safe.tonearmSizePercent / 100f;
             spinFrameUptimeMs = 0L;
             if (!animationsEnabled) {
                 if (trackAnimator != null) trackAnimator.cancel();
@@ -795,10 +809,18 @@ final class VinylPlayerModeView extends FrameLayout {
         }
 
         private void drawTonearm(Canvas canvas, RectF record) {
-            float rotation = currentTonearmRotation();
-            float scale = record.width() / TONEARM_VIEWBOX_HEIGHT;
+            float scale = record.width() / TONEARM_VIEWBOX_HEIGHT * tonearmScale;
+            tonearmDrawScale = scale;
             pivotX = record.left + record.width() * 0.8766f;
             pivotY = record.top + record.height() * 0.1032f;
+
+            if (AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)) {
+                drawLinearTonearm(canvas, record, scale);
+                resetTonearmPaint();
+                return;
+            }
+
+            float rotation = currentTonearmRotation();
 
             double radians = Math.toRadians(rotation);
             float localHeadX = (TONEARM_HEAD_SVG_X - TONEARM_PIVOT_SVG_X) * scale;
@@ -813,11 +835,7 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStyle(Paint.Style.FILL);
             paint.setShader(new android.graphics.RadialGradient(
                     172f, 43f, 95f,
-                    new int[]{
-                            Color.argb(224, 255, 255, 255),
-                            Color.argb(158, 251, 251, 251),
-                            Color.argb(87, 238, 238, 238)
-                    },
+                    tonearmBaseColors(),
                     new float[]{0f, 0.58f, 1f},
                     Shader.TileMode.CLAMP
             ));
@@ -825,7 +843,7 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(2f);
-            paint.setColor(Color.argb(158, 220, 220, 220));
+            paint.setColor(tonearmHousingEdgeColor());
             canvas.drawCircle(183f, 64f, 66f, paint);
             canvas.restoreToCount(baseSave);
 
@@ -836,9 +854,7 @@ final class VinylPlayerModeView extends FrameLayout {
             canvas.translate(-TONEARM_PIVOT_SVG_X, -TONEARM_PIVOT_SVG_Y);
 
             tonearmPath.reset();
-            tonearmPath.moveTo(189f, 75f);
-            tonearmPath.cubicTo(184f, 172f, 151f, 330f, 78f, 474f);
-            tonearmPath.lineTo(58f, 513f);
+            buildTonearmTubePath(tonearmPath, false);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
@@ -849,12 +865,7 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStrokeWidth(14f);
             paint.setShader(new LinearGradient(
                     28f, 0f, 210f, 0f,
-                    new int[]{
-                            Color.rgb(170, 170, 170),
-                            Color.rgb(250, 250, 250),
-                            Color.WHITE,
-                            Color.rgb(187, 187, 187)
-                    },
+                    tonearmTubeColors(),
                     new float[]{0f, 0.24f, 0.55f, 1f},
                     Shader.TileMode.CLAMP
             ));
@@ -862,10 +873,9 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setShader(null);
 
             tonearmPath.reset();
-            tonearmPath.moveTo(184f, 79f);
-            tonearmPath.cubicTo(178f, 179f, 145f, 330f, 74f, 469f);
+            buildTonearmTubePath(tonearmPath, true);
             paint.setStrokeWidth(3f);
-            paint.setColor(Color.argb(240, 255, 255, 255));
+            paint.setColor(tonearmHighlightColor());
             canvas.drawPath(tonearmPath, paint);
 
             tonearmPath.reset();
@@ -887,7 +897,7 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(4f);
-            paint.setColor(Color.argb(242, 255, 255, 255));
+            paint.setColor(tonearmHighlightColor());
             canvas.drawPath(tonearmPath, paint);
 
             tonearmPath.reset();
@@ -907,7 +917,7 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(4f);
-            paint.setColor(Color.argb(242, 255, 255, 255));
+            paint.setColor(tonearmHighlightColor());
             canvas.drawPath(tonearmPath, paint);
 
             tonearmPath.reset();
@@ -917,10 +927,146 @@ final class VinylPlayerModeView extends FrameLayout {
             tonearmPath.lineTo(53f, 557f);
             paint.setStrokeCap(Paint.Cap.SQUARE);
             paint.setStrokeWidth(5f);
-            paint.setColor(Color.rgb(238, 238, 238));
+            paint.setColor(tonearmNeedleColor());
             canvas.drawPath(tonearmPath, paint);
             canvas.restoreToCount(movingSave);
 
+            resetTonearmPaint();
+        }
+
+        private void drawLinearTonearm(Canvas canvas, RectF record, float scale) {
+            float progress = currentTonearmProgress();
+            linearTonearmOuterX = record.left + record.width() * 0.86f;
+            float carriageX = linearTonearmOuterX - TONEARM_LINEAR_TRAVEL * scale * progress;
+            float railY = pivotY;
+            pivotX = carriageX;
+            needleX = carriageX - 10f * scale;
+            needleY = railY + (544f - 64f) * scale;
+
+            float railStart = linearTonearmOuterX - 140f * scale;
+            float railEnd = linearTonearmOuterX + 60f * scale;
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setShader(null);
+            paint.setStrokeWidth(20f * scale);
+            paint.setColor(Color.argb(78, 0, 0, 0));
+            canvas.drawLine(railStart, railY + 4f * scale, railEnd, railY + 4f * scale, paint);
+            paint.setStrokeWidth(16f * scale);
+            paint.setShader(new LinearGradient(
+                    railStart, railY, railEnd, railY,
+                    tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
+            ));
+            canvas.drawLine(railStart, railY, railEnd, railY, paint);
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(tonearmHousingColor());
+            canvas.drawCircle(railStart, railY, 18f * scale, paint);
+            canvas.drawCircle(railEnd, railY, 18f * scale, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2f * scale);
+            paint.setColor(tonearmHousingEdgeColor());
+            canvas.drawCircle(railStart, railY, 18f * scale, paint);
+            canvas.drawCircle(railEnd, railY, 18f * scale, paint);
+
+            int movingSave = canvas.save();
+            canvas.translate(carriageX, railY);
+            canvas.scale(scale, scale);
+            canvas.translate(-170f, -64f);
+
+            tonearmPath.reset();
+            tonearmPath.moveTo(170f, 87f);
+            tonearmPath.lineTo(170f, 476f);
+            tonearmPath.lineTo(160f, 510f);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setShader(null);
+            paint.setStrokeWidth(17f);
+            paint.setColor(Color.argb(82, 0, 0, 0));
+            canvas.drawPath(tonearmPath, paint);
+            paint.setStrokeWidth(14f);
+            paint.setShader(new LinearGradient(
+                    140f, 0f, 200f, 0f,
+                    tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
+            ));
+            canvas.drawPath(tonearmPath, paint);
+            paint.setShader(null);
+
+            tonearmPath.reset();
+            tonearmPath.moveTo(165f, 91f);
+            tonearmPath.lineTo(165f, 472f);
+            paint.setStrokeWidth(3f);
+            paint.setColor(tonearmHighlightColor());
+            canvas.drawPath(tonearmPath, paint);
+
+            tonearmPath.reset();
+            tonearmPath.addRoundRect(new RectF(144f, 38f, 196f, 104f), 13f, 13f, Path.Direction.CW);
+            drawTonearmFilledPath(canvas, tonearmPath);
+            tonearmPath.reset();
+            tonearmPath.moveTo(153f, 48f);
+            tonearmPath.lineTo(187f, 48f);
+            tonearmPath.lineTo(187f, 86f);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeWidth(4f);
+            paint.setColor(tonearmHighlightColor());
+            canvas.drawPath(tonearmPath, paint);
+
+            tonearmPath.reset();
+            tonearmPath.moveTo(139f, 487f);
+            tonearmPath.lineTo(182f, 487f);
+            tonearmPath.lineTo(184f, 529f);
+            tonearmPath.lineTo(146f, 542f);
+            tonearmPath.lineTo(132f, 523f);
+            tonearmPath.close();
+            drawTonearmFilledPath(canvas, tonearmPath);
+            tonearmPath.reset();
+            tonearmPath.moveTo(146f, 496f);
+            tonearmPath.lineTo(174f, 496f);
+            tonearmPath.lineTo(175f, 521f);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(4f);
+            paint.setColor(tonearmHighlightColor());
+            canvas.drawPath(tonearmPath, paint);
+
+            tonearmPath.reset();
+            tonearmPath.moveTo(149f, 537f);
+            tonearmPath.lineTo(148f, 555f);
+            tonearmPath.moveTo(164f, 533f);
+            tonearmPath.lineTo(168f, 552f);
+            paint.setStrokeCap(Paint.Cap.SQUARE);
+            paint.setStrokeWidth(5f);
+            paint.setColor(tonearmNeedleColor());
+            canvas.drawPath(tonearmPath, paint);
+            canvas.restoreToCount(movingSave);
+        }
+
+        private void buildTonearmTubePath(Path path, boolean highlight) {
+            if (AiLyricsSettings.VINYL_TONEARM_STYLE_STRAIGHT.equals(tonearmStyle)) {
+                path.moveTo(highlight ? 184f : 189f, highlight ? 79f : 75f);
+                path.lineTo(highlight ? 53f : 58f, highlight ? 508f : 513f);
+                return;
+            }
+            if (AiLyricsSettings.VINYL_TONEARM_STYLE_J.equals(tonearmStyle)) {
+                path.moveTo(highlight ? 184f : 189f, highlight ? 79f : 75f);
+                path.lineTo(highlight ? 175f : 181f, highlight ? 369f : 372f);
+                path.cubicTo(
+                        highlight ? 173f : 179f, highlight ? 424f : 432f,
+                        highlight ? 135f : 139f, highlight ? 474f : 481f,
+                        highlight ? 55f : 58f, highlight ? 507f : 513f
+                );
+                return;
+            }
+            path.moveTo(highlight ? 184f : 189f, highlight ? 79f : 75f);
+            path.cubicTo(
+                    highlight ? 178f : 184f, highlight ? 179f : 172f,
+                    highlight ? 145f : 151f, 330f,
+                    highlight ? 74f : 78f, highlight ? 469f : 474f
+            );
+            if (!highlight) path.lineTo(58f, 513f);
+        }
+
+        private void resetTonearmPaint() {
             paint.setShader(null);
             paint.setStyle(Paint.Style.FILL);
             paint.setStrokeCap(Paint.Cap.BUTT);
@@ -930,12 +1076,56 @@ final class VinylPlayerModeView extends FrameLayout {
         private void drawTonearmFilledPath(Canvas canvas, Path path) {
             paint.setShader(null);
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.argb(247, 252, 252, 252));
+            paint.setColor(tonearmHousingColor());
             canvas.drawPath(path, paint);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(1f);
-            paint.setColor(Color.argb(204, 230, 230, 230));
+            paint.setColor(tonearmHousingEdgeColor());
             canvas.drawPath(path, paint);
+        }
+
+        private int[] tonearmBaseColors() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) {
+                return new int[]{Color.rgb(85, 86, 90), Color.rgb(36, 37, 41), Color.rgb(8, 9, 11)};
+            }
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) {
+                return new int[]{Color.rgb(244, 244, 245), Color.rgb(191, 193, 197), Color.rgb(119, 122, 128)};
+            }
+            return new int[]{Color.argb(224, 255, 255, 255), Color.argb(184, 251, 251, 251), Color.argb(148, 238, 238, 238)};
+        }
+
+        private int[] tonearmTubeColors() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) {
+                return new int[]{Color.rgb(5, 5, 6), Color.rgb(85, 86, 90), Color.rgb(29, 30, 33), Color.rgb(2, 2, 3)};
+            }
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) {
+                return new int[]{Color.rgb(85, 88, 93), Color.rgb(218, 220, 224), Color.rgb(247, 247, 248), Color.rgb(115, 118, 123)};
+            }
+            return new int[]{Color.rgb(170, 170, 170), Color.rgb(250, 250, 250), Color.WHITE, Color.rgb(187, 187, 187)};
+        }
+
+        private int tonearmHousingColor() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) return Color.rgb(24, 25, 28);
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) return Color.rgb(184, 187, 192);
+            return Color.rgb(252, 252, 252);
+        }
+
+        private int tonearmHousingEdgeColor() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) return Color.rgb(91, 93, 99);
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) return Color.rgb(98, 101, 107);
+            return Color.rgb(230, 230, 230);
+        }
+
+        private int tonearmHighlightColor() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) return Color.argb(96, 255, 255, 255);
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) return Color.argb(194, 255, 255, 255);
+            return Color.argb(242, 255, 255, 255);
+        }
+
+        private int tonearmNeedleColor() {
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(tonearmFinish)) return Color.rgb(169, 171, 176);
+            if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(tonearmFinish)) return Color.rgb(185, 188, 193);
+            return Color.rgb(238, 238, 238);
         }
 
         @Override
@@ -946,6 +1136,7 @@ final class VinylPlayerModeView extends FrameLayout {
                 case MotionEvent.ACTION_DOWN:
                     longPressTriggered = false;
                     float initialTonearmRotation = currentTonearmRotation();
+                    float initialTonearmProgress = currentTonearmProgress();
                     scrubbingTonearm = distance(event.getX(), event.getY(), needleX, needleY) <= dp(54)
                             || distanceToSegment(event.getX(), event.getY(), pivotX, pivotY, needleX, needleY) <= dp(28);
                     if (scrubbingTonearm) {
@@ -953,9 +1144,15 @@ final class VinylPlayerModeView extends FrameLayout {
                         dragStartedPlaying = playing;
                         dragTonearmRotation = initialTonearmRotation;
                         dragRawTonearmRotation = initialTonearmRotation;
-                        dragTonearmProgress = progressForTonearmRotation(initialTonearmRotation);
-                        dragPointerAngleOffset = initialTonearmRotation
-                                - pointerAngle(event.getX(), event.getY());
+                        dragTonearmProgress = initialTonearmProgress;
+                        dragRawTonearmProgress = dragTonearmProgress;
+                        if (AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)) {
+                            dragPointerProgressOffset = dragTonearmProgress
+                                    - linearPointerProgress(event.getX());
+                        } else {
+                            dragPointerAngleOffset = initialTonearmRotation
+                                    - pointerAngle(event.getX(), event.getY());
+                        }
                         dragStartPointerX = event.getX();
                         dragStartPointerY = event.getY();
                         if (getParent() != null) {
@@ -1055,6 +1252,21 @@ final class VinylPlayerModeView extends FrameLayout {
         }
 
         private void updateTonearmDrag(float x, float y) {
+            if (AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)) {
+                float candidate = linearPointerProgress(x) + dragPointerProgressOffset;
+                dragRawTonearmProgress = candidate;
+                dragTonearmProgress = dragStartedPlaying
+                        ? Math.max(TONEARM_LINEAR_REST_PROGRESS, Math.min(1f, candidate))
+                        : Math.max(TONEARM_LINEAR_REST_PROGRESS, Math.min(0f, candidate));
+                dragTonearmRotation = lerp(
+                        TONEARM_START_DEGREES,
+                        TONEARM_END_DEGREES,
+                        clamp(dragTonearmProgress)
+                );
+                dragRawTonearmRotation = dragTonearmRotation;
+                invalidate();
+                return;
+            }
             float candidate = pointerAngle(x, y) + dragPointerAngleOffset;
             while (candidate - dragTonearmRotation > 180f) candidate -= 360f;
             while (candidate - dragTonearmRotation < -180f) candidate += 360f;
@@ -1063,18 +1275,24 @@ final class VinylPlayerModeView extends FrameLayout {
                     ? Math.max(TONEARM_PARK_DEGREES, Math.min(TONEARM_END_DEGREES, candidate))
                     : Math.max(TONEARM_PARK_DEGREES, Math.min(TONEARM_START_DEGREES, candidate));
             dragTonearmProgress = progressForTonearmRotation(dragTonearmRotation);
+            dragRawTonearmProgress = dragTonearmProgress;
             invalidate();
         }
 
         private void finishTonearmDrag(float x, float y) {
             updateTonearmDrag(x, y);
             boolean moved = distance(dragStartPointerX, dragStartPointerY, x, y) > dp(18);
+            boolean linearTonearm = AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle);
             boolean ejected = dragStartedPlaying && (
-                    dragRawTonearmRotation <= TONEARM_EJECT_DEGREES
+                    (linearTonearm
+                            ? dragRawTonearmProgress <= TONEARM_LINEAR_EJECT_PROGRESS
+                            : dragRawTonearmRotation <= TONEARM_EJECT_DEGREES)
                             || moved && !recordBounds.contains(x, y)
             );
             boolean shouldCuePlay = !dragStartedPlaying
-                    && dragTonearmRotation >= TONEARM_CUE_PLAY_DEGREES;
+                    && (linearTonearm
+                            ? dragTonearmProgress >= TONEARM_LINEAR_CUE_PLAY_PROGRESS
+                            : dragTonearmRotation >= TONEARM_CUE_PLAY_DEGREES);
             float committedProgress = dragTonearmProgress;
             boolean shouldSeek = dragStartedPlaying && durationMs > 0L;
             cancelTonearmDrag();
@@ -1103,6 +1321,14 @@ final class VinylPlayerModeView extends FrameLayout {
                     : TONEARM_PARK_DEGREES;
         }
 
+        private float currentTonearmProgress() {
+            if (scrubbingTonearm) return dragTonearmProgress;
+            if (playing) return playbackProgress();
+            return AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)
+                    ? TONEARM_LINEAR_REST_PROGRESS
+                    : progressForTonearmRotation(TONEARM_PARK_DEGREES);
+        }
+
         private float progressForTonearmRotation(float rotation) {
             return clamp((rotation - TONEARM_START_DEGREES)
                     / (TONEARM_END_DEGREES - TONEARM_START_DEGREES));
@@ -1110,6 +1336,11 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private float pointerAngle(float x, float y) {
             return normalizeDegrees((float) Math.toDegrees(Math.atan2(y - pivotY, x - pivotX)));
+        }
+
+        private float linearPointerProgress(float x) {
+            float safeScale = Math.max(0.0001f, tonearmDrawScale);
+            return (linearTonearmOuterX - x) / (TONEARM_LINEAR_TRAVEL * safeScale);
         }
 
         private void resetPressedState() {

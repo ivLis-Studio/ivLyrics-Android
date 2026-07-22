@@ -67,6 +67,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_VINYL_ANIMATIONS_ENABLED = "vinyl_animations_enabled";
     static final String KEY_VINYL_CENTER_ROTATION_ENABLED = "vinyl_center_rotation_enabled";
     static final String KEY_VINYL_LYRICS_ENABLED = "vinyl_lyrics_enabled";
+    static final String KEY_VINYL_TONEARM_STYLE = "vinyl_tonearm_style";
+    static final String KEY_VINYL_TONEARM_FINISH = "vinyl_tonearm_finish";
+    static final String KEY_VINYL_TONEARM_SIZE_PERCENT = "vinyl_tonearm_size_percent";
     static final String KEY_SPEAKER_COLOR_SETTINGS = "speaker_color_settings_v1";
     static final String KEY_USE_SYNC_CREATOR_SPEAKER_COLORS = "use_sync_creator_speaker_colors";
     static final String KEY_LYRICS_TEXT_ALIGNMENT = "lyrics_text_alignment";
@@ -80,6 +83,13 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String BACKGROUND_MODE_VIDEO = "video-background";
     static final String BACKGROUND_MODE_SOLID = "solid-background";
     static final String OUTPUT_LANG_SAME_UI = "same_ui";
+    static final String VINYL_TONEARM_STYLE_S = "s";
+    static final String VINYL_TONEARM_STYLE_STRAIGHT = "straight";
+    static final String VINYL_TONEARM_STYLE_J = "j";
+    static final String VINYL_TONEARM_STYLE_LINEAR = "linear";
+    static final String VINYL_TONEARM_FINISH_WHITE = "white";
+    static final String VINYL_TONEARM_FINISH_SILVER = "silver";
+    static final String VINYL_TONEARM_FINISH_BLACK = "black";
     static final int PREVIEW_ITEM_NONE = 0;
     static final int PREVIEW_ITEM_ORIGINAL = 1;
     static final int PREVIEW_ITEM_PRONUNCIATION = 1 << 1;
@@ -367,6 +377,18 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setVinylLyricsEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_VINYL_LYRICS_ENABLED, enabled).apply();
+    }
+
+    void setVinylTonearmStyle(String style) {
+        prefs.edit().putString(KEY_VINYL_TONEARM_STYLE, normalizeVinylTonearmStyle(style)).apply();
+    }
+
+    void setVinylTonearmFinish(String finish) {
+        prefs.edit().putString(KEY_VINYL_TONEARM_FINISH, normalizeVinylTonearmFinish(finish)).apply();
+    }
+
+    void setVinylTonearmSizePercent(int sizePercent) {
+        prefs.edit().putInt(KEY_VINYL_TONEARM_SIZE_PERCENT, clampInt(sizePercent, 80, 120)).apply();
     }
 
     void setSpeakerColors(Map<String, String> colors) {
@@ -773,8 +795,28 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getInt(KEY_VINYL_RECORD_SIZE_PERCENT, 100),
                 prefs.getBoolean(KEY_VINYL_ANIMATIONS_ENABLED, true),
                 prefs.getBoolean(KEY_VINYL_CENTER_ROTATION_ENABLED, true),
-                prefs.getBoolean(KEY_VINYL_LYRICS_ENABLED, true)
+                prefs.getBoolean(KEY_VINYL_LYRICS_ENABLED, true),
+                prefs.getString(KEY_VINYL_TONEARM_STYLE, VINYL_TONEARM_STYLE_S),
+                prefs.getString(KEY_VINYL_TONEARM_FINISH, VINYL_TONEARM_FINISH_WHITE),
+                prefs.getInt(KEY_VINYL_TONEARM_SIZE_PERCENT, 100)
         );
+    }
+
+    static String normalizeVinylTonearmStyle(String value) {
+        if (VINYL_TONEARM_STYLE_STRAIGHT.equals(value)
+                || VINYL_TONEARM_STYLE_J.equals(value)
+                || VINYL_TONEARM_STYLE_LINEAR.equals(value)) {
+            return value;
+        }
+        return VINYL_TONEARM_STYLE_S;
+    }
+
+    static String normalizeVinylTonearmFinish(String value) {
+        if (VINYL_TONEARM_FINISH_SILVER.equals(value)
+                || VINYL_TONEARM_FINISH_BLACK.equals(value)) {
+            return value;
+        }
+        return VINYL_TONEARM_FINISH_WHITE;
     }
 
     private SpeakerColorSettings speakerColorSettings() {
@@ -1437,23 +1479,35 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final boolean animationsEnabled;
         final boolean centerRotationEnabled;
         final boolean lyricsEnabled;
+        final String tonearmStyle;
+        final String tonearmFinish;
+        final int tonearmSizePercent;
 
         VinylSettings(
                 int albumSizePercent,
                 int recordSizePercent,
                 boolean animationsEnabled,
                 boolean centerRotationEnabled,
-                boolean lyricsEnabled
+                boolean lyricsEnabled,
+                String tonearmStyle,
+                String tonearmFinish,
+                int tonearmSizePercent
         ) {
             this.albumSizePercent = clampInt(albumSizePercent, 70, 140);
             this.recordSizePercent = clampInt(recordSizePercent, 70, 140);
             this.animationsEnabled = animationsEnabled;
             this.centerRotationEnabled = centerRotationEnabled;
             this.lyricsEnabled = lyricsEnabled;
+            this.tonearmStyle = normalizeVinylTonearmStyle(tonearmStyle);
+            this.tonearmFinish = normalizeVinylTonearmFinish(tonearmFinish);
+            this.tonearmSizePercent = clampInt(tonearmSizePercent, 80, 120);
         }
 
         static VinylSettings defaults() {
-            return new VinylSettings(100, 100, true, true, true);
+            return new VinylSettings(
+                    100, 100, true, true, true,
+                    VINYL_TONEARM_STYLE_S, VINYL_TONEARM_FINISH_WHITE, 100
+            );
         }
     }
 

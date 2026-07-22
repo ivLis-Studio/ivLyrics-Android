@@ -730,6 +730,10 @@ final class AppI18n {
             for (int index = 0; index + 1 < settingsValues.length; index += 2) {
                 copy.put(settingsValues[index], settingsValues[index + 1]);
             }
+            String[] tonearmValues = vinylTonearmSettingsStrings(language.code);
+            for (int index = 0; index + 1 < tonearmValues.length; index += 2) {
+                copy.put(tonearmValues[index], tonearmValues[index + 1]);
+            }
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
@@ -1423,6 +1427,237 @@ final class AppI18n {
                 "typography.slot.vinyl_translation", translation,
                 "typography.slot.vinyl_translation_desc", translationDesc,
                 "vinyl.settings.typography_desc", typographyDesc
+        };
+    }
+
+    private static String[] vinylTonearmSettingsStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return vinylTonearmSettingsStringValues(
+                        "톤암", "톤암의 형태, 마감과 크기를 원하는 대로 조절합니다.",
+                        "톤암 형태", "LP 모드에서 사용할 톤암 디자인을 선택합니다.",
+                        "S형 (클래식)", "직선형", "J형", "리니어 트래킹",
+                        "톤암 마감", "톤암의 색상과 마감을 선택합니다.",
+                        "화이트", "실버", "블랙",
+                        "톤암 크기", "LP 모드에서 톤암의 크기를 조절합니다."
+                );
+            case "zh-CN":
+                return vinylTonearmSettingsStringValues(
+                        "唱臂", "自定义唱臂的造型、饰面和大小。",
+                        "唱臂样式", "选择黑胶模式中使用的唱臂设计。",
+                        "S 型（经典）", "直臂", "J 型", "直线循迹",
+                        "唱臂饰面", "选择唱臂的颜色和饰面。",
+                        "白色", "银色", "黑色",
+                        "唱臂大小", "调整黑胶模式中的唱臂大小。"
+                );
+            case "zh-TW":
+                return vinylTonearmSettingsStringValues(
+                        "唱臂", "自訂唱臂的造型、外觀與大小。",
+                        "唱臂樣式", "選擇黑膠模式中使用的唱臂設計。",
+                        "S 型（經典）", "直臂", "J 型", "直線循跡",
+                        "唱臂外觀", "選擇唱臂的顏色與外觀。",
+                        "白色", "銀色", "黑色",
+                        "唱臂大小", "調整黑膠模式中的唱臂大小。"
+                );
+            case "ja":
+                return vinylTonearmSettingsStringValues(
+                        "トーンアーム", "トーンアームの形状、仕上げ、サイズを調整します。",
+                        "トーンアームの形状", "LP モードで使用するトーンアームのデザインを選びます。",
+                        "S 字型（クラシック）", "ストレート", "J 字型", "リニアトラッキング",
+                        "トーンアームの仕上げ", "トーンアームの色と仕上げを選びます。",
+                        "ホワイト", "シルバー", "ブラック",
+                        "トーンアームのサイズ", "LP モードのトーンアームのサイズを調整します。"
+                );
+            case "hi":
+                return vinylTonearmSettingsStringValues(
+                        "टोनआर्म", "टोनआर्म का आकार, फ़िनिश और माप बदलें।",
+                        "टोनआर्म शैली", "विनाइल मोड में इस्तेमाल होने वाला टोनआर्म डिज़ाइन चुनें।",
+                        "S-आकार (क्लासिक)", "सीधा", "J-आकार", "लिनियर ट्रैकिंग",
+                        "टोनआर्म फ़िनिश", "टोनआर्म का रंग और फ़िनिश चुनें।",
+                        "सफ़ेद", "सिल्वर", "काला",
+                        "टोनआर्म का आकार", "विनाइल मोड में टोनआर्म का आकार बदलें।"
+                );
+            case "es":
+                return vinylTonearmSettingsStringValues(
+                        "Brazo", "Personaliza la forma, el acabado y el tamaño del brazo.",
+                        "Estilo del brazo", "Elige el diseño del brazo para el modo vinilo.",
+                        "En S (clásico)", "Recto", "En J", "Seguimiento lineal",
+                        "Acabado del brazo", "Elige el color y el acabado del brazo.",
+                        "Blanco", "Plateado", "Negro",
+                        "Tamaño del brazo", "Ajusta el tamaño del brazo en el modo vinilo."
+                );
+            case "fr":
+                return vinylTonearmSettingsStringValues(
+                        "Bras de lecture", "Personnalisez la forme, la finition et la taille du bras de lecture.",
+                        "Style du bras", "Choisissez le modèle du bras de lecture en mode vinyle.",
+                        "En S (classique)", "Droit", "En J", "Suivi linéaire",
+                        "Finition du bras", "Choisissez la couleur et la finition du bras de lecture.",
+                        "Blanc", "Argent", "Noir",
+                        "Taille du bras", "Ajustez la taille du bras de lecture en mode vinyle."
+                );
+            case "ar":
+                return vinylTonearmSettingsStringValues(
+                        "ذراع التشغيل", "خصّص شكل ذراع التشغيل وتشطيبه وحجمه.",
+                        "شكل ذراع التشغيل", "اختر تصميم ذراع التشغيل في وضع الأسطوانة.",
+                        "على شكل S (كلاسيكي)", "مستقيم", "على شكل J", "تتبّع خطي",
+                        "تشطيب ذراع التشغيل", "اختر لون ذراع التشغيل وتشطيبه.",
+                        "أبيض", "فضي", "أسود",
+                        "حجم ذراع التشغيل", "اضبط حجم ذراع التشغيل في وضع الأسطوانة."
+                );
+            case "fa":
+                return vinylTonearmSettingsStringValues(
+                        "بازوی گرامافون", "شکل، پرداخت و اندازهٔ بازوی گرامافون را شخصی‌سازی کنید.",
+                        "سبک بازو", "طرح بازوی گرامافون را برای حالت وینیل انتخاب کنید.",
+                        "S شکل (کلاسیک)", "صاف", "J شکل", "ردیابی خطی",
+                        "پرداخت بازو", "رنگ و پرداخت بازوی گرامافون را انتخاب کنید.",
+                        "سفید", "نقره‌ای", "مشکی",
+                        "اندازهٔ بازو", "اندازهٔ بازوی گرامافون را در حالت وینیل تنظیم کنید."
+                );
+            case "de":
+                return vinylTonearmSettingsStringValues(
+                        "Tonarm", "Passe Form, Oberfläche und Größe des Tonarms an.",
+                        "Tonarmstil", "Wähle das Tonarmdesign für den Vinylmodus.",
+                        "S-förmig (klassisch)", "Gerade", "J-förmig", "Linear-Tracking",
+                        "Tonarmoberfläche", "Wähle Farbe und Oberfläche des Tonarms.",
+                        "Weiß", "Silber", "Schwarz",
+                        "Tonarmgröße", "Passe die Größe des Tonarms im Vinylmodus an."
+                );
+            case "ru":
+                return vinylTonearmSettingsStringValues(
+                        "Тонарм", "Настройте форму, отделку и размер тонарма.",
+                        "Стиль тонарма", "Выберите конструкцию тонарма для режима винила.",
+                        "S-образный (классика)", "Прямой", "J-образный", "Линейный",
+                        "Отделка тонарма", "Выберите цвет и отделку тонарма.",
+                        "Белый", "Серебристый", "Чёрный",
+                        "Размер тонарма", "Настройте размер тонарма в режиме винила."
+                );
+            case "sv":
+                return vinylTonearmSettingsStringValues(
+                        "Tonarm", "Anpassa tonarmens form, finish och storlek.",
+                        "Tonarmsstil", "Välj tonarmsdesign för vinylläget.",
+                        "S-formad (klassisk)", "Rak", "J-formad", "Linjär spårning",
+                        "Tonarmsfinish", "Välj tonarmens färg och finish.",
+                        "Vit", "Silver", "Svart",
+                        "Tonarmsstorlek", "Justera tonarmens storlek i vinylläget."
+                );
+            case "pt":
+                return vinylTonearmSettingsStringValues(
+                        "Braço", "Personalize o formato, o acabamento e o tamanho do braço.",
+                        "Estilo do braço", "Escolha o design do braço para o modo vinil.",
+                        "Em S (clássico)", "Reto", "Em J", "Rastreamento linear",
+                        "Acabamento do braço", "Escolha a cor e o acabamento do braço.",
+                        "Branco", "Prateado", "Preto",
+                        "Tamanho do braço", "Ajuste o tamanho do braço no modo vinil."
+                );
+            case "bn":
+                return vinylTonearmSettingsStringValues(
+                        "টোনআর্ম", "টোনআর্মের আকৃতি, ফিনিশ ও আকার বদলান।",
+                        "টোনআর্ম স্টাইল", "ভিনাইল মোডের টোনআর্ম ডিজাইন বেছে নিন।",
+                        "S-আকৃতি (ক্লাসিক)", "সোজা", "J-আকৃতি", "লিনিয়ার ট্র্যাকিং",
+                        "টোনআর্ম ফিনিশ", "টোনআর্মের রং ও ফিনিশ বেছে নিন।",
+                        "সাদা", "রূপালি", "কালো",
+                        "টোনআর্মের আকার", "ভিনাইল মোডে টোনআর্মের আকার ঠিক করুন।"
+                );
+            case "cs":
+                return vinylTonearmSettingsStringValues(
+                        "Raménko", "Přizpůsobte tvar, povrch a velikost raménka.",
+                        "Styl raménka", "Vyberte konstrukci raménka pro vinylový režim.",
+                        "Ve tvaru S (klasické)", "Rovné", "Ve tvaru J", "Lineární vedení",
+                        "Povrch raménka", "Vyberte barvu a povrch raménka.",
+                        "Bílá", "Stříbrná", "Černá",
+                        "Velikost raménka", "Upravte velikost raménka ve vinylovém režimu."
+                );
+            case "it":
+                return vinylTonearmSettingsStringValues(
+                        "Braccio", "Personalizza forma, finitura e dimensione del braccio.",
+                        "Stile del braccio", "Scegli il design del braccio per la modalità vinile.",
+                        "A S (classico)", "Dritto", "A J", "Tracciamento lineare",
+                        "Finitura del braccio", "Scegli il colore e la finitura del braccio.",
+                        "Bianco", "Argento", "Nero",
+                        "Dimensione del braccio", "Regola la dimensione del braccio in modalità vinile."
+                );
+            case "th":
+                return vinylTonearmSettingsStringValues(
+                        "โทนอาร์ม", "ปรับรูปทรง พื้นผิว และขนาดของโทนอาร์ม",
+                        "รูปแบบโทนอาร์ม", "เลือกดีไซน์โทนอาร์มสำหรับโหมดแผ่นเสียง",
+                        "ทรง S (คลาสสิก)", "ทรงตรง", "ทรง J", "ติดตามแนวเส้นตรง",
+                        "พื้นผิวโทนอาร์ม", "เลือกสีและพื้นผิวของโทนอาร์ม",
+                        "ขาว", "เงิน", "ดำ",
+                        "ขนาดโทนอาร์ม", "ปรับขนาดโทนอาร์มในโหมดแผ่นเสียง"
+                );
+            case "vi":
+                return vinylTonearmSettingsStringValues(
+                        "Cần máy hát", "Tùy chỉnh hình dáng, lớp hoàn thiện và kích thước của cần máy hát.",
+                        "Kiểu cần máy hát", "Chọn thiết kế cần máy hát cho chế độ đĩa than.",
+                        "Dạng S (cổ điển)", "Thẳng", "Dạng J", "Theo dõi tuyến tính",
+                        "Lớp hoàn thiện", "Chọn màu và lớp hoàn thiện của cần máy hát.",
+                        "Trắng", "Bạc", "Đen",
+                        "Kích thước cần", "Điều chỉnh kích thước cần máy hát trong chế độ đĩa than."
+                );
+            case "id":
+                return vinylTonearmSettingsStringValues(
+                        "Lengan pemutar", "Sesuaikan bentuk, lapisan, dan ukuran lengan pemutar.",
+                        "Gaya lengan", "Pilih desain lengan pemutar untuk mode vinil.",
+                        "Bentuk S (klasik)", "Lurus", "Bentuk J", "Pelacakan linear",
+                        "Lapisan lengan", "Pilih warna dan lapisan lengan pemutar.",
+                        "Putih", "Perak", "Hitam",
+                        "Ukuran lengan", "Sesuaikan ukuran lengan pemutar dalam mode vinil."
+                );
+            case "ms":
+                return vinylTonearmSettingsStringValues(
+                        "Lengan pikap", "Sesuaikan bentuk, kemasan dan saiz lengan pikap.",
+                        "Gaya lengan", "Pilih reka bentuk lengan pikap untuk mod vinil.",
+                        "Bentuk S (klasik)", "Lurus", "Bentuk J", "Penjejakan linear",
+                        "Kemasan lengan", "Pilih warna dan kemasan lengan pikap.",
+                        "Putih", "Perak", "Hitam",
+                        "Saiz lengan", "Laraskan saiz lengan pikap dalam mod vinil."
+                );
+            case "tr":
+                return vinylTonearmSettingsStringValues(
+                        "Pikap kolu", "Pikap kolunun şeklini, kaplamasını ve boyutunu özelleştirin.",
+                        "Kol stili", "Plak modu için pikap kolu tasarımını seçin.",
+                        "S biçimli (klasik)", "Düz", "J biçimli", "Doğrusal izleme",
+                        "Kol kaplaması", "Pikap kolunun rengini ve kaplamasını seçin.",
+                        "Beyaz", "Gümüş", "Siyah",
+                        "Kol boyutu", "Plak modunda pikap kolunun boyutunu ayarlayın."
+                );
+            case "en":
+            default:
+                return vinylTonearmSettingsStringValues(
+                        "Tonearm", "Customize the tonearm shape, finish, and size.",
+                        "Tonearm style", "Choose the tonearm design used in vinyl mode.",
+                        "S-shaped (classic)", "Straight", "J-shaped", "Linear tracking",
+                        "Tonearm finish", "Choose the tonearm color and finish.",
+                        "White", "Silver", "Black",
+                        "Tonearm size", "Adjust the tonearm size in vinyl mode."
+                );
+        }
+    }
+
+    private static String[] vinylTonearmSettingsStringValues(
+            String title, String subtitle,
+            String style, String styleDesc,
+            String styleS, String styleStraight, String styleJ, String styleLinear,
+            String finish, String finishDesc,
+            String finishWhite, String finishSilver, String finishBlack,
+            String size, String sizeDesc
+    ) {
+        return new String[]{
+                "vinyl.settings.tonearm_title", title,
+                "vinyl.settings.tonearm_subtitle", subtitle,
+                "vinyl.settings.tonearm_style", style,
+                "vinyl.settings.tonearm_style_desc", styleDesc,
+                "vinyl.settings.tonearm_style_s", styleS,
+                "vinyl.settings.tonearm_style_straight", styleStraight,
+                "vinyl.settings.tonearm_style_j", styleJ,
+                "vinyl.settings.tonearm_style_linear", styleLinear,
+                "vinyl.settings.tonearm_finish", finish,
+                "vinyl.settings.tonearm_finish_desc", finishDesc,
+                "vinyl.settings.tonearm_finish_white", finishWhite,
+                "vinyl.settings.tonearm_finish_silver", finishSilver,
+                "vinyl.settings.tonearm_finish_black", finishBlack,
+                "vinyl.settings.tonearm_size", size,
+                "vinyl.settings.tonearm_size_desc", sizeDesc
         };
     }
 

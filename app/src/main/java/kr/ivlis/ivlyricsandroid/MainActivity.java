@@ -324,6 +324,7 @@ public final class MainActivity extends Activity implements
     private SeekBar pipLyricsSizeSeekBar;
     private SeekBar vinylAlbumSizeSeekBar;
     private SeekBar vinylRecordSizeSeekBar;
+    private SeekBar vinylTonearmSizeSeekBar;
     private SeekBar lyricsBackgroundBrightnessSeekBar;
     private SeekBar lyricsBackgroundBlurSeekBar;
     private SeekBar lyricsBackgroundVideoScaleSeekBar;
@@ -333,6 +334,9 @@ public final class MainActivity extends Activity implements
     private TextView pipLyricsSizeValueView;
     private TextView vinylAlbumSizeValueView;
     private TextView vinylRecordSizeValueView;
+    private TextView vinylTonearmSizeValueView;
+    private LinearLayout vinylTonearmStyleButtonsContainer;
+    private LinearLayout vinylTonearmFinishButtonsContainer;
     private TextView lyricsBackgroundBrightnessValueView;
     private TextView lyricsBackgroundBlurValueView;
     private TextView lyricsBackgroundVideoScaleValueView;
@@ -1843,9 +1847,7 @@ public final class MainActivity extends Activity implements
 
             @Override
             public void onStopPlayback() {
-                if (currentTrack != null && currentTrack.playing) {
-                    runTransportCommand(() -> NowPlayingService.togglePlayback());
-                }
+                runTransportCommand(() -> NowPlayingService.pausePlayback());
             }
 
             @Override
@@ -5247,6 +5249,57 @@ public final class MainActivity extends Activity implements
                 buildSliderRow(vinylRecordSizeSeekBar, vinylRecordSizeValueView)
         ), topMargin(matchWrap(), dp(12)));
 
+        settingsFullscreenPage.addView(
+                sectionTitle(ui("vinyl.settings.tonearm_title")),
+                topMargin(matchWrap(), dp(24))
+        );
+        settingsFullscreenPage.addView(
+                sectionDescription(ui("vinyl.settings.tonearm_subtitle")),
+                topMargin(matchWrap(), dp(8))
+        );
+
+        vinylTonearmStyleButtonsContainer = new LinearLayout(this);
+        vinylTonearmStyleButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        settingsFullscreenPage.addView(settingGroup(
+                ui("vinyl.settings.tonearm_style"),
+                ui("vinyl.settings.tonearm_style_desc"),
+                vinylTonearmStyleButtonsContainer
+        ), topMargin(matchWrap(), dp(12)));
+        rebuildVinylTonearmStyleButtons();
+
+        vinylTonearmFinishButtonsContainer = new LinearLayout(this);
+        vinylTonearmFinishButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        settingsFullscreenPage.addView(settingGroup(
+                ui("vinyl.settings.tonearm_finish"),
+                ui("vinyl.settings.tonearm_finish_desc"),
+                vinylTonearmFinishButtonsContainer
+        ), topMargin(matchWrap(), dp(12)));
+        rebuildVinylTonearmFinishButtons();
+
+        vinylTonearmSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        vinylTonearmSizeSeekBar = new SeekBar(this);
+        vinylTonearmSizeSeekBar.setMax(40);
+        vinylTonearmSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = progress + 80;
+                if (vinylTonearmSizeValueView != null) vinylTonearmSizeValueView.setText(value + "%");
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                aiLyricsSettings.setVinylTonearmSizePercent(value);
+                applyVinylSettings(aiLyricsSettings.snapshot());
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                showSavedToast(ui("toast.settings_saved"));
+            }
+        });
+        settingsFullscreenPage.addView(settingGroup(
+                ui("vinyl.settings.tonearm_size"),
+                ui("vinyl.settings.tonearm_size_desc"),
+                buildSliderRow(vinylTonearmSizeSeekBar, vinylTonearmSizeValueView)
+        ), topMargin(matchWrap(), dp(12)));
+
         vinylAnimationsSwitch = settingSwitch(
                 ui("vinyl.settings.animations"),
                 ui("vinyl.settings.animations_desc")
@@ -7060,6 +7113,80 @@ public final class MainActivity extends Activity implements
             }
             lyricsAlignmentButtonsContainer.addView(button, params);
         }
+    }
+
+    private void rebuildVinylTonearmStyleButtons() {
+        if (vinylTonearmStyleButtonsContainer == null || aiLyricsSettings == null) return;
+        String selected = aiLyricsSettings.snapshot().vinyl.tonearmStyle;
+        String[] styles = {
+                AiLyricsSettings.VINYL_TONEARM_STYLE_S,
+                AiLyricsSettings.VINYL_TONEARM_STYLE_STRAIGHT,
+                AiLyricsSettings.VINYL_TONEARM_STYLE_J,
+                AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR
+        };
+        vinylTonearmStyleButtonsContainer.removeAllViews();
+        LinearLayout row = null;
+        for (int index = 0; index < styles.length; index++) {
+            if (index % 2 == 0) row = addChoiceGridRow(vinylTonearmStyleButtonsContainer);
+            String style = styles[index];
+            TextView button = languageButton(vinylTonearmStyleLabel(style), style.equals(selected));
+            button.setOnClickListener(view -> {
+                aiLyricsSettings.setVinylTonearmStyle(style);
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                rebuildVinylTonearmStyleButtons();
+                applyVinylSettings(snapshot);
+                showSavedToast(ui("toast.settings_saved"));
+            });
+            row.addView(button, choiceGridButtonParams(index, 42));
+        }
+    }
+
+    private void rebuildVinylTonearmFinishButtons() {
+        if (vinylTonearmFinishButtonsContainer == null || aiLyricsSettings == null) return;
+        String selected = aiLyricsSettings.snapshot().vinyl.tonearmFinish;
+        String[] finishes = {
+                AiLyricsSettings.VINYL_TONEARM_FINISH_WHITE,
+                AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER,
+                AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK
+        };
+        vinylTonearmFinishButtonsContainer.removeAllViews();
+        LinearLayout row = null;
+        for (int index = 0; index < finishes.length; index++) {
+            if (index % 2 == 0) row = addChoiceGridRow(vinylTonearmFinishButtonsContainer);
+            String finish = finishes[index];
+            TextView button = languageButton(vinylTonearmFinishLabel(finish), finish.equals(selected));
+            button.setOnClickListener(view -> {
+                aiLyricsSettings.setVinylTonearmFinish(finish);
+                AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+                rebuildVinylTonearmFinishButtons();
+                applyVinylSettings(snapshot);
+                showSavedToast(ui("toast.settings_saved"));
+            });
+            row.addView(button, choiceGridButtonParams(index, 42));
+        }
+    }
+
+    private String vinylTonearmStyleLabel(String style) {
+        if (AiLyricsSettings.VINYL_TONEARM_STYLE_STRAIGHT.equals(style)) {
+            return ui("vinyl.settings.tonearm_style_straight");
+        }
+        if (AiLyricsSettings.VINYL_TONEARM_STYLE_J.equals(style)) {
+            return ui("vinyl.settings.tonearm_style_j");
+        }
+        if (AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(style)) {
+            return ui("vinyl.settings.tonearm_style_linear");
+        }
+        return ui("vinyl.settings.tonearm_style_s");
+    }
+
+    private String vinylTonearmFinishLabel(String finish) {
+        if (AiLyricsSettings.VINYL_TONEARM_FINISH_SILVER.equals(finish)) {
+            return ui("vinyl.settings.tonearm_finish_silver");
+        }
+        if (AiLyricsSettings.VINYL_TONEARM_FINISH_BLACK.equals(finish)) {
+            return ui("vinyl.settings.tonearm_finish_black");
+        }
+        return ui("vinyl.settings.tonearm_finish_white");
     }
 
     private void rebuildPictureInPictureOrientationButtons(String selectedOrientation) {
@@ -8885,6 +9012,14 @@ public final class MainActivity extends Activity implements
         if (vinylRecordSizeValueView != null) {
             vinylRecordSizeValueView.setText(snapshot.vinyl.recordSizePercent + "%");
         }
+        if (vinylTonearmSizeSeekBar != null) {
+            vinylTonearmSizeSeekBar.setProgress(snapshot.vinyl.tonearmSizePercent - 80);
+        }
+        if (vinylTonearmSizeValueView != null) {
+            vinylTonearmSizeValueView.setText(snapshot.vinyl.tonearmSizePercent + "%");
+        }
+        rebuildVinylTonearmStyleButtons();
+        rebuildVinylTonearmFinishButtons();
         if (vinylAnimationsSwitch != null) {
             suppressSettingsEvents = true;
             vinylAnimationsSwitch.setChecked(snapshot.vinyl.animationsEnabled);

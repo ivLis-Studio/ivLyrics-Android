@@ -108,6 +108,15 @@ public final class NowPlayingService extends NotificationListenerService {
         return true;
     }
 
+    static boolean pausePlayback() {
+        MediaController controller = activeController;
+        if (controller == null) return false;
+        // Pause is idempotent. Sending it unconditionally avoids a stale
+        // PlaybackState snapshot turning a tonearm ejection into a no-op.
+        controller.getTransportControls().pause();
+        return true;
+    }
+
     static boolean skipToNext() {
         MediaController controller = activeController;
         if (controller == null) return false;
