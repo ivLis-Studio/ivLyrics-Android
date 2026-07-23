@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +31,7 @@ import java.util.regex.Pattern;
 /** Lyrics provider backed by the public Lyrically service. */
 final class PaxsenixLyricsProvider {
     static final String PROJECT_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3Jn");
-    static final String TEXT_CACHE_REVISION = "entities-v1";
+    static final String TEXT_CACHE_REVISION = "entities-v1-ja-lines-v1";
 
     private static final String CATALOG_SEARCH_URL = decode("aHR0cHM6Ly9pdHVuZXMuYXBwbGUuY29tL3NlYXJjaA==");
     private static final String STRUCTURED_SEARCH_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2t1Z291L3NlYXJjaA==");
@@ -39,6 +40,11 @@ final class PaxsenixLyricsProvider {
     private static final String STRUCTURED_PROVIDER_ID = decode("a3Vnb3U=");
     private static final String ATTRIBUTION = "Lyrics via Lyrically API (" + PROJECT_URL + ").";
     private static final int REQUEST_TIMEOUT_MS = 9_000;
+    private static final double JAPANESE_LINE_SPLIT_TRIGGER_WIDTH = 22.0;
+    private static final double JAPANESE_LINE_SPLIT_HARD_WIDTH = 26.0;
+    private static final double JAPANESE_LINE_SPLIT_MIN_WIDTH = 6.0;
+    private static final long JAPANESE_LINE_SPLIT_MIN_DURATION_MS = 500L;
+    private static final int JAPANESE_LINE_SPLIT_MAX_SEGMENTS = 4;
     private static final Pattern REFERENCE_LINE_PATTERN = Pattern.compile("^\\[(\\d+),(\\d+)](.*)$");
     private static final Pattern REFERENCE_TOKEN_PATTERN = Pattern.compile("<\\d+,\\d+,\\d+>");
     private static final Pattern REFERENCE_WHITESPACE_BOUNDARY_PATTERN = Pattern.compile("(?<=\\s)|(?=\\s)");
@@ -403,11 +409,14 @@ final class PaxsenixLyricsProvider {
             int byTime = Long.compare(left.line.startTimeMs, right.line.startTimeMs);
             return byTime != 0 ? byTime : Integer.compare(left.sourceIndex, right.sourceIndex);
         });
+        List<ParsedRow> displayRows = syllableSync && isJapanesePayload(payload)
+                ? splitLongJapaneseRows(rows)
+                : rows;
 
         List<LyricsLine> karaoke = new ArrayList<>();
         if (syllableSync) {
             List<ParallelVocalLineMerger.SourceLine> sources = new ArrayList<>();
-            for (ParsedRow row : rows) {
+            for (ParsedRow row : displayRows) {
                 if (row.line.syllables.isEmpty() && row.line.vocalParts.isEmpty()) continue;
                 sources.add(ParallelVocalLineMerger.source(
                         row.sourceIndex,
@@ -421,7 +430,7 @@ final class PaxsenixLyricsProvider {
 
         List<LyricsLine> synced = new ArrayList<>();
         if (!"none".equalsIgnoreCase(payload.optString("syncType", ""))) {
-            for (ParsedRow row : rows) {
+            for (ParsedRow row : displayRows) {
                 LyricsLine line = row.line;
                 synced.add(new LyricsLine(
                         line.startTimeMs, line.endTimeMs, line.text, Collections.emptyList(),
@@ -431,10 +440,333 @@ final class PaxsenixLyricsProvider {
             }
         }
         List<LyricsLine> plain = new ArrayList<>();
-        for (ParsedRow row : rows) {
+        for (ParsedRow row : displayRows) {
             plain.add(new LyricsLine(0L, 0L, row.line.text, Collections.emptyList()));
         }
         return buildVariants(karaoke, synced, plain, isrc, spotifyTrackId);
+    }
+
+    private static boolean isJapanesePayload(JSONObject payload) {
+        JSONObject metadata = payload.optJSONObject("metadata");
+        return isJapaneseLanguageTag(metadata == null ? "" : metadata.optString("language", ""))
+                || isJapaneseLanguageTag(metadata == null ? "" : metadata.optString("languageTag", ""))
+                || isJapaneseLanguageTag(payload.optString("language", ""))
+                || isJapaneseLanguageTag(payload.optString("languageTag", ""));
+    }
+
+    private static boolean isJapaneseLanguageTag(String value) {
+        String tag = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return "ja".equals(tag) || tag.startsWith("ja-") || tag.startsWith("ja_");
+    }
+
+    private static List<ParsedRow> splitLongJapaneseRows(List<ParsedRow> rows) {
+        List<ParsedRow> result = new ArrayList<>();
+        for (int index = 0; index < rows.size(); index++) {
+            ParsedRow row = rows.get(index);
+            LyricsLine previous = index > 0 ? rows.get(index - 1).line : null;
+            LyricsLine next = index + 1 < rows.size() ? rows.get(index + 1).line : null;
+            List<LyricsLine> fragments = splitLongJapaneseLine(row.line, previous, next);
+            if (fragments.size() == 1 && fragments.get(0) == row.line) {
+                result.add(row);
+                continue;
+            }
+            for (int fragmentIndex = 0; fragmentIndex < fragments.size(); fragmentIndex++) {
+                result.add(new ParsedRow(
+                        row.sourceIndex * JAPANESE_LINE_SPLIT_MAX_SEGMENTS + fragmentIndex,
+                        row.key + "-ja-segment-" + (fragmentIndex + 1),
+                        row.agent,
+                        fragments.get(fragmentIndex)
+                ));
+            }
+        }
+        return result;
+    }
+
+    private static List<LyricsLine> splitLongJapaneseLine(
+            LyricsLine line,
+            LyricsLine previousLine,
+            LyricsLine nextLine
+    ) {
+        if (line == null || !line.vocalParts.isEmpty() || line.syllables.size() < 2) {
+            return Collections.singletonList(line);
+        }
+
+        LyricsLine.Syllable previous = null;
+        for (LyricsLine.Syllable syllable : line.syllables) {
+            if (normalizeJapaneseSplitText(syllable.text).isEmpty()
+                    || syllable.endTimeMs < syllable.startTimeMs
+                    || measureLyricsDisplayWidth(syllable.text) > JAPANESE_LINE_SPLIT_HARD_WIDTH
+                    || (previous != null && (
+                    syllable.startTimeMs <= previous.startTimeMs
+                            || syllable.startTimeMs < previous.endTimeMs
+            ))) {
+                return Collections.singletonList(line);
+            }
+            previous = syllable;
+        }
+
+        LyricsLine.Syllable first = line.syllables.get(0);
+        LyricsLine.Syllable last = line.syllables.get(line.syllables.size() - 1);
+        if ((previousLine != null && previousLine.endTimeMs > first.startTimeMs)
+                || (nextLine != null && nextLine.startTimeMs < last.endTimeMs)) {
+            return Collections.singletonList(line);
+        }
+
+        String lineText = normalizeJapaneseSplitText(line.text);
+        String syllableText = normalizeJapaneseSplitText(joinSyllables(line.syllables));
+        double totalWidth = measureLyricsDisplayWidth(lineText);
+        if (lineText.isEmpty()
+                || !lineText.equals(syllableText)
+                || totalWidth <= JAPANESE_LINE_SPLIT_TRIGGER_WIDTH) {
+            return Collections.singletonList(line);
+        }
+
+        Map<Integer, Long> boundaries = japaneseWhitespaceBoundaries(line.syllables);
+        if (boundaries.isEmpty()) return Collections.singletonList(line);
+        List<Integer> cuts = chooseJapaneseLineCuts(line.syllables, boundaries, totalWidth);
+        if (cuts.isEmpty()) return Collections.singletonList(line);
+
+        List<LyricsLine> fragments = new ArrayList<>();
+        int start = 0;
+        for (int cut : cuts) {
+            fragments.add(japaneseLineFragment(line, start, cut, start == 0, false));
+            start = cut;
+        }
+        fragments.add(japaneseLineFragment(
+                line,
+                start,
+                line.syllables.size(),
+                start == 0,
+                true
+        ));
+
+        int syllableCount = 0;
+        StringBuilder combinedText = new StringBuilder();
+        long priorEnd = -1L;
+        for (LyricsLine fragment : fragments) {
+            syllableCount += fragment.syllables.size();
+            if (combinedText.length() > 0) combinedText.append(' ');
+            combinedText.append(fragment.text);
+            if (priorEnd > fragment.startTimeMs) return Collections.singletonList(line);
+            priorEnd = fragment.endTimeMs;
+        }
+        return syllableCount == line.syllables.size()
+                && normalizeJapaneseSplitText(combinedText.toString()).equals(lineText)
+                ? fragments
+                : Collections.singletonList(line);
+    }
+
+    private static Map<Integer, Long> japaneseWhitespaceBoundaries(
+            List<LyricsLine.Syllable> syllables
+    ) {
+        Map<Integer, Long> result = new LinkedHashMap<>();
+        for (int index = 1; index < syllables.size(); index++) {
+            LyricsLine.Syllable left = syllables.get(index - 1);
+            LyricsLine.Syllable right = syllables.get(index);
+            if (left.endTimeMs <= right.startTimeMs
+                    && (endsWithJapaneseSplitWhitespace(left.text)
+                    || startsWithJapaneseSplitWhitespace(right.text))) {
+                result.put(index, Math.max(0L, right.startTimeMs - left.endTimeMs));
+            }
+        }
+        return result;
+    }
+
+    private static List<Integer> chooseJapaneseLineCuts(
+            List<LyricsLine.Syllable> syllables,
+            Map<Integer, Long> boundaries,
+            double totalWidth
+    ) {
+        int minimumSegments = Math.max(
+                2,
+                (int) Math.ceil(totalWidth / JAPANESE_LINE_SPLIT_HARD_WIDTH)
+        );
+        int maximumSegments = Math.min(
+                JAPANESE_LINE_SPLIT_MAX_SEGMENTS,
+                Math.min(boundaries.size() + 1, syllables.size())
+        );
+        for (int segmentCount = minimumSegments; segmentCount <= maximumSegments; segmentCount++) {
+            JapaneseSplitPlan plan = findJapaneseSplitPlan(
+                    syllables,
+                    boundaries,
+                    0,
+                    segmentCount,
+                    totalWidth / segmentCount,
+                    new HashMap<>()
+            );
+            if (plan != null) return plan.cuts;
+        }
+        return Collections.emptyList();
+    }
+
+    private static JapaneseSplitPlan findJapaneseSplitPlan(
+            List<LyricsLine.Syllable> syllables,
+            Map<Integer, Long> boundaries,
+            int start,
+            int remainingSegments,
+            double targetWidth,
+            Map<String, JapaneseSplitPlan> memo
+    ) {
+        String memoKey = start + ":" + remainingSegments;
+        if (memo.containsKey(memoKey)) return memo.get(memoKey);
+        if (remainingSegments == 1) {
+            JapaneseSplitPlan tail = validJapaneseFragment(syllables, start, syllables.size())
+                    ? new JapaneseSplitPlan(
+                    square(measureLyricsDisplayWidth(joinSyllables(
+                            syllables.subList(start, syllables.size())
+                    )) - targetWidth),
+                    Collections.emptyList()
+            )
+                    : null;
+            memo.put(memoKey, tail);
+            return tail;
+        }
+
+        JapaneseSplitPlan best = null;
+        int maximumEnd = syllables.size() - (remainingSegments - 1);
+        for (int end = start + 1; end <= maximumEnd; end++) {
+            Long gapMs = boundaries.get(end);
+            if (gapMs == null || !validJapaneseFragment(syllables, start, end)) continue;
+            JapaneseSplitPlan remaining = findJapaneseSplitPlan(
+                    syllables,
+                    boundaries,
+                    end,
+                    remainingSegments - 1,
+                    targetWidth,
+                    memo
+            );
+            if (remaining == null) continue;
+
+            double width = measureLyricsDisplayWidth(joinSyllables(syllables.subList(start, end)));
+            double cost = square(width - targetWidth)
+                    - Math.min(gapMs / 200.0, 1.0)
+                    + remaining.cost;
+            if (best == null || cost < best.cost) {
+                List<Integer> cuts = new ArrayList<>();
+                cuts.add(end);
+                cuts.addAll(remaining.cuts);
+                best = new JapaneseSplitPlan(cost, cuts);
+            }
+        }
+        memo.put(memoKey, best);
+        return best;
+    }
+
+    private static boolean validJapaneseFragment(
+            List<LyricsLine.Syllable> syllables,
+            int start,
+            int end
+    ) {
+        if (start < 0 || end <= start || end > syllables.size()) return false;
+        List<LyricsLine.Syllable> fragment = syllables.subList(start, end);
+        double width = measureLyricsDisplayWidth(joinSyllables(fragment));
+        long duration = fragment.get(fragment.size() - 1).endTimeMs
+                - fragment.get(0).startTimeMs;
+        return width >= JAPANESE_LINE_SPLIT_MIN_WIDTH
+                && width <= JAPANESE_LINE_SPLIT_HARD_WIDTH
+                && duration >= JAPANESE_LINE_SPLIT_MIN_DURATION_MS;
+    }
+
+    private static LyricsLine japaneseLineFragment(
+            LyricsLine source,
+            int start,
+            int end,
+            boolean firstFragment,
+            boolean lastFragment
+    ) {
+        List<LyricsLine.Syllable> syllables = new ArrayList<>(source.syllables.subList(start, end));
+        long fragmentStart = firstFragment
+                ? Math.min(source.startTimeMs, syllables.get(0).startTimeMs)
+                : syllables.get(0).startTimeMs;
+        long fragmentEnd = lastFragment
+                ? Math.max(source.endTimeMs, syllables.get(syllables.size() - 1).endTimeMs)
+                : syllables.get(syllables.size() - 1).endTimeMs;
+        return new LyricsLine(
+                fragmentStart,
+                fragmentEnd,
+                trimJapaneseSplitWhitespace(joinSyllables(syllables)),
+                syllables,
+                source.speaker,
+                source.speakerColor,
+                source.speakerFallback,
+                source.kind,
+                Collections.emptyList(),
+                source.pronunciationText,
+                source.translationText,
+                source.furiganaText
+        );
+    }
+
+    private static String normalizeJapaneseSplitText(String value) {
+        String text = value == null ? "" : value;
+        return text.replaceAll("[\\s\\u3000]+", " ").trim();
+    }
+
+    private static String trimJapaneseSplitWhitespace(String value) {
+        String text = value == null ? "" : value;
+        int start = 0;
+        int end = text.length();
+        while (start < end) {
+            int point = text.codePointAt(start);
+            if (!isJapaneseSplitWhitespace(point)) break;
+            start += Character.charCount(point);
+        }
+        while (end > start) {
+            int point = text.codePointBefore(end);
+            if (!isJapaneseSplitWhitespace(point)) break;
+            end -= Character.charCount(point);
+        }
+        return text.substring(start, end);
+    }
+
+    private static boolean startsWithJapaneseSplitWhitespace(String value) {
+        return value != null
+                && !value.isEmpty()
+                && isJapaneseSplitWhitespace(value.codePointAt(0));
+    }
+
+    private static boolean endsWithJapaneseSplitWhitespace(String value) {
+        return value != null
+                && !value.isEmpty()
+                && isJapaneseSplitWhitespace(value.codePointBefore(value.length()));
+    }
+
+    private static boolean isJapaneseSplitWhitespace(int point) {
+        return point == 0x3000 || Character.isWhitespace(point);
+    }
+
+    private static double measureLyricsDisplayWidth(String value) {
+        double width = 0.0;
+        String text = value == null ? "" : value;
+        for (int offset = 0; offset < text.length(); ) {
+            int point = text.codePointAt(offset);
+            offset += Character.charCount(point);
+            int type = Character.getType(point);
+            if (type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK) {
+                continue;
+            }
+            if (isJapaneseSplitWhitespace(point)) width += 0.33;
+            else if (isFullWidthLyricsCodePoint(point)) width += 1.0;
+            else if (point >= 'A' && point <= 'Z') width += 0.72;
+            else if (point >= 'a' && point <= 'z') width += 0.58;
+            else if (Character.isDigit(point)) width += 0.62;
+            else if (".,'’!?;:()-".indexOf(point) >= 0) width += 0.38;
+            else width += 0.8;
+        }
+        return width;
+    }
+
+    private static boolean isFullWidthLyricsCodePoint(int point) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(point);
+        return script == Character.UnicodeScript.HAN
+                || script == Character.UnicodeScript.HIRAGANA
+                || script == Character.UnicodeScript.KATAKANA
+                || script == Character.UnicodeScript.HANGUL
+                || (point >= 0x1F000 && point <= 0x1FAFF);
+    }
+
+    private static double square(double value) {
+        return value * value;
     }
 
     static List<LyricsLine.Syllable> parseTimedTokens(
@@ -1189,6 +1521,16 @@ final class PaxsenixLyricsProvider {
             this.key = key;
             this.agent = agent;
             this.line = line;
+        }
+    }
+
+    private static final class JapaneseSplitPlan {
+        final double cost;
+        final List<Integer> cuts;
+
+        JapaneseSplitPlan(double cost, List<Integer> cuts) {
+            this.cost = cost;
+            this.cuts = Collections.unmodifiableList(new ArrayList<>(cuts));
         }
     }
 
