@@ -149,6 +149,23 @@ final class VinylPlayerModeView extends FrameLayout {
         lyricView.setTypographySettings(typography.forVinylPreview());
     }
 
+    void setCulturalAnnotationStyle(
+            boolean enabled,
+            String fontFamily,
+            int fontSize,
+            int fontWeight,
+            int opacity
+    ) {
+        lyricView.setCulturalAnnotationStyle(fontFamily, fontSize, fontWeight, opacity);
+        LayoutParams lyricParams = (LayoutParams) lyricView.getLayoutParams();
+        int nextHeight = dp(enabled ? 158 : 132);
+        if (lyricParams.height != nextHeight) {
+            lyricParams.height = nextHeight;
+            lyricView.setLayoutParams(lyricParams);
+        }
+        surface.setCulturalAnnotationsVisible(enabled);
+    }
+
     MainLyricPreviewView lyricView() {
         return lyricView;
     }
@@ -363,6 +380,7 @@ final class VinylPlayerModeView extends FrameLayout {
         private boolean animationsEnabled = true;
         private boolean centerRotationEnabled = true;
         private boolean lyricsEnabled = true;
+        private boolean culturalAnnotationsVisible;
         private float albumScale = 1f;
         private float recordScale = 1f;
         private String tonearmStyle = AiLyricsSettings.VINYL_TONEARM_STYLE_S;
@@ -450,6 +468,15 @@ final class VinylPlayerModeView extends FrameLayout {
                 spinActive = playing;
                 entranceProgress = 1f;
             }
+            invalidate();
+        }
+
+        void setCulturalAnnotationsVisible(boolean visible) {
+            if (culturalAnnotationsVisible == visible) {
+                return;
+            }
+            culturalAnnotationsVisible = visible;
+            requestLayout();
             invalidate();
         }
 
@@ -819,7 +846,9 @@ final class VinylPlayerModeView extends FrameLayout {
             float width = getWidth();
             float height = getHeight();
             boolean landscape = isLandscape();
-            float lyricReserve = lyricsEnabled ? (landscape ? dp(112) : dp(154)) : 0f;
+            float lyricReserve = lyricsEnabled
+                    ? (landscape ? dp(culturalAnnotationsVisible ? 138 : 112) : dp(culturalAnnotationsVisible ? 180 : 154))
+                    : 0f;
             float availableHeight = Math.max(dp(260), height - lyricReserve);
             float size = landscape
                     ? Math.min(width * 0.34f, availableHeight * 0.72f)

@@ -98,6 +98,10 @@ final class MainLyricPreviewView extends View {
     private boolean karaokeBounceEffectEnabled = true;
     private boolean karaokeDataAsLineSynced;
     private float textScale = 1f;
+    private String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
+    private int culturalAnnotationFontSize = 12;
+    private int culturalAnnotationFontWeight = 300;
+    private int culturalAnnotationOpacity = 60;
 
     MainLyricPreviewView(Context context) {
         super(context);
@@ -180,6 +184,26 @@ final class MainLyricPreviewView extends View {
         postInvalidateOnAnimation();
     }
 
+    void setCulturalAnnotationStyle(String fontFamily, int fontSize, int fontWeight, int opacity) {
+        String nextFamily = AiLyricsSettings.normalizeCulturalFontFamily(fontFamily);
+        int nextSize = Math.max(10, Math.min(28, fontSize));
+        int nextWeight = AiLyricsSettings.normalizeCulturalFontWeight(fontWeight);
+        int nextOpacity = Math.max(20, Math.min(100, opacity));
+        if (culturalAnnotationFontFamily.equals(nextFamily)
+                && culturalAnnotationFontSize == nextSize
+                && culturalAnnotationFontWeight == nextWeight
+                && culturalAnnotationOpacity == nextOpacity) {
+            return;
+        }
+        culturalAnnotationFontFamily = nextFamily;
+        culturalAnnotationFontSize = nextSize;
+        culturalAnnotationFontWeight = nextWeight;
+        culturalAnnotationOpacity = nextOpacity;
+        measuredLineWidthsValid = false;
+        requestLayout();
+        postInvalidateOnAnimation();
+    }
+
     private void init() {
         primaryTypeface = AppFonts.semiBold(getContext());
         secondaryTypeface = AppFonts.semiBold(getContext());
@@ -219,7 +243,9 @@ final class MainLyricPreviewView extends View {
             float textSize = sp(textSizeSp(line));
             textPaint.setTypeface(typefaceForLine(line));
             textPaint.setTextSize(textSize);
-            int alpha = line.primary ? 244 : 208;
+            int alpha = line.isCultural()
+                    ? Math.round(255f * culturalAnnotationOpacity / 100f)
+                    : line.primary ? 244 : 208;
             textPaint.setColor(Color.argb(alpha, 255, 255, 255));
 
             textPaint.getFontMetrics(textFontMetrics);
@@ -266,6 +292,11 @@ final class MainLyricPreviewView extends View {
         }
         if (line.isLoading()) {
             drawLoadingLine(canvas, line.text, baseline, textSize, normalAlpha, left, width);
+            return;
+        }
+        if (line.isCultural()) {
+            textPaint.setColor(Color.argb(normalAlpha, 255, 255, 255));
+            canvas.drawText(line.text, x, baseline, textPaint);
             return;
         }
         if (karaokeDataAsLineSynced || !line.hasKaraoke()) {
@@ -614,6 +645,9 @@ final class MainLyricPreviewView extends View {
     }
 
     private float textSizeSp(PreviewLine line) {
+        if (line != null && line.isCultural()) {
+            return culturalAnnotationFontSize;
+        }
         return textSizeSp(slotForLine(line), line != null && line.primary ? PRIMARY_TEXT_SP : SECONDARY_TEXT_SP);
     }
 
@@ -622,6 +656,13 @@ final class MainLyricPreviewView extends View {
     }
 
     private Typeface typefaceForLine(PreviewLine line) {
+        if (line != null && line.isCultural()) {
+            return AppFonts.cultural(
+                    getContext(),
+                    culturalAnnotationFontFamily,
+                    culturalAnnotationFontWeight
+            );
+        }
         return AppFonts.byWeight(getContext(), typographyStyle(slotForLine(line)).weight);
     }
 
@@ -1234,6 +1275,7 @@ final class MainLyricPreviewView extends View {
         private static final int TYPE_TEXT = 0;
         private static final int TYPE_INTERLUDE = 1;
         private static final int TYPE_LOADING = 2;
+        private static final int TYPE_CULTURAL = 3;
 
         final String text;
         final String rubyText;
@@ -1305,6 +1347,29 @@ final class MainLyricPreviewView extends View {
             return new PreviewLine(text, true, Collections.emptyList(), "vocal", TYPE_LOADING, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
 
+        static PreviewLine cultural(String text) {
+            return new PreviewLine(text, false, Collections.emptyList(), "vocal", TYPE_CULTURAL, AiLyricsSettings.TYPO_MAIN_PREVIEW_TRANSLATION);
+        }
+
+        static PreviewLine annotatedCopy(
+                PreviewLine source,
+                String text,
+                List<LyricsLine.Syllable> syllables
+        ) {
+            if (source == null) {
+                return new PreviewLine(text, true, syllables);
+            }
+            return new PreviewLine(
+                    text,
+                    "",
+                    source.primary,
+                    syllables,
+                    source.kind,
+                    TYPE_TEXT,
+                    source.slotId
+            );
+        }
+
         boolean hasKaraoke() {
             return type == TYPE_TEXT && !syllables.isEmpty();
         }
@@ -1326,6 +1391,10 @@ final class MainLyricPreviewView extends View {
 
         boolean isLoading() {
             return type == TYPE_LOADING;
+        }
+
+        boolean isCultural() {
+            return type == TYPE_CULTURAL;
         }
 
         boolean isAnimatedVisual() {

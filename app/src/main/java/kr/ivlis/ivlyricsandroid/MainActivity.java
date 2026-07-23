@@ -339,10 +339,17 @@ public final class MainActivity extends Activity implements
     private SeekBar culturalAnnotationFontSizeSeekBar;
     private SeekBar culturalAnnotationFontWeightSeekBar;
     private SeekBar culturalAnnotationOpacitySeekBar;
+    private SeekBar culturalAnnotationVinylFontSizeSeekBar;
+    private SeekBar culturalAnnotationVinylFontWeightSeekBar;
+    private SeekBar culturalAnnotationVinylOpacitySeekBar;
     private TextView culturalAnnotationFontSizeValueView;
     private TextView culturalAnnotationFontWeightValueView;
     private TextView culturalAnnotationOpacityValueView;
+    private TextView culturalAnnotationVinylFontSizeValueView;
+    private TextView culturalAnnotationVinylFontWeightValueView;
+    private TextView culturalAnnotationVinylOpacityValueView;
     private LinearLayout culturalAnnotationFontButtonsContainer;
+    private LinearLayout culturalAnnotationVinylFontButtonsContainer;
     private View culturalAnnotationStyleGroup;
     private TextView backgroundBrightnessValueView;
     private TextView backgroundBlurValueView;
@@ -6873,6 +6880,63 @@ public final class MainActivity extends Activity implements
         });
         body.addView(settingSubLabel(ui("setting.cultural_opacity")), topMargin(matchWrap(), dp(12)));
         body.addView(buildSliderRow(culturalAnnotationOpacitySeekBar, culturalAnnotationOpacityValueView), topMargin(matchWrap(), dp(4)));
+
+        body.addView(
+                settingSubLabel(ui("vinyl.mode") + " · " + ui("setting.cultural_font_family")),
+                topMargin(matchWrap(), dp(18))
+        );
+        culturalAnnotationVinylFontButtonsContainer = new LinearLayout(this);
+        culturalAnnotationVinylFontButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        body.addView(culturalAnnotationVinylFontButtonsContainer, topMargin(matchWrap(), dp(7)));
+        rebuildCulturalAnnotationVinylFontButtons();
+
+        culturalAnnotationVinylFontSizeSeekBar = new SeekBar(this);
+        culturalAnnotationVinylFontSizeSeekBar.setMax(18);
+        culturalAnnotationVinylFontSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationVinylFontSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int size = progress + 10;
+                aiLyricsSettings.setCulturalAnnotationsVinylFontSize(size);
+                culturalAnnotationVinylFontSizeValueView.setText(size + "px");
+                applyCulturalAnnotationsToVinylView();
+            }
+        });
+        body.addView(settingSubLabel(ui("vinyl.mode") + " · " + ui("setting.cultural_font_size")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationVinylFontSizeSeekBar, culturalAnnotationVinylFontSizeValueView), topMargin(matchWrap(), dp(4)));
+
+        culturalAnnotationVinylFontWeightSeekBar = new SeekBar(this);
+        culturalAnnotationVinylFontWeightSeekBar.setMax(8);
+        culturalAnnotationVinylFontWeightValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationVinylFontWeightSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int weight = (progress + 1) * 100;
+                aiLyricsSettings.setCulturalAnnotationsVinylFontWeight(weight);
+                culturalAnnotationVinylFontWeightValueView.setText(String.valueOf(weight));
+                applyCulturalAnnotationsToVinylView();
+            }
+        });
+        body.addView(settingSubLabel(ui("vinyl.mode") + " · " + ui("setting.cultural_font_weight")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationVinylFontWeightSeekBar, culturalAnnotationVinylFontWeightValueView), topMargin(matchWrap(), dp(4)));
+
+        culturalAnnotationVinylOpacitySeekBar = new SeekBar(this);
+        culturalAnnotationVinylOpacitySeekBar.setMax(80);
+        culturalAnnotationVinylOpacityValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationVinylOpacitySeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int opacity = progress + 20;
+                aiLyricsSettings.setCulturalAnnotationsVinylOpacity(opacity);
+                culturalAnnotationVinylOpacityValueView.setText(opacity + "%");
+                applyCulturalAnnotationsToVinylView();
+            }
+        });
+        body.addView(settingSubLabel(ui("vinyl.mode") + " · " + ui("setting.cultural_opacity")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationVinylOpacitySeekBar, culturalAnnotationVinylOpacityValueView), topMargin(matchWrap(), dp(4)));
         return body;
     }
 
@@ -6902,6 +6966,37 @@ public final class MainActivity extends Activity implements
                 aiLyricsSettings.setCulturalAnnotationsFontFamily(id);
                 rebuildCulturalAnnotationFontButtons();
                 applyCulturalAnnotationsToViews();
+            });
+            row.addView(button, choiceGridButtonParams(index, 44));
+        }
+    }
+
+    private void rebuildCulturalAnnotationVinylFontButtons() {
+        if (culturalAnnotationVinylFontButtonsContainer == null || aiLyricsSettings == null) {
+            return;
+        }
+        culturalAnnotationVinylFontButtonsContainer.removeAllViews();
+        String[][] fonts = {
+                {AiLyricsSettings.CULTURAL_FONT_PRETENDARD, "font.pretendard"},
+                {AiLyricsSettings.CULTURAL_FONT_SYSTEM, "font.system"},
+                {AiLyricsSettings.CULTURAL_FONT_SERIF, "font.serif"},
+                {AiLyricsSettings.CULTURAL_FONT_MONOSPACE, "font.monospace"}
+        };
+        String selected = aiLyricsSettings.snapshot().culturalAnnotationsVinylFontFamily;
+        LinearLayout row = null;
+        for (int index = 0; index < fonts.length; index++) {
+            if (index % 2 == 0) {
+                row = addChoiceGridRow(culturalAnnotationVinylFontButtonsContainer);
+            }
+            String id = fonts[index][0];
+            TextView button = label(ui(fonts[index][1]), 12f, Color.WHITE, AppFonts.semiBold(this));
+            button.setGravity(Gravity.CENTER);
+            button.setTag(id);
+            setSelectableButtonState(button, id.equals(selected));
+            button.setOnClickListener(view -> {
+                aiLyricsSettings.setCulturalAnnotationsVinylFontFamily(id);
+                rebuildCulturalAnnotationVinylFontButtons();
+                applyCulturalAnnotationsToVinylView();
             });
             row.addView(button, choiceGridButtonParams(index, 44));
         }
@@ -7952,6 +8047,13 @@ public final class MainActivity extends Activity implements
         }
         if (vinylPlayerModeView != null) {
             vinylPlayerModeView.setCustomization(snapshot.vinyl, typography);
+            vinylPlayerModeView.setCulturalAnnotationStyle(
+                    snapshot.culturalAnnotationsEnabled,
+                    snapshot.culturalAnnotationsVinylFontFamily,
+                    snapshot.culturalAnnotationsVinylFontSize,
+                    snapshot.culturalAnnotationsVinylFontWeight,
+                    snapshot.culturalAnnotationsVinylOpacity
+            );
         }
         if (lyricsView != null) {
             lyricsView.setTypographySettings(typography);
@@ -7976,6 +8078,13 @@ public final class MainActivity extends Activity implements
             return;
         }
         vinylPlayerModeView.setCustomization(snapshot.vinyl, snapshot.typography);
+        vinylPlayerModeView.setCulturalAnnotationStyle(
+                snapshot.culturalAnnotationsEnabled,
+                snapshot.culturalAnnotationsVinylFontFamily,
+                snapshot.culturalAnnotationsVinylFontSize,
+                snapshot.culturalAnnotationsVinylFontWeight,
+                snapshot.culturalAnnotationsVinylOpacity
+        );
     }
 
     private void applyLyricsTextAlignmentSetting(AiLyricsSettings.Snapshot snapshot) {
@@ -9433,6 +9542,7 @@ public final class MainActivity extends Activity implements
             );
         }
         rebuildCulturalAnnotationFontButtons();
+        rebuildCulturalAnnotationVinylFontButtons();
         if (culturalAnnotationFontSizeSeekBar != null) {
             culturalAnnotationFontSizeSeekBar.setProgress(snapshot.culturalAnnotationsFontSize - 10);
             culturalAnnotationFontSizeValueView.setText(snapshot.culturalAnnotationsFontSize + "px");
@@ -9444,6 +9554,18 @@ public final class MainActivity extends Activity implements
         if (culturalAnnotationOpacitySeekBar != null) {
             culturalAnnotationOpacitySeekBar.setProgress(snapshot.culturalAnnotationsOpacity - 20);
             culturalAnnotationOpacityValueView.setText(snapshot.culturalAnnotationsOpacity + "%");
+        }
+        if (culturalAnnotationVinylFontSizeSeekBar != null) {
+            culturalAnnotationVinylFontSizeSeekBar.setProgress(snapshot.culturalAnnotationsVinylFontSize - 10);
+            culturalAnnotationVinylFontSizeValueView.setText(snapshot.culturalAnnotationsVinylFontSize + "px");
+        }
+        if (culturalAnnotationVinylFontWeightSeekBar != null) {
+            culturalAnnotationVinylFontWeightSeekBar.setProgress(snapshot.culturalAnnotationsVinylFontWeight / 100 - 1);
+            culturalAnnotationVinylFontWeightValueView.setText(String.valueOf(snapshot.culturalAnnotationsVinylFontWeight));
+        }
+        if (culturalAnnotationVinylOpacitySeekBar != null) {
+            culturalAnnotationVinylOpacitySeekBar.setProgress(snapshot.culturalAnnotationsVinylOpacity - 20);
+            culturalAnnotationVinylOpacityValueView.setText(snapshot.culturalAnnotationsVinylOpacity + "%");
         }
         if (autoInstrumentalBreakSwitch != null) {
             suppressSettingsEvents = true;
@@ -11271,9 +11393,13 @@ public final class MainActivity extends Activity implements
                         || lyricsSupplementTranslationLoading
                         || lyricsSupplementFuriganaLoading
         );
+        updateVinylLoadingIndicator(true);
     }
 
     private String vinylLoadingText() {
+        if (lyricsCulturalAnnotationsLoading) {
+            return ui("loading.cultural_annotations");
+        }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
                     "loading.translation_provider_format",
@@ -11433,6 +11559,7 @@ public final class MainActivity extends Activity implements
     private void applyCulturalAnnotationsToViews() {
         applyCulturalAnnotationsToView(lyricsView);
         applyCulturalAnnotationsToView(landscapeLyricsView);
+        applyCulturalAnnotationsToVinylView();
     }
 
     private void applyCulturalAnnotationsToView(LyricsView view) {
@@ -11449,6 +11576,23 @@ public final class MainActivity extends Activity implements
                 snapshot.culturalAnnotationsFontWeight,
                 snapshot.culturalAnnotationsOpacity
         );
+    }
+
+    private void applyCulturalAnnotationsToVinylView() {
+        if (vinylPlayerModeView == null || aiLyricsSettings == null) {
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        vinylPlayerModeView.setCulturalAnnotationStyle(
+                snapshot.culturalAnnotationsEnabled,
+                snapshot.culturalAnnotationsVinylFontFamily,
+                snapshot.culturalAnnotationsVinylFontSize,
+                snapshot.culturalAnnotationsVinylFontWeight,
+                snapshot.culturalAnnotationsVinylOpacity
+        );
+        long playerPosition = currentTrack == null ? 0L : currentPlaybackPosition(currentTrack);
+        long duration = currentTrack == null ? 0L : currentTrack.durationMs;
+        updateLyricPreview(lyricsPlaybackPosition(playerPosition, duration));
     }
 
     private ProviderAttributionView createLyricsProviderAttributionView(boolean includeContributor) {
@@ -12154,7 +12298,8 @@ public final class MainActivity extends Activity implements
                 positionMs,
                 line.startTimeMs,
                 line.endTimeMs,
-                currentTrack != null && currentTrack.playing
+                currentTrack != null && currentTrack.playing,
+                line
         );
     }
 
@@ -12174,12 +12319,79 @@ public final class MainActivity extends Activity implements
             long lineEndMs,
             boolean playing
     ) {
+        setLyricPreviewOnViews(rows, positionMs, lineStartMs, lineEndMs, playing, null);
+    }
+
+    private void setLyricPreviewOnViews(
+            List<MainLyricPreviewView.PreviewLine> rows,
+            long positionMs,
+            long lineStartMs,
+            long lineEndMs,
+            boolean playing,
+            LyricsLine sourceLine
+    ) {
         if (lyricPreviewView != null) {
             lyricPreviewView.setPreview(rows, positionMs, lineStartMs, lineEndMs, playing);
         }
         if (vinylPlayerModeView != null) {
-            vinylPlayerModeView.lyricView().setPreview(rows, positionMs, lineStartMs, lineEndMs, playing);
+            vinylPlayerModeView.lyricView().setPreview(
+                    vinylPreviewRows(rows, sourceLine),
+                    positionMs,
+                    lineStartMs,
+                    lineEndMs,
+                    playing
+            );
         }
+    }
+
+    private List<MainLyricPreviewView.PreviewLine> vinylPreviewRows(
+            List<MainLyricPreviewView.PreviewLine> rows,
+            LyricsLine sourceLine
+    ) {
+        if (rows == null || rows.isEmpty() || sourceLine == null || aiLyricsSettings == null) {
+            return rows == null ? Collections.emptyList() : rows;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        if (!snapshot.culturalAnnotationsEnabled || currentCulturalAnnotations.isEmpty()) {
+            return rows;
+        }
+        int lineIndex = currentLyricsResult == null ? -1 : currentLyricsResult.lines.indexOf(sourceLine);
+        if (lineIndex < 0) {
+            return rows;
+        }
+        PreviewText original = originalPreviewText(sourceLine);
+        List<CulturalAnnotation> annotations = CulturalAnnotation.forLine(
+                currentCulturalAnnotations,
+                lineIndex,
+                original.text
+        );
+        if (annotations.isEmpty()) {
+            return rows;
+        }
+
+        List<MainLyricPreviewView.PreviewLine> result = new ArrayList<>(rows);
+        for (int index = 0; index < result.size(); index++) {
+            MainLyricPreviewView.PreviewLine row = result.get(index);
+            if (!AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL.equals(row.slotId)) {
+                continue;
+            }
+            result.set(index, MainLyricPreviewView.PreviewLine.annotatedCopy(
+                    row,
+                    CulturalAnnotation.annotateText(row.text, annotations),
+                    CulturalAnnotation.annotateSyllables(
+                            original.text,
+                            row.syllables,
+                            annotations
+                    )
+            ));
+            break;
+        }
+        for (int index = 0; index < annotations.size(); index++) {
+            result.add(MainLyricPreviewView.PreviewLine.cultural(
+                    (index + 1) + ". " + annotations.get(index).note
+            ));
+        }
+        return result;
     }
 
     private MainLyricPreviewView.PreviewLine emptyPreviewLine(String detail) {

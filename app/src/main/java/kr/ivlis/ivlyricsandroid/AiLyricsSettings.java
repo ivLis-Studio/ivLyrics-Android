@@ -67,6 +67,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_CULTURAL_ANNOTATIONS_FONT_SIZE = "cultural_annotations_font_size";
     static final String KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT = "cultural_annotations_font_weight";
     static final String KEY_CULTURAL_ANNOTATIONS_OPACITY = "cultural_annotations_opacity";
+    static final String KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_FAMILY = "cultural_annotations_vinyl_font_family";
+    static final String KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_SIZE = "cultural_annotations_vinyl_font_size";
+    static final String KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT = "cultural_annotations_vinyl_font_weight";
+    static final String KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY = "cultural_annotations_vinyl_opacity";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
     static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
     static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
@@ -325,6 +329,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_FONT_SIZE, 14), 10, 28),
                 normalizeCulturalFontWeight(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT, 300)),
                 clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_OPACITY, 60), 20, 100),
+                normalizeCulturalFontFamily(prefs.getString(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_FAMILY, CULTURAL_FONT_PRETENDARD)),
+                clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_SIZE, 12), 10, 28),
+                normalizeCulturalFontWeight(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT, 300)),
+                clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY, 60), 20, 100),
                 typographySettings(),
                 vinylSettings(),
                 speakerColorSettings(),
@@ -381,6 +389,22 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setCulturalAnnotationsOpacity(int opacityPercent) {
         prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_OPACITY, clampInt(opacityPercent, 20, 100)).apply();
+    }
+
+    void setCulturalAnnotationsVinylFontFamily(String family) {
+        prefs.edit().putString(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_FAMILY, normalizeCulturalFontFamily(family)).apply();
+    }
+
+    void setCulturalAnnotationsVinylFontSize(int sizeSp) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_SIZE, clampInt(sizeSp, 10, 28)).apply();
+    }
+
+    void setCulturalAnnotationsVinylFontWeight(int weight) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT, normalizeCulturalFontWeight(weight)).apply();
+    }
+
+    void setCulturalAnnotationsVinylOpacity(int opacityPercent) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY, clampInt(opacityPercent, 20, 100)).apply();
     }
 
     void setTypographyStyle(String slotId, int sizePercent, String weight) {
@@ -1698,6 +1722,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final int culturalAnnotationsFontSize;
         final int culturalAnnotationsFontWeight;
         final int culturalAnnotationsOpacity;
+        final String culturalAnnotationsVinylFontFamily;
+        final int culturalAnnotationsVinylFontSize;
+        final int culturalAnnotationsVinylFontWeight;
+        final int culturalAnnotationsVinylOpacity;
         final TypographySettings typography;
         final VinylSettings vinyl;
         final SpeakerColorSettings speakerColors;
@@ -1740,6 +1768,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 int culturalAnnotationsFontSize,
                 int culturalAnnotationsFontWeight,
                 int culturalAnnotationsOpacity,
+                String culturalAnnotationsVinylFontFamily,
+                int culturalAnnotationsVinylFontSize,
+                int culturalAnnotationsVinylFontWeight,
+                int culturalAnnotationsVinylOpacity,
                 TypographySettings typography,
                 VinylSettings vinyl,
                 SpeakerColorSettings speakerColors,
@@ -1785,6 +1817,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.culturalAnnotationsFontSize = clampInt(culturalAnnotationsFontSize, 10, 28);
             this.culturalAnnotationsFontWeight = normalizeCulturalFontWeight(culturalAnnotationsFontWeight);
             this.culturalAnnotationsOpacity = clampInt(culturalAnnotationsOpacity, 20, 100);
+            this.culturalAnnotationsVinylFontFamily = normalizeCulturalFontFamily(culturalAnnotationsVinylFontFamily);
+            this.culturalAnnotationsVinylFontSize = clampInt(culturalAnnotationsVinylFontSize, 10, 28);
+            this.culturalAnnotationsVinylFontWeight = normalizeCulturalFontWeight(culturalAnnotationsVinylFontWeight);
+            this.culturalAnnotationsVinylOpacity = clampInt(culturalAnnotationsVinylOpacity, 20, 100);
             this.typography = typography == null ? TypographySettings.defaults() : typography;
             this.vinyl = vinyl == null ? VinylSettings.defaults() : vinyl;
             this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
