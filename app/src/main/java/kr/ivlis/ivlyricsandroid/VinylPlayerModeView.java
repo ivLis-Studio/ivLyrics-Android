@@ -22,6 +22,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -324,6 +325,15 @@ final class VinylPlayerModeView extends FrameLayout {
         private static final float TONEARM_PIVOT_SVG_Y = 64f;
         private static final float TONEARM_HEAD_SVG_X = 46f;
         private static final float TONEARM_HEAD_SVG_Y = 524f;
+        private static final long PLAY_SEQUENCE_MS = 2280L;
+        private static final long PAUSE_SEQUENCE_MS = 2030L;
+        private static final long TRACK_SEQUENCE_MS = 3216L;
+        private static final float TRACK_RECORD_CLEARED = 180f / TRACK_SEQUENCE_MS;
+        private static final float TRACK_RECORD_SLEEVED = 860f / TRACK_SEQUENCE_MS;
+        private static final float TRACK_ALBUM_DEPARTED = 1340f / TRACK_SEQUENCE_MS;
+        private static final float TRACK_ALBUM_ARRIVED = 2040f / TRACK_SEQUENCE_MS;
+        private static final float TRACK_RECORD_EMERGED = 2760f / TRACK_SEQUENCE_MS;
+        private static final float TRACK_RECORD_RAISED = 3120f / TRACK_SEQUENCE_MS;
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint groovePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -339,13 +349,17 @@ final class VinylPlayerModeView extends FrameLayout {
         private VisualTrack incomingTrack;
         private ValueAnimator trackAnimator;
         private ValueAnimator playAnimator;
+        private ValueAnimator tonearmAnimator;
         private ValueAnimator entranceAnimator;
         private float trackProgress;
         private float playProgress;
+        private float tonearmEngagement;
         private float entranceProgress = 1f;
         private long positionMs;
         private long durationMs;
         private boolean playing;
+        private boolean spinActive;
+        private boolean trackHandoffCommitted;
         private boolean animationsEnabled = true;
         private boolean centerRotationEnabled = true;
         private boolean lyricsEnabled = true;
@@ -422,14 +436,18 @@ final class VinylPlayerModeView extends FrameLayout {
             if (!animationsEnabled) {
                 if (trackAnimator != null) trackAnimator.cancel();
                 if (playAnimator != null) playAnimator.cancel();
+                if (tonearmAnimator != null) tonearmAnimator.cancel();
                 if (entranceAnimator != null) entranceAnimator.cancel();
                 trackAnimator = null;
                 playAnimator = null;
+                tonearmAnimator = null;
                 entranceAnimator = null;
                 if (incomingTrack != null) displayedTrack = incomingTrack;
                 incomingTrack = null;
                 trackProgress = 0f;
                 playProgress = playing ? 1f : 0f;
+                tonearmEngagement = playing ? 1f : 0f;
+                spinActive = playing;
                 entranceProgress = 1f;
             }
             invalidate();
@@ -437,7 +455,14 @@ final class VinylPlayerModeView extends FrameLayout {
 
         void startEntrance() {
             if (entranceAnimator != null) entranceAnimator.cancel();
+            if (playAnimator != null) playAnimator.cancel();
+            if (tonearmAnimator != null) tonearmAnimator.cancel();
+            playAnimator = null;
+            tonearmAnimator = null;
             entranceProgress = 0f;
+            playProgress = 0f;
+            tonearmEngagement = 0f;
+            spinActive = false;
             entranceAnimator = ValueAnimator.ofFloat(0f, 1f);
             entranceAnimator.setDuration(760L);
             entranceAnimator.setInterpolator(new DecelerateInterpolator(1.45f));
@@ -451,12 +476,24 @@ final class VinylPlayerModeView extends FrameLayout {
                 invalidate();
             }));
             entranceAnimator.start();
+            if (playing) {
+                post(() -> {
+                    if (playing) animatePlaybackState(true);
+                });
+            }
         }
 
         void finishEntrance() {
             if (entranceAnimator != null) entranceAnimator.cancel();
+            if (playAnimator != null) playAnimator.cancel();
+            if (tonearmAnimator != null) tonearmAnimator.cancel();
             entranceAnimator = null;
+            playAnimator = null;
+            tonearmAnimator = null;
             entranceProgress = 1f;
+            playProgress = playing ? 1f : 0f;
+            tonearmEngagement = playing ? 1f : 0f;
+            spinActive = playing;
             invalidate();
         }
 
@@ -485,24 +522,38 @@ final class VinylPlayerModeView extends FrameLayout {
                 displayedTrack = next;
                 incomingTrack = null;
                 trackProgress = 0f;
+                trackHandoffCommitted = false;
                 invalidate();
                 return;
             }
-            if (trackAnimator != null) trackAnimator.cancel();
+            if (trackAnimator != null) {
+                trackAnimator.cancel();
+                if (incomingTrack != null) displayedTrack = incomingTrack;
+            }
             incomingTrack = next;
             trackProgress = 0f;
+            trackHandoffCommitted = false;
             trackAnimator = ValueAnimator.ofFloat(0f, 1f);
-            trackAnimator.setDuration(1480L);
-            trackAnimator.setInterpolator(new DecelerateInterpolator(1.15f));
+            trackAnimator.setDuration(TRACK_SEQUENCE_MS);
+            trackAnimator.setInterpolator(new LinearInterpolator());
             trackAnimator.addUpdateListener(animation -> {
                 trackProgress = (Float) animation.getAnimatedValue();
+                if (!trackHandoffCommitted
+                        && trackProgress >= TRACK_RECORD_RAISED
+                        && incomingTrack != null) {
+                    displayedTrack = incomingTrack;
+                    trackHandoffCommitted = true;
+                }
                 invalidate();
             });
             trackAnimator.addListener(new SimpleAnimatorEndListener(() -> {
                 if (incomingTrack != null) displayedTrack = incomingTrack;
                 incomingTrack = null;
                 trackProgress = 0f;
+                trackHandoffCommitted = false;
                 trackAnimator = null;
+                tonearmEngagement = 0f;
+                if (playing) animateTonearmEngagement(1f, 720L);
                 invalidate();
             }));
             trackAnimator.start();
@@ -524,7 +575,7 @@ final class VinylPlayerModeView extends FrameLayout {
             this.durationMs = Math.max(0L, durationMs);
             if (this.playing != playing) {
                 this.playing = playing;
-                animatePlayProgress(playing ? 1f : 0f);
+                animatePlaybackState(playing);
             }
             invalidate();
         }
@@ -533,30 +584,125 @@ final class VinylPlayerModeView extends FrameLayout {
             removeCallbacks(longPressRunnable);
             if (trackAnimator != null) trackAnimator.cancel();
             if (playAnimator != null) playAnimator.cancel();
+            if (tonearmAnimator != null) tonearmAnimator.cancel();
             if (entranceAnimator != null) entranceAnimator.cancel();
         }
 
-        private void animatePlayProgress(float target) {
+        private void animatePlaybackState(boolean targetPlaying) {
             if (playAnimator != null) playAnimator.cancel();
+            if (tonearmAnimator != null) tonearmAnimator.cancel();
+            tonearmAnimator = null;
             if (!animationsEnabled) {
                 playAnimator = null;
-                playProgress = target;
+                playProgress = targetPlaying ? 1f : 0f;
+                tonearmEngagement = targetPlaying ? 1f : 0f;
+                spinActive = targetPlaying;
                 invalidate();
                 return;
             }
-            playAnimator = ValueAnimator.ofFloat(playProgress, target);
-            playAnimator.setDuration(target > playProgress ? 1120L : 880L);
-            playAnimator.setInterpolator(new DecelerateInterpolator(1.35f));
+            final float initialPlayProgress = playProgress;
+            final float initialTonearmEngagement = tonearmEngagement;
+            final boolean fullSequence = targetPlaying
+                    ? initialPlayProgress <= 0.05f && initialTonearmEngagement <= 0.05f
+                    : initialPlayProgress >= 0.95f;
+            playAnimator = ValueAnimator.ofFloat(0f, 1f);
+            playAnimator.setDuration(targetPlaying ? PLAY_SEQUENCE_MS : PAUSE_SEQUENCE_MS);
+            playAnimator.setInterpolator(new LinearInterpolator());
             playAnimator.addUpdateListener(animation -> {
-                playProgress = (Float) animation.getAnimatedValue();
+                float timeline = (Float) animation.getAnimatedValue();
+                if (fullSequence) {
+                    if (targetPlaying) {
+                        playProgress = playCompositionForStart(timeline);
+                        tonearmEngagement = smoothStep(
+                                1560f / PLAY_SEQUENCE_MS,
+                                1f,
+                                timeline
+                        );
+                    } else {
+                        playProgress = playCompositionForPause(timeline);
+                        tonearmEngagement = lerp(
+                                initialTonearmEngagement,
+                                0f,
+                                smoothStep(0f, 720f / PAUSE_SEQUENCE_MS, timeline)
+                        );
+                    }
+                } else {
+                    float eased = smoothStep(0f, 1f, timeline);
+                    playProgress = lerp(initialPlayProgress, targetPlaying ? 1f : 0f, eased);
+                    tonearmEngagement = lerp(
+                            initialTonearmEngagement,
+                            targetPlaying ? 1f : 0f,
+                            eased
+                    );
+                }
+                if (!targetPlaying && timeline >= 720f / PAUSE_SEQUENCE_MS) {
+                    spinActive = false;
+                }
                 invalidate();
             });
             playAnimator.addListener(new SimpleAnimatorEndListener(() -> {
                 playAnimator = null;
-                playProgress = target;
+                playProgress = targetPlaying ? 1f : 0f;
+                tonearmEngagement = targetPlaying ? 1f : 0f;
+                spinActive = targetPlaying;
                 invalidate();
             }));
             playAnimator.start();
+        }
+
+        private void animateTonearmEngagement(float target, long durationMs) {
+            if (tonearmAnimator != null) tonearmAnimator.cancel();
+            if (!animationsEnabled) {
+                tonearmEngagement = target;
+                invalidate();
+                return;
+            }
+            tonearmAnimator = ValueAnimator.ofFloat(tonearmEngagement, target);
+            tonearmAnimator.setDuration(durationMs);
+            tonearmAnimator.setInterpolator(new DecelerateInterpolator(1.35f));
+            tonearmAnimator.addUpdateListener(animation -> {
+                tonearmEngagement = (Float) animation.getAnimatedValue();
+                invalidate();
+            });
+            tonearmAnimator.addListener(new SimpleAnimatorEndListener(() -> {
+                tonearmAnimator = null;
+                tonearmEngagement = target;
+                invalidate();
+            }));
+            tonearmAnimator.start();
+        }
+
+        private float playCompositionForStart(float timeline) {
+            float unsleeved = smoothStep(0f, 780f / PLAY_SEQUENCE_MS, timeline) * 0.72f;
+            float settled = smoothStep(
+                    1000f / PLAY_SEQUENCE_MS,
+                    1560f / PLAY_SEQUENCE_MS,
+                    timeline
+            ) * 0.28f;
+            return clamp(unsleeved + settled);
+        }
+
+        private float playCompositionForPause(float timeline) {
+            if (timeline <= 720f / PAUSE_SEQUENCE_MS) return 1f;
+            if (timeline <= 1180f / PAUSE_SEQUENCE_MS) {
+                return lerp(
+                        1f,
+                        0.88f,
+                        smoothStep(720f / PAUSE_SEQUENCE_MS, 1180f / PAUSE_SEQUENCE_MS, timeline)
+                );
+            }
+            if (timeline <= 1250f / PAUSE_SEQUENCE_MS) {
+                return lerp(
+                        0.88f,
+                        0.72f,
+                        smoothStep(1180f / PAUSE_SEQUENCE_MS, 1250f / PAUSE_SEQUENCE_MS, timeline)
+                );
+            }
+            return lerp(
+                    0.72f,
+                    0f,
+                    smoothStep(1250f / PAUSE_SEQUENCE_MS, 1f, timeline)
+            );
         }
 
         @Override
@@ -568,39 +714,99 @@ final class VinylPlayerModeView extends FrameLayout {
             coverBounds.set(geometry.cover);
             recordBounds.set(geometry.record);
 
-            drawRecord(canvas, displayedTrack, geometry.record, 255);
-            drawCover(canvas, displayedTrack, geometry.cover, geometry.coverRotation, 255);
-            float frontRecordProgress = smoothStep(0.54f, 0.76f, playProgress);
-            if (frontRecordProgress > 0f) {
-                drawRecord(canvas, displayedTrack, geometry.record, alpha(frontRecordProgress));
+            if (incomingTrack != null) {
+                drawOutgoingTrack(canvas, geometry);
+                drawIncomingTrack(canvas, geometry);
+            } else {
+                drawRecord(canvas, displayedTrack, geometry.record, 255);
+                drawCover(canvas, displayedTrack, geometry.cover, geometry.coverRotation, 255);
+                float frontRecordProgress = smoothStep(0.54f, 0.76f, playProgress);
+                if (frontRecordProgress > 0f) {
+                    drawRecord(canvas, displayedTrack, geometry.record, alpha(frontRecordProgress));
+                }
             }
-
-            if (incomingTrack != null) drawIncomingTrack(canvas, geometry);
             drawTonearm(canvas, geometry.record);
 
-            if (animationsEnabled && (playing || trackAnimator != null || entranceAnimator != null)) {
+            if (animationsEnabled && (spinActive || trackAnimator != null || entranceAnimator != null)) {
                 postInvalidateOnAnimation();
             }
         }
 
-        private void drawIncomingTrack(Canvas canvas, SceneGeometry target) {
-            float coverPhase = smoothStep(0f, 0.46f, trackProgress);
-            float recordPhase = smoothStep(0.38f, 0.84f, trackProgress);
-            float raisePhase = smoothStep(0.76f, 1f, trackProgress);
-            RectF cover = interpolateRect(
-                    new RectF(getWidth() + target.cover.width() * 0.18f,
-                            -target.cover.height() * 0.24f,
-                            getWidth() + target.cover.width() * 1.18f,
-                            target.cover.height() * 0.76f),
-                    target.cover,
-                    coverPhase
+        private void drawOutgoingTrack(Canvas canvas, SceneGeometry target) {
+            float clearPhase = smoothStep(0f, TRACK_RECORD_CLEARED, trackProgress);
+            float sleevePhase = smoothStep(
+                    TRACK_RECORD_CLEARED,
+                    TRACK_RECORD_SLEEVED,
+                    trackProgress
             );
+            float departPhase = smoothStep(
+                    TRACK_RECORD_SLEEVED,
+                    TRACK_ALBUM_DEPARTED,
+                    trackProgress
+            );
+            if (departPhase >= 1f) return;
+            RectF sleevedRecord = new RectF(
+                    target.cover.centerX() - target.record.width() * 0.5f,
+                    target.cover.centerY() - target.record.height() * 0.5f,
+                    target.cover.centerX() + target.record.width() * 0.5f,
+                    target.cover.centerY() + target.record.height() * 0.5f
+            );
+            RectF clearRecord = new RectF(target.record);
+            if (isLandscape()) {
+                clearRecord.offset(
+                        Math.max(0f, target.cover.right - target.record.left)
+                                + target.record.width() * 0.04f,
+                        0f
+                );
+            } else {
+                clearRecord.offset(
+                        0f,
+                        Math.max(0f, target.cover.bottom - target.record.top)
+                                + target.record.height() * 0.04f
+                );
+            }
+            RectF record = trackProgress < TRACK_RECORD_CLEARED
+                    ? interpolateRect(target.record, clearRecord, clearPhase)
+                    : interpolateRect(clearRecord, sleevedRecord, sleevePhase);
+            RectF cover = new RectF(target.cover);
+            float exitY = -(Math.max(cover.bottom, record.bottom) + dp(36)) * departPhase;
+            cover.offset(0f, exitY);
+            record.offset(0f, exitY);
+            int opacity = alpha(1f - departPhase);
+            if (trackProgress < TRACK_RECORD_CLEARED) {
+                drawCover(canvas, displayedTrack, cover, target.coverRotation, opacity);
+                drawRecord(canvas, displayedTrack, record, opacity);
+            } else {
+                drawRecord(canvas, displayedTrack, record, opacity);
+                drawCover(canvas, displayedTrack, cover, lerp(target.coverRotation, 0f, sleevePhase), opacity);
+            }
+        }
+
+        private void drawIncomingTrack(Canvas canvas, SceneGeometry target) {
+            float coverPhase = smoothStep(TRACK_ALBUM_DEPARTED, TRACK_ALBUM_ARRIVED, trackProgress);
+            float recordPhase = smoothStep(TRACK_ALBUM_ARRIVED, TRACK_RECORD_EMERGED, trackProgress);
+            float raisePhase = smoothStep(TRACK_RECORD_EMERGED, TRACK_RECORD_RAISED, trackProgress);
+            if (coverPhase <= 0f) return;
+            RectF startCover = new RectF(target.cover);
+            if (isLandscape()) {
+                startCover.offset(getWidth() - target.cover.left + target.cover.width() * 0.18f,
+                        -target.cover.height() * 0.38f);
+            } else {
+                startCover.offset(getWidth() - target.cover.left + target.cover.width() * 0.18f,
+                        getHeight() - target.cover.top + target.cover.height() * 0.18f);
+            }
+            RectF cover = interpolateRect(startCover, target.cover, coverPhase);
             incomingCoverBounds.set(cover);
             if (recordPhase <= 0f) {
                 drawCover(canvas, incomingTrack, cover, lerp(18f, target.coverRotation, coverPhase), alpha(coverPhase));
                 return;
             }
-            RectF hiddenRecord = new RectF(cover);
+            RectF hiddenRecord = new RectF(
+                    target.cover.centerX() - target.record.width() * 0.5f,
+                    target.cover.centerY() - target.record.height() * 0.5f,
+                    target.cover.centerX() + target.record.width() * 0.5f,
+                    target.cover.centerY() + target.record.height() * 0.5f
+            );
             RectF record = interpolateRect(hiddenRecord, target.record, recordPhase);
             drawRecord(canvas, incomingTrack, record, alpha(recordPhase * (1f - raisePhase)));
             drawCover(canvas, incomingTrack, cover, target.coverRotation, alpha(coverPhase));
@@ -1316,17 +1522,27 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private float currentTonearmRotation() {
             if (scrubbingTonearm) return dragTonearmRotation;
-            return playing
-                    ? lerp(TONEARM_START_DEGREES, TONEARM_END_DEGREES, playbackProgress())
-                    : TONEARM_PARK_DEGREES;
+            float engagement = effectiveTonearmEngagement();
+            float playbackRotation = lerp(
+                    TONEARM_START_DEGREES,
+                    TONEARM_END_DEGREES,
+                    playbackProgress()
+            );
+            return lerp(TONEARM_PARK_DEGREES, playbackRotation, engagement);
         }
 
         private float currentTonearmProgress() {
             if (scrubbingTonearm) return dragTonearmProgress;
-            if (playing) return playbackProgress();
-            return AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)
+            float resting = AiLyricsSettings.VINYL_TONEARM_STYLE_LINEAR.equals(tonearmStyle)
                     ? TONEARM_LINEAR_REST_PROGRESS
                     : progressForTonearmRotation(TONEARM_PARK_DEGREES);
+            return lerp(resting, playbackProgress(), effectiveTonearmEngagement());
+        }
+
+        private float effectiveTonearmEngagement() {
+            if (trackAnimator == null) return tonearmEngagement;
+            float parkedForTrack = 1f - smoothStep(0f, TRACK_RECORD_SLEEVED, trackProgress);
+            return tonearmEngagement * parkedForTrack;
         }
 
         private float progressForTonearmRotation(float rotation) {
@@ -1358,7 +1574,7 @@ final class VinylPlayerModeView extends FrameLayout {
             if (spinFrameUptimeMs == 0L) spinFrameUptimeMs = now;
             long elapsed = Math.max(0L, now - spinFrameUptimeMs);
             spinFrameUptimeMs = now;
-            if (animationsEnabled && playing && playProgress >= 0.96f && !scrubbingTonearm) {
+            if (animationsEnabled && spinActive && !scrubbingTonearm) {
                 spinDegrees = (spinDegrees + elapsed * 0.009f) % 360f;
             }
         }
