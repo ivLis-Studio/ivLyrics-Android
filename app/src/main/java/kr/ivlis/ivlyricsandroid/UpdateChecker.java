@@ -67,20 +67,15 @@ final class UpdateChecker {
         String releaseUrl = release.optString("html_url", "");
         String releaseName = release.optString("name", tag);
         String body = release.optString("body", "");
-        boolean prerelease = release.optBoolean("prerelease", false);
-
         List<Asset> assets = parseAssets(release.optJSONArray("assets"));
         Asset versionAsset = findVersionAsset(assets);
-        Asset apkAsset = findBestApkAsset(assets);
 
         int latestVersionCode = -1;
         String latestVersionName = versionNameFromTag(tag);
-        String sha256 = "";
         if (versionAsset != null && !versionAsset.downloadUrl.isEmpty()) {
             JSONObject version = new JSONObject(readUrl(versionAsset.downloadUrl));
             latestVersionCode = version.optInt("versionCode", -1);
             latestVersionName = version.optString("versionName", latestVersionName);
-            sha256 = shaForAsset(version.optJSONArray("apks"), apkAsset == null ? "" : apkAsset.name);
         }
 
         int currentCode = currentVersionCode();
@@ -99,12 +94,7 @@ final class UpdateChecker {
                 tag,
                 releaseName,
                 releaseUrl,
-                body,
-                prerelease,
-                apkAsset == null ? "" : apkAsset.name,
-                apkAsset == null ? "" : apkAsset.downloadUrl,
-                apkAsset == null ? 0L : apkAsset.size,
-                sha256
+                body
         );
     }
 
@@ -120,8 +110,7 @@ final class UpdateChecker {
             }
             assets.add(new Asset(
                     object.optString("name", ""),
-                    object.optString("browser_download_url", ""),
-                    object.optLong("size", 0L)
+                    object.optString("browser_download_url", "")
             ));
         }
         return assets;
@@ -135,40 +124,6 @@ final class UpdateChecker {
             }
         }
         return null;
-    }
-
-    private Asset findBestApkAsset(List<Asset> assets) {
-        Asset fallback = null;
-        Asset debug = null;
-        for (Asset asset : assets) {
-            String name = asset.name.toLowerCase(Locale.ROOT);
-            if (!name.endsWith(".apk") || name.contains("unsigned")) {
-                continue;
-            }
-            if (name.contains("-release")) {
-                return asset;
-            }
-            if (name.contains("-debug")) {
-                debug = asset;
-            } else if (fallback == null) {
-                fallback = asset;
-            }
-        }
-        return fallback == null ? debug : fallback;
-    }
-
-    private String shaForAsset(JSONArray array, String assetName) {
-        if (array == null || assetName == null || assetName.isEmpty()) {
-            return "";
-        }
-        for (int index = 0; index < array.length(); index++) {
-            JSONObject object = array.optJSONObject(index);
-            if (object == null || !assetName.equals(object.optString("name", ""))) {
-                continue;
-            }
-            return object.optString("sha256", "");
-        }
-        return "";
     }
 
     private String readUrl(String url) throws IOException {
@@ -294,11 +249,6 @@ final class UpdateChecker {
         final String releaseName;
         final String releaseUrl;
         final String releaseNotes;
-        final boolean prerelease;
-        final String apkName;
-        final String apkDownloadUrl;
-        final long apkSize;
-        final String apkSha256;
 
         UpdateInfo(
                 boolean updateAvailable,
@@ -309,12 +259,7 @@ final class UpdateChecker {
                 String tag,
                 String releaseName,
                 String releaseUrl,
-                String releaseNotes,
-                boolean prerelease,
-                String apkName,
-                String apkDownloadUrl,
-                long apkSize,
-                String apkSha256
+                String releaseNotes
         ) {
             this.updateAvailable = updateAvailable;
             this.currentVersionCode = currentVersionCode;
@@ -325,11 +270,6 @@ final class UpdateChecker {
             this.releaseName = releaseName == null ? "" : releaseName;
             this.releaseUrl = releaseUrl == null ? "" : releaseUrl;
             this.releaseNotes = releaseNotes == null ? "" : releaseNotes;
-            this.prerelease = prerelease;
-            this.apkName = apkName == null ? "" : apkName;
-            this.apkDownloadUrl = apkDownloadUrl == null ? "" : apkDownloadUrl;
-            this.apkSize = apkSize;
-            this.apkSha256 = apkSha256 == null ? "" : apkSha256;
         }
 
         String latestDisplayVersion() {
@@ -343,12 +283,10 @@ final class UpdateChecker {
     private static final class Asset {
         final String name;
         final String downloadUrl;
-        final long size;
 
-        Asset(String name, String downloadUrl, long size) {
+        Asset(String name, String downloadUrl) {
             this.name = name == null ? "" : name;
             this.downloadUrl = downloadUrl == null ? "" : downloadUrl;
-            this.size = size;
         }
     }
 }

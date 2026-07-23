@@ -14,7 +14,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageInstaller;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -81,13 +80,9 @@ import android.webkit.WebViewClient;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -111,7 +106,6 @@ public final class MainActivity extends Activity implements
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
     private static final String EXTRA_DEBUG_LYRICS_LOADING_PROVIDER =
             "kr.ivlis.ivlyricsandroid.DEBUG_LYRICS_LOADING_PROVIDER";
-    private static final String ACTION_UPDATE_INSTALL_RESULT = "kr.ivlis.ivlyricsandroid.UPDATE_INSTALL_RESULT";
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
@@ -479,7 +473,6 @@ public final class MainActivity extends Activity implements
     private boolean spotifyCredentialsValidationInFlight;
     private volatile boolean pollinationsAuthInFlight;
     private boolean updateCheckInFlight;
-    private boolean updateDownloadInFlight;
     private boolean creatorPrivacyRequestInFlight;
     private boolean creatorPrivacyLoginInProgress;
     private boolean creatorPrivacyLoaded;
@@ -509,7 +502,6 @@ public final class MainActivity extends Activity implements
     private Runnable pendingLyricsProviderReload;
     private boolean artworkLongPressTriggered;
     private Runnable artworkLongPressRunnable;
-    private UpdateChecker.UpdateInfo pendingUpdateInfo;
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
 
     private final Runnable ticker = new Runnable() {
@@ -9299,9 +9291,6 @@ public final class MainActivity extends Activity implements
         if (intent == null) {
             return;
         }
-        if (ACTION_UPDATE_INSTALL_RESULT.equals(intent.getAction())) {
-            handleUpdateInstallResult(intent);
-        }
         if (intent.getBooleanExtra(EXTRA_OPEN_LYRICS_PAGE, false)) {
             pendingOpenLyricsPageFromIntent = true;
         }
@@ -10200,7 +10189,6 @@ public final class MainActivity extends Activity implements
                     onUpdateCheckFailed("empty response");
                     return;
                 }
-                pendingUpdateInfo = info;
                 if (info.updateAvailable) {
                     String version = info.latestDisplayVersion();
                     setUpdateStatus(uiFormat("update.status_available_format", version));
@@ -10258,9 +10246,11 @@ public final class MainActivity extends Activity implements
         new AlertDialog.Builder(this)
                 .setTitle(ui("update.dialog_title"))
                 .setMessage(message)
-                .setPositiveButton(ui("update.download"), (dialog, which) -> downloadUpdateApk(info))
+                .setPositiveButton(
+                        ui("update.open_release"),
+                        (dialog, which) -> openUpdateReleasePage(info)
+                )
                 .setNegativeButton(ui("update.later"), null)
-                .setNeutralButton(ui("update.open_release"), (dialog, which) -> openUpdateReleasePage(info))
                 .show();
     }
 
@@ -10273,249 +10263,6 @@ public final class MainActivity extends Activity implements
             return value;
         }
         return value.substring(0, 700).trim() + "\n...";
-    }
-
-    private void downloadUpdateApk(UpdateChecker.UpdateInfo info) {
-        if (info == null || info.apkDownloadUrl.isEmpty()) {
-            openUpdateReleasePage(info);
-            return;
-        }
-        if (updateDownloadInFlight) {
-            return;
-        }
-        if (!canRequestPackageInstalls()) {
-            pendingUpdateInfo = info;
-            setUpdateStatus(ui("update.install_failed"));
-            openInstallPermissionSettings();
-            return;
-        }
-        updateDownloadInFlight = true;
-        pendingUpdateInfo = info;
-        String fileName = info.apkName.isEmpty()
-                ? "ivLyrics-Android-" + info.latestDisplayVersion() + ".apk"
-                : info.apkName;
-        setUpdateStatus(uiFormat("update.download_started_format", fileName));
-        showSavedToast(uiFormat("update.download_started_format", fileName));
-        updateExecutor.execute(() -> downloadAndInstallUpdate(info, fileName));
-    }
-
-    private void downloadAndInstallUpdate(UpdateChecker.UpdateInfo info, String fileName) {
-        File apkFile = null;
-        try {
-            File updatesDir = new File(getCacheDir(), "updates");
-            if (!updatesDir.exists() && !updatesDir.mkdirs()) {
-                throw new IOException("Could not create update cache");
-            }
-            deleteOldUpdateApks(updatesDir);
-            apkFile = new File(updatesDir, sanitizeApkFileName(fileName));
-            downloadUpdateToFile(info.apkDownloadUrl, apkFile, fileName);
-            postUpdateStatus(ui("update.download_complete"));
-            stageUpdateInstall(apkFile, info);
-        } catch (Exception error) {
-            postAppendLog("update download/install failed: " + error.getMessage());
-            handler.post(() -> {
-                setUpdateStatus(ui("update.install_failed"));
-                showSavedToast(ui("update.install_failed"));
-            });
-        } finally {
-            deleteQuietly(apkFile);
-            handler.post(() -> updateDownloadInFlight = false);
-        }
-    }
-
-    private void downloadUpdateToFile(String url, File target, String displayName) throws IOException {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(30_000);
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("Accept", "application/vnd.android.package-archive,*/*");
-            connection.setRequestProperty("User-Agent", "ivLyrics-Android/" + currentAppVersionName());
-            int code = connection.getResponseCode();
-            if (code < 200 || code >= 300) {
-                throw new IOException("HTTP " + code);
-            }
-            long total = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                    ? connection.getContentLengthLong()
-                    : connection.getContentLength();
-            try (InputStream input = connection.getInputStream();
-                 OutputStream output = new FileOutputStream(target)) {
-                byte[] buffer = new byte[32 * 1024];
-                long written = 0L;
-                int lastPercent = -1;
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, read);
-                    written += read;
-                    if (total > 0L) {
-                        int percent = (int) Math.min(100L, (written * 100L) / total);
-                        if (percent != lastPercent && (percent == 100 || percent - lastPercent >= 4)) {
-                            lastPercent = percent;
-                            postUpdateStatus(uiFormat("update.download_started_format", displayName) + " · " + percent + "%");
-                        }
-                    }
-                }
-            }
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
-
-    private void stageUpdateInstall(File apkFile, UpdateChecker.UpdateInfo info) throws IOException {
-        if (apkFile == null || !apkFile.exists() || apkFile.length() <= 0L) {
-            throw new IOException("Downloaded APK is empty");
-        }
-        PackageInstaller installer = getPackageManager().getPackageInstaller();
-        PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
-                PackageInstaller.SessionParams.MODE_FULL_INSTALL
-        );
-        params.setAppPackageName(getPackageName());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED);
-        }
-        int sessionId = installer.createSession(params);
-        boolean committed = false;
-        try (PackageInstaller.Session session = installer.openSession(sessionId)) {
-            try (InputStream input = new FileInputStream(apkFile);
-                 OutputStream output = session.openWrite(apkFile.getName(), 0L, apkFile.length())) {
-                byte[] buffer = new byte[32 * 1024];
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, read);
-                }
-                session.fsync(output);
-            }
-
-            Intent callback = new Intent(this, MainActivity.class);
-            callback.setAction(ACTION_UPDATE_INSTALL_RESULT);
-            callback.putExtra("version", info == null ? "" : info.latestDisplayVersion());
-            callback.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                flags |= PendingIntent.FLAG_MUTABLE;
-            }
-            PendingIntent pendingIntent = PendingIntent.getActivity(this, sessionId, callback, flags);
-            session.commit(pendingIntent.getIntentSender());
-            committed = true;
-        } finally {
-            if (!committed) {
-                installer.abandonSession(sessionId);
-            }
-        }
-    }
-
-    private boolean canRequestPackageInstalls() {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls();
-    }
-
-    private void openInstallPermissionSettings() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return;
-        }
-        try {
-            Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:" + getPackageName())
-            );
-            startActivity(intent);
-        } catch (ActivityNotFoundException error) {
-            try {
-                startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
-            } catch (ActivityNotFoundException ignored) {
-            }
-        }
-    }
-
-    private void handleUpdateInstallResult(Intent intent) {
-        if (intent == null || !ACTION_UPDATE_INSTALL_RESULT.equals(intent.getAction())) {
-            return;
-        }
-        int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            Intent confirmationIntent;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                confirmationIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class);
-            } else {
-                confirmationIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT);
-            }
-            if (confirmationIntent != null) {
-                try {
-                    setUpdateStatus(ui("update.download_complete"));
-                    confirmationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(confirmationIntent);
-                    return;
-                } catch (ActivityNotFoundException | SecurityException error) {
-                    appendLog("update install confirmation failed: " + error.getClass().getSimpleName());
-                }
-            }
-            appendLog("update install result: pending user action without confirmation intent");
-        }
-        if (status == PackageInstaller.STATUS_SUCCESS) {
-            setUpdateStatus(ui("update.download_complete"));
-            return;
-        }
-        String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-        String detail = message == null ? "" : message.trim();
-        appendLog("update install result: status=" + status + " / message=" + detail);
-        setUpdateStatus(detail.isEmpty()
-                ? ui("update.install_failed")
-                : ui("update.install_failed") + ": " + detail);
-    }
-
-    private void postUpdateStatus(String message) {
-        handler.post(() -> setUpdateStatus(message));
-    }
-
-    private void postAppendLog(String message) {
-        handler.post(() -> appendLog(message));
-    }
-
-    private String sanitizeApkFileName(String fileName) {
-        String value = fileName == null ? "" : fileName.trim();
-        if (value.isEmpty()) {
-            value = "ivLyrics-update.apk";
-        }
-        value = value.replaceAll("[^A-Za-z0-9._-]", "_");
-        return value.toLowerCase(Locale.ROOT).endsWith(".apk") ? value : value + ".apk";
-    }
-
-    private void deleteOldUpdateApks(File directory) {
-        if (directory == null || !directory.isDirectory()) {
-            return;
-        }
-        File[] files = directory.listFiles();
-        if (files == null) {
-            return;
-        }
-        for (File file : files) {
-            if (file != null && file.isFile() && file.getName().toLowerCase(Locale.ROOT).endsWith(".apk")) {
-                deleteQuietly(file);
-            }
-        }
-    }
-
-    private void deleteQuietly(File file) {
-        if (file == null || !file.exists()) {
-            return;
-        }
-        try {
-            if (!file.delete()) {
-                postAppendLog("update cache cleanup skipped: " + file.getName());
-            }
-        } catch (SecurityException ignored) {
-        }
-    }
-
-    private String currentAppVersionName() {
-        try {
-            String versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-            return versionName == null ? "" : versionName;
-        } catch (Exception ignored) {
-            return "";
-        }
     }
 
     private void openUpdateReleasePage(UpdateChecker.UpdateInfo info) {
@@ -10533,7 +10280,7 @@ public final class MainActivity extends Activity implements
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)));
         } catch (ActivityNotFoundException error) {
-            showSavedToast(ui("update.install_failed"));
+            showSavedToast(ui("update.open_failed"));
         }
     }
 
