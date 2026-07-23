@@ -593,7 +593,13 @@ def ai_release_content(current_tag, previous, version, commits, stat_text, asset
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        timeout_seconds = int(os.environ.get("AI_TIMEOUT_SECONDS", "300"))
+    except ValueError:
+        timeout_seconds = 300
+    timeout_seconds = max(60, min(timeout_seconds, 900))
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         try:
