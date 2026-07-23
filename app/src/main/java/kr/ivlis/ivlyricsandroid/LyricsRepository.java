@@ -130,6 +130,8 @@ final class LyricsRepository {
 
         void onLyricsError(String trackKey, String message);
 
+        void onLyricsProviderLoading(String trackKey, String providerName);
+
         void onLyricsLog(String trackKey, String message);
 
         void onLyricsArtworkLoaded(String trackKey, Bitmap artwork, String artworkKey);
@@ -358,7 +360,14 @@ final class LyricsRepository {
                         postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     }
                 }
-                LyricsResult result = loadLyricsBlocking(track, key, callback, log, reusableCached);
+                LyricsResult result = loadLyricsBlocking(
+                        track,
+                        key,
+                        requestGeneration,
+                        callback,
+                        log,
+                        reusableCached
+                );
                 if (requestGeneration != providerPolicyGeneration.get()) {
                     log.write("stale provider request discarded after settings change");
                     return;
@@ -631,6 +640,7 @@ final class LyricsRepository {
     private LyricsResult loadLyricsBlocking(
             TrackSnapshot track,
             String trackKey,
+            long requestGeneration,
             Callback callback,
             LogSink log,
             LyricsResult cachedBase
@@ -714,7 +724,16 @@ final class LyricsRepository {
                 }
                 log.write("cached provider " + cachedBase.providerId
                         + " replaced by OpenDB sync-data provider " + preferredSyncProvider);
-                return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
+                return selectLyricsProvider(
+                        track,
+                        isrc,
+                        spotifyTrackId,
+                        spotifyMatch,
+                        trackKey,
+                        requestGeneration,
+                        callback,
+                        log
+                );
             }
             if (LyricsProviderSelectionPlan.canApplyIvLyricsSyncToCachedResult(cachedBase, providerSettings)) {
                 SyncDataResult syncData = isrc.isEmpty()
@@ -752,7 +771,16 @@ final class LyricsRepository {
             return privacySafeContributorFallback(cachedBase);
         }
 
-        return selectLyricsProvider(track, isrc, spotifyTrackId, spotifyMatch, log);
+        return selectLyricsProvider(
+                track,
+                isrc,
+                spotifyTrackId,
+                spotifyMatch,
+                trackKey,
+                requestGeneration,
+                callback,
+                log
+        );
     }
 
     private LyricsResult selectLyricsProvider(
@@ -760,6 +788,9 @@ final class LyricsRepository {
             String isrc,
             String spotifyTrackId,
             SpotifyTrackMatch spotifyMatch,
+            String trackKey,
+            long requestGeneration,
+            Callback callback,
             LogSink log
     ) {
         LyricsProviderSettings.Snapshot settings = lyricsProviderSettings.snapshot();
@@ -773,7 +804,17 @@ final class LyricsRepository {
         for (LyricsProviderSelectionPlan.Attempt attempt : plan.attempts) {
             LyricsProviderSettings.ProviderConfig config = attempt.config;
             ProviderCandidate candidate = loadProviderOnce(
-                    attempts, config, track, isrc, spotifyTrackId, spotifyMatch, syncDataProviders, log
+                    attempts,
+                    config,
+                    track,
+                    isrc,
+                    spotifyTrackId,
+                    spotifyMatch,
+                    syncDataProviders,
+                    trackKey,
+                    requestGeneration,
+                    callback,
+                    log
             );
             LyricsResult selected = resultForType(candidate, attempt.type);
             if (selected != null) {
@@ -795,9 +836,18 @@ final class LyricsRepository {
             String spotifyTrackId,
             SpotifyTrackMatch spotifyMatch,
             Set<String> syncDataProviders,
+            String trackKey,
+            long requestGeneration,
+            Callback callback,
             LogSink log
     ) {
         if (attempts.containsKey(config.provider.id)) return attempts.get(config.provider.id);
+        postProviderLoadingIfCurrent(
+                requestGeneration,
+                callback,
+                trackKey,
+                config.provider.label
+        );
         LyricsResult result = null;
         ProviderCandidate candidate = null;
         try {
@@ -832,6 +882,22 @@ final class LyricsRepository {
         }
         attempts.put(config.provider.id, candidate);
         return candidate;
+    }
+
+    private void postProviderLoadingIfCurrent(
+            long requestGeneration,
+            Callback callback,
+            String trackKey,
+            String providerName
+    ) {
+        if (callback == null) {
+            return;
+        }
+        mainHandler.post(() -> {
+            if (requestGeneration == providerPolicyGeneration.get()) {
+                callback.onLyricsProviderLoading(trackKey, providerName);
+            }
+        });
     }
 
     private ProviderCandidate candidateFromResult(LyricsResult result) {

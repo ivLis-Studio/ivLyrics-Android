@@ -129,8 +129,147 @@ final class AppI18n {
         addLyricsProviderSettingsStrings(languages);
         addPaxsenixProviderStrings(languages);
         addSettingsNavigationStrings(languages);
+        addProviderLoadingStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addProviderLoadingStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "status.lyrics_loading_provider_format",
+                "loading.translation_provider_format",
+                "loading.pronunciation_provider_format",
+                "status.ai_generating_provider_format",
+                "tmi.loading_provider_format"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) continue;
+            String[] values = providerLoadingStrings(language.code);
+            if (values.length != keys.length) {
+                throw new IllegalStateException("Invalid provider loading translations: " + language.code);
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], values[index]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] providerLoadingStrings(String language) {
+        switch (language) {
+            case "ko": return new String[] {
+                    "%s에서 가사를 불러오는 중…", "%s에서 번역을 생성하는 중…",
+                    "%s에서 발음을 생성하는 중…", "%s에서 AI 가사를 생성하는 중…",
+                    "%s에서 TMI를 생성하는 중…"
+            };
+            case "zh-CN": return new String[] {
+                    "正在从 %s 加载歌词…", "正在使用 %s 生成翻译…",
+                    "正在使用 %s 生成发音…", "正在使用 %s 生成 AI 歌词…",
+                    "正在使用 %s 生成 TMI…"
+            };
+            case "zh-TW": return new String[] {
+                    "正在從 %s 載入歌詞…", "正在使用 %s 產生翻譯…",
+                    "正在使用 %s 產生發音…", "正在使用 %s 產生 AI 歌詞…",
+                    "正在使用 %s 產生 TMI…"
+            };
+            case "ja": return new String[] {
+                    "%s から歌詞を読み込み中…", "%s で翻訳を生成中…",
+                    "%s で発音を生成中…", "%s で AI 歌詞を生成中…",
+                    "%s で TMI を生成中…"
+            };
+            case "hi": return new String[] {
+                    "%s से गीत लोड किए जा रहे हैं…", "%s से अनुवाद बनाया जा रहा है…",
+                    "%s से उच्चारण बनाया जा रहा है…", "%s से AI गीत बनाए जा रहे हैं…",
+                    "%s से TMI बनाया जा रहा है…"
+            };
+            case "es": return new String[] {
+                    "Cargando letras desde %s…", "Generando traducción con %s…",
+                    "Generando pronunciación con %s…", "Generando letras con IA mediante %s…",
+                    "Generando TMI con %s…"
+            };
+            case "fr": return new String[] {
+                    "Chargement des paroles depuis %s…", "Génération de la traduction avec %s…",
+                    "Génération de la prononciation avec %s…", "Génération des paroles par IA avec %s…",
+                    "Génération du TMI avec %s…"
+            };
+            case "ar": return new String[] {
+                    "جارٍ تحميل كلمات الأغنية من %s…", "جارٍ إنشاء الترجمة باستخدام %s…",
+                    "جارٍ إنشاء النطق باستخدام %s…", "جارٍ إنشاء كلمات الأغنية بالذكاء الاصطناعي باستخدام %s…",
+                    "جارٍ إنشاء TMI باستخدام %s…"
+            };
+            case "fa": return new String[] {
+                    "در حال بارگیری متن ترانه از %s…", "در حال تولید ترجمه با %s…",
+                    "در حال تولید تلفظ با %s…", "در حال تولید متن ترانه با هوش مصنوعی از طریق %s…",
+                    "در حال تولید TMI با %s…"
+            };
+            case "de": return new String[] {
+                    "Liedtext wird von %s geladen…", "Übersetzung wird mit %s erstellt…",
+                    "Aussprache wird mit %s erstellt…", "KI-Liedtext wird mit %s erstellt…",
+                    "TMI wird mit %s erstellt…"
+            };
+            case "ru": return new String[] {
+                    "Загрузка текста из %s…", "Создание перевода с помощью %s…",
+                    "Создание произношения с помощью %s…", "Создание текста с помощью ИИ-сервиса %s…",
+                    "Создание TMI с помощью %s…"
+            };
+            case "sv": return new String[] {
+                    "Låttext läses in från %s…", "Översättning skapas med %s…",
+                    "Uttal skapas med %s…", "AI-låttext skapas med %s…",
+                    "TMI skapas med %s…"
+            };
+            case "pt": return new String[] {
+                    "Carregando letras de %s…", "Gerando tradução com %s…",
+                    "Gerando pronúncia com %s…", "Gerando letras com IA usando %s…",
+                    "Gerando TMI com %s…"
+            };
+            case "bn": return new String[] {
+                    "%s থেকে গানের কথা লোড হচ্ছে…", "%s দিয়ে অনুবাদ তৈরি হচ্ছে…",
+                    "%s দিয়ে উচ্চারণ তৈরি হচ্ছে…", "%s দিয়ে AI গানের কথা তৈরি হচ্ছে…",
+                    "%s দিয়ে TMI তৈরি হচ্ছে…"
+            };
+            case "cs": return new String[] {
+                    "Načítání textu z %s…", "Generování překladu pomocí %s…",
+                    "Generování výslovnosti pomocí %s…", "Generování AI textu pomocí %s…",
+                    "Generování TMI pomocí %s…"
+            };
+            case "it": return new String[] {
+                    "Caricamento dei testi da %s…", "Generazione della traduzione con %s…",
+                    "Generazione della pronuncia con %s…", "Generazione dei testi AI con %s…",
+                    "Generazione del TMI con %s…"
+            };
+            case "th": return new String[] {
+                    "กำลังโหลดเนื้อเพลงจาก %s…", "กำลังสร้างคำแปลด้วย %s…",
+                    "กำลังสร้างคำอ่านด้วย %s…", "กำลังสร้างเนื้อเพลง AI ด้วย %s…",
+                    "กำลังสร้าง TMI ด้วย %s…"
+            };
+            case "vi": return new String[] {
+                    "Đang tải lời bài hát từ %s…", "Đang tạo bản dịch bằng %s…",
+                    "Đang tạo cách phát âm bằng %s…", "Đang tạo lời bài hát AI bằng %s…",
+                    "Đang tạo TMI bằng %s…"
+            };
+            case "id": return new String[] {
+                    "Memuat lirik dari %s…", "Membuat terjemahan dengan %s…",
+                    "Membuat pelafalan dengan %s…", "Membuat lirik AI dengan %s…",
+                    "Membuat TMI dengan %s…"
+            };
+            case "ms": return new String[] {
+                    "Memuatkan lirik daripada %s…", "Menjana terjemahan dengan %s…",
+                    "Menjana sebutan dengan %s…", "Menjana lirik AI dengan %s…",
+                    "Menjana TMI dengan %s…"
+            };
+            case "tr": return new String[] {
+                    "%s üzerinden şarkı sözleri yükleniyor…", "%s ile çeviri oluşturuluyor…",
+                    "%s ile telaffuz oluşturuluyor…", "%s ile AI şarkı sözleri oluşturuluyor…",
+                    "%s ile TMI oluşturuluyor…"
+            };
+            default: return new String[] {
+                    "Loading lyrics from %s…", "Generating translation with %s…",
+                    "Generating pronunciation with %s…", "Generating AI lyrics with %s…",
+                    "Generating TMI with %s…"
+            };
+        }
     }
 
     private static void addSettingsNavigationStrings(Map<String, Map<String, String>> languages) {

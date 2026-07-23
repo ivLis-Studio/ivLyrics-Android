@@ -116,6 +116,7 @@ public final class LyricsView extends View {
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
     private String emptyFallbackMessage = AppI18n.t("en", "lyrics.empty_none");
+    private boolean loadingState;
     private String preludeLabel = AppI18n.t("en", "interlude.prelude");
     private String breakLabel = AppI18n.t("en", "interlude.break");
     private String postludeLabel = AppI18n.t("en", "interlude.postlude");
@@ -344,6 +345,14 @@ public final class LyricsView extends View {
         if (lines.isEmpty() && (emptyMessage == null || emptyMessage.trim().isEmpty())) {
             emptyMessage = this.emptyFallbackMessage;
         }
+        postInvalidateOnAnimation();
+    }
+
+    void setLoadingState(boolean loading) {
+        if (loadingState == loading) {
+            return;
+        }
+        loadingState = loading;
         postInvalidateOnAnimation();
     }
 
@@ -2754,6 +2763,22 @@ public final class LyricsView extends View {
         float totalHeight = rowHeight * 4f + activeHeight + rowGap * 4f;
         float top = centerY - totalHeight * 0.5f;
 
+        String message = emptyMessage == null ? "" : emptyMessage.trim();
+        if (!message.isEmpty()) {
+            float textSize = sp(13f);
+            textPaint.setTextAlign(Paint.Align.LEFT);
+            configurePaint(
+                    Color.argb(196, 255, 255, 255),
+                    "vocal",
+                    false,
+                    textSize,
+                    false,
+                    AppFonts.semiBold(getContext())
+            );
+            shrinkTextToFit(message, availableWidth, textSize, sp(9f));
+            canvas.drawText(message, left, top - sp(18f), textPaint);
+        }
+
         for (int index = 0; index < LOADING_SKELETON_WIDTH_FACTORS.length; index++) {
             boolean active = index == 2;
             float height = active ? activeHeight : rowHeight;
@@ -2809,6 +2834,9 @@ public final class LyricsView extends View {
     }
 
     private boolean isLoadingEmptyMessage() {
+        if (loadingState) {
+            return true;
+        }
         String value = emptyMessage == null ? "" : emptyMessage.trim().toLowerCase(Locale.ROOT);
         if (value.isEmpty()) {
             return false;

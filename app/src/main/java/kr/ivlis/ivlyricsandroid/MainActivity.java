@@ -109,6 +109,8 @@ public final class MainActivity extends Activity implements
         FuriganaRepository.Callback,
         YouTubeBackgroundRepository.Callback {
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
+    private static final String EXTRA_DEBUG_LYRICS_LOADING_PROVIDER =
+            "kr.ivlis.ivlyricsandroid.DEBUG_LYRICS_LOADING_PROVIDER";
     private static final String ACTION_UPDATE_INSTALL_RESULT = "kr.ivlis.ivlyricsandroid.UPDATE_INSTALL_RESULT";
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
@@ -448,6 +450,7 @@ public final class MainActivity extends Activity implements
     private boolean suppressSettingsEvents;
     private boolean aiLyricsGenerating;
     private boolean lyricsLookupInFlight;
+    private String lyricsLoadingProviderName = "";
     private boolean lyricsSupplementPronunciationLoading;
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
@@ -547,6 +550,7 @@ public final class MainActivity extends Activity implements
         NowPlayingService.requestRefresh(this);
         refreshBluetoothAudioDeviceOffsetState(false);
         onNowPlayingChanged(NowPlayingService.getLatestSnapshot());
+        applyDebugLyricsLoadingState(getIntent());
         updateSpotifySetupGate(false);
         updateOnboardingPermissionState();
         applySystemBarsForOrientation();
@@ -1167,6 +1171,10 @@ public final class MainActivity extends Activity implements
 
     @Override
     public void onNowPlayingChanged(TrackSnapshot snapshot) {
+        if (isDebugLyricsLoadingIntent(getIntent())) {
+            applyDebugLyricsLoadingState(getIntent());
+            return;
+        }
         currentTrack = snapshot;
         updatePictureInPictureActionsIfNeeded(snapshot != null && snapshot.playing);
         updatePermissionState();
@@ -1203,6 +1211,7 @@ public final class MainActivity extends Activity implements
             pendingSeekPositionMs = -1L;
             resetLogs("waiting for current track");
             lyricsLookupInFlight = false;
+            lyricsLoadingProviderName = "";
             currentLyricsResult = LyricsResult.empty(ui("status.waiting_current_track"));
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
@@ -1278,11 +1287,12 @@ public final class MainActivity extends Activity implements
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
             currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(currentLyricsKey);
             aiLyricsGenerating = false;
+            lyricsLoadingProviderName = "";
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
             updateLyricsLanguageSettingsUi();
             resetManualLrclibSearchForTrack(snapshot);
-            sourceView.setText(ui("status.lyrics_loading"));
+            sourceView.setText(lyricsLoadingText());
             statusView.setText(snapshot.isrc.isEmpty()
                     ? ui("status.lyrics_lookup_spotify")
                     : ui("status.lyrics_lookup_player"));
@@ -1294,7 +1304,7 @@ public final class MainActivity extends Activity implements
                     + " / artwork=" + artworkDebug(snapshot)
                     + packageSuffix(snapshot.packageName));
             lyricsLookupInFlight = lyricsRepository != null;
-            currentLyricsResult = LyricsResult.empty(ui("status.lyrics_loading"));
+            currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
             currentFuriganaKey = "";
@@ -1322,6 +1332,7 @@ public final class MainActivity extends Activity implements
         currentVideoSyncOffsetMs = 0;
         aiLyricsGenerating = false;
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         detectedLyricsSourceLang = "en";
         selectedRuleSourceLang = "auto";
         translatedTrackTitle = "";
@@ -1370,6 +1381,7 @@ public final class MainActivity extends Activity implements
         debugProgressView.setText("0:00 / 0:00");
         pendingSeekPositionMs = -1L;
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         currentLyricsResult = LyricsResult.empty(ui("status.spotify_required_plain"));
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
@@ -1402,6 +1414,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
@@ -1429,6 +1442,7 @@ public final class MainActivity extends Activity implements
             return;
         }
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         currentLyricsResult = LyricsResult.empty(ui("status.lyrics_request_failed"));
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
@@ -1442,6 +1456,22 @@ public final class MainActivity extends Activity implements
         updateLyricsLanguageSettingsUi();
         requestMetadataTranslation(false);
         resetYouTubeBackgroundForTrack();
+    }
+
+    @Override
+    public void onLyricsProviderLoading(String trackKey, String providerName) {
+        if (!trackKey.equals(currentLyricsKey) || !lyricsLookupInFlight) {
+            return;
+        }
+        lyricsLoadingProviderName = providerName == null ? "" : providerName.trim();
+        String loadingText = lyricsLoadingText();
+        currentLyricsResult = LyricsResult.empty(loadingText);
+        currentBaseLyricsResult = currentLyricsResult;
+        setLyricsResultOnViews(currentLyricsResult);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        sourceView.setText(lyricsLoadingProviderName.isEmpty() ? loadingText : lyricsLoadingProviderName);
+        statusView.setText(loadingText);
+        updateVinylLoadingIndicator(true);
     }
 
     @Override
@@ -1503,6 +1533,7 @@ public final class MainActivity extends Activity implements
         }
         manualLrclibSearchInFlight = false;
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
@@ -1529,6 +1560,7 @@ public final class MainActivity extends Activity implements
         }
         manualLrclibSearchInFlight = false;
         lyricsLookupInFlight = false;
+        lyricsLoadingProviderName = "";
         String detail = message == null || message.trim().isEmpty()
                 ? ui("repo.lyrics_not_found")
                 : message.trim();
@@ -1632,7 +1664,12 @@ public final class MainActivity extends Activity implements
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         statusView.setText(currentLyricsResult.detail);
         if (aiSettingsStatusView != null && !hadError) {
-            aiSettingsStatusView.setText(finished ? ui("status.ai_applied") : ui("status.ai_generating"));
+            aiSettingsStatusView.setText(finished
+                    ? ui("status.ai_applied")
+                    : aiProviderLoadingText(
+                            "status.ai_generating_provider_format",
+                            "status.ai_generating"
+                    ));
         }
     }
 
@@ -8136,6 +8173,7 @@ public final class MainActivity extends Activity implements
         lyricsRepository.invalidateProviderSelection();
         manualLrclibSearchInFlight = true;
         lyricsLookupInFlight = true;
+        lyricsLoadingProviderName = "LRCLIB";
         setManualLrclibStatus(ui("lyrics.lrclib_search.selecting"));
         lyricsRepository.loadManualLrclibCandidate(currentTrack, candidate, this);
     }
@@ -8923,6 +8961,39 @@ public final class MainActivity extends Activity implements
         }
     }
 
+    private void applyDebugLyricsLoadingState(Intent intent) {
+        boolean debuggable = (getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        if (!debuggable || intent == null) {
+            return;
+        }
+        String providerName = intent.getStringExtra(EXTRA_DEBUG_LYRICS_LOADING_PROVIDER);
+        providerName = providerName == null ? "" : providerName.trim();
+        if (providerName.isEmpty()) {
+            return;
+        }
+        currentLyricsKey = "debug-provider-loading";
+        lyricsLookupInFlight = true;
+        lyricsLoadingProviderName = providerName;
+        currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
+        currentBaseLyricsResult = currentLyricsResult;
+        sourceView.setText(providerName);
+        statusView.setText(lyricsLoadingText());
+        setLyricsResultOnViews(currentLyricsResult);
+        updateLyricPreview(0L);
+        updateVinylLoadingIndicator(false);
+    }
+
+    private boolean isDebugLyricsLoadingIntent(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        boolean debuggable = (getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        String providerName = intent.getStringExtra(EXTRA_DEBUG_LYRICS_LOADING_PROVIDER);
+        return debuggable && providerName != null && !providerName.trim().isEmpty();
+    }
+
     private void consumeOpenLyricsPageRequest() {
         if (!pendingOpenLyricsPageFromIntent) {
             return;
@@ -9681,8 +9752,9 @@ public final class MainActivity extends Activity implements
     private void showCurrentTrackReloadLoading(TrackSnapshot snapshot) {
         spotifySetupRequired = false;
         aiLyricsGenerating = false;
+        lyricsLoadingProviderName = "";
         pendingSeekPositionMs = -1L;
-        currentLyricsResult = LyricsResult.empty(ui("status.lyrics_loading"));
+        currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
@@ -9692,7 +9764,7 @@ public final class MainActivity extends Activity implements
         currentVideoSyncOffsetMs = snapshot == null || aiLyricsSettings == null
                 ? 0
                 : aiLyricsSettings.trackVideoSyncOffsetMs(snapshot.stableKey());
-        sourceView.setText(ui("status.lyrics_loading"));
+        sourceView.setText(lyricsLoadingText());
         statusView.setText(ui("status.reload_after_spotify"));
         setLyricsTrackDurationOnViews(snapshot == null ? 0L : snapshot.durationMs);
         setLyricsResultOnViews(currentLyricsResult);
@@ -10256,7 +10328,12 @@ public final class MainActivity extends Activity implements
             progressBar.getIndeterminateDrawable().setTint(Color.argb(220, 255, 255, 255));
         }
         row.addView(progressBar, new LinearLayout.LayoutParams(dp(18), dp(18)));
-        TextView text = label(ui("tmi.loading"), 13f, Color.argb(220, 255, 255, 255), AppFonts.semiBold(this));
+        TextView text = label(
+                aiProviderLoadingText("tmi.loading_provider_format", "tmi.loading"),
+                13f,
+                Color.argb(220, 255, 255, 255),
+                AppFonts.semiBold(this)
+        );
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         textParams.leftMargin = dp(10);
         row.addView(text, textParams);
@@ -10689,7 +10766,10 @@ public final class MainActivity extends Activity implements
             }
         }
         if (aiSettingsStatusView != null) {
-            aiSettingsStatusView.setText(ui("status.ai_generating"));
+            aiSettingsStatusView.setText(aiProviderLoadingText(
+                    "status.ai_generating_provider_format",
+                    "status.ai_generating"
+            ));
         }
         aiLyricsGenerating = true;
         currentLyricsResult = mergeCurrentFuriganaInto(currentBaseLyricsResult);
@@ -10913,22 +10993,84 @@ public final class MainActivity extends Activity implements
         if (pictureInPictureLyricsView != null) {
             pictureInPictureLyricsView.setSupplementLoading(pronunciation, translation);
         }
+        updateLyricsSupplementLoadingText();
         updateLyricsSupplementLoadingIndicator(pronunciation || translation || furigana);
         updateVinylLoadingIndicator(true);
     }
 
     private String vinylLoadingText() {
         if (lyricsSupplementTranslationLoading) {
-            return ui("loading.translation");
+            return aiProviderLoadingText(
+                    "loading.translation_provider_format",
+                    "loading.translation"
+            );
         }
-        if (lyricsSupplementPronunciationLoading || lyricsSupplementFuriganaLoading) {
+        if (lyricsSupplementPronunciationLoading) {
+            return aiProviderLoadingText(
+                    "loading.pronunciation_provider_format",
+                    "loading.pronunciation"
+            );
+        }
+        if (lyricsSupplementFuriganaLoading) {
             return ui("loading.pronunciation");
         }
         String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
         if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
-            return ui("status.lyrics_loading");
+            return lyricsLoadingText();
         }
         return "";
+    }
+
+    private String lyricsLoadingText() {
+        String providerName = lyricsLoadingProviderName == null ? "" : lyricsLoadingProviderName.trim();
+        return providerName.isEmpty()
+                ? ui("status.lyrics_loading")
+                : uiFormat("status.lyrics_loading_provider_format", providerName);
+    }
+
+    private String aiProviderLoadingText(String formatKey, String fallbackKey) {
+        String providerName = "";
+        if (aiLyricsSettings != null) {
+            AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+            if (snapshot != null && snapshot.provider != null) {
+                providerName = snapshot.provider.label == null ? "" : snapshot.provider.label.trim();
+            }
+        }
+        return providerName.isEmpty() ? ui(fallbackKey) : uiFormat(formatKey, providerName);
+    }
+
+    private String supplementLoadingText() {
+        if (lyricsSupplementTranslationLoading) {
+            return aiProviderLoadingText(
+                    "loading.translation_provider_format",
+                    "loading.translation"
+            );
+        }
+        if (lyricsSupplementPronunciationLoading) {
+            return aiProviderLoadingText(
+                    "loading.pronunciation_provider_format",
+                    "loading.pronunciation"
+            );
+        }
+        if (lyricsSupplementFuriganaLoading) {
+            return ui("loading.pronunciation");
+        }
+        return ui("loading.generating");
+    }
+
+    private void updateLyricsSupplementLoadingText() {
+        updateLyricsSupplementLoadingText(lyricsSupplementLoadingIndicator);
+        updateLyricsSupplementLoadingText(landscapeLyricsSupplementLoadingIndicator);
+    }
+
+    private void updateLyricsSupplementLoadingText(LinearLayout indicator) {
+        if (indicator == null || indicator.getChildCount() < 2) {
+            return;
+        }
+        View child = indicator.getChildAt(1);
+        if (child instanceof TextView) {
+            ((TextView) child).setText(supplementLoadingText());
+        }
     }
 
     private void updateVinylLoadingIndicator(boolean animate) {
@@ -10990,14 +11132,17 @@ public final class MainActivity extends Activity implements
     private void setLyricsResultOnViews(LyricsResult result) {
         if (lyricsView != null) {
             configureLyricsViewUiText(lyricsView);
+            lyricsView.setLoadingState(lyricsLookupInFlight);
             lyricsView.setResult(result);
         }
         if (landscapeLyricsView != null) {
             configureLyricsViewUiText(landscapeLyricsView);
+            landscapeLyricsView.setLoadingState(lyricsLookupInFlight);
             landscapeLyricsView.setResult(result);
         }
         if (pictureInPictureLyricsView != null) {
             configureLyricsViewUiText(pictureInPictureLyricsView);
+            pictureInPictureLyricsView.setLoadingState(lyricsLookupInFlight);
             pictureInPictureLyricsView.setResult(result);
         }
         updateLyricsProviderAttribution(result);
@@ -11737,8 +11882,8 @@ public final class MainActivity extends Activity implements
     }
 
     private MainLyricPreviewView.PreviewLine emptyPreviewLine(String detail) {
-        if (isLoadingLyricsPreview(detail)) {
-            return MainLyricPreviewView.PreviewLine.loading(ui("status.lyrics_loading"));
+        if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
+            return MainLyricPreviewView.PreviewLine.loading(lyricsLoadingText());
         }
         String text = detail == null || detail.isEmpty() ? ui("status.lyrics_waiting") : detail;
         return new MainLyricPreviewView.PreviewLine(text, true);
@@ -12116,7 +12261,10 @@ public final class MainActivity extends Activity implements
             addSupplementPreviewRow(
                     rows,
                     line.pronunciationText,
-                    ui("loading.pronunciation"),
+                    aiProviderLoadingText(
+                            "loading.pronunciation_provider_format",
+                            "loading.pronunciation"
+                    ),
                     original.text,
                     original.rubyText,
                     original.syllables,
@@ -12129,7 +12277,10 @@ public final class MainActivity extends Activity implements
             addSupplementPreviewRow(
                     rows,
                     line.translationText,
-                    ui("loading.translation"),
+                    aiProviderLoadingText(
+                            "loading.translation_provider_format",
+                            "loading.translation"
+                    ),
                     original.text,
                     original.rubyText,
                     original.syllables,
@@ -13776,7 +13927,7 @@ public final class MainActivity extends Activity implements
         }
         indicator.addView(loadingSpinner, new LinearLayout.LayoutParams(dp(14), dp(14)));
 
-        TextView loadingText = label(ui("loading.generating"), 11f, Color.argb(205, 255, 255, 255), AppFonts.semiBold(this));
+        TextView loadingText = label(supplementLoadingText(), 11f, Color.argb(205, 255, 255, 255), AppFonts.semiBold(this));
         LinearLayout.LayoutParams loadingTextParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
