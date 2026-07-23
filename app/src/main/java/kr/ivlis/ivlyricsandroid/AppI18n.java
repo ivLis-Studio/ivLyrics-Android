@@ -128,8 +128,55 @@ final class AppI18n {
         addCreatorPrivacyStrings(languages);
         addLyricsProviderSettingsStrings(languages);
         addPaxsenixProviderStrings(languages);
+        addSettingsNavigationStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addSettingsNavigationStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "tab.general", "tab.appearance", "tab.player", "tab.system", "settings.subtitle"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) continue;
+            String[] values = settingsNavigationStrings(language.code);
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], values[index]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] settingsNavigationStrings(String language) {
+        switch (language) {
+            case "ko": return new String[] {"일반", "화면", "플레이어", "시스템", "일반, 가사, 화면, 플레이어, AI, 시스템 설정"};
+            case "zh-CN": return new String[] {"通用", "外观", "播放器", "系统", "通用、歌词、外观、播放器、AI 和系统设置"};
+            case "zh-TW": return new String[] {"一般", "外觀", "播放器", "系統", "一般、歌詞、外觀、播放器、AI 與系統設定"};
+            case "ja": return new String[] {"一般", "外観", "プレーヤー", "システム", "一般、歌詞、外観、プレーヤー、AI、システム設定"};
+            case "hi": return new String[] {"सामान्य", "रूप-रंग", "प्लेयर", "सिस्टम", "सामान्य, गीत, रूप-रंग, प्लेयर, AI और सिस्टम सेटिंग"};
+            case "es": return new String[] {"General", "Apariencia", "Reproductor", "Sistema", "Ajustes generales, de letras, apariencia, reproductor, IA y sistema"};
+            case "fr": return new String[] {"Général", "Apparence", "Lecteur", "Système", "Réglages généraux, paroles, apparence, lecteur, IA et système"};
+            case "ar": return new String[] {"عام", "المظهر", "المشغل", "النظام", "إعدادات عامة وكلمات الأغاني والمظهر والمشغل والذكاء الاصطناعي والنظام"};
+            case "fa": return new String[] {"عمومی", "ظاهر", "پخش‌کننده", "سیستم", "تنظیمات عمومی، متن ترانه، ظاهر، پخش‌کننده، هوش مصنوعی و سیستم"};
+            case "de": return new String[] {"Allgemein", "Darstellung", "Player", "System", "Einstellungen für Allgemein, Liedtexte, Darstellung, Player, KI und System"};
+            case "ru": return new String[] {"Общие", "Оформление", "Плеер", "Система", "Общие настройки, текст, оформление, плеер, ИИ и система"};
+            case "sv": return new String[] {"Allmänt", "Utseende", "Spelare", "System", "Inställningar för allmänt, text, utseende, spelare, AI och system"};
+            case "pt": return new String[] {"Geral", "Aparência", "Reprodutor", "Sistema", "Ajustes gerais, letras, aparência, reprodutor, IA e sistema"};
+            case "bn": return new String[] {"সাধারণ", "চেহারা", "প্লেয়ার", "সিস্টেম", "সাধারণ, গানের কথা, চেহারা, প্লেয়ার, AI ও সিস্টেম সেটিংস"};
+            case "cs": return new String[] {"Obecné", "Vzhled", "Přehrávač", "Systém", "Obecná nastavení, texty, vzhled, přehrávač, AI a systém"};
+            case "it": return new String[] {"Generali", "Aspetto", "Lettore", "Sistema", "Impostazioni generali, testi, aspetto, lettore, IA e sistema"};
+            case "th": return new String[] {"ทั่วไป", "รูปลักษณ์", "เครื่องเล่น", "ระบบ", "การตั้งค่าทั่วไป เนื้อเพลง รูปลักษณ์ เครื่องเล่น AI และระบบ"};
+            case "vi": return new String[] {"Chung", "Giao diện", "Trình phát", "Hệ thống", "Cài đặt chung, lời bài hát, giao diện, trình phát, AI và hệ thống"};
+            case "id": return new String[] {"Umum", "Tampilan", "Pemutar", "Sistem", "Pengaturan umum, lirik, tampilan, pemutar, AI, dan sistem"};
+            case "ms": return new String[] {"Umum", "Penampilan", "Pemain", "Sistem", "Tetapan umum, lirik, penampilan, pemain, AI dan sistem"};
+            case "tr": return new String[] {"Genel", "Görünüm", "Oynatıcı", "Sistem", "Genel, şarkı sözleri, görünüm, oynatıcı, AI ve sistem ayarları"};
+            default: return new String[] {
+                    "General", "Appearance", "Player", "System",
+                    "General, lyrics, appearance, player, AI, and system settings"
+            };
+        }
     }
 
     private static void addCreatorPrivacyStrings(Map<String, Map<String, String>> languages) {

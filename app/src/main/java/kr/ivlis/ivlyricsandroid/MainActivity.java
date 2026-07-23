@@ -114,11 +114,12 @@ public final class MainActivity extends Activity implements
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
     private static final long EMPTY_LYRICS_PREVIEW_VISIBLE_MS = 3_000L;
+    private static final String SETTINGS_TAB_GENERAL = "general";
     private static final String SETTINGS_TAB_LYRICS = "lyrics";
-    private static final String SETTINGS_TAB_DISPLAY = "display";
-    private static final String SETTINGS_TAB_FULLSCREEN = "fullscreen";
+    private static final String SETTINGS_TAB_APPEARANCE = "appearance";
+    private static final String SETTINGS_TAB_PLAYER = "player";
     private static final String SETTINGS_TAB_AI = "ai";
-    private static final String SETTINGS_TAB_TOOLS = "tools";
+    private static final String SETTINGS_TAB_SYSTEM = "system";
     private static final String LYRICS_POPUP_TAB_LANGUAGE = "language";
     private static final String LYRICS_POPUP_TAB_SYNC = "sync";
     private static final String LYRICS_POPUP_TAB_VIDEO = "video";
@@ -277,11 +278,12 @@ public final class MainActivity extends Activity implements
     private LinearLayout landscapeHeroContainer;
     private LinearLayout landscapeMetaContainer;
     private LinearLayout settingsTabButtonsContainer;
+    private LinearLayout settingsGeneralPage;
     private LinearLayout settingsLyricsPage;
-    private LinearLayout settingsDisplayPage;
-    private LinearLayout settingsFullscreenPage;
+    private LinearLayout settingsAppearancePage;
+    private LinearLayout settingsPlayerPage;
     private LinearLayout settingsAiPage;
-    private LinearLayout settingsToolsPage;
+    private LinearLayout settingsSystemPage;
     private LinearLayout previewModeButtonsContainer;
     private LinearLayout lyricsAlignmentButtonsContainer;
     private LinearLayout pipOrientationButtonsContainer;
@@ -292,6 +294,7 @@ public final class MainActivity extends Activity implements
     private View pollinationsAuthGroup;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
+    private TextView settingsCategoryTitleView;
     private TextView sourceLanguageSelectButton;
     private ScrollView settingsScrollView;
     private ScrollView logScrollView;
@@ -470,7 +473,7 @@ public final class MainActivity extends Activity implements
     private float pictureInPicturePinchStartDistance;
     private int onboardingStep;
     private int onboardingWelcomeIndex = -1;
-    private String activeSettingsTab = SETTINGS_TAB_LYRICS;
+    private String activeSettingsTab = SETTINGS_TAB_GENERAL;
     private String pollinationsAuthVerificationUrl = "";
     private String pollinationsAuthUserCode = "";
     private boolean landscapeControlsVisible = true;
@@ -3895,7 +3898,6 @@ public final class MainActivity extends Activity implements
 
         aiSettingsStatusView = label("", 13f, Color.argb(215, 255, 255, 255), AppFonts.semiBold(this));
         aiSettingsStatusView.setLineSpacing(dp(2), 1f);
-        content.addView(aiSettingsStatusView, topMargin(matchWrap(), dp(20)));
 
         settingsTabButtonsContainer = new LinearLayout(this);
         settingsTabButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
@@ -3914,23 +3916,28 @@ public final class MainActivity extends Activity implements
         content.addView(settingsTabsScroll, topMargin(matchWrap(), dp(18)));
         buildSettingsTabs();
 
-        settingsLyricsPage = settingsPage();
-        settingsDisplayPage = settingsPage();
-        settingsFullscreenPage = settingsPage();
-        settingsAiPage = settingsPage();
-        settingsToolsPage = settingsPage();
-        content.addView(settingsLyricsPage, topMargin(matchWrap(), dp(18)));
-        content.addView(settingsDisplayPage, topMargin(matchWrap(), dp(18)));
-        content.addView(settingsFullscreenPage, topMargin(matchWrap(), dp(18)));
-        content.addView(settingsAiPage, topMargin(matchWrap(), dp(18)));
-        content.addView(settingsToolsPage, topMargin(matchWrap(), dp(18)));
+        settingsCategoryTitleView = label("", 20f, Color.WHITE, AppFonts.bold(this));
+        content.addView(settingsCategoryTitleView, topMargin(matchWrap(), dp(22)));
 
-        settingsLyricsPage.addView(sectionTitle(ui("section.language")));
-        settingsLyricsPage.addView(sectionDescription(ui("section.language_desc")), topMargin(matchWrap(), dp(8)));
+        settingsGeneralPage = settingsPage();
+        settingsLyricsPage = settingsPage();
+        settingsAppearancePage = settingsPage();
+        settingsPlayerPage = settingsPage();
+        settingsAiPage = settingsPage();
+        settingsSystemPage = settingsPage();
+        content.addView(settingsGeneralPage, topMargin(matchWrap(), dp(14)));
+        content.addView(settingsLyricsPage, topMargin(matchWrap(), dp(14)));
+        content.addView(settingsAppearancePage, topMargin(matchWrap(), dp(14)));
+        content.addView(settingsPlayerPage, topMargin(matchWrap(), dp(14)));
+        content.addView(settingsAiPage, topMargin(matchWrap(), dp(14)));
+        content.addView(settingsSystemPage, topMargin(matchWrap(), dp(14)));
+
+        settingsGeneralPage.addView(sectionTitle(ui("section.language")));
+        settingsGeneralPage.addView(sectionDescription(ui("section.language_desc")), topMargin(matchWrap(), dp(8)));
 
         uiLanguageSelectButton = settingsSelectButton("");
         uiLanguageSelectButton.setOnClickListener(view -> showSettingsUiLanguagePopup(uiLanguageSelectButton));
-        settingsLyricsPage.addView(settingGroup(
+        settingsGeneralPage.addView(settingGroup(
                 ui("setting.ui_language"),
                 ui("setting.ui_language_desc"),
                 uiLanguageSelectButton
@@ -3938,7 +3945,7 @@ public final class MainActivity extends Activity implements
 
         outputLanguageSelectButton = settingsSelectButton("");
         outputLanguageSelectButton.setOnClickListener(view -> showSettingsOutputLanguagePopup(outputLanguageSelectButton));
-        settingsLyricsPage.addView(settingGroup(
+        settingsGeneralPage.addView(settingGroup(
                 ui("setting.pronunciation_language"),
                 ui("setting.pronunciation_language_desc"),
                 outputLanguageSelectButton
@@ -3961,7 +3968,7 @@ public final class MainActivity extends Activity implements
             }
             showSavedToast(isChecked ? ui("toast.metadata_translation_on") : ui("toast.metadata_translation_off"));
         });
-        settingsLyricsPage.addView(metadataTranslationSwitch, topMargin(matchWrap(), dp(12)));
+        settingsGeneralPage.addView(metadataTranslationSwitch, topMargin(matchWrap(), dp(12)));
 
         japaneseFuriganaSwitch = settingSwitch(
                 ui("setting.japanese_furigana"),
@@ -3985,11 +3992,11 @@ public final class MainActivity extends Activity implements
             }
             showSavedToast(isChecked ? ui("toast.furigana_on") : ui("toast.furigana_off"));
         });
-        settingsLyricsPage.addView(japaneseFuriganaSwitch, topMargin(matchWrap(), dp(12)));
+        settingsGeneralPage.addView(japaneseFuriganaSwitch, topMargin(matchWrap(), dp(12)));
 
         previewModeButtonsContainer = new LinearLayout(this);
         previewModeButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        settingsLyricsPage.addView(settingGroup(
+        settingsGeneralPage.addView(settingGroup(
                 ui("setting.main_preview"),
                 ui("setting.main_preview_desc"),
                 previewModeButtonsContainer
@@ -4102,8 +4109,8 @@ public final class MainActivity extends Activity implements
         lyricsProviderSettingsContainer.setOrientation(LinearLayout.VERTICAL);
         settingsLyricsPage.addView(lyricsProviderSettingsContainer, topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(sectionTitle(ui("section.player")));
-        settingsDisplayPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
+        settingsGeneralPage.addView(sectionTitle(ui("section.player")), topMargin(matchWrap(), dp(24)));
+        settingsGeneralPage.addView(sectionDescription(ui("section.player_desc")), topMargin(matchWrap(), dp(8)));
 
         keepScreenOnSwitch = settingSwitch(
                 ui("setting.keep_screen_on"),
@@ -4117,7 +4124,7 @@ public final class MainActivity extends Activity implements
             applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
             showSavedToast(isChecked ? ui("toast.keep_screen_on_on") : ui("toast.keep_screen_on_off"));
         });
-        settingsDisplayPage.addView(keepScreenOnSwitch, topMargin(matchWrap(), dp(12)));
+        settingsGeneralPage.addView(keepScreenOnSwitch, topMargin(matchWrap(), dp(12)));
 
         landscapeAutoHideControlsSwitch = settingSwitch(
                 ui("setting.landscape_auto_hide"),
@@ -4131,7 +4138,7 @@ public final class MainActivity extends Activity implements
             applyLandscapeControlsAutoHideSetting();
             showSavedToast(isChecked ? ui("toast.landscape_auto_hide_on") : ui("toast.landscape_auto_hide_off"));
         });
-        settingsDisplayPage.addView(landscapeAutoHideControlsSwitch, topMargin(matchWrap(), dp(12)));
+        settingsGeneralPage.addView(landscapeAutoHideControlsSwitch, topMargin(matchWrap(), dp(12)));
 
         landscapeCenterNoLyricsSwitch = settingSwitch(
                 ui("setting.landscape_center_no_lyrics"),
@@ -4147,18 +4154,18 @@ public final class MainActivity extends Activity implements
                     ? ui("toast.landscape_center_no_lyrics_on")
                     : ui("toast.landscape_center_no_lyrics_off"));
         });
-        settingsDisplayPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
+        settingsGeneralPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
 
         lyricsAlignmentButtonsContainer = new LinearLayout(this);
         lyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
-        settingsDisplayPage.addView(settingGroup(
+        settingsAppearancePage.addView(settingGroup(
                 ui("setting.lyrics_alignment"),
                 ui("setting.lyrics_alignment_desc"),
                 lyricsAlignmentButtonsContainer
         ), topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(sectionTitle(ui("section.pip")), topMargin(matchWrap(), dp(24)));
-        settingsDisplayPage.addView(sectionDescription(ui("section.pip_desc")), topMargin(matchWrap(), dp(8)));
+        settingsPlayerPage.addView(sectionTitle(ui("section.pip")));
+        settingsPlayerPage.addView(sectionDescription(ui("section.pip_desc")), topMargin(matchWrap(), dp(8)));
 
         pipShowArtworkSwitch = settingSwitch(
                 ui("setting.pip_show_artwork"),
@@ -4173,11 +4180,11 @@ public final class MainActivity extends Activity implements
             updatePictureInPictureParamsIfNeeded();
             showSavedToast(ui("toast.pip_settings_saved"));
         });
-        settingsDisplayPage.addView(pipShowArtworkSwitch, topMargin(matchWrap(), dp(12)));
+        settingsPlayerPage.addView(pipShowArtworkSwitch, topMargin(matchWrap(), dp(12)));
 
         pipOrientationButtonsContainer = new LinearLayout(this);
         pipOrientationButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
-        settingsDisplayPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("setting.pip_orientation"),
                 ui("setting.pip_orientation_desc"),
                 pipOrientationButtonsContainer
@@ -4185,7 +4192,7 @@ public final class MainActivity extends Activity implements
 
         pipLyricsAlignmentButtonsContainer = new LinearLayout(this);
         pipLyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
-        settingsDisplayPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("setting.pip_lyrics_alignment"),
                 ui("setting.pip_lyrics_alignment_desc"),
                 pipLyricsAlignmentButtonsContainer
@@ -4213,18 +4220,18 @@ public final class MainActivity extends Activity implements
                 showSavedToast(ui("toast.pip_settings_saved"));
             }
         });
-        settingsDisplayPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("setting.pip_lyrics_size"),
                 ui("setting.pip_lyrics_size_desc"),
                 buildSliderRow(pipLyricsSizeSeekBar, pipLyricsSizeValueView)
         ), topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
-        settingsDisplayPage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
-        settingsDisplayPage.addView(buildTypographySettingsList(), topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
+        settingsAppearancePage.addView(sectionDescription(ui("section.typography_desc")), topMargin(matchWrap(), dp(8)));
+        settingsAppearancePage.addView(buildTypographySettingsList(), topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(sectionTitle(ui("section.speaker_colors")), topMargin(matchWrap(), dp(24)));
-        settingsDisplayPage.addView(sectionDescription(ui("section.speaker_colors_desc")), topMargin(matchWrap(), dp(8)));
+        settingsAppearancePage.addView(sectionTitle(ui("section.speaker_colors")), topMargin(matchWrap(), dp(24)));
+        settingsAppearancePage.addView(sectionDescription(ui("section.speaker_colors_desc")), topMargin(matchWrap(), dp(8)));
 
         useSyncCreatorSpeakerColorsSwitch = settingSwitch(
                 ui("setting.creator_speaker_colors"),
@@ -4238,15 +4245,15 @@ public final class MainActivity extends Activity implements
             applySpeakerColorSettings(aiLyricsSettings.snapshot());
             showSavedToast(ui("toast.settings_saved"));
         });
-        settingsDisplayPage.addView(useSyncCreatorSpeakerColorsSwitch, topMargin(matchWrap(), dp(12)));
-        settingsDisplayPage.addView(buildSpeakerColorSettingsList(), topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(useSyncCreatorSpeakerColorsSwitch, topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(buildSpeakerColorSettingsList(), topMargin(matchWrap(), dp(12)));
 
-        settingsDisplayPage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
-        settingsDisplayPage.addView(sectionDescription(ui("section.background_desc")), topMargin(matchWrap(), dp(8)));
+        settingsAppearancePage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
+        settingsAppearancePage.addView(sectionDescription(ui("section.background_desc")), topMargin(matchWrap(), dp(8)));
 
         backgroundModeButtonsContainer = new LinearLayout(this);
         backgroundModeButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        settingsDisplayPage.addView(settingGroup(
+        settingsAppearancePage.addView(settingGroup(
                 ui("setting.background_mode"),
                 ui("setting.background_mode_desc"),
                 backgroundModeButtonsContainer
@@ -4277,7 +4284,7 @@ public final class MainActivity extends Activity implements
                 applyBackgroundSettings(snapshot);
             }
         });
-        settingsDisplayPage.addView(settingGroup(ui("setting.brightness"), ui("setting.brightness_desc"), buildSliderRow(backgroundBrightnessSeekBar, backgroundBrightnessValueView)), topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(settingGroup(ui("setting.brightness"), ui("setting.brightness_desc"), buildSliderRow(backgroundBrightnessSeekBar, backgroundBrightnessValueView)), topMargin(matchWrap(), dp(12)));
 
         backgroundBlurSeekBar = new SeekBar(this);
         backgroundBlurSeekBar.setMax(100);
@@ -4304,7 +4311,7 @@ public final class MainActivity extends Activity implements
                 applyBackgroundSettings(snapshot);
             }
         });
-        settingsDisplayPage.addView(settingGroup(ui("setting.blur"), ui("setting.blur_desc"), buildSliderRow(backgroundBlurSeekBar, backgroundBlurValueView)), topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(settingGroup(ui("setting.blur"), ui("setting.blur_desc"), buildSliderRow(backgroundBlurSeekBar, backgroundBlurValueView)), topMargin(matchWrap(), dp(12)));
 
         backgroundVideoScaleSeekBar = new SeekBar(this);
         backgroundVideoScaleSeekBar.setMax(80);
@@ -4332,7 +4339,7 @@ public final class MainActivity extends Activity implements
             }
         });
         backgroundVideoScaleGroup = settingGroup(ui("setting.video_scale"), ui("setting.video_scale_desc"), buildSliderRow(backgroundVideoScaleSeekBar, backgroundVideoScaleValueView));
-        settingsDisplayPage.addView(backgroundVideoScaleGroup, topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(backgroundVideoScaleGroup, topMargin(matchWrap(), dp(12)));
 
         backgroundNoiseSwitch = settingSwitch(ui("setting.noise"), ui("setting.noise_desc"));
         backgroundNoiseSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -4343,7 +4350,7 @@ public final class MainActivity extends Activity implements
             applyBackgroundSettings(aiLyricsSettings.snapshot());
             showSavedToast(isChecked ? ui("toast.background_noise_on") : ui("toast.background_noise_off"));
         });
-        settingsDisplayPage.addView(backgroundNoiseSwitch, topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(backgroundNoiseSwitch, topMargin(matchWrap(), dp(12)));
 
         backgroundReduceMotionSwitch = settingSwitch(ui("setting.reduce_motion"), ui("setting.reduce_motion_desc"));
         backgroundReduceMotionSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -4354,19 +4361,20 @@ public final class MainActivity extends Activity implements
             applyBackgroundSettings(aiLyricsSettings.snapshot());
             showSavedToast(isChecked ? ui("toast.reduce_motion_on") : ui("toast.reduce_motion_off"));
         });
-        settingsDisplayPage.addView(backgroundReduceMotionSwitch, topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(backgroundReduceMotionSwitch, topMargin(matchWrap(), dp(12)));
 
         backgroundSolidColorGroup = settingGroup(
                 ui("field.solid_color"),
                 ui("field.solid_color_desc"),
                 buildBackgroundSolidColorControl()
         );
-        settingsDisplayPage.addView(backgroundSolidColorGroup, topMargin(matchWrap(), dp(12)));
+        settingsAppearancePage.addView(backgroundSolidColorGroup, topMargin(matchWrap(), dp(12)));
 
         buildVinylSettingsPage();
 
         settingsAiPage.addView(sectionTitle(ui("section.ai_lyrics")));
         settingsAiPage.addView(sectionDescription(ui("section.ai_lyrics_desc")), topMargin(matchWrap(), dp(8)));
+        settingsAiPage.addView(aiSettingsStatusView, topMargin(matchWrap(), dp(14)));
         settingsAiPage.addView(sectionTitle(ui("section.provider")), topMargin(matchWrap(), dp(22)));
         providerSummaryView = label("", 12f, Color.argb(170, 255, 255, 255), AppFonts.regular(this));
         providerSummaryView.setLineSpacing(dp(2), 1f);
@@ -4433,10 +4441,10 @@ public final class MainActivity extends Activity implements
         });
         actionRow.addView(keyButton, weightedButtonParams(1f, dp(4)));
 
-        settingsToolsPage.addView(sectionTitle(ui("section.tools")));
-        settingsToolsPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
+        settingsSystemPage.addView(sectionTitle(ui("section.tools")));
+        settingsSystemPage.addView(sectionDescription(ui("section.tools_desc")), topMargin(matchWrap(), dp(8)));
 
-        settingsToolsPage.addView(settingGroup(
+        settingsSystemPage.addView(settingGroup(
                 ui("creator_privacy.section"),
                 ui("creator_privacy.section_desc"),
                 buildCreatorPrivacyControl()
@@ -4465,7 +4473,7 @@ public final class MainActivity extends Activity implements
         releasePageButton.setOnClickListener(view -> openExternalUrl("https://github.com/ivLis-Studio/ivLyrics-Android/releases"));
         updateButtonRow.addView(releasePageButton, weightedButtonParams(1f, dp(4)));
 
-        settingsToolsPage.addView(settingGroup(
+        settingsSystemPage.addView(settingGroup(
                 ui("section.app_update"),
                 ui("section.app_update_desc"),
                 updateActions
@@ -4490,38 +4498,38 @@ public final class MainActivity extends Activity implements
         overlayParams.topMargin = dp(8);
         spotifyShortcutPermissions.addView(overlayPermissionButton, overlayParams);
         updateOverlayPermissionButton();
-        settingsToolsPage.addView(settingGroup(
+        settingsSystemPage.addView(settingGroup(
                 ui("section.spotify_shortcut"),
                 ui("section.spotify_shortcut_desc"),
                 spotifyShortcutPermissions
         ), topMargin(matchWrap(), dp(16)));
 
-        settingsToolsPage.addView(sectionTitle(ui("section.spotify_api")), topMargin(matchWrap(), dp(24)));
-        settingsToolsPage.addView(sectionDescription(ui("section.spotify_api_desc")), topMargin(matchWrap(), dp(8)));
-        settingsToolsPage.addView(buildSpotifyApiSetupInstructions(), topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(sectionTitle(ui("section.spotify_api")), topMargin(matchWrap(), dp(24)));
+        settingsSystemPage.addView(sectionDescription(ui("section.spotify_api_desc")), topMargin(matchWrap(), dp(8)));
+        settingsSystemPage.addView(buildSpotifyApiSetupInstructions(), topMargin(matchWrap(), dp(12)));
 
         spotifyClientIdInput = settingEditText("", false, false);
-        settingsToolsPage.addView(settingField("Client ID", ui("field.spotify_client_id_desc"), spotifyClientIdInput), topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(settingField("Client ID", ui("field.spotify_client_id_desc"), spotifyClientIdInput), topMargin(matchWrap(), dp(12)));
 
         spotifyClientSecretInput = settingEditText("", false, true);
-        settingsToolsPage.addView(settingField("Client Secret", ui("field.spotify_client_secret_desc"), spotifyClientSecretInput), topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(settingField("Client Secret", ui("field.spotify_client_secret_desc"), spotifyClientSecretInput), topMargin(matchWrap(), dp(12)));
 
         LinearLayout spotifyActionRow = new LinearLayout(this);
         spotifyActionRow.setOrientation(LinearLayout.HORIZONTAL);
         spotifyActionRow.setGravity(Gravity.CENTER_VERTICAL);
-        settingsToolsPage.addView(spotifyActionRow, topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(spotifyActionRow, topMargin(matchWrap(), dp(12)));
 
         TextView spotifySaveButton = primaryButton(ui("button.spotify_save"));
         spotifySaveButton.setOnClickListener(view -> applySpotifySettingsFromUi());
         spotifyActionRow.addView(spotifySaveButton, weightedButtonParams(1f, dp(4)));
 
-        settingsToolsPage.addView(sectionTitle(ui("section.lyrics_cache")), topMargin(matchWrap(), dp(24)));
-        settingsToolsPage.addView(sectionDescription(ui("section.lyrics_cache_desc")), topMargin(matchWrap(), dp(8)));
+        settingsSystemPage.addView(sectionTitle(ui("section.lyrics_cache")), topMargin(matchWrap(), dp(24)));
+        settingsSystemPage.addView(sectionDescription(ui("section.lyrics_cache_desc")), topMargin(matchWrap(), dp(8)));
 
         LinearLayout lyricsCacheRow = new LinearLayout(this);
         lyricsCacheRow.setOrientation(LinearLayout.HORIZONTAL);
         lyricsCacheRow.setGravity(Gravity.CENTER_VERTICAL);
-        settingsToolsPage.addView(lyricsCacheRow, topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(lyricsCacheRow, topMargin(matchWrap(), dp(12)));
 
         TextView clearCurrentLyricsCache = debugButton(ui("button.clear_current"));
         clearCurrentLyricsCache.setOnClickListener(view -> clearCurrentLyricsCacheFromSettings());
@@ -4534,7 +4542,7 @@ public final class MainActivity extends Activity implements
         LinearLayout utilityRow = new LinearLayout(this);
         utilityRow.setOrientation(LinearLayout.HORIZONTAL);
         utilityRow.setGravity(Gravity.CENTER_VERTICAL);
-        settingsToolsPage.addView(utilityRow, topMargin(matchWrap(), dp(12)));
+        settingsSystemPage.addView(utilityRow, topMargin(matchWrap(), dp(12)));
 
         TextView clearCache = debugButton(ui("button.ai_cache_clear"));
         clearCache.setOnClickListener(view -> {
@@ -5221,11 +5229,11 @@ public final class MainActivity extends Activity implements
     }
 
     private void buildVinylSettingsPage() {
-        if (settingsFullscreenPage == null) {
+        if (settingsPlayerPage == null) {
             return;
         }
-        settingsFullscreenPage.addView(sectionTitle(ui("vinyl.mode")));
-        settingsFullscreenPage.addView(
+        settingsPlayerPage.addView(sectionTitle(ui("vinyl.mode")));
+        settingsPlayerPage.addView(
                 sectionDescription(ui("vinyl.settings.subtitle")),
                 topMargin(matchWrap(), dp(8))
         );
@@ -5248,7 +5256,7 @@ public final class MainActivity extends Activity implements
                 showSavedToast(ui("toast.settings_saved"));
             }
         });
-        settingsFullscreenPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("vinyl.settings.album_size"),
                 ui("vinyl.settings.album_size_desc"),
                 buildSliderRow(vinylAlbumSizeSeekBar, vinylAlbumSizeValueView)
@@ -5272,24 +5280,24 @@ public final class MainActivity extends Activity implements
                 showSavedToast(ui("toast.settings_saved"));
             }
         });
-        settingsFullscreenPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("vinyl.settings.record_size"),
                 ui("vinyl.settings.record_size_desc"),
                 buildSliderRow(vinylRecordSizeSeekBar, vinylRecordSizeValueView)
         ), topMargin(matchWrap(), dp(12)));
 
-        settingsFullscreenPage.addView(
+        settingsPlayerPage.addView(
                 sectionTitle(ui("vinyl.settings.tonearm_title")),
                 topMargin(matchWrap(), dp(24))
         );
-        settingsFullscreenPage.addView(
+        settingsPlayerPage.addView(
                 sectionDescription(ui("vinyl.settings.tonearm_subtitle")),
                 topMargin(matchWrap(), dp(8))
         );
 
         vinylTonearmStyleButtonsContainer = new LinearLayout(this);
         vinylTonearmStyleButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        settingsFullscreenPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("vinyl.settings.tonearm_style"),
                 ui("vinyl.settings.tonearm_style_desc"),
                 vinylTonearmStyleButtonsContainer
@@ -5298,7 +5306,7 @@ public final class MainActivity extends Activity implements
 
         vinylTonearmFinishButtonsContainer = new LinearLayout(this);
         vinylTonearmFinishButtonsContainer.setOrientation(LinearLayout.VERTICAL);
-        settingsFullscreenPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("vinyl.settings.tonearm_finish"),
                 ui("vinyl.settings.tonearm_finish_desc"),
                 vinylTonearmFinishButtonsContainer
@@ -5323,7 +5331,7 @@ public final class MainActivity extends Activity implements
                 showSavedToast(ui("toast.settings_saved"));
             }
         });
-        settingsFullscreenPage.addView(settingGroup(
+        settingsPlayerPage.addView(settingGroup(
                 ui("vinyl.settings.tonearm_size"),
                 ui("vinyl.settings.tonearm_size_desc"),
                 buildSliderRow(vinylTonearmSizeSeekBar, vinylTonearmSizeValueView)
@@ -5339,7 +5347,7 @@ public final class MainActivity extends Activity implements
             applyVinylSettings(aiLyricsSettings.snapshot());
             showSavedToast(ui("toast.settings_saved"));
         });
-        settingsFullscreenPage.addView(vinylAnimationsSwitch, topMargin(matchWrap(), dp(12)));
+        settingsPlayerPage.addView(vinylAnimationsSwitch, topMargin(matchWrap(), dp(12)));
 
         vinylCenterRotationSwitch = settingSwitch(
                 ui("vinyl.settings.center_rotation"),
@@ -5351,7 +5359,7 @@ public final class MainActivity extends Activity implements
             applyVinylSettings(aiLyricsSettings.snapshot());
             showSavedToast(ui("toast.settings_saved"));
         });
-        settingsFullscreenPage.addView(vinylCenterRotationSwitch, topMargin(matchWrap(), dp(12)));
+        settingsPlayerPage.addView(vinylCenterRotationSwitch, topMargin(matchWrap(), dp(12)));
 
         vinylLyricsSwitch = settingSwitch(
                 ui("vinyl.settings.lyrics"),
@@ -5363,11 +5371,11 @@ public final class MainActivity extends Activity implements
             applyVinylSettings(aiLyricsSettings.snapshot());
             showSavedToast(ui("toast.settings_saved"));
         });
-        settingsFullscreenPage.addView(vinylLyricsSwitch, topMargin(matchWrap(), dp(12)));
+        settingsPlayerPage.addView(vinylLyricsSwitch, topMargin(matchWrap(), dp(12)));
 
-        settingsFullscreenPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
-        settingsFullscreenPage.addView(sectionDescription(ui("vinyl.settings.typography_desc")), topMargin(matchWrap(), dp(8)));
-        settingsFullscreenPage.addView(
+        settingsPlayerPage.addView(sectionTitle(ui("section.typography")), topMargin(matchWrap(), dp(24)));
+        settingsPlayerPage.addView(sectionDescription(ui("vinyl.settings.typography_desc")), topMargin(matchWrap(), dp(8)));
+        settingsPlayerPage.addView(
                 buildTypographySettingsList(AiLyricsSettings.VINYL_TYPOGRAPHY_SLOTS),
                 topMargin(matchWrap(), dp(12))
         );
@@ -5385,11 +5393,12 @@ public final class MainActivity extends Activity implements
             return;
         }
         settingsTabButtonsContainer.removeAllViews();
+        addSettingsTabButton(SETTINGS_TAB_GENERAL, ui("tab.general"));
         addSettingsTabButton(SETTINGS_TAB_LYRICS, ui("tab.lyrics"));
-        addSettingsTabButton(SETTINGS_TAB_DISPLAY, ui("tab.display"));
-        addSettingsTabButton(SETTINGS_TAB_FULLSCREEN, ui("tab.fullscreen"));
+        addSettingsTabButton(SETTINGS_TAB_APPEARANCE, ui("tab.appearance"));
+        addSettingsTabButton(SETTINGS_TAB_PLAYER, ui("tab.player"));
         addSettingsTabButton(SETTINGS_TAB_AI, ui("tab.ai"));
-        addSettingsTabButton(SETTINGS_TAB_TOOLS, ui("tab.tools"));
+        addSettingsTabButton(SETTINGS_TAB_SYSTEM, ui("tab.system"));
         updateSettingsTabButtons();
     }
 
@@ -5399,12 +5408,12 @@ public final class MainActivity extends Activity implements
         button.setTag(tabId);
         button.setGravity(Gravity.CENTER);
         button.setSingleLine(true);
-        button.setPadding(dp(10), 0, dp(10), 0);
-        button.setMinWidth(dp(104));
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setMinWidth(dp(88));
         button.setOnClickListener(view -> switchSettingsTab(tabId));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(42)
+                dp(40)
         );
         if (settingsTabButtonsContainer.getChildCount() > 0) {
             params.leftMargin = dp(8);
@@ -5416,13 +5425,17 @@ public final class MainActivity extends Activity implements
         String next = normalizeSettingsTab(tabId);
         boolean changed = !next.equals(activeSettingsTab);
         activeSettingsTab = next;
+        setSettingsPageVisibility(settingsGeneralPage, SETTINGS_TAB_GENERAL.equals(next));
         setSettingsPageVisibility(settingsLyricsPage, SETTINGS_TAB_LYRICS.equals(next));
-        setSettingsPageVisibility(settingsDisplayPage, SETTINGS_TAB_DISPLAY.equals(next));
-        setSettingsPageVisibility(settingsFullscreenPage, SETTINGS_TAB_FULLSCREEN.equals(next));
+        setSettingsPageVisibility(settingsAppearancePage, SETTINGS_TAB_APPEARANCE.equals(next));
+        setSettingsPageVisibility(settingsPlayerPage, SETTINGS_TAB_PLAYER.equals(next));
         setSettingsPageVisibility(settingsAiPage, SETTINGS_TAB_AI.equals(next));
-        setSettingsPageVisibility(settingsToolsPage, SETTINGS_TAB_TOOLS.equals(next));
+        setSettingsPageVisibility(settingsSystemPage, SETTINGS_TAB_SYSTEM.equals(next));
+        if (settingsCategoryTitleView != null) {
+            settingsCategoryTitleView.setText(settingsTabLabel(next));
+        }
         updateSettingsTabButtons();
-        if (SETTINGS_TAB_TOOLS.equals(next)) {
+        if (SETTINGS_TAB_SYSTEM.equals(next)) {
             refreshCreatorPrivacy(false);
         }
         if (changed && settingsScrollView != null) {
@@ -5437,17 +5450,42 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateSettingsTabButtons() {
-        updateTaggedSelectableButtons(settingsTabButtonsContainer, activeSettingsTab);
+        if (settingsTabButtonsContainer == null) {
+            return;
+        }
+        for (int index = 0; index < settingsTabButtonsContainer.getChildCount(); index++) {
+            View child = settingsTabButtonsContainer.getChildAt(index);
+            if (!(child instanceof TextView)) {
+                continue;
+            }
+            TextView button = (TextView) child;
+            boolean selected = activeSettingsTab.equals(button.getTag());
+            button.setTextColor(selected ? Color.rgb(14, 25, 27) : Color.argb(205, 255, 255, 255));
+            button.setBackground(roundDrawable(
+                    selected ? Color.rgb(190, 224, 220) : Color.argb(20, 255, 255, 255),
+                    dp(6)
+            ));
+        }
     }
 
     private String normalizeSettingsTab(String tabId) {
-        if (SETTINGS_TAB_DISPLAY.equals(tabId)
-                || SETTINGS_TAB_FULLSCREEN.equals(tabId)
+        if (SETTINGS_TAB_LYRICS.equals(tabId)
+                || SETTINGS_TAB_APPEARANCE.equals(tabId)
+                || SETTINGS_TAB_PLAYER.equals(tabId)
                 || SETTINGS_TAB_AI.equals(tabId)
-                || SETTINGS_TAB_TOOLS.equals(tabId)) {
+                || SETTINGS_TAB_SYSTEM.equals(tabId)) {
             return tabId;
         }
-        return SETTINGS_TAB_LYRICS;
+        return SETTINGS_TAB_GENERAL;
+    }
+
+    private String settingsTabLabel(String tabId) {
+        if (SETTINGS_TAB_LYRICS.equals(tabId)) return ui("tab.lyrics");
+        if (SETTINGS_TAB_APPEARANCE.equals(tabId)) return ui("tab.appearance");
+        if (SETTINGS_TAB_PLAYER.equals(tabId)) return ui("tab.player");
+        if (SETTINGS_TAB_AI.equals(tabId)) return ui("tab.ai");
+        if (SETTINGS_TAB_SYSTEM.equals(tabId)) return ui("tab.system");
+        return ui("tab.general");
     }
 
     private TextView sectionTitle(String text) {
@@ -5487,7 +5525,7 @@ public final class MainActivity extends Activity implements
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(12), dp(14), dp(12));
-        card.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(12)));
+        card.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(8)));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -5770,7 +5808,7 @@ public final class MainActivity extends Activity implements
         view.setTextSize(14f);
         view.setTypeface(AppFonts.semiBold(this));
         view.setPadding(dp(14), dp(12), dp(14), dp(12));
-        view.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(12)));
+        view.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(8)));
         view.setLineSpacing(dp(3), 1f);
         return view;
     }
@@ -6076,7 +6114,7 @@ public final class MainActivity extends Activity implements
         LinearLayout field = new LinearLayout(this);
         field.setOrientation(LinearLayout.VERTICAL);
         field.setPadding(dp(14), dp(12), dp(14), dp(12));
-        field.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(12)));
+        field.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(8)));
 
         TextView label = label(title, 13f, Color.WHITE, AppFonts.semiBold(this));
         field.addView(label, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -6095,7 +6133,7 @@ public final class MainActivity extends Activity implements
         LinearLayout field = new LinearLayout(this);
         field.setOrientation(LinearLayout.VERTICAL);
         field.setPadding(dp(14), dp(12), dp(14), dp(12));
-        field.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(12)));
+        field.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(8)));
 
         TextView label = label(title, 13f, Color.WHITE, AppFonts.semiBold(this));
         field.addView(label, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -6711,7 +6749,7 @@ public final class MainActivity extends Activity implements
         TextView view = label(label, 13f, Color.rgb(12, 13, 17), AppFonts.bold(this));
         makeRemoteFocusable(view);
         view.setGravity(Gravity.CENTER);
-        view.setBackground(roundDrawable(Color.argb(238, 255, 255, 255), dp(12)));
+        view.setBackground(roundDrawable(Color.argb(238, 255, 255, 255), dp(8)));
         view.setPadding(dp(12), 0, dp(12), 0);
         view.setMinHeight(dp(42));
         return view;
@@ -8298,7 +8336,7 @@ public final class MainActivity extends Activity implements
         button.setEllipsize(TextUtils.TruncateAt.END);
         button.setMinHeight(dp(42));
         button.setPadding(dp(12), 0, dp(12), 0);
-        button.setBackground(roundDrawable(Color.argb(44, 255, 255, 255), dp(12)));
+        button.setBackground(roundDrawable(Color.argb(44, 255, 255, 255), dp(8)));
         return button;
     }
 
@@ -10455,7 +10493,7 @@ public final class MainActivity extends Activity implements
             handler.removeCallbacks(landscapeControlsAutoHideRunnable);
             setLandscapeControlsVisible(true, true);
             populateAiSettingsUi();
-            if (SETTINGS_TAB_TOOLS.equals(activeSettingsTab)) {
+            if (SETTINGS_TAB_SYSTEM.equals(activeSettingsTab)) {
                 refreshCreatorPrivacy(false);
             }
             settingsPanel.setVisibility(View.VISIBLE);
