@@ -24,11 +24,9 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,29 +46,6 @@ final class AiLyricsRepository {
             "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
             Pattern.CASE_INSENSITIVE
     );
-    private static final Pattern LATIN_WORD_SEPARATOR_PATTERN = Pattern.compile("[^\\p{L}\\p{N}_]+");
-    private static final String VIETNAMESE_HINTS = "ăâđêôơưạảấầẩẫậắằẳẵặếềểễệịỉọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ";
-    private static final String CZECH_UNIQUE_HINTS = "ěřů";
-    private static final String TURKISH_UNIQUE_HINTS = "ğış";
-    private static final String GERMAN_HINTS = "ßü";
-    private static final String SPANISH_HINTS = "ñ¿¡";
-    private static final String PORTUGUESE_HINTS = "ãõ";
-    private static final String FRENCH_HINTS = "æœçëïÿ";
-    private static final String LATIN_LANGUAGE_HINTS = VIETNAMESE_HINTS
-            + CZECH_UNIQUE_HINTS
-            + TURKISH_UNIQUE_HINTS
-            + "å"
-            + GERMAN_HINTS
-            + SPANISH_HINTS
-            + PORTUGUESE_HINTS
-            + FRENCH_HINTS;
-    private static final int VIETNAMESE_HINTS_END = VIETNAMESE_HINTS.length();
-    private static final int CZECH_HINTS_END = VIETNAMESE_HINTS_END + CZECH_UNIQUE_HINTS.length();
-    private static final int TURKISH_HINTS_END = CZECH_HINTS_END + TURKISH_UNIQUE_HINTS.length();
-    private static final int SWEDISH_HINTS_END = TURKISH_HINTS_END + 1;
-    private static final int GERMAN_HINTS_END = SWEDISH_HINTS_END + GERMAN_HINTS.length();
-    private static final int SPANISH_HINTS_END = GERMAN_HINTS_END + SPANISH_HINTS.length();
-    private static final int PORTUGUESE_HINTS_END = SPANISH_HINTS_END + PORTUGUESE_HINTS.length();
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -3103,198 +3078,9 @@ final class AiLyricsRepository {
     }
 
     static String detectLanguage(String text) {
-        String value = text == null ? "" : text;
-        if (value.trim().isEmpty()) {
-            return "en";
-        }
-
-        int kana = 0;
-        int hangul = 0;
-        int han = 0;
-        int simplifiedHint = 0;
-        int traditionalHint = 0;
-        int cyrillic = 0;
-        int arabic = 0;
-        int persianHint = 0;
-        int thai = 0;
-        int devanagari = 0;
-        int bengali = 0;
-        int latin = 0;
-        int letters = 0;
-
-        for (int offset = 0; offset < value.length(); ) {
-            int cp = value.codePointAt(offset);
-            offset += Character.charCount(cp);
-            if (!Character.isLetter(cp)) {
-                continue;
-            }
-            letters++;
-            Character.UnicodeScript script = Character.UnicodeScript.of(cp);
-            switch (script) {
-                case HIRAGANA:
-                case KATAKANA:
-                    kana++;
-                    break;
-                case HANGUL:
-                    hangul++;
-                    break;
-                case HAN:
-                    han++;
-                    if (SIMPLIFIED_HINTS.indexOf(cp) >= 0) {
-                        simplifiedHint++;
-                    }
-                    if (TRADITIONAL_HINTS.indexOf(cp) >= 0) {
-                        traditionalHint++;
-                    }
-                    break;
-                case CYRILLIC:
-                    cyrillic++;
-                    break;
-                case ARABIC:
-                    arabic++;
-                    if (PERSIAN_HINTS.indexOf(cp) >= 0) {
-                        persianHint++;
-                    }
-                    break;
-                case THAI:
-                    thai++;
-                    break;
-                case DEVANAGARI:
-                    devanagari++;
-                    break;
-                case BENGALI:
-                    bengali++;
-                    break;
-                case LATIN:
-                    latin++;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        int threshold = Math.max(2, Math.round(Math.max(1, letters) * 0.08f));
-        if (kana >= 2) {
-            return "ja";
-        }
-        if (hangul >= threshold) {
-            return "ko";
-        }
-        if (thai >= threshold) {
-            return "th";
-        }
-        if (devanagari >= threshold) {
-            return "hi";
-        }
-        if (bengali >= threshold) {
-            return "bn";
-        }
-        if (arabic >= threshold) {
-            return persianHint > 0 ? "fa" : "ar";
-        }
-        if (cyrillic >= threshold) {
-            return "ru";
-        }
-        if (han >= Math.max(1, threshold)) {
-            return traditionalHint > simplifiedHint ? "zh-TW" : "zh-CN";
-        }
-        if (latin > 0) {
-            return detectLatinLanguage(value);
-        }
-        return "en";
+        String detected = LyricsLanguageDetector.detect(text);
+        return detected == null ? "en" : detected;
     }
-
-    private static String detectLatinLanguage(String text) {
-        String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        Set<String> words = new HashSet<>();
-        for (String word : LATIN_WORD_SEPARATOR_PATTERN.split(lower)) {
-            if (!word.isEmpty()) {
-                words.add(word);
-            }
-        }
-        if (scoreWords(words, "jsem", "jste", "jsme", "není", "nejsem", "jsi", "můj", "moje", "tvůj", "tvoje", "láska", "srdce", "tobě", "chci", "mám", "když") >= 2) {
-            return "cs";
-        }
-        if (scoreWords(words, "ben", "sen", "biz", "siz", "değil", "için", "çok", "beni", "seni", "aşk", "kalp", "gece", "şimdi", "gibi") >= 2) {
-            return "tr";
-        }
-        String hintedLanguage = detectLatinHintLanguage(lower);
-        if (!hintedLanguage.isEmpty()) {
-            return hintedLanguage;
-        }
-
-        String best = "en";
-        int bestScore = scoreWords(words, "the", "and", "you", "that", "with", "love", "your", "for", "not", "we", "are");
-        int score = scoreWords(words, "que", "de", "el", "la", "y", "en", "un", "una", "mi", "tu", "no", "por");
-        if (score > bestScore) { best = "es"; bestScore = score; }
-        score = scoreWords(words, "que", "de", "le", "la", "les", "et", "je", "tu", "pas", "mon", "pour", "dans");
-        if (score > bestScore) { best = "fr"; bestScore = score; }
-        score = scoreWords(words, "que", "de", "o", "a", "e", "eu", "voce", "você", "não", "por", "meu", "pra");
-        if (score > bestScore) { best = "pt"; bestScore = score; }
-        score = scoreWords(words, "che", "di", "il", "la", "e", "io", "tu", "non", "per", "mio", "nel", "sono");
-        if (score > bestScore) { best = "it"; bestScore = score; }
-        score = scoreWords(words, "ich", "du", "und", "der", "die", "das", "nicht", "mein", "mit", "ein", "ist");
-        if (score > bestScore) { best = "de"; bestScore = score; }
-        score = scoreWords(words, "och", "det", "jag", "du", "inte", "att", "min", "med", "en", "är", "för");
-        if (score > bestScore) { best = "sv"; bestScore = score; }
-        score = scoreWords(words, "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu");
-        if (score > bestScore) { best = "id"; bestScore = score; }
-        score = scoreWords(words, "aku", "kamu", "yang", "dan", "di", "ke", "tak", "tidak", "cinta", "ini", "itu", "kau");
-        if (score > bestScore) { best = "ms"; bestScore = score; }
-        return bestScore >= 2 ? best : "en";
-    }
-
-    private static int scoreWords(Set<String> textWords, String... words) {
-        int score = 0;
-        for (String word : words) {
-            if (textWords.contains(word)) {
-                score++;
-            }
-        }
-        return score;
-    }
-
-    private static String detectLatinHintLanguage(String text) {
-        int bestHint = Integer.MAX_VALUE;
-        for (int offset = 0; offset < text.length(); ) {
-            int codePoint = text.codePointAt(offset);
-            int hintIndex = LATIN_LANGUAGE_HINTS.indexOf(codePoint);
-            if (hintIndex >= 0) {
-                if (hintIndex < VIETNAMESE_HINTS_END) {
-                    return "vi";
-                } else if (hintIndex < CZECH_HINTS_END) {
-                    bestHint = Math.min(bestHint, 1);
-                } else if (hintIndex < TURKISH_HINTS_END) {
-                    bestHint = Math.min(bestHint, 2);
-                } else if (hintIndex < SWEDISH_HINTS_END) {
-                    bestHint = Math.min(bestHint, 3);
-                } else if (hintIndex < GERMAN_HINTS_END) {
-                    bestHint = Math.min(bestHint, 4);
-                } else if (hintIndex < SPANISH_HINTS_END) {
-                    bestHint = Math.min(bestHint, 5);
-                } else if (hintIndex < PORTUGUESE_HINTS_END) {
-                    bestHint = Math.min(bestHint, 6);
-                } else {
-                    bestHint = Math.min(bestHint, 7);
-                }
-            }
-            offset += Character.charCount(codePoint);
-        }
-        switch (bestHint) {
-            case 1: return "cs";
-            case 2: return "tr";
-            case 3: return "sv";
-            case 4: return "de";
-            case 5: return "es";
-            case 6: return "pt";
-            case 7: return "fr";
-            default: return "";
-        }
-    }
-
-    private static final String SIMPLIFIED_HINTS = "这为国们会来时说对过还后个无爱声体见长门马鸟鱼龙云";
-    private static final String TRADITIONAL_HINTS = "這為國們會來時說對過還後個無愛聲體見長門馬鳥魚龍雲";
-    private static final String PERSIAN_HINTS = "پچژگک";
 
     private static final class HttpStatusException extends IOException {
         final int statusCode;
