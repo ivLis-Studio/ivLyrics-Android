@@ -10,6 +10,7 @@ import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -35,6 +36,7 @@ import java.util.regex.Pattern;
 public final class NowPlayingService extends NotificationListenerService {
     private static final Pattern ISRC_PATTERN = Pattern.compile("[A-Z]{2}[A-Z0-9]{3}\\d{7}", Pattern.CASE_INSENSITIVE);
     private static final String SPOTIFY_PACKAGE_PREFIX = "com.spotify.";
+    private static final String SPOTIFY_DJ_PLAYLIST_ID = "37i9dQZF1EYkqdzj48dyYq";
     private static final Set<Listener> LISTENERS = new CopyOnWriteArraySet<>();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
@@ -250,6 +252,18 @@ public final class NowPlayingService extends NotificationListenerService {
             }
 
             @Override
+            public void onQueueTitleChanged(CharSequence title) {
+                publish(buildSnapshot(controller));
+                scheduleRefreshBurst();
+            }
+
+            @Override
+            public void onExtrasChanged(Bundle extras) {
+                publish(buildSnapshot(controller));
+                scheduleRefreshBurst();
+            }
+
+            @Override
             public void onSessionDestroyed() {
                 refreshSessions();
             }
@@ -333,6 +347,7 @@ public final class NowPlayingService extends NotificationListenerService {
                 requestArtworkLoad(controller, artworkUri);
             }
         }
+        SpotifyAutomixMetadata automix = spotifyAutomixMetadata(controller, metadata);
 
         return new TrackSnapshot(
                 title,
@@ -347,7 +362,11 @@ public final class NowPlayingService extends NotificationListenerService {
                 speed,
                 playing,
                 artwork,
-                artworkUri
+                artworkUri,
+                automix.enabled,
+                automix.fadeInStartMs,
+                automix.fadeInCueMs,
+                automix.fadeOverlapMs
         );
     }
 
@@ -483,6 +502,172 @@ public final class NowPlayingService extends NotificationListenerService {
             return value == null ? "" : value.toString().trim();
         } catch (Exception ignored) {
             return "";
+        }
+    }
+
+    private SpotifyAutomixMetadata spotifyAutomixMetadata(
+            MediaController controller,
+            MediaMetadata metadata
+    ) {
+        Bundle extras = controller == null ? null : controller.getExtras();
+        String productType = firstNamedPlaybackValue(
+                metadata,
+                extras,
+                "agentic_product_type"
+        );
+        String itemAutomixMode = firstNamedPlaybackValue(
+                metadata,
+                extras,
+                "audio.automix_mode"
+        );
+        String contextAutomixMode = firstNamedPlaybackValue(
+                metadata,
+                extras,
+                "automix.mode"
+        );
+        String lexiconSetType = firstNamedPlaybackValue(
+                metadata,
+                extras,
+                "lexicon_set_type"
+        );
+        String mixerEnabled = firstNamedPlaybackValue(
+                metadata,
+                extras,
+                "mixer_enabled"
+        );
+        String contextTitle = firstNonEmpty(
+                firstNamedPlaybackValue(metadata, extras, "context_title"),
+                firstNamedPlaybackValue(metadata, extras, "context_description")
+        );
+        String contextUri = firstNonEmpty(
+                firstNamedPlaybackValue(metadata, extras, "context_uri"),
+                firstNamedPlaybackValue(metadata, extras, "context.uri")
+        );
+        CharSequence queueTitleValue = controller == null ? null : controller.getQueueTitle();
+        String queueTitle = queueTitleValue == null
+                ? ""
+                : queueTitleValue.toString().trim().toLowerCase(Locale.ROOT);
+        String normalizedProductType = productType.toLowerCase(Locale.ROOT);
+        String normalizedItemAutomixMode = itemAutomixMode.toLowerCase(Locale.ROOT);
+        String normalizedContextAutomixMode = contextAutomixMode.toLowerCase(Locale.ROOT);
+        String normalizedLexiconSetType = lexiconSetType.toLowerCase(Locale.ROOT);
+        boolean enabled =
+                "dj".equals(normalizedProductType)
+                || "your_dj".equals(normalizedLexiconSetType)
+                || isEnabledAutomixMode(normalizedItemAutomixMode)
+                || isEnabledAutomixMode(normalizedContextAutomixMode)
+                || "true".equalsIgnoreCase(mixerEnabled)
+                || isSpotifyDjContext(contextTitle, contextUri)
+                || "dj".equals(queueTitle)
+                || "spotify dj".equals(queueTitle);
+        return new SpotifyAutomixMetadata(
+                enabled,
+                namedPlaybackLong(metadata, extras, "audio.fade_in_start_time"),
+                namedPlaybackLong(metadata, extras, "automix.fade_in_cuepoint.position"),
+                namedPlaybackLong(metadata, extras, "audio.fade_overlap")
+        );
+    }
+
+    private boolean isEnabledAutomixMode(String value) {
+        return value != null
+                && !value.isEmpty()
+                && !"off".equals(value)
+                && !"none".equals(value);
+    }
+
+    private boolean isSpotifyDjContext(String title, String uri) {
+        String normalizedTitle = title == null
+                ? ""
+                : title.trim().toLowerCase(Locale.ROOT);
+        if ("dj".equals(normalizedTitle) || "spotify dj".equals(normalizedTitle)) {
+            return true;
+        }
+        return uri != null && uri.toLowerCase(Locale.ROOT)
+                .contains(SPOTIFY_DJ_PLAYLIST_ID.toLowerCase(Locale.ROOT));
+    }
+
+    private long namedPlaybackLong(
+            MediaMetadata metadata,
+            Bundle extras,
+            String targetKey
+    ) {
+        String value = firstNamedPlaybackValue(metadata, extras, targetKey);
+        if (value.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(value));
+        } catch (NumberFormatException ignored) {
+            try {
+                return Math.max(0L, Math.round(Double.parseDouble(value)));
+            } catch (NumberFormatException ignoredAgain) {
+                return 0L;
+            }
+        }
+    }
+
+    private String firstNamedPlaybackValue(
+            MediaMetadata metadata,
+            Bundle extras,
+            String targetKey
+    ) {
+        if (metadata != null) {
+            for (String key : metadata.keySet()) {
+                if (!playbackMetadataKeyMatches(key, targetKey)) {
+                    continue;
+                }
+                String text = metadataString(metadata, key);
+                if (!text.isEmpty()) {
+                    return text;
+                }
+                try {
+                    long value = metadata.getLong(key);
+                    if (value != 0L) {
+                        return String.valueOf(value);
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        if (extras != null) {
+            for (String key : extras.keySet()) {
+                if (!playbackMetadataKeyMatches(key, targetKey)) {
+                    continue;
+                }
+                Object value = extras.get(key);
+                if (value != null) {
+                    return String.valueOf(value).trim();
+                }
+            }
+        }
+        return "";
+    }
+
+    private boolean playbackMetadataKeyMatches(String key, String targetKey) {
+        String normalizedKey = key == null ? "" : key.trim().toLowerCase(Locale.ROOT);
+        String normalizedTarget = targetKey == null ? "" : targetKey.trim().toLowerCase(Locale.ROOT);
+        return normalizedKey.equals(normalizedTarget)
+                || normalizedKey.endsWith("." + normalizedTarget)
+                || normalizedKey.endsWith("/" + normalizedTarget)
+                || normalizedKey.endsWith(":" + normalizedTarget);
+    }
+
+    private static final class SpotifyAutomixMetadata {
+        final boolean enabled;
+        final long fadeInStartMs;
+        final long fadeInCueMs;
+        final long fadeOverlapMs;
+
+        SpotifyAutomixMetadata(
+                boolean enabled,
+                long fadeInStartMs,
+                long fadeInCueMs,
+                long fadeOverlapMs
+        ) {
+            this.enabled = enabled;
+            this.fadeInStartMs = fadeInStartMs;
+            this.fadeInCueMs = fadeInCueMs;
+            this.fadeOverlapMs = fadeOverlapMs;
         }
     }
 

@@ -398,6 +398,7 @@ public final class MainActivity extends Activity implements
     private TextView onboardingPermissionStatusView;
     private LinearLayout onboardingBody;
 
+    private final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
     private TrackSnapshot currentTrack;
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
@@ -459,6 +460,7 @@ public final class MainActivity extends Activity implements
     private int currentTrackSyncOffsetMs;
     private int currentBluetoothLyricsOffsetMs;
     private int currentVideoSyncOffsetMs;
+    private long currentSpotifyDjLyricsOffsetMs;
     private boolean lyricsLanguageSettingsVisible;
     private ViewGroup lyricsLanguageSettingsOriginalParent;
     private ViewGroup.LayoutParams lyricsLanguageSettingsOriginalLayoutParams;
@@ -1206,6 +1208,8 @@ public final class MainActivity extends Activity implements
         spotifySetupRequired = false;
 
         if (snapshot == null || !snapshot.hasUsableMetadata()) {
+            spotifyDjLyricsTimeline.reset();
+            currentSpotifyDjLyricsOffsetMs = 0L;
             if (vinylPlayerModeView != null) {
                 vinylPlayerModeView.setTrack(null, null, false);
             }
@@ -1289,6 +1293,22 @@ public final class MainActivity extends Activity implements
             currentArtworkKey = artworkKey;
             updateArtwork(snapshot.artwork, artworkKey);
         }
+        long timelinePlayerPosition = snapshot.positionNow();
+        long spotifyLyricsPosition = spotifyDjLyricsTimeline.update(
+                nextKey,
+                timelinePlayerPosition,
+                snapshot.playing,
+                snapshot.spotifyAutomix,
+                snapshot.isSpotifyDjSegment(),
+                snapshot.automixFadeInStartMs,
+                snapshot.automixFadeInCueMs,
+                snapshot.automixFadeOverlapMs,
+                SystemClock.elapsedRealtime()
+        );
+        currentSpotifyDjLyricsOffsetMs = Math.max(
+                0L,
+                spotifyLyricsPosition - timelinePlayerPosition
+        );
         long playerPosition = currentPlaybackPosition(snapshot);
         if (vinylPlayerModeView != null) {
             vinylPlayerModeView.setPlayback(playerPosition, snapshot.durationMs, snapshot.playing);
@@ -2383,7 +2403,7 @@ public final class MainActivity extends Activity implements
         pictureInPictureLyricsView = new LyricsView(this);
         configureLyricsViewUiText(pictureInPictureLyricsView);
         configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
         pictureInPictureLyricsView.setResult(currentLyricsResult);
         pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
         row.addView(pictureInPictureLyricsView, new LinearLayout.LayoutParams(
@@ -2405,7 +2425,7 @@ public final class MainActivity extends Activity implements
         pictureInPictureLyricsView = new LyricsView(this);
         configureLyricsViewUiText(pictureInPictureLyricsView);
         configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
         pictureInPictureLyricsView.setResult(currentLyricsResult);
         pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
         FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(
@@ -2486,7 +2506,7 @@ public final class MainActivity extends Activity implements
         pictureInPictureLyricsView = new LyricsView(this);
         configureLyricsViewUiText(pictureInPictureLyricsView);
         configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
         pictureInPictureLyricsView.setResult(currentLyricsResult);
         pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
         FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(
@@ -2559,7 +2579,7 @@ public final class MainActivity extends Activity implements
         pictureInPictureLyricsView = new LyricsView(this);
         configureLyricsViewUiText(pictureInPictureLyricsView);
         configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
-        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
         pictureInPictureLyricsView.setResult(currentLyricsResult);
         pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
         FrameLayout.LayoutParams lyricsParams = new FrameLayout.LayoutParams(
@@ -2791,7 +2811,7 @@ public final class MainActivity extends Activity implements
         landscapeLyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         landscapeLyricsView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
         landscapeLyricsView.setOnSeekListener(this::seekToPosition);
-        landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+        landscapeLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
         landscapeLyricsView.setResult(currentLyricsResult);
         landscapeLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
         FrameLayout.LayoutParams landscapeLyricsParams = new FrameLayout.LayoutParams(
@@ -8597,17 +8617,34 @@ public final class MainActivity extends Activity implements
     }
 
     private long lyricsPlaybackPosition(long playerPositionMs, long durationMs) {
-        long adjusted = playerPositionMs + currentGlobalSyncOffsetMs + currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs;
-        return durationMs > 0L
-                ? Math.max(0L, Math.min(durationMs, adjusted))
+        long adjusted =
+                playerPositionMs
+                + currentSpotifyDjLyricsOffsetMs
+                + currentGlobalSyncOffsetMs
+                + currentTrackSyncOffsetMs
+                + currentBluetoothLyricsOffsetMs;
+        long lyricsDurationMs = lyricsTrackDuration(durationMs);
+        return lyricsDurationMs > 0L
+                ? Math.max(0L, Math.min(lyricsDurationMs, adjusted))
                 : Math.max(0L, adjusted);
     }
 
     private long playerPositionForLyricsTime(long lyricsTimeMs, long durationMs) {
-        long target = lyricsTimeMs - currentGlobalSyncOffsetMs - currentTrackSyncOffsetMs - currentBluetoothLyricsOffsetMs;
+        long target =
+                lyricsTimeMs
+                - currentSpotifyDjLyricsOffsetMs
+                - currentGlobalSyncOffsetMs
+                - currentTrackSyncOffsetMs
+                - currentBluetoothLyricsOffsetMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, target))
                 : Math.max(0L, target);
+    }
+
+    private long lyricsTrackDuration(long playerDurationMs) {
+        return playerDurationMs > 0L
+                ? playerDurationMs + currentSpotifyDjLyricsOffsetMs
+                : 0L;
     }
 
     private int clampSyncOffset(int offsetMs) {
@@ -9200,7 +9237,7 @@ public final class MainActivity extends Activity implements
         if (pictureInPictureLyricsView != null) {
             configureLyricsViewUiText(pictureInPictureLyricsView);
             configurePictureInPictureLyricsViewFromSettings(pictureInPictureLyricsView, 0.50f);
-            pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : currentTrack.durationMs);
+            pictureInPictureLyricsView.setTrackDuration(currentTrack == null ? 0L : lyricsTrackDuration(currentTrack.durationMs));
             pictureInPictureLyricsView.setPlaybackPosition(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
             pictureInPictureLyricsView.setResult(currentLyricsResult);
             pictureInPictureLyricsView.setSupplementLoading(lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading);
@@ -11953,14 +11990,15 @@ public final class MainActivity extends Activity implements
     }
 
     private void setLyricsTrackDurationOnViews(long durationMs) {
+        long lyricsDurationMs = lyricsTrackDuration(durationMs);
         if (lyricsView != null) {
-            lyricsView.setTrackDuration(durationMs);
+            lyricsView.setTrackDuration(lyricsDurationMs);
         }
         if (landscapeLyricsView != null) {
-            landscapeLyricsView.setTrackDuration(durationMs);
+            landscapeLyricsView.setTrackDuration(lyricsDurationMs);
         }
         if (pictureInPictureLyricsView != null) {
-            pictureInPictureLyricsView.setTrackDuration(durationMs);
+            pictureInPictureLyricsView.setTrackDuration(lyricsDurationMs);
         }
     }
 

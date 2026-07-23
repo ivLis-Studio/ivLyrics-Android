@@ -56,3 +56,4 @@ app/src/test/**
 !app/src/test/java/kr/ivlis/ivlyricsandroid/
 !app/src/test/java/kr/ivlis/ivlyricsandroid/PaxsenixLyricsProviderEntityTest.java
 !app/src/test/java/kr/ivlis/ivlyricsandroid/LyricsLanguageDetectorTest.java
+!app/src/test/java/kr/ivlis/ivlyricsandroid/SpotifyDjLyricsTimelineTest.java

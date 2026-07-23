@@ -29,6 +29,10 @@ final class TrackSnapshot {
     final boolean playing;
     final Bitmap artwork;
     final String artworkUri;
+    final boolean spotifyAutomix;
+    final long automixFadeInStartMs;
+    final long automixFadeInCueMs;
+    final long automixFadeOverlapMs;
 
     TrackSnapshot(
             String title,
@@ -44,6 +48,46 @@ final class TrackSnapshot {
             boolean playing,
             Bitmap artwork,
             String artworkUri
+    ) {
+        this(
+                title,
+                artist,
+                album,
+                packageName,
+                mediaId,
+                isrc,
+                durationMs,
+                positionMs,
+                lastPositionUpdateElapsedMs,
+                playbackSpeed,
+                playing,
+                artwork,
+                artworkUri,
+                false,
+                0L,
+                0L,
+                0L
+        );
+    }
+
+    TrackSnapshot(
+            String title,
+            String artist,
+            String album,
+            String packageName,
+            String mediaId,
+            String isrc,
+            long durationMs,
+            long positionMs,
+            long lastPositionUpdateElapsedMs,
+            float playbackSpeed,
+            boolean playing,
+            Bitmap artwork,
+            String artworkUri,
+            boolean spotifyAutomix,
+            long automixFadeInStartMs,
+            long automixFadeInCueMs,
+            long automixFadeOverlapMs
     ) {
         this.title = clean(title);
         this.artist = clean(artist);
@@ -61,6 +105,10 @@ final class TrackSnapshot {
         this.playing = playing;
         this.artwork = artwork;
         this.artworkUri = clean(artworkUri);
+        this.spotifyAutomix = spotifyAutomix;
+        this.automixFadeInStartMs = Math.max(0L, automixFadeInStartMs);
+        this.automixFadeInCueMs = Math.max(0L, automixFadeInCueMs);
+        this.automixFadeOverlapMs = Math.max(0L, automixFadeOverlapMs);
     }
 
     long positionNow() {
@@ -174,11 +222,29 @@ final class TrackSnapshot {
                 && Objects.equals(packageName, that.packageName)
                 && Objects.equals(mediaId, that.mediaId)
                 && Objects.equals(artworkUri, that.artworkUri)
+                && spotifyAutomix == that.spotifyAutomix
+                && automixFadeInStartMs == that.automixFadeInStartMs
+                && automixFadeInCueMs == that.automixFadeInCueMs
+                && automixFadeOverlapMs == that.automixFadeOverlapMs
                 && (artwork != null) == (that.artwork != null);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(title, artist, album, packageName, mediaId, durationMs, playing, artworkUri, artwork != null);
+        return Objects.hash(
+                title,
+                artist,
+                album,
+                packageName,
+                mediaId,
+                durationMs,
+                playing,
+                artworkUri,
+                artwork != null,
+                spotifyAutomix,
+                automixFadeInStartMs,
+                automixFadeInCueMs,
+                automixFadeOverlapMs
+        );
     }
 }
