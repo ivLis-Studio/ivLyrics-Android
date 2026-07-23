@@ -39,6 +39,7 @@ final class AiLyricsRepository {
     private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 600L;
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
     private static final String TMI_PROMPT_VERSION = "origin-v1";
+    private static final String CULTURAL_ANNOTATION_PROMPT_VERSION = "cultural-v3";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
@@ -52,14 +53,17 @@ final class AiLyricsRepository {
     private final Map<String, LyricsResult> cache = new ConcurrentHashMap<>();
     private final Map<String, MetadataTranslation> metadataCache = new ConcurrentHashMap<>();
     private final Map<String, TmiInfo> tmiCache = new ConcurrentHashMap<>();
+    private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = new ConcurrentHashMap<>();
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
+    private final SharedPreferences culturalAnnotationPrefs;
 
     AiLyricsRepository() {
         diskCache = null;
         metadataPrefs = null;
         tmiPrefs = null;
+        culturalAnnotationPrefs = null;
     }
 
     AiLyricsRepository(Context context) {
@@ -72,6 +76,9 @@ final class AiLyricsRepository {
         tmiPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_tmi_cache", Context.MODE_PRIVATE);
+        culturalAnnotationPrefs = context == null
+                ? null
+                : context.getApplicationContext().getSharedPreferences("ai_cultural_annotations", Context.MODE_PRIVATE);
     }
 
     interface Callback {
@@ -105,6 +112,14 @@ final class AiLyricsRepository {
         void onAiTmiLoaded(String trackKey, TmiInfo info);
 
         void onAiTmiError(String trackKey, String message);
+
+        void onAiCulturalAnnotationsLoaded(
+                String trackKey,
+                String requestKey,
+                List<CulturalAnnotation> annotations
+        );
+
+        void onAiCulturalAnnotationsError(String trackKey, String requestKey, String message);
     }
 
     static final class MetadataTranslation {
@@ -1238,10 +1253,99 @@ final class AiLyricsRepository {
         });
     }
 
+    String loadCulturalAnnotations(
+            TrackSnapshot track,
+            LyricsResult baseResult,
+            AiLyricsSettings.Snapshot settings,
+            String sourceLangOverride,
+            boolean bypassCache,
+            Callback callback
+    ) {
+        if (track == null
+                || baseResult == null
+                || baseResult.lines.isEmpty()
+                || settings == null
+                || callback == null) {
+            return "";
+        }
+        String trackKey = track.stableKey();
+        String payload = buildPayloadText(baseResult.lines);
+        String detectedSourceLang = detectLanguage(payload);
+        String normalizedOverride = AiLyricsSettings.normalizeLanguageCode(sourceLangOverride);
+        String sourceLang = normalizedOverride.isEmpty() || "auto".equalsIgnoreCase(normalizedOverride)
+                ? detectedSourceLang
+                : normalizedOverride;
+        String targetLang = settings.resolveTargetLanguage(sourceLang);
+        String cacheKey = "cultural|"
+                + trackKey
+                + "|source=" + sourceLang
+                + "|target=" + targetLang
+                + "|prompt=" + CULTURAL_ANNOTATION_PROMPT_VERSION
+                + "|provider=" + settings.provider.id
+                + "|model=" + settings.model
+                + "|url=" + settings.baseUrl
+                + "|temp=" + settings.temperature
+                + "|text=" + sha256(payload);
+
+        if (!bypassCache) {
+            List<CulturalAnnotation> cached = culturalAnnotationCache.get(cacheKey);
+            if (cached != null) {
+                emitLog(trackKey, callback, "ai cultural annotations cache hit: " + settings.provider.label);
+                mainHandler.post(() -> callback.onAiCulturalAnnotationsLoaded(trackKey, cacheKey, cached));
+                return cacheKey;
+            }
+            List<CulturalAnnotation> persisted = culturalAnnotationsFromPrefs(cacheKey, baseResult.lines);
+            if (persisted != null) {
+                culturalAnnotationCache.put(cacheKey, persisted);
+                emitLog(trackKey, callback, "ai cultural annotations disk cache hit: " + settings.provider.label);
+                mainHandler.post(() -> callback.onAiCulturalAnnotationsLoaded(trackKey, cacheKey, persisted));
+                return cacheKey;
+            }
+        }
+        if (!settings.hasApiKey()) {
+            mainHandler.post(() -> callback.onAiCulturalAnnotationsError(
+                    trackKey,
+                    cacheKey,
+                    "AI 제공자 API 키가 설정되지 않았습니다"
+            ));
+            return cacheKey;
+        }
+        if (!settings.hasModel()) {
+            mainHandler.post(() -> callback.onAiCulturalAnnotationsError(
+                    trackKey,
+                    cacheKey,
+                    "AI 모델을 직접 선택해 주세요"
+            ));
+            return cacheKey;
+        }
+
+        emitLog(trackKey, callback, "ai cultural annotations: provider=" + settings.provider.label
+                + " / source=" + sourceLang
+                + " / target=" + targetLang);
+        executor.execute(() -> {
+            try {
+                String prompt = buildCulturalAnnotationPrompt(baseResult.lines, sourceLang, targetLang);
+                String raw = callProviderRaw(prompt, settings);
+                List<CulturalAnnotation> annotations = parseCulturalAnnotations(raw, baseResult.lines);
+                List<CulturalAnnotation> immutable = Collections.unmodifiableList(annotations);
+                culturalAnnotationCache.put(cacheKey, immutable);
+                putCulturalAnnotationsToPrefs(cacheKey, immutable);
+                emitLog(trackKey, callback, "ai cultural annotations response: " + immutable.size());
+                mainHandler.post(() -> callback.onAiCulturalAnnotationsLoaded(trackKey, cacheKey, immutable));
+            } catch (Exception error) {
+                String message = errorMessage(error);
+                emitLog(trackKey, callback, "ai cultural annotations error: " + message);
+                mainHandler.post(() -> callback.onAiCulturalAnnotationsError(trackKey, cacheKey, message));
+            }
+        });
+        return cacheKey;
+    }
+
     void clearCache() {
         cache.clear();
         metadataCache.clear();
         tmiCache.clear();
+        culturalAnnotationCache.clear();
         if (diskCache != null) {
             diskCache.clear();
         }
@@ -1250,6 +1354,9 @@ final class AiLyricsRepository {
         }
         if (tmiPrefs != null) {
             tmiPrefs.edit().clear().apply();
+        }
+        if (culturalAnnotationPrefs != null) {
+            culturalAnnotationPrefs.edit().clear().apply();
         }
     }
 
@@ -1261,17 +1368,20 @@ final class AiLyricsRepository {
         removeCacheEntriesByPrefix(cache, key + "|");
         removeCacheEntriesByPrefix(metadataCache, "metadata|" + key + "|");
         removeCacheEntriesByPrefix(tmiCache, "tmi|" + key + "|");
+        removeCacheEntriesByPrefix(culturalAnnotationCache, "cultural|" + key + "|");
         if (diskCache != null) {
             diskCache.removeByKeyPrefix(key + "|");
         }
         clearMetadataPrefsForTrack(key);
         clearTmiPrefsForTrack(key);
+        clearCulturalAnnotationPrefsForTrack(key);
     }
 
     void clearMemoryCache() {
         cache.clear();
         metadataCache.clear();
         tmiCache.clear();
+        culturalAnnotationCache.clear();
     }
 
     void shutdown() {
@@ -2295,6 +2405,84 @@ final class AiLyricsRepository {
         );
     }
 
+    private String buildCulturalAnnotationPrompt(
+            List<LyricsLine> lines,
+            String sourceLang,
+            String targetLang
+    ) {
+        StringBuilder numberedLyrics = new StringBuilder();
+        for (int index = 0; index < lines.size(); index++) {
+            if (index > 0) {
+                numberedLyrics.append('\n');
+            }
+            numberedLyrics.append('L')
+                    .append(index)
+                    .append('\t')
+                    .append(promptRowText(displayLineText(lines.get(index))));
+        }
+        return "Analyze the lyrics line by line for a reader whose language is " + targetLang + ".\n"
+                + "The source language is " + sourceLang + ".\n\n"
+                + "Find ONLY expressions that cannot be understood from a normal translation without specific cultural background knowledge. "
+                + "Valid cases include a local institution or custom, traditional game, historical or religious implication, or a clearly identifiable quotation or parody.\n\n"
+                + "Be extremely strict:\n"
+                + "- Do not explain ordinary words, slang, conversational phrasing, code-switching, English weekdays, generic metaphors, moods, or expressions understandable from context.\n"
+                + "- Do not infer a country from the language alone.\n"
+                + "- Mention quotations or parodies only when certain.\n"
+                + "- Prefer zero annotations over a weak annotation.\n"
+                + "- Each note must be one short sentence in " + targetLang + ", at most 72 characters.\n"
+                + "- expression must be an exact substring of that original lyric line.\n"
+                + "- Return at most 3 annotations per line.\n\n"
+                + "Return JSON only in this exact shape:\n"
+                + "{\"annotations\":[{\"lineIndex\":0,\"expression\":\"exact original expression\",\"note\":\"brief explanation\"}]}\n"
+                + "Use zero-based lineIndex. Return {\"annotations\":[]} when nothing truly requires cultural knowledge.\n\n"
+                + numberedLyrics;
+    }
+
+    private List<CulturalAnnotation> parseCulturalAnnotations(String raw, List<LyricsLine> lines) throws JSONException {
+        JSONObject root = parseJsonObjectResponse(raw);
+        JSONArray values = root.optJSONArray("annotations");
+        if (values == null || lines == null || lines.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<CulturalAnnotation> result = new ArrayList<>();
+        Map<Integer, Integer> countsByLine = new HashMap<>();
+        Map<String, Boolean> seen = new HashMap<>();
+        for (int index = 0; index < values.length(); index++) {
+            JSONObject value = values.optJSONObject(index);
+            if (value == null) {
+                continue;
+            }
+            int lineIndex = value.optInt("lineIndex", -1);
+            if (lineIndex < 0 || lineIndex >= lines.size()) {
+                continue;
+            }
+            String expression = value.optString("expression", "").trim();
+            String note = CulturalAnnotation.compactNote(value.optString("note", ""));
+            String lineText = displayLineText(lines.get(lineIndex));
+            String dedupeKey = lineIndex + "\n" + expression;
+            int lineCount = countsByLine.containsKey(lineIndex) ? countsByLine.get(lineIndex) : 0;
+            if (expression.isEmpty()
+                    || note.isEmpty()
+                    || !lineText.contains(expression)
+                    || seen.containsKey(dedupeKey)
+                    || lineCount >= 3) {
+                continue;
+            }
+            seen.put(dedupeKey, true);
+            countsByLine.put(lineIndex, lineCount + 1);
+            result.add(new CulturalAnnotation(lineIndex, expression, note));
+        }
+        result.sort((left, right) -> {
+            int lineComparison = Integer.compare(left.lineIndex, right.lineIndex);
+            if (lineComparison != 0) {
+                return lineComparison;
+            }
+            String lineText = displayLineText(lines.get(left.lineIndex));
+            return Integer.compare(lineText.indexOf(left.expression), lineText.indexOf(right.expression));
+        });
+        return result;
+    }
+
     private JSONObject parseJsonObjectResponse(String raw) throws JSONException {
         String cleaned = stripCodeFences(raw).trim();
         if (!cleaned.startsWith("{")) {
@@ -2776,7 +2964,7 @@ final class AiLyricsRepository {
         return requests;
     }
 
-    private static String displayLineText(LyricsLine line) {
+    static String displayLineText(LyricsLine line) {
         if (line == null) {
             return "";
         }
@@ -2967,6 +3155,45 @@ final class AiLyricsRepository {
         }
     }
 
+    private List<CulturalAnnotation> culturalAnnotationsFromPrefs(String cacheKey, List<LyricsLine> lines) {
+        if (culturalAnnotationPrefs == null || cacheKey == null || cacheKey.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            String raw = culturalAnnotationPrefs.getString(sha256(cacheKey), "");
+            if (raw == null || raw.trim().isEmpty()) {
+                return null;
+            }
+            JSONObject object = new JSONObject(raw);
+            return parseCulturalAnnotations(object.toString(), lines);
+        } catch (Exception ignored) {
+            culturalAnnotationPrefs.edit().remove(sha256(cacheKey)).apply();
+            return null;
+        }
+    }
+
+    private void putCulturalAnnotationsToPrefs(String cacheKey, List<CulturalAnnotation> annotations) {
+        if (culturalAnnotationPrefs == null || cacheKey == null || cacheKey.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONArray values = new JSONArray();
+            for (CulturalAnnotation annotation : annotations) {
+                JSONObject value = new JSONObject();
+                value.put("lineIndex", annotation.lineIndex);
+                value.put("expression", annotation.expression);
+                value.put("note", annotation.note);
+                values.put(value);
+            }
+            JSONObject object = new JSONObject();
+            object.put("cacheKey", cacheKey);
+            object.put("annotations", values);
+            object.put("savedAtMs", System.currentTimeMillis());
+            culturalAnnotationPrefs.edit().putString(sha256(cacheKey), object.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void removeCacheEntriesByPrefix(Map<String, ?> target, String prefix) {
         if (target == null || prefix == null || prefix.isEmpty()) {
             return;
@@ -3025,6 +3252,33 @@ final class AiLyricsRepository {
                 if (object.optString("cacheKey", "").startsWith(prefix)) {
                     if (editor == null) {
                         editor = tmiPrefs.edit();
+                    }
+                    editor.remove(entry.getKey());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (editor != null) {
+            editor.apply();
+        }
+    }
+
+    private void clearCulturalAnnotationPrefsForTrack(String trackKey) {
+        if (culturalAnnotationPrefs == null || trackKey == null || trackKey.trim().isEmpty()) {
+            return;
+        }
+        String prefix = "cultural|" + trackKey.trim() + "|";
+        SharedPreferences.Editor editor = null;
+        for (Map.Entry<String, ?> entry : culturalAnnotationPrefs.getAll().entrySet()) {
+            Object rawValue = entry.getValue();
+            if (!(rawValue instanceof String)) {
+                continue;
+            }
+            try {
+                JSONObject object = new JSONObject((String) rawValue);
+                if (object.optString("cacheKey", "").startsWith(prefix)) {
+                    if (editor == null) {
+                        editor = culturalAnnotationPrefs.edit();
                     }
                     editor.remove(entry.getKey());
                 }

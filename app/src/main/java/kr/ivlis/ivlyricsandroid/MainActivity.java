@@ -304,6 +304,7 @@ public final class MainActivity extends Activity implements
     private Switch languagePronunciationSwitch;
     private Switch metadataTranslationSwitch;
     private Switch japaneseFuriganaSwitch;
+    private Switch culturalAnnotationsSwitch;
     private Switch autoInstrumentalBreakSwitch;
     private Switch interludeLabelsSwitch;
     private Switch syncedLyricsKaraokeSwitch;
@@ -335,6 +336,14 @@ public final class MainActivity extends Activity implements
     private SeekBar lyricsBackgroundBrightnessSeekBar;
     private SeekBar lyricsBackgroundBlurSeekBar;
     private SeekBar lyricsBackgroundVideoScaleSeekBar;
+    private SeekBar culturalAnnotationFontSizeSeekBar;
+    private SeekBar culturalAnnotationFontWeightSeekBar;
+    private SeekBar culturalAnnotationOpacitySeekBar;
+    private TextView culturalAnnotationFontSizeValueView;
+    private TextView culturalAnnotationFontWeightValueView;
+    private TextView culturalAnnotationOpacityValueView;
+    private LinearLayout culturalAnnotationFontButtonsContainer;
+    private View culturalAnnotationStyleGroup;
     private TextView backgroundBrightnessValueView;
     private TextView backgroundBlurValueView;
     private TextView backgroundVideoScaleValueView;
@@ -369,6 +378,7 @@ public final class MainActivity extends Activity implements
     private EditText lyricsManualSearchArtistInput;
     private TextView spotifySetupStatusView;
     private TextView lyricsManualSearchStatusView;
+    private TextView culturalAnnotationRegenerateButton;
     private TextView updateStatusView;
     private TextView creatorPrivacyStatusView;
     private TextView creatorPrivacyAccountButton;
@@ -385,6 +395,8 @@ public final class MainActivity extends Activity implements
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
     private LyricsResult currentFuriganaResult;
+    private List<CulturalAnnotation> currentCulturalAnnotations = Collections.emptyList();
+    private String currentCulturalAnnotationRequestKey = "";
     private YouTubeBackgroundRepository.VideoInfo currentYouTubeBackgroundInfo;
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
@@ -454,6 +466,7 @@ public final class MainActivity extends Activity implements
     private boolean lyricsSupplementPronunciationLoading;
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
+    private boolean lyricsCulturalAnnotationsLoading;
     private boolean spotifyCredentialsValidationInFlight;
     private volatile boolean pollinationsAuthInFlight;
     private boolean updateCheckInFlight;
@@ -1216,6 +1229,9 @@ public final class MainActivity extends Activity implements
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
             currentFuriganaKey = "";
+            currentCulturalAnnotations = Collections.emptyList();
+            currentCulturalAnnotationRequestKey = "";
+            setCulturalAnnotationsLoading(false);
             setLyricsTrackDurationOnViews(0L);
             setLyricsResultOnViews(currentLyricsResult);
             setLyricsSupplementLoading(false, false, false);
@@ -1287,6 +1303,9 @@ public final class MainActivity extends Activity implements
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
             currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(currentLyricsKey);
             aiLyricsGenerating = false;
+            currentCulturalAnnotations = Collections.emptyList();
+            currentCulturalAnnotationRequestKey = "";
+            setCulturalAnnotationsLoading(false);
             lyricsLoadingProviderName = "";
             detectedLyricsSourceLang = "en";
             selectedRuleSourceLang = "auto";
@@ -1342,6 +1361,9 @@ public final class MainActivity extends Activity implements
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
+        currentCulturalAnnotations = Collections.emptyList();
+        currentCulturalAnnotationRequestKey = "";
+        setCulturalAnnotationsLoading(false);
         sourceView.setText("");
         statusView.setText("");
         setLyricsResultOnViews(currentLyricsResult);
@@ -1424,6 +1446,8 @@ public final class MainActivity extends Activity implements
         }
         currentFuriganaResult = null;
         currentFuriganaKey = "";
+        currentCulturalAnnotations = Collections.emptyList();
+        currentCulturalAnnotationRequestKey = "";
         setLyricsResultOnViews(result);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -1447,6 +1471,8 @@ public final class MainActivity extends Activity implements
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
+        currentCulturalAnnotations = Collections.emptyList();
+        currentCulturalAnnotationRequestKey = "";
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(0L);
@@ -1539,6 +1565,8 @@ public final class MainActivity extends Activity implements
         currentLyricsResult = result;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
+        currentCulturalAnnotations = Collections.emptyList();
+        currentCulturalAnnotationRequestKey = "";
         setLyricsResultOnViews(result);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -1788,6 +1816,33 @@ public final class MainActivity extends Activity implements
             return;
         }
         renderTmiError(message);
+    }
+
+    @Override
+    public void onAiCulturalAnnotationsLoaded(
+            String trackKey,
+            String requestKey,
+            List<CulturalAnnotation> annotations
+    ) {
+        if (!trackKey.equals(currentLyricsKey)
+                || !requestKey.equals(currentCulturalAnnotationRequestKey)
+                || aiLyricsSettings == null
+                || !aiLyricsSettings.snapshot().culturalAnnotationsEnabled) {
+            return;
+        }
+        currentCulturalAnnotations = annotations == null ? Collections.emptyList() : annotations;
+        setCulturalAnnotationsLoading(false);
+        applyCulturalAnnotationsToViews();
+    }
+
+    @Override
+    public void onAiCulturalAnnotationsError(String trackKey, String requestKey, String message) {
+        if (!trackKey.equals(currentLyricsKey)
+                || !requestKey.equals(currentCulturalAnnotationRequestKey)) {
+            return;
+        }
+        setCulturalAnnotationsLoading(false);
+        appendLog("ai cultural annotations failed: " + message);
     }
 
     private View buildContentView() {
@@ -3401,6 +3456,21 @@ public final class MainActivity extends Activity implements
         pronunciationParams.leftMargin = dp(4);
         switchRow.addView(languagePronunciationSwitch, pronunciationParams);
 
+        culturalAnnotationRegenerateButton = debugButton(
+                ui("tmi.regenerate") + " · " + ui("loading.cultural_annotations")
+        );
+        culturalAnnotationRegenerateButton.setOnClickListener(view -> {
+            requestCulturalAnnotations(true);
+            showSavedToast(ui("loading.cultural_annotations"));
+        });
+        lyricsLanguageSettingsContent.addView(
+                culturalAnnotationRegenerateButton,
+                topMargin(new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(42)
+                ), dp(10))
+        );
+
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
 
@@ -4422,6 +4492,37 @@ public final class MainActivity extends Activity implements
         settingsAiPage.addView(providerButtonsContainer, topMargin(matchWrap(), dp(12)));
         buildProviderButtons();
 
+        culturalAnnotationsSwitch = settingSwitch(
+                ui("setting.cultural_annotations"),
+                ui("setting.cultural_annotations_desc")
+        );
+        culturalAnnotationsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setCulturalAnnotationsEnabled(isChecked);
+            if (culturalAnnotationStyleGroup != null) {
+                culturalAnnotationStyleGroup.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            }
+            if (isChecked) {
+                requestCulturalAnnotations(false);
+            } else {
+                currentCulturalAnnotations = Collections.emptyList();
+                currentCulturalAnnotationRequestKey = "";
+                setCulturalAnnotationsLoading(false);
+                applyCulturalAnnotationsToViews();
+            }
+            showSavedToast(ui("setting.cultural_annotations"));
+        });
+        settingsAiPage.addView(culturalAnnotationsSwitch, topMargin(matchWrap(), dp(16)));
+
+        culturalAnnotationStyleGroup = settingGroup(
+                ui("setting.cultural_font_family"),
+                "",
+                buildCulturalAnnotationStyleControl()
+        );
+        settingsAiPage.addView(culturalAnnotationStyleGroup, topMargin(matchWrap(), dp(12)));
+
         pollinationsAuthGroup = settingGroup(
                 ui("pollinations.account"),
                 ui("pollinations.account_desc"),
@@ -4589,6 +4690,10 @@ public final class MainActivity extends Activity implements
             if (furiganaRepository != null) {
                 furiganaRepository.clearCache();
             }
+            currentCulturalAnnotations = Collections.emptyList();
+            currentCulturalAnnotationRequestKey = "";
+            setCulturalAnnotationsLoading(false);
+            applyCulturalAnnotationsToViews();
             aiSettingsStatusView.setText(ui("status.ai_cache_cleared"));
             showSavedToast(ui("toast.ai_cache_cleared"));
         });
@@ -6712,6 +6817,96 @@ public final class MainActivity extends Activity implements
         return settingGroup(ui(slot.titleKey), ui(slot.descriptionKey), body);
     }
 
+    private LinearLayout buildCulturalAnnotationStyleControl() {
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+
+        culturalAnnotationFontButtonsContainer = new LinearLayout(this);
+        culturalAnnotationFontButtonsContainer.setOrientation(LinearLayout.VERTICAL);
+        body.addView(culturalAnnotationFontButtonsContainer, topMargin(matchWrap(), dp(7)));
+        rebuildCulturalAnnotationFontButtons();
+
+        culturalAnnotationFontSizeSeekBar = new SeekBar(this);
+        culturalAnnotationFontSizeSeekBar.setMax(18);
+        culturalAnnotationFontSizeValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationFontSizeSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int size = progress + 10;
+                aiLyricsSettings.setCulturalAnnotationsFontSize(size);
+                culturalAnnotationFontSizeValueView.setText(size + "px");
+                applyCulturalAnnotationsToViews();
+            }
+        });
+        body.addView(settingSubLabel(ui("setting.cultural_font_size")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationFontSizeSeekBar, culturalAnnotationFontSizeValueView), topMargin(matchWrap(), dp(4)));
+
+        culturalAnnotationFontWeightSeekBar = new SeekBar(this);
+        culturalAnnotationFontWeightSeekBar.setMax(8);
+        culturalAnnotationFontWeightValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationFontWeightSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int weight = (progress + 1) * 100;
+                aiLyricsSettings.setCulturalAnnotationsFontWeight(weight);
+                culturalAnnotationFontWeightValueView.setText(String.valueOf(weight));
+                applyCulturalAnnotationsToViews();
+            }
+        });
+        body.addView(settingSubLabel(ui("setting.cultural_font_weight")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationFontWeightSeekBar, culturalAnnotationFontWeightValueView), topMargin(matchWrap(), dp(4)));
+
+        culturalAnnotationOpacitySeekBar = new SeekBar(this);
+        culturalAnnotationOpacitySeekBar.setMax(80);
+        culturalAnnotationOpacityValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
+        culturalAnnotationOpacitySeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                int opacity = progress + 20;
+                aiLyricsSettings.setCulturalAnnotationsOpacity(opacity);
+                culturalAnnotationOpacityValueView.setText(opacity + "%");
+                applyCulturalAnnotationsToViews();
+            }
+        });
+        body.addView(settingSubLabel(ui("setting.cultural_opacity")), topMargin(matchWrap(), dp(12)));
+        body.addView(buildSliderRow(culturalAnnotationOpacitySeekBar, culturalAnnotationOpacityValueView), topMargin(matchWrap(), dp(4)));
+        return body;
+    }
+
+    private void rebuildCulturalAnnotationFontButtons() {
+        if (culturalAnnotationFontButtonsContainer == null || aiLyricsSettings == null) {
+            return;
+        }
+        culturalAnnotationFontButtonsContainer.removeAllViews();
+        String[][] fonts = {
+                {AiLyricsSettings.CULTURAL_FONT_PRETENDARD, "font.pretendard"},
+                {AiLyricsSettings.CULTURAL_FONT_SYSTEM, "font.system"},
+                {AiLyricsSettings.CULTURAL_FONT_SERIF, "font.serif"},
+                {AiLyricsSettings.CULTURAL_FONT_MONOSPACE, "font.monospace"}
+        };
+        String selected = aiLyricsSettings.snapshot().culturalAnnotationsFontFamily;
+        LinearLayout row = null;
+        for (int index = 0; index < fonts.length; index++) {
+            if (index % 2 == 0) {
+                row = addChoiceGridRow(culturalAnnotationFontButtonsContainer);
+            }
+            String id = fonts[index][0];
+            TextView button = label(ui(fonts[index][1]), 12f, Color.WHITE, AppFonts.semiBold(this));
+            button.setGravity(Gravity.CENTER);
+            button.setTag(id);
+            setSelectableButtonState(button, id.equals(selected));
+            button.setOnClickListener(view -> {
+                aiLyricsSettings.setCulturalAnnotationsFontFamily(id);
+                rebuildCulturalAnnotationFontButtons();
+                applyCulturalAnnotationsToViews();
+            });
+            row.addView(button, choiceGridButtonParams(index, 44));
+        }
+    }
+
     private TextView settingSubLabel(String text) {
         return label(text, 11f, Color.argb(155, 255, 255, 255), AppFonts.semiBold(this));
     }
@@ -7084,6 +7279,11 @@ public final class MainActivity extends Activity implements
         rebuildPreviewModeButtons(snapshot.previewItems);
         updateSourceLanguageSelect();
         populateSelectedLanguageRule(snapshot);
+        if (culturalAnnotationRegenerateButton != null) {
+            culturalAnnotationRegenerateButton.setVisibility(
+                    snapshot.culturalAnnotationsEnabled ? View.VISIBLE : View.GONE
+            );
+        }
     }
 
     private void updateUiLanguageSelect(String selectedLang) {
@@ -9222,6 +9422,29 @@ public final class MainActivity extends Activity implements
             japaneseFuriganaSwitch.setChecked(snapshot.japaneseFuriganaEnabled);
             suppressSettingsEvents = false;
         }
+        if (culturalAnnotationsSwitch != null) {
+            suppressSettingsEvents = true;
+            culturalAnnotationsSwitch.setChecked(snapshot.culturalAnnotationsEnabled);
+            suppressSettingsEvents = false;
+        }
+        if (culturalAnnotationStyleGroup != null) {
+            culturalAnnotationStyleGroup.setVisibility(
+                    snapshot.culturalAnnotationsEnabled ? View.VISIBLE : View.GONE
+            );
+        }
+        rebuildCulturalAnnotationFontButtons();
+        if (culturalAnnotationFontSizeSeekBar != null) {
+            culturalAnnotationFontSizeSeekBar.setProgress(snapshot.culturalAnnotationsFontSize - 10);
+            culturalAnnotationFontSizeValueView.setText(snapshot.culturalAnnotationsFontSize + "px");
+        }
+        if (culturalAnnotationFontWeightSeekBar != null) {
+            culturalAnnotationFontWeightSeekBar.setProgress(snapshot.culturalAnnotationsFontWeight / 100 - 1);
+            culturalAnnotationFontWeightValueView.setText(String.valueOf(snapshot.culturalAnnotationsFontWeight));
+        }
+        if (culturalAnnotationOpacitySeekBar != null) {
+            culturalAnnotationOpacitySeekBar.setProgress(snapshot.culturalAnnotationsOpacity - 20);
+            culturalAnnotationOpacityValueView.setText(snapshot.culturalAnnotationsOpacity + "%");
+        }
         if (autoInstrumentalBreakSwitch != null) {
             suppressSettingsEvents = true;
             autoInstrumentalBreakSwitch.setChecked(snapshot.autoInstrumentalBreakEnabled);
@@ -9758,6 +9981,9 @@ public final class MainActivity extends Activity implements
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
+        currentCulturalAnnotations = Collections.emptyList();
+        currentCulturalAnnotationRequestKey = "";
+        setCulturalAnnotationsLoading(false);
         currentTrackSyncOffsetMs = snapshot == null || aiLyricsSettings == null
                 ? 0
                 : aiLyricsSettings.trackSyncOffsetMs(snapshot.stableKey());
@@ -10705,6 +10931,7 @@ public final class MainActivity extends Activity implements
             }
             return;
         }
+        requestCulturalAnnotations(clearCache);
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
         String source = effectiveSelectedSourceLang();
         AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(source);
@@ -10782,6 +11009,41 @@ public final class MainActivity extends Activity implements
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
         requestJapaneseFurigana(clearCache);
         aiLyricsRepository.loadSupplements(currentTrack, currentBaseLyricsResult, snapshot, source, clearCache, this);
+    }
+
+    private void requestCulturalAnnotations(boolean clearCache) {
+        if (currentTrack == null
+                || currentBaseLyricsResult == null
+                || currentBaseLyricsResult.lines.isEmpty()
+                || aiLyricsSettings == null
+                || aiLyricsRepository == null) {
+            currentCulturalAnnotations = Collections.emptyList();
+            currentCulturalAnnotationRequestKey = "";
+            setCulturalAnnotationsLoading(false);
+            applyCulturalAnnotationsToViews();
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        if (!snapshot.culturalAnnotationsEnabled) {
+            currentCulturalAnnotations = Collections.emptyList();
+            currentCulturalAnnotationRequestKey = "";
+            setCulturalAnnotationsLoading(false);
+            applyCulturalAnnotationsToViews();
+            return;
+        }
+        if (clearCache) {
+            currentCulturalAnnotations = Collections.emptyList();
+            applyCulturalAnnotationsToViews();
+        }
+        setCulturalAnnotationsLoading(true);
+        currentCulturalAnnotationRequestKey = aiLyricsRepository.loadCulturalAnnotations(
+                currentTrack,
+                currentBaseLyricsResult,
+                snapshot,
+                effectiveSelectedSourceLang(),
+                clearCache,
+                this
+        );
     }
 
     private void requestJapaneseFurigana(boolean clearCache) {
@@ -10994,8 +11256,21 @@ public final class MainActivity extends Activity implements
             pictureInPictureLyricsView.setSupplementLoading(pronunciation, translation);
         }
         updateLyricsSupplementLoadingText();
-        updateLyricsSupplementLoadingIndicator(pronunciation || translation || furigana);
+        updateLyricsSupplementLoadingIndicator(
+                pronunciation || translation || furigana || lyricsCulturalAnnotationsLoading
+        );
         updateVinylLoadingIndicator(true);
+    }
+
+    private void setCulturalAnnotationsLoading(boolean loading) {
+        lyricsCulturalAnnotationsLoading = loading;
+        updateLyricsSupplementLoadingText();
+        updateLyricsSupplementLoadingIndicator(
+                loading
+                        || lyricsSupplementPronunciationLoading
+                        || lyricsSupplementTranslationLoading
+                        || lyricsSupplementFuriganaLoading
+        );
     }
 
     private String vinylLoadingText() {
@@ -11040,6 +11315,9 @@ public final class MainActivity extends Activity implements
     }
 
     private String supplementLoadingText() {
+        if (lyricsCulturalAnnotationsLoading) {
+            return ui("loading.cultural_annotations");
+        }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
                     "loading.translation_provider_format",
@@ -11134,11 +11412,13 @@ public final class MainActivity extends Activity implements
             configureLyricsViewUiText(lyricsView);
             lyricsView.setLoadingState(lyricsLookupInFlight);
             lyricsView.setResult(result);
+            applyCulturalAnnotationsToView(lyricsView);
         }
         if (landscapeLyricsView != null) {
             configureLyricsViewUiText(landscapeLyricsView);
             landscapeLyricsView.setLoadingState(lyricsLookupInFlight);
             landscapeLyricsView.setResult(result);
+            applyCulturalAnnotationsToView(landscapeLyricsView);
         }
         if (pictureInPictureLyricsView != null) {
             configureLyricsViewUiText(pictureInPictureLyricsView);
@@ -11148,6 +11428,27 @@ public final class MainActivity extends Activity implements
         updateLyricsProviderAttribution(result);
         updateLyricsContributorCredit(result);
         applyLandscapeNoLyricsLayout(true);
+    }
+
+    private void applyCulturalAnnotationsToViews() {
+        applyCulturalAnnotationsToView(lyricsView);
+        applyCulturalAnnotationsToView(landscapeLyricsView);
+    }
+
+    private void applyCulturalAnnotationsToView(LyricsView view) {
+        if (view == null || aiLyricsSettings == null) {
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        view.setCulturalAnnotations(
+                snapshot.culturalAnnotationsEnabled
+                        ? currentCulturalAnnotations
+                        : Collections.emptyList(),
+                snapshot.culturalAnnotationsFontFamily,
+                snapshot.culturalAnnotationsFontSize,
+                snapshot.culturalAnnotationsFontWeight,
+                snapshot.culturalAnnotationsOpacity
+        );
     }
 
     private ProviderAttributionView createLyricsProviderAttributionView(boolean includeContributor) {

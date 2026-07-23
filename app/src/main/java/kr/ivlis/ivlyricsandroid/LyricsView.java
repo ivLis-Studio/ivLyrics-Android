@@ -129,6 +129,11 @@ public final class LyricsView extends View {
     private boolean japaneseFuriganaEnabled;
     private boolean pronunciationLoading;
     private boolean translationLoading;
+    private List<CulturalAnnotation> culturalAnnotations = Collections.emptyList();
+    private String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
+    private int culturalAnnotationFontSize = 14;
+    private int culturalAnnotationFontWeight = 300;
+    private int culturalAnnotationOpacity = 60;
     private boolean centerInitialized;
     private float animatedCenterIndex;
     private int currentDisplayLineCount;
@@ -483,6 +488,38 @@ public final class LyricsView extends View {
         pronunciationLoading = pronunciation;
         translationLoading = translation;
         invalidateFrameGroupCache();
+        postInvalidateOnAnimation();
+    }
+
+    void setCulturalAnnotations(
+            List<CulturalAnnotation> annotations,
+            String fontFamily,
+            int fontSize,
+            int fontWeight,
+            int opacity
+    ) {
+        List<CulturalAnnotation> nextAnnotations = annotations == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(annotations));
+        String nextFamily = AiLyricsSettings.normalizeCulturalFontFamily(fontFamily);
+        int nextSize = Math.max(10, Math.min(28, fontSize));
+        int nextWeight = AiLyricsSettings.normalizeCulturalFontWeight(fontWeight);
+        int nextOpacity = Math.max(20, Math.min(100, opacity));
+        if (culturalAnnotations.equals(nextAnnotations)
+                && culturalAnnotationFontFamily.equals(nextFamily)
+                && culturalAnnotationFontSize == nextSize
+                && culturalAnnotationFontWeight == nextWeight
+                && culturalAnnotationOpacity == nextOpacity) {
+            return;
+        }
+        culturalAnnotations = nextAnnotations;
+        culturalAnnotationFontFamily = nextFamily;
+        culturalAnnotationFontSize = nextSize;
+        culturalAnnotationFontWeight = nextWeight;
+        culturalAnnotationOpacity = nextOpacity;
+        rowLayoutCache.clear();
+        invalidateFrameGroupCache();
+        requestLayout();
         postInvalidateOnAnimation();
     }
 
@@ -1196,17 +1233,23 @@ public final class LyricsView extends View {
             if (!partSupplements) {
                 addSupplementGroups(groups, lineIndex, line, active, distance);
             }
+            addCulturalAnnotationGroups(groups, lineIndex, line, active, distance);
             return groups;
         }
 
+        List<CulturalAnnotation> lineAnnotations = CulturalAnnotation.forLine(
+                culturalAnnotations,
+                lineIndex,
+                line.text
+        );
         int inactiveColor = inactiveColorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, distance);
         int activeColor = shouldRenderKaraokeTiming()
                 ? colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor())
                 : normalActiveColor();
         groups.add(buildGroup(
-                line.text,
+                CulturalAnnotation.annotateText(line.text, lineAnnotations),
                 japaneseFuriganaEnabled ? line.furiganaText : "",
-                line.syllables,
+                CulturalAnnotation.annotateSyllables(line.text, line.syllables, lineAnnotations),
                 line.startTimeMs,
                 line.endTimeMs,
                 MAIN_TEXT_SP,
@@ -1220,6 +1263,7 @@ public final class LyricsView extends View {
                 AiLyricsSettings.TYPO_LYRICS_ORIGINAL
         ));
         addSupplementGroups(groups, lineIndex, line, active, distance);
+        addCulturalAnnotationGroups(groups, lineIndex, line, active, distance);
         return groups;
     }
 
@@ -1272,10 +1316,15 @@ public final class LyricsView extends View {
                         normalActiveColor()
                 );
                 String groupKey = "line:" + lineIndex + ":part:" + partKey(part, renderIndex);
+                List<CulturalAnnotation> lineAnnotations = CulturalAnnotation.forLine(
+                        culturalAnnotations,
+                        lineIndex,
+                        AiLyricsRepository.displayLineText(line)
+                );
                 groups.add(buildGroup(
-                        part.text,
+                        CulturalAnnotation.annotateText(part.text, lineAnnotations),
                         japaneseFuriganaEnabled ? part.furiganaText : "",
-                        part.syllables,
+                        CulturalAnnotation.annotateSyllables(part.text, part.syllables, lineAnnotations),
                         part.startTimeMs,
                         part.endTimeMs,
                         MAIN_TEXT_SP,
@@ -1455,6 +1504,60 @@ public final class LyricsView extends View {
                     "trans",
                     groups.size(),
                     AiLyricsSettings.TYPO_LYRICS_TRANSLATION
+            ));
+        }
+    }
+
+    private void addCulturalAnnotationGroups(
+            List<DrawGroup> groups,
+            int lineIndex,
+            LyricsLine line,
+            boolean active,
+            float distance
+    ) {
+        if (line == null) {
+            return;
+        }
+        List<CulturalAnnotation> annotations = CulturalAnnotation.forLine(
+                culturalAnnotations,
+                lineIndex,
+                AiLyricsRepository.displayLineText(line)
+        );
+        if (annotations.isEmpty()) {
+            return;
+        }
+        int alpha = Math.round(255f * culturalAnnotationOpacity / 100f);
+        int activeColor = Color.argb(alpha, 255, 255, 255);
+        int inactiveAlpha = Math.max(30, Math.round(alpha * Math.max(0.42f, 1f - distance * 0.18f)));
+        int color = active ? activeColor : Color.argb(inactiveAlpha, 226, 230, 238);
+        for (int index = 0; index < annotations.size(); index++) {
+            CulturalAnnotation annotation = annotations.get(index);
+            String text = (index + 1) + ". " + annotation.note;
+            float textSize = sp(culturalAnnotationFontSize) * typographySizeMultiplier;
+            List<TextRow> rows = cachedRows(
+                    "line:" + lineIndex + ":cultural:" + index + ":" + text.hashCode()
+                            + ":font:" + culturalAnnotationFontFamily
+                            + ":" + culturalAnnotationFontWeight
+                            + ":" + culturalAnnotationOpacity,
+                    text,
+                    "",
+                    Collections.emptyList(),
+                    0L,
+                    0L,
+                    textSize
+            );
+            groups.add(new DrawGroup(
+                    rows,
+                    textSize,
+                    color,
+                    color,
+                    "vocal",
+                    false,
+                    groups.size(),
+                    "line:" + lineIndex + ":cultural:" + index,
+                    -1,
+                    AppFonts.cultural(getContext(), culturalAnnotationFontFamily, culturalAnnotationFontWeight),
+                    true
             ));
         }
     }

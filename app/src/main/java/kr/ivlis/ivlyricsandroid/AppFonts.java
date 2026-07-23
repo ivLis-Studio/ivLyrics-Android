@@ -43,6 +43,24 @@ final class AppFonts {
         return semiBold(context);
     }
 
+    static Typeface cultural(Context context, String family, int weight) {
+        String normalizedFamily = AiLyricsSettings.normalizeCulturalFontFamily(family);
+        Typeface base;
+        if (AiLyricsSettings.CULTURAL_FONT_SERIF.equals(normalizedFamily)) {
+            base = Typeface.SERIF;
+        } else if (AiLyricsSettings.CULTURAL_FONT_MONOSPACE.equals(normalizedFamily)) {
+            base = Typeface.MONOSPACE;
+        } else if (AiLyricsSettings.CULTURAL_FONT_SYSTEM.equals(normalizedFamily)) {
+            base = Typeface.DEFAULT;
+        } else {
+            base = regular(context);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            return Typeface.create(base, AiLyricsSettings.normalizeCulturalFontWeight(weight), false);
+        }
+        return Typeface.create(base, weight >= 600 ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
     private static Typeface load(Context context, String assetPath, int style) {
         try {
             return Typeface.createFromAsset(context.getAssets(), assetPath);

@@ -62,6 +62,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret";
     static final String KEY_METADATA_TRANSLATION_ENABLED = "metadata_translation_enabled";
     static final String KEY_JAPANESE_FURIGANA_ENABLED = "japanese_furigana_enabled";
+    static final String KEY_CULTURAL_ANNOTATIONS_ENABLED = "cultural_annotations_enabled";
+    static final String KEY_CULTURAL_ANNOTATIONS_FONT_FAMILY = "cultural_annotations_font_family";
+    static final String KEY_CULTURAL_ANNOTATIONS_FONT_SIZE = "cultural_annotations_font_size";
+    static final String KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT = "cultural_annotations_font_weight";
+    static final String KEY_CULTURAL_ANNOTATIONS_OPACITY = "cultural_annotations_opacity";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
     static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
     static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
@@ -118,6 +123,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String PIP_ORIENTATION_LANDSCAPE = "landscape";
     static final String PIP_ORIENTATION_PORTRAIT = "portrait";
     static final String PIP_ORIENTATION_SQUARE = "square";
+    static final String CULTURAL_FONT_PRETENDARD = "pretendard";
+    static final String CULTURAL_FONT_SYSTEM = "system";
+    static final String CULTURAL_FONT_SERIF = "serif";
+    static final String CULTURAL_FONT_MONOSPACE = "monospace";
     private static final String DEFAULT_PROVIDER = "gemini";
     private static final String DEFAULT_TARGET_LANG_RULES = OUTPUT_LANG_SAME_UI;
     private static final String DEFAULT_BACKGROUND_MODE = BACKGROUND_MODE_GRADIENT;
@@ -311,6 +320,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 normalizePipLyricsSizePercent(prefs.getInt(KEY_PIP_LYRICS_SIZE_PERCENT, DEFAULT_PIP_LYRICS_SIZE_PERCENT)),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
+                prefs.getBoolean(KEY_CULTURAL_ANNOTATIONS_ENABLED, false),
+                normalizeCulturalFontFamily(prefs.getString(KEY_CULTURAL_ANNOTATIONS_FONT_FAMILY, CULTURAL_FONT_PRETENDARD)),
+                clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_FONT_SIZE, 14), 10, 28),
+                normalizeCulturalFontWeight(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT, 300)),
+                clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_OPACITY, 60), 20, 100),
                 typographySettings(),
                 vinylSettings(),
                 speakerColorSettings(),
@@ -347,6 +361,26 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setJapaneseFuriganaEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_JAPANESE_FURIGANA_ENABLED, enabled).apply();
+    }
+
+    void setCulturalAnnotationsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_CULTURAL_ANNOTATIONS_ENABLED, enabled).apply();
+    }
+
+    void setCulturalAnnotationsFontFamily(String family) {
+        prefs.edit().putString(KEY_CULTURAL_ANNOTATIONS_FONT_FAMILY, normalizeCulturalFontFamily(family)).apply();
+    }
+
+    void setCulturalAnnotationsFontSize(int sizeSp) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_FONT_SIZE, clampInt(sizeSp, 10, 28)).apply();
+    }
+
+    void setCulturalAnnotationsFontWeight(int weight) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT, normalizeCulturalFontWeight(weight)).apply();
+    }
+
+    void setCulturalAnnotationsOpacity(int opacityPercent) {
+        prefs.edit().putInt(KEY_CULTURAL_ANNOTATIONS_OPACITY, clampInt(opacityPercent, 20, 100)).apply();
     }
 
     void setTypographyStyle(String slotId, int sizePercent, String weight) {
@@ -1107,6 +1141,21 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         return normalizeTypographyWeight(weight, TYPO_WEIGHT_SEMIBOLD);
     }
 
+    static String normalizeCulturalFontFamily(String family) {
+        String normalized = family == null ? "" : family.trim().toLowerCase(Locale.ROOT);
+        if (CULTURAL_FONT_SYSTEM.equals(normalized)
+                || CULTURAL_FONT_SERIF.equals(normalized)
+                || CULTURAL_FONT_MONOSPACE.equals(normalized)) {
+            return normalized;
+        }
+        return CULTURAL_FONT_PRETENDARD;
+    }
+
+    static int normalizeCulturalFontWeight(int weight) {
+        int clamped = clampInt(weight, 100, 900);
+        return Math.round(clamped / 100f) * 100;
+    }
+
     static String normalizeTypographyWeight(String weight, String fallback) {
         String value = weight == null ? "" : weight.trim().toLowerCase(Locale.ROOT);
         if (TYPO_WEIGHT_REGULAR.equals(value) || TYPO_WEIGHT_SEMIBOLD.equals(value) || TYPO_WEIGHT_BOLD.equals(value)) {
@@ -1644,6 +1693,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final int pipLyricsSizePercent;
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
+        final boolean culturalAnnotationsEnabled;
+        final String culturalAnnotationsFontFamily;
+        final int culturalAnnotationsFontSize;
+        final int culturalAnnotationsFontWeight;
+        final int culturalAnnotationsOpacity;
         final TypographySettings typography;
         final VinylSettings vinyl;
         final SpeakerColorSettings speakerColors;
@@ -1681,6 +1735,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 int pipLyricsSizePercent,
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
+                boolean culturalAnnotationsEnabled,
+                String culturalAnnotationsFontFamily,
+                int culturalAnnotationsFontSize,
+                int culturalAnnotationsFontWeight,
+                int culturalAnnotationsOpacity,
                 TypographySettings typography,
                 VinylSettings vinyl,
                 SpeakerColorSettings speakerColors,
@@ -1721,6 +1780,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.pipLyricsSizePercent = normalizePipLyricsSizePercent(pipLyricsSizePercent);
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
+            this.culturalAnnotationsEnabled = culturalAnnotationsEnabled;
+            this.culturalAnnotationsFontFamily = normalizeCulturalFontFamily(culturalAnnotationsFontFamily);
+            this.culturalAnnotationsFontSize = clampInt(culturalAnnotationsFontSize, 10, 28);
+            this.culturalAnnotationsFontWeight = normalizeCulturalFontWeight(culturalAnnotationsFontWeight);
+            this.culturalAnnotationsOpacity = clampInt(culturalAnnotationsOpacity, 20, 100);
             this.typography = typography == null ? TypographySettings.defaults() : typography;
             this.vinyl = vinyl == null ? VinylSettings.defaults() : vinyl;
             this.speakerColors = speakerColors == null ? SpeakerColorSettings.defaults() : speakerColors;
