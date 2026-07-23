@@ -10308,7 +10308,8 @@ public final class MainActivity extends Activity implements
             }
             deleteOldUpdateApks(updatesDir);
             apkFile = new File(updatesDir, sanitizeApkFileName(fileName));
-            downloadUpdateToFile(info.apkDownloadUrl, apkFile, fileName);
+            downloadUpdateToFile(info, apkFile, fileName);
+            UpdatePackageVerifier.verify(getApplicationContext(), apkFile, info);
             postUpdateStatus(ui("update.download_complete"));
             stageUpdateInstall(apkFile, info);
         } catch (Exception error) {
@@ -10323,10 +10324,15 @@ public final class MainActivity extends Activity implements
         }
     }
 
-    private void downloadUpdateToFile(String url, File target, String displayName) throws IOException {
+    private void downloadUpdateToFile(
+            UpdateChecker.UpdateInfo info,
+            File target,
+            String displayName
+    ) throws IOException {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
+            URL releaseUrl = UpdatePackageVerifier.requireReleaseAssetUrl(info.apkDownloadUrl);
+            connection = (HttpURLConnection) releaseUrl.openConnection();
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(30_000);
             connection.setRequestMethod("GET");
@@ -10336,9 +10342,13 @@ public final class MainActivity extends Activity implements
             if (code < 200 || code >= 300) {
                 throw new IOException("HTTP " + code);
             }
+            UpdatePackageVerifier.requireTrustedDownloadUrl(connection.getURL());
             long total = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                     ? connection.getContentLengthLong()
                     : connection.getContentLength();
+            if (info.apkSize <= 0L || (total > 0L && total != info.apkSize)) {
+                throw new IOException("Update APK size does not match release metadata");
+            }
             try (InputStream input = connection.getInputStream();
                  OutputStream output = new FileOutputStream(target)) {
                 byte[] buffer = new byte[32 * 1024];
@@ -10348,6 +10358,9 @@ public final class MainActivity extends Activity implements
                 while ((read = input.read(buffer)) != -1) {
                     output.write(buffer, 0, read);
                     written += read;
+                    if (written > info.apkSize) {
+                        throw new IOException("Update APK exceeded its declared size");
+                    }
                     if (total > 0L) {
                         int percent = (int) Math.min(100L, (written * 100L) / total);
                         if (percent != lastPercent && (percent == 100 || percent - lastPercent >= 4)) {
@@ -10355,6 +10368,9 @@ public final class MainActivity extends Activity implements
                             postUpdateStatus(uiFormat("update.download_started_format", displayName) + " · " + percent + "%");
                         }
                     }
+                }
+                if (written != info.apkSize) {
+                    throw new IOException("Update APK size does not match release metadata");
                 }
             }
         } finally {

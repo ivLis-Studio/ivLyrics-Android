@@ -74,6 +74,41 @@ jobs:
       - name: Build release APK
         run: ./gradlew :app:assembleRelease
 
+      - name: Verify release permission profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          aapt_candidates=("${ANDROID_SDK_ROOT}"/build-tools/*/aapt)
+          if [[ "${#aapt_candidates[@]}" -eq 0 ]]; then
+            echo "::error::Android Asset Packaging Tool was not found"
+            exit 1
+          fi
+          aapt="$(printf '%s\n' "${aapt_candidates[@]}" | sort -V | tail -n 1)"
+
+          expected_permissions=$'android.permission.INTERNET\nandroid.permission.REQUEST_INSTALL_PACKAGES\nandroid.permission.SYSTEM_ALERT_WINDOW'
+          release_apks=(app/build/outputs/apk/release/*.apk)
+          if [[ "${#release_apks[@]}" -eq 0 ]]; then
+            echo "::error::No release APK was found for permission verification"
+            exit 1
+          fi
+
+          for apk in "${release_apks[@]}"; do
+            actual_permissions="$(
+              "${aapt}" dump permissions "${apk}" \
+                | sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" \
+                | sort -u
+            )"
+            if [[ "${actual_permissions}" != "${expected_permissions}" ]]; then
+              echo "::error file=${apk}::Unexpected release permission profile"
+              diff -u \
+                <(printf '%s\n' "${expected_permissions}") \
+                <(printf '%s\n' "${actual_permissions}") || true
+              exit 1
+            fi
+          done
+
       - name: Collect APKs
         id: collect
         shell: bash
