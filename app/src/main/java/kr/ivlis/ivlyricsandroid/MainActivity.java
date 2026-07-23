@@ -241,6 +241,8 @@ public final class MainActivity extends Activity implements
     private TextView pollinationsAuthOpenButton;
     private TextView pollinationsAuthTestButton;
     private TextView selectedLanguageRuleView;
+    private TextView globalSyncOffsetValueView;
+    private TextView globalSyncOffsetDescriptionView;
     private TextView lyricsSyncOffsetValueView;
     private TextView lyricsSyncOffsetDescriptionView;
     private TextView bluetoothSyncOffsetValueView;
@@ -429,6 +431,7 @@ public final class MainActivity extends Activity implements
     private String currentBluetoothAudioDeviceKey = "";
     private String currentBluetoothAudioDeviceName = "";
     private String activeLyricsPopupTab = LYRICS_POPUP_TAB_LANGUAGE;
+    private int currentGlobalSyncOffsetMs;
     private int currentTrackSyncOffsetMs;
     private int currentBluetoothLyricsOffsetMs;
     private int currentVideoSyncOffsetMs;
@@ -495,6 +498,7 @@ public final class MainActivity extends Activity implements
         setTheme(R.style.AppTheme);
         super.onCreate(savedInstanceState);
         aiLyricsSettings = new AiLyricsSettings(this);
+        currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
         creatorPrivacyRepository = new CreatorPrivacyRepository(this);
         aiLyricsRepository = new AiLyricsRepository(this);
@@ -3383,11 +3387,36 @@ public final class MainActivity extends Activity implements
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
 
-        TextView title = label(ui("lyrics.sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
-        content.addView(title, new LinearLayout.LayoutParams(
+        TextView globalTitle = label(ui("lyrics.global_sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
+        content.addView(globalTitle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
+
+        globalSyncOffsetDescriptionView = label(ui("lyrics.global_sync.help"), 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+        globalSyncOffsetDescriptionView.setLineSpacing(dp(2), 1f);
+        content.addView(globalSyncOffsetDescriptionView, topMargin(matchWrap(), dp(5)));
+
+        globalSyncOffsetValueView = label("", 25f, Color.WHITE, AppFonts.bold(this));
+        globalSyncOffsetValueView.setGravity(Gravity.CENTER);
+        globalSyncOffsetValueView.setBackground(roundDrawable(Color.argb(34, 255, 255, 255), dp(14)));
+        content.addView(globalSyncOffsetValueView, topMargin(matchWrap(), dp(12)));
+
+        content.addView(buildOffsetButtonRow(-100, -50, -10, this::adjustGlobalSyncOffset), topMargin(matchWrap(), dp(10)));
+        content.addView(buildOffsetButtonRow(10, 50, 100, this::adjustGlobalSyncOffset), topMargin(matchWrap(), dp(8)));
+
+        TextView globalResetButton = languageButton(ui("lyrics.global_sync.reset"), false);
+        globalResetButton.setOnClickListener(view -> setGlobalSyncOffset(0, true));
+        content.addView(globalResetButton, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+        ), dp(8)));
+
+        TextView title = label(ui("lyrics.sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
+        content.addView(title, topMargin(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ), dp(18)));
 
         lyricsSyncOffsetDescriptionView = label("", 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
         lyricsSyncOffsetDescriptionView.setLineSpacing(dp(2), 1f);
@@ -7600,7 +7629,7 @@ public final class MainActivity extends Activity implements
                 position,
                 currentTrack.playing,
                 firstLyricTimeMs(currentBaseLyricsResult),
-                currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs + currentVideoSyncOffsetMs
+                currentGlobalSyncOffsetMs + currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs + currentVideoSyncOffsetMs
         );
     }
 
@@ -7860,6 +7889,12 @@ public final class MainActivity extends Activity implements
     }
 
     private void updateLyricsSyncSettingsUi() {
+        if (globalSyncOffsetValueView != null) {
+            globalSyncOffsetValueView.setText(formatSignedMs(currentGlobalSyncOffsetMs));
+        }
+        if (globalSyncOffsetDescriptionView != null) {
+            globalSyncOffsetDescriptionView.setText(ui("lyrics.global_sync.help"));
+        }
         if (lyricsSyncOffsetValueView != null) {
             lyricsSyncOffsetValueView.setText(formatSignedMs(currentTrackSyncOffsetMs));
         }
@@ -8088,12 +8123,29 @@ public final class MainActivity extends Activity implements
         setCurrentTrackSyncOffset(currentTrackSyncOffsetMs + deltaMs, true);
     }
 
+    private void adjustGlobalSyncOffset(int deltaMs) {
+        setGlobalSyncOffset(currentGlobalSyncOffsetMs + deltaMs, true);
+    }
+
     private void adjustCurrentBluetoothSyncOffset(int deltaMs) {
         setCurrentBluetoothSyncOffset(currentBluetoothLyricsOffsetMs + deltaMs, true);
     }
 
     private void adjustCurrentVideoSyncOffset(int deltaMs) {
         setCurrentVideoSyncOffset(currentVideoSyncOffsetMs + deltaMs, true);
+    }
+
+    private void setGlobalSyncOffset(int offsetMs, boolean notify) {
+        int nextOffset = clampSyncOffset(offsetMs);
+        currentGlobalSyncOffsetMs = nextOffset;
+        if (aiLyricsSettings != null) {
+            aiLyricsSettings.setGlobalSyncOffsetMs(nextOffset);
+        }
+        updateLyricsSyncSettingsUi();
+        updateLyricsOffsetSensitiveViews();
+        if (notify) {
+            showSavedToast(uiFormat("toast.global_sync_offset_format", formatSignedMs(nextOffset)));
+        }
     }
 
     private void setCurrentTrackSyncOffset(int offsetMs, boolean notify) {
@@ -8160,14 +8212,14 @@ public final class MainActivity extends Activity implements
     }
 
     private long lyricsPlaybackPosition(long playerPositionMs, long durationMs) {
-        long adjusted = playerPositionMs + currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs;
+        long adjusted = playerPositionMs + currentGlobalSyncOffsetMs + currentTrackSyncOffsetMs + currentBluetoothLyricsOffsetMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, adjusted))
                 : Math.max(0L, adjusted);
     }
 
     private long playerPositionForLyricsTime(long lyricsTimeMs, long durationMs) {
-        long target = lyricsTimeMs - currentTrackSyncOffsetMs - currentBluetoothLyricsOffsetMs;
+        long target = lyricsTimeMs - currentGlobalSyncOffsetMs - currentTrackSyncOffsetMs - currentBluetoothLyricsOffsetMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, target))
                 : Math.max(0L, target);

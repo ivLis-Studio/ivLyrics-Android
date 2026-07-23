@@ -54,6 +54,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_PIP_ORIENTATION = "pip_orientation";
     static final String KEY_PIP_LYRICS_TEXT_ALIGNMENT = "pip_lyrics_text_alignment";
     static final String KEY_PIP_LYRICS_SIZE_PERCENT = "pip_lyrics_size_percent";
+    static final String KEY_GLOBAL_SYNC_OFFSET = "global_sync_offset_ms";
     static final String KEY_TRACK_SYNC_OFFSETS = "track_sync_offsets_v1";
     static final String KEY_TRACK_VIDEO_SYNC_OFFSETS = "track_video_sync_offsets_v1";
     static final String KEY_BLUETOOTH_SYNC_OFFSETS = "bluetooth_sync_offsets_v1";
@@ -651,6 +652,21 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 .putString(KEY_SPOTIFY_CLIENT_ID, clientId == null ? "" : clientId.trim())
                 .putString(KEY_SPOTIFY_CLIENT_SECRET, clientSecret == null ? "" : clientSecret.trim())
                 .apply();
+    }
+
+    int globalSyncOffsetMs() {
+        return clampInt(prefs.getInt(KEY_GLOBAL_SYNC_OFFSET, 0), -10000, 10000);
+    }
+
+    void setGlobalSyncOffsetMs(int offsetMs) {
+        int safeOffset = clampInt(offsetMs, -10000, 10000);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (safeOffset == 0) {
+            editor.remove(KEY_GLOBAL_SYNC_OFFSET);
+        } else {
+            editor.putInt(KEY_GLOBAL_SYNC_OFFSET, safeOffset);
+        }
+        editor.apply();
     }
 
     int trackSyncOffsetMs(String trackKey) {

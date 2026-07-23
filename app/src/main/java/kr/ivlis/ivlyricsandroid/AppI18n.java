@@ -123,6 +123,7 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         languages.put("cs", csStrings());
+        addGlobalSyncOffsetStrings(languages);
         addVinylStrings(languages);
         addCreatorPrivacyStrings(languages);
         addLyricsProviderSettingsStrings(languages);
@@ -607,6 +608,79 @@ final class AppI18n {
                 "lyrics.bluetooth_sync.reset", reset,
                 "toast.bluetooth_sync_offset_format", toastFormat,
                 "bluetooth_sync.unknown_device", unknownDevice
+        };
+    }
+
+    private static void addGlobalSyncOffsetStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = globalSyncOffsetStrings(language.code);
+            for (int index = 0; index + 1 < values.length; index += 2) {
+                copy.put(values[index], values[index + 1]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] globalSyncOffsetStrings(String lang) {
+        switch (normalize(lang)) {
+            case "ko":
+                return globalSyncOffsetStringValues("전역 싱크 오프셋", "모든 곡에 적용되며 곡별 및 Bluetooth 오프셋과 별도로 더해집니다. +값은 가사를 더 일찍, -값은 더 늦게 보여줍니다.", "전역 오프셋 초기화", "전역 싱크 오프셋 %s");
+            case "zh-CN":
+                return globalSyncOffsetStringValues("全局同步偏移", "应用于所有歌曲，并与单曲偏移和 Bluetooth 偏移分别叠加。+ 值会更早显示歌词，- 值会更晚显示。", "重置全局偏移", "全局同步偏移 %s");
+            case "zh-TW":
+                return globalSyncOffsetStringValues("全域同步偏移", "套用於所有歌曲，並與單曲偏移和 Bluetooth 偏移分別疊加。+ 值會更早顯示歌詞，- 值會更晚顯示。", "重設全域偏移", "全域同步偏移 %s");
+            case "ja":
+                return globalSyncOffsetStringValues("グローバル同期オフセット", "すべての曲に適用され、曲別オフセットと Bluetooth オフセットに個別に加算されます。+値は歌詞を早く、-値は遅く表示します。", "グローバルオフセットをリセット", "グローバル同期オフセット %s");
+            case "hi":
+                return globalSyncOffsetStringValues("वैश्विक सिंक ऑफसेट", "यह सभी गानों पर लागू होता है और प्रति-गाना तथा Bluetooth ऑफसेट में अलग से जुड़ता है। + मान गीत पहले और - मान बाद में दिखाते हैं।", "वैश्विक ऑफसेट रीसेट करें", "वैश्विक सिंक ऑफसेट %s");
+            case "es":
+                return globalSyncOffsetStringValues("Desplazamiento global", "Se aplica a todas las canciones y se suma por separado a los ajustes por canción y Bluetooth. Los valores + muestran la letra antes; los valores - la muestran después.", "Restablecer desplazamiento global", "Desplazamiento global %s");
+            case "fr":
+                return globalSyncOffsetStringValues("Décalage global", "S’applique à tous les morceaux et s’ajoute séparément aux décalages par morceau et Bluetooth. Les valeurs + affichent les paroles plus tôt, les valeurs - plus tard.", "Réinitialiser le décalage global", "Décalage global %s");
+            case "ar":
+                return globalSyncOffsetStringValues("إزاحة المزامنة العامة", "تُطبّق على جميع الأغاني وتُضاف بشكل مستقل إلى إزاحة الأغنية وإزاحة Bluetooth. تعرض القيم + الكلمات أبكر والقيم - لاحقًا.", "إعادة ضبط الإزاحة العامة", "إزاحة المزامنة العامة %s");
+            case "fa":
+                return globalSyncOffsetStringValues("افست همگام‌سازی سراسری", "روی همه آهنگ‌ها اعمال می‌شود و جداگانه به افست هر آهنگ و Bluetooth افزوده می‌شود. مقادیر + متن را زودتر و مقادیر - دیرتر نشان می‌دهند.", "بازنشانی افست سراسری", "افست همگام‌سازی سراسری %s");
+            case "de":
+                return globalSyncOffsetStringValues("Globaler Sync-Offset", "Gilt für alle Songs und wird getrennt zu Song- und Bluetooth-Offsets addiert. Positive Werte zeigen Liedtexte früher, negative später.", "Globalen Offset zurücksetzen", "Globaler Sync-Offset %s");
+            case "ru":
+                return globalSyncOffsetStringValues("Глобальное смещение", "Применяется ко всем песням и отдельно складывается со смещениями песни и Bluetooth. Значения + показывают текст раньше, значения - позже.", "Сбросить глобальное смещение", "Глобальное смещение %s");
+            case "sv":
+                return globalSyncOffsetStringValues("Global synkförskjutning", "Gäller alla låtar och läggs separat till låt- och Bluetooth-förskjutningar. Positiva värden visar texten tidigare, negativa senare.", "Återställ global förskjutning", "Global synkförskjutning %s");
+            case "pt":
+                return globalSyncOffsetStringValues("Deslocamento global", "Aplica-se a todas as músicas e soma-se separadamente aos ajustes por música e Bluetooth. Valores + mostram a letra mais cedo; valores - mais tarde.", "Redefinir deslocamento global", "Deslocamento global %s");
+            case "bn":
+                return globalSyncOffsetStringValues("গ্লোবাল সিঙ্ক অফসেট", "এটি সব গানে প্রযোজ্য এবং প্রতি-গান ও Bluetooth অফসেটের সঙ্গে আলাদাভাবে যোগ হয়। + মান লিরিক্স আগে এবং - মান পরে দেখায়।", "গ্লোবাল অফসেট রিসেট", "গ্লোবাল সিঙ্ক অফসেট %s");
+            case "cs":
+                return globalSyncOffsetStringValues("Globální posun synchronizace", "Platí pro všechny skladby a samostatně se přičítá k posunu skladby a Bluetooth. Kladné hodnoty zobrazí text dříve, záporné později.", "Obnovit globální posun", "Globální posun synchronizace %s");
+            case "it":
+                return globalSyncOffsetStringValues("Offset globale", "Si applica a tutti i brani e si somma separatamente agli offset del brano e Bluetooth. I valori + mostrano il testo prima, i valori - dopo.", "Reimposta offset globale", "Offset globale %s");
+            case "th":
+                return globalSyncOffsetStringValues("ออฟเซ็ตซิงค์ส่วนกลาง", "ใช้กับทุกเพลงและบวกแยกจากออฟเซ็ตประจำเพลงและ Bluetooth ค่า + จะแสดงเนื้อเพลงเร็วขึ้น ส่วนค่า - จะแสดงช้าลง", "รีเซ็ตออฟเซ็ตส่วนกลาง", "ออฟเซ็ตซิงค์ส่วนกลาง %s");
+            case "vi":
+                return globalSyncOffsetStringValues("Bù đồng bộ toàn cục", "Áp dụng cho mọi bài hát và được cộng riêng với bù theo bài hát và Bluetooth. Giá trị + hiển thị lời sớm hơn, giá trị - hiển thị muộn hơn.", "Đặt lại bù toàn cục", "Bù đồng bộ toàn cục %s");
+            case "id":
+                return globalSyncOffsetStringValues("Offset sinkronisasi global", "Berlaku untuk semua lagu dan ditambahkan secara terpisah ke offset per lagu dan Bluetooth. Nilai + menampilkan lirik lebih awal, nilai - lebih lambat.", "Reset offset global", "Offset sinkronisasi global %s");
+            case "ms":
+                return globalSyncOffsetStringValues("Ofset penyegerakan global", "Digunakan pada semua lagu dan ditambah secara berasingan pada ofset setiap lagu dan Bluetooth. Nilai + memaparkan lirik lebih awal, nilai - lebih lewat.", "Tetapkan semula ofset global", "Ofset penyegerakan global %s");
+            case "tr":
+                return globalSyncOffsetStringValues("Genel senkron ofseti", "Tüm şarkılara uygulanır ve şarkı ile Bluetooth ofsetlerine ayrı olarak eklenir. + değerler sözleri daha erken, - değerler daha geç gösterir.", "Genel ofseti sıfırla", "Genel senkron ofseti %s");
+            default:
+                return globalSyncOffsetStringValues("Global Sync Offset", "Applies to every song and is added separately to per-song and Bluetooth offsets. Positive values show lyrics earlier; negative values show them later.", "Reset Global Offset", "Global sync offset %s");
+        }
+    }
+
+    private static String[] globalSyncOffsetStringValues(String title, String help, String reset, String toast) {
+        return new String[]{
+                "lyrics.global_sync.title", title,
+                "lyrics.global_sync.help", help,
+                "lyrics.global_sync.reset", reset,
+                "toast.global_sync_offset_format", toast
         };
     }
 
