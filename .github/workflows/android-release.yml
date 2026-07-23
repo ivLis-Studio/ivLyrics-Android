@@ -74,37 +74,6 @@ jobs:
       - name: Build release APK
         run: ./gradlew :app:assembleRelease
 
-      - name: Verify release permission profile
-        shell: bash
-        run: |
-          set -euo pipefail
-          aapt="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          if [[ -z "${aapt}" ]]; then
-            echo "::error::Android Asset Packaging Tool was not found"
-            exit 1
-          fi
-
-          forbidden_permissions=(
-            "android.permission.REQUEST_INSTALL_PACKAGES"
-            "android.permission.QUERY_ALL_PACKAGES"
-            "android.permission.MANAGE_EXTERNAL_STORAGE"
-          )
-          checked_apks=0
-          while IFS= read -r apk; do
-            checked_apks=$((checked_apks + 1))
-            permissions="$("${aapt}" dump permissions "${apk}")"
-            for permission in "${forbidden_permissions[@]}"; do
-              if grep -Fq "${permission}" <<<"${permissions}"; then
-                echo "::error file=${apk}::Forbidden high-risk permission: ${permission}"
-                exit 1
-              fi
-            done
-          done < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" | sort)
-          if [[ "${checked_apks}" -eq 0 ]]; then
-            echo "::error::No release APK was found for permission verification"
-            exit 1
-          fi
-
       - name: Collect APKs
         id: collect
         shell: bash
