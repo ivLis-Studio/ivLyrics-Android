@@ -39,7 +39,7 @@ final class AiLyricsRepository {
     private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 600L;
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
     private static final String TMI_PROMPT_VERSION = "origin-v1";
-    private static final String CULTURAL_ANNOTATION_PROMPT_VERSION = "cultural-v3";
+    private static final String CULTURAL_ANNOTATION_PROMPT_VERSION = "cultural-v4";
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
@@ -2422,16 +2422,41 @@ final class AiLyricsRepository {
         }
         return "Analyze the lyrics line by line for a reader whose language is " + targetLang + ".\n"
                 + "The source language is " + sourceLang + ".\n\n"
-                + "Find ONLY expressions that cannot be understood from a normal translation without specific cultural background knowledge. "
-                + "Valid cases include a local institution or custom, traditional game, historical or religious implication, or a clearly identifiable quotation or parody.\n\n"
-                + "Be extremely strict:\n"
-                + "- Do not explain ordinary words, slang, conversational phrasing, code-switching, English weekdays, generic metaphors, moods, or expressions understandable from context.\n"
+                + "Find ONLY expressions whose meaning depends on cultural background that a reader from another culture is likely to miss. "
+                + "This is not a translation, vocabulary, grammar, slang, or general lyric explanation task.\n\n"
+                + "REQUIRED ELIGIBILITY GATE - ALL THREE ANSWERS MUST BE YES:\n"
+                + "1. Does understanding the line require a concrete fact outside the lyrics, such as a named custom, institution, practice, event, belief, game, or identifiable work?\n"
+                + "2. Is that fact specific to a particular culture, region, community, or historical setting rather than broadly understandable human experience?\n"
+                + "3. Would a competent natural translation still fail to carry that fact?\n"
+                + "If any answer is no, do not annotate.\n\n"
+                + "ANNOTATE ONLY WHEN SEPARATE CULTURAL KNOWLEDGE IS REQUIRED:\n"
+                + "- country- or region-specific school life, institutions, customs, traditional games, or daily practices\n"
+                + "- historical, religious, or social institutions and their culture-specific implications\n"
+                + "- an unmistakable quotation or parody whose exact source or work can be identified\n"
+                + "- an established culture-specific meaning that a natural translation cannot carry\n\n"
+                + "DO NOT ANNOTATE:\n"
+                + "- ordinary words, slang, conversational phrasing, code-switching, or expressions understandable from context\n"
+                + "- ordinary metaphors, poetic imagery, symbolism, atmosphere, emotion, or possible literary interpretations\n"
+                + "- punctuation, quotation marks, typography, rhyme, repetition, or other writing devices\n"
+                + "- broadly shared images such as heaven, hell, an abyss, darkness, light, moonlight, shadows, seasons, dreams, tears, or broken/scattered things\n"
+                + "- an idiom's etymology, religious origin, or dictionary history when its natural translation already conveys the lyric\n\n"
+                + "STRICT JUDGMENT RULES:\n"
+                + "- The note must state a verifiable external cultural fact. If it merely interprets what the image means, symbolizes, suggests, or emphasizes, omit it.\n"
+                + "- Quotation marks alone never prove a quotation or allusion. Only annotate one when unmistakable textual evidence identifies the exact source or work.\n"
                 + "- Do not infer a country from the language alone.\n"
-                + "- Mention quotations or parodies only when certain.\n"
-                + "- Prefer zero annotations over a weak annotation.\n"
+                + "- Require high confidence. Prefer zero annotations over a weak annotation.\n"
+                + "- Most songs should produce zero or only a few annotations across the entire lyrics. Never annotate lines merely to provide coverage.\n"
                 + "- Each note must be one short sentence in " + targetLang + ", at most 72 characters.\n"
                 + "- expression must be an exact substring of that original lyric line.\n"
                 + "- Return at most 3 annotations per line.\n\n"
+                + "MANDATORY NEGATIVE EXAMPLES:\n"
+                + "- Quoted text such as \"目を閉じて、また起きて、\" is not a cultural reference merely because it uses quotation marks.\n"
+                + "- \"奈落の底\" is an ordinary abyss/hell metaphor when the translation already conveys \"the bottom of the abyss\"; do not explain it.\n"
+                + "- \"バラバラの月光\" is ordinary poetic imagery; do not invent a cultural meaning or symbolism for it.\n"
+                + "- Notes such as \"the quotation marks imply a cited line,\" \"this symbolizes despair,\" or \"the moonlight represents fragmentation\" are literary interpretation, not cultural context, and must never be returned.\n\n"
+                + "POSITIVE CONTRAST:\n"
+                + "- \"缶蹴り\" or \"ケイドロ\" may need a note because they name locally familiar children's games whose rules are not carried by translation.\n"
+                + "- \"夕焼け小焼け\" may need a note when the line relies on the specific song's use in local evening return-home broadcasts.\n\n"
                 + "Return JSON only in this exact shape:\n"
                 + "{\"annotations\":[{\"lineIndex\":0,\"expression\":\"exact original expression\",\"note\":\"brief explanation\"}]}\n"
                 + "Use zero-based lineIndex. Return {\"annotations\":[]} when nothing truly requires cultural knowledge.\n\n"
