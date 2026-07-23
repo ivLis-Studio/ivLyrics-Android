@@ -76,18 +76,85 @@ def resolve_range_ref(ref):
     return "HEAD"
 
 
-def git_log(range_spec):
-    output = run_git([
-        "log",
-        "--no-merges",
-        "--pretty=format:%h%x09%s",
-        range_spec,
-    ], allow_fail=True)
-    return output
-
-
 def git_diff_stat(range_spec):
     return run_git(["diff", "--stat", range_spec], allow_fail=True)
+
+
+def parse_numstat(text):
+    files = []
+    for line in text.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        added, deleted, path = parts
+        files.append({
+            "path": path.strip(),
+            "added": int(added) if added.isdigit() else None,
+            "deleted": int(deleted) if deleted.isdigit() else None,
+        })
+    return files
+
+
+def release_commits(range_spec, current_ref):
+    raw = run_git([
+        "log",
+        "--no-merges",
+        "--pretty=format:%h%x1f%s%x1f%b%x1e",
+        range_spec,
+    ], allow_fail=True)
+    commits = []
+    for record in raw.split("\x1e"):
+        record = record.strip()
+        if not record:
+            continue
+        parts = record.split("\x1f", 2)
+        if len(parts) < 2:
+            continue
+        commit_hash = parts[0].strip()
+        subject = parts[1].strip()
+        body = parts[2].strip() if len(parts) > 2 else ""
+        files = parse_numstat(
+            run_git(["show", "--format=", "--numstat", commit_hash], allow_fail=True)
+        )
+        commits.append({
+            "hash": commit_hash,
+            "subject": subject,
+            "body": body,
+            "files": files,
+        })
+    if commits:
+        return commits
+    return [{
+        "hash": run_git(["rev-parse", "--short", current_ref], allow_fail=True)
+        or "HEAD",
+        "subject": "Build and release APK assets.",
+        "body": "",
+        "files": [],
+    }]
+
+
+def commit_evidence(commits):
+    blocks = []
+    for commit in commits:
+        file_lines = []
+        for item in commit["files"][:40]:
+            if item["added"] is None or item["deleted"] is None:
+                stats = "binary"
+            else:
+                stats = f"+{item['added']}/-{item['deleted']}"
+            file_lines.append(f"  - {item['path']} ({stats})")
+        if len(commit["files"]) > 40:
+            file_lines.append(
+                f"  - ... and {len(commit['files']) - 40} more files"
+            )
+        blocks.append("\n".join([
+            f"Commit: {commit['hash']}",
+            f"Subject: {commit['subject']}",
+            f"Body: {commit['body'][:2000].strip() or '(none)'}",
+            "Files:",
+            *(file_lines or ["  - (no file stats)"]),
+        ]))
+    return "\n\n".join(blocks)
 
 
 def read_gradle_version():
@@ -118,11 +185,6 @@ def compare_url(current_tag, previous):
     if previous:
         return f"https://github.com/ivLis-Studio/ivLyrics-Android/compare/{previous}...{current_tag}"
     return f"https://github.com/ivLis-Studio/ivLyrics-Android/commits/{current_tag}"
-
-
-def commit_subjects(log_text):
-    commits = [line for line in log_text.splitlines() if line.strip()]
-    return [line.split("\t", 1)[-1] for line in commits] or ["Build and release APK assets."]
 
 
 def markdown_bullets(values):
@@ -166,20 +228,110 @@ def checksum_lines(assets):
     ]
 
 
-def fallback_content(current_tag, previous, log_text, assets):
-    subjects = commit_subjects(log_text)
-    highlights = subjects[:6]
-    fixes = subjects[6:] or ["APK build and release metadata generation."]
+def parse_commit_subject(subject):
+    match = re.match(
+        r"^(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)"
+        r"(?:\([^)]+\))?!?:\s*",
+        subject,
+        re.IGNORECASE,
+    )
+    if not match:
+        return "", subject.strip()
+    return match.group("type").lower(), subject[match.end():].strip()
+
+
+def fallback_category(subject):
+    value = subject.lower()
+    if re.search(
+        r"lyrics?|translation|pronunciation|cultural|provider|paxsenix|"
+        r"instrumental|karaoke|overlay|language",
+        value,
+    ):
+        return "lyrics"
+    if re.search(
+        r"playback|now playing|vinyl|\blp\b|player|video|scroll|track|spotify dj",
+        value,
+    ):
+        return "playback"
+    if re.search(r"\bui\b|dialog|notice|popup|settings?|layout|design", value):
+        return "ui"
+    return "maintenance"
+
+
+def fallback_item(commit, language):
+    commit_type, text = parse_commit_subject(commit["subject"])
+    files = commit["files"]
+    additions = sum(item["added"] or 0 for item in files)
+    deletions = sum(item["deleted"] or 0 for item in files)
+    paths = ", ".join(f"`{item['path']}`" for item in files[:4])
+    if len(files) > 4:
+        paths += f", +{len(files) - 4}"
+    if language == "ko":
+        details = (
+            f"{len(files)}개 파일에서 +{additions}/-{deletions}줄을 변경했습니다."
+            + (f" 주요 범위: {paths}." if paths else "")
+        )
+    else:
+        details = (
+            f"Changed {len(files)} files with +{additions}/-{deletions} lines."
+            + (f" Main scope: {paths}." if paths else "")
+        )
+    if commit_type in {"build", "chore", "ci", "docs", "style", "test"}:
+        details += (
+            " 사용자 기능 외의 유지보수 변경입니다."
+            if language == "ko"
+            else " This is a maintenance change outside the main user features."
+        )
     return {
+        "title": text or commit["subject"],
+        "details": details,
+        "commits": [commit["hash"]],
+    }
+
+
+def fallback_sections(commits, language):
+    labels = {
         "ko": {
-            "summary": f"{current_tag} 릴리즈입니다. 이전 버전 대비 변경 사항과 APK 파일을 함께 제공합니다.",
-            "highlights": highlights,
-            "fixes": fixes,
+            "lyrics": "가사, AI 및 오버레이",
+            "playback": "재생 및 LP 모드",
+            "ui": "UI 및 설정",
+            "maintenance": "안정성 및 유지보수",
         },
         "en": {
-            "summary": f"{current_tag} release with APK assets and change notes compared with the previous version.",
-            "highlights": highlights,
-            "fixes": fixes,
+            "lyrics": "Lyrics, AI, and Overlay",
+            "playback": "Playback and LP Mode",
+            "ui": "UI and Settings",
+            "maintenance": "Reliability and Maintenance",
+        },
+    }
+    grouped = {key: [] for key in labels[language]}
+    for commit in commits:
+        grouped[fallback_category(commit["subject"])].append(
+            fallback_item(commit, language)
+        )
+    return [
+        {"title": labels[language][key], "items": grouped[key]}
+        for key in labels[language]
+        if grouped[key]
+    ]
+
+
+def fallback_content(current_tag, commits):
+    count = len(commits)
+    return {
+        "ko": {
+            "summary": (
+                f"{current_tag}는 이전 릴리스 이후의 {count}개 변경을 기능별로 "
+                "정리하고 설치용 APK를 함께 제공하는 업데이트입니다."
+            ),
+            "sections": fallback_sections(commits, "ko"),
+        },
+        "en": {
+            "summary": (
+                f"{current_tag} contains {count} changes since the previous release, "
+                "organized by product area and accompanied by installable APK assets."
+            ),
+            "sections": fallback_sections(commits, "en"),
         },
     }
 
@@ -193,15 +345,33 @@ def load_template():
         ## 한국어
         {ko_summary}
 
-        {ko_highlights}
+        {ko_sections}
 
         ## English
         {en_summary}
 
-        {en_highlights}
+        {en_sections}
 
         **Full Changelog**: {compare_url}
     """).strip() + "\n"
+
+
+def markdown_sections(sections, fallback_title, fallback_text):
+    rendered = []
+    for section in sections:
+        title = str(section.get("title") or "").strip()
+        items = section.get("items") or []
+        if not title or not items:
+            continue
+        bullets = []
+        for item in items:
+            item_title = str(item.get("title") or "").strip()
+            details = str(item.get("details") or "").strip()
+            if item_title and details:
+                bullets.append(f"- **{item_title}**: {details}")
+        if bullets:
+            rendered.append(f"### {title}\n" + "\n".join(bullets))
+    return "\n\n".join(rendered) or f"### {fallback_title}\n- {fallback_text}"
 
 
 def render_notes(current_tag, previous, version, assets, content):
@@ -214,12 +384,18 @@ def render_notes(current_tag, previous, version, assets, content):
         previous_tag=previous or "None",
         compare_url=compare_url(current_tag, previous),
         ko_summary=ko.get("summary") or "릴리즈 노트가 생성되었습니다.",
-        ko_highlights=markdown_bullets(ko.get("highlights") or []),
-        ko_fixes=markdown_bullets(ko.get("fixes") or []),
+        ko_sections=markdown_sections(
+            ko.get("sections") or [],
+            "변경 사항",
+            "이전 릴리스 이후의 변경 사항을 정리했습니다.",
+        ),
         ko_downloads=markdown_bullets(asset_downloads(assets, "ko")),
         en_summary=en.get("summary") or "Release notes were generated.",
-        en_highlights=markdown_bullets(en.get("highlights") or []),
-        en_fixes=markdown_bullets(en.get("fixes") or []),
+        en_sections=markdown_sections(
+            en.get("sections") or [],
+            "Changes",
+            "Changes since the previous release are listed here.",
+        ),
         en_downloads=markdown_bullets(asset_downloads(assets, "en")),
         checksums=markdown_bullets(checksum_lines(assets)),
     )
@@ -236,7 +412,7 @@ def normalize_chat_url(base_url):
     return base + "/v1/chat/completions"
 
 
-def parse_ai_json(text):
+def parse_ai_json(text, commits):
     value = (text or "").strip()
     value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s*```$", "", value)
@@ -250,29 +426,70 @@ def parse_ai_json(text):
     en = data.get("en") if isinstance(data.get("en"), dict) else {}
     if not ko or not en:
         return {}
-    return {"ko": normalize_note_section(ko), "en": normalize_note_section(en)}
+    content = {"ko": normalize_note_section(ko), "en": normalize_note_section(en)}
+    if not has_complete_commit_coverage(content, commits):
+        return {}
+    return content
+
+
+def normalize_note_item(item):
+    if not isinstance(item, dict):
+        return {}
+    title = str(item.get("title") or "").strip()
+    details = str(item.get("details") or "").strip()
+    commit_list = item.get("commits")
+    commits = (
+        [str(value).strip() for value in commit_list if str(value).strip()]
+        if isinstance(commit_list, list)
+        else []
+    )
+    if not title or not details or not commits:
+        return {}
+    return {"title": title, "details": details, "commits": commits}
 
 
 def normalize_note_section(section):
-    def text_value(key):
-        return str(section.get(key) or "").strip()
-
-    def list_value(key):
-        value = section.get(key)
-        if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()]
-        if isinstance(value, str) and value.strip():
-            return [value.strip()]
-        return []
-
+    if not isinstance(section, dict):
+        return {}
+    sections = []
+    for group in section.get("sections") or []:
+        if not isinstance(group, dict):
+            continue
+        title = str(group.get("title") or "").strip()
+        items = []
+        for item in group.get("items") or []:
+            normalized = normalize_note_item(item)
+            if normalized:
+                items.append(normalized)
+        if title and items:
+            sections.append({"title": title, "items": items})
     return {
-        "summary": text_value("summary"),
-        "highlights": list_value("highlights"),
-        "fixes": list_value("fixes"),
+        "summary": str(section.get("summary") or "").strip(),
+        "sections": sections,
     }
 
 
-def ai_release_content(current_tag, previous, version, log_text, stat_text, assets):
+def covered_commits(section):
+    return [
+        commit
+        for group in section.get("sections") or []
+        for item in group.get("items") or []
+        for commit in item.get("commits") or []
+    ]
+
+
+def has_complete_commit_coverage(content, commits):
+    expected = [commit["hash"] for commit in commits]
+    if not expected:
+        return False
+    for language in ("ko", "en"):
+        actual = covered_commits(content.get(language) or {})
+        if len(actual) != len(expected) or set(actual) != set(expected):
+            return False
+    return True
+
+
+def ai_release_content(current_tag, previous, version, commits, stat_text, assets):
     api_key = os.environ.get("AI_API_KEY", "").strip()
     api_url = normalize_chat_url(os.environ.get("AI_BASE_URL", ""))
     model = os.environ.get("AI_MODEL", "").strip() or "gpt-4o-mini"
@@ -296,14 +513,34 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
         Output JSON schema:
         {{
           "ko": {{
-            "summary": "Korean one-sentence summary",
-            "highlights": ["Korean user-facing highlight", "..."],
-            "fixes": ["Korean improvement or fix", "..."]
+            "summary": "Korean summary in two to four sentences",
+            "sections": [
+              {{
+                "title": "Korean product-area heading",
+                "items": [
+                  {{
+                    "title": "Short Korean change title",
+                    "details": "One to three detailed Korean sentences describing behavior, conditions, and user impact.",
+                    "commits": ["short commit hash"]
+                  }}
+                ]
+              }}
+            ]
           }},
           "en": {{
-            "summary": "English one-sentence summary",
-            "highlights": ["English user-facing highlight", "..."],
-            "fixes": ["English improvement or fix", "..."]
+            "summary": "Equivalent English summary in two to four sentences",
+            "sections": [
+              {{
+                "title": "Equivalent English product-area heading",
+                "items": [
+                  {{
+                    "title": "Short English change title",
+                    "details": "One to three detailed English sentences describing behavior, conditions, and user impact.",
+                    "commits": ["same short commit hash"]
+                  }}
+                ]
+              }}
+            ]
           }}
         }}
 
@@ -311,18 +548,20 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
         - Write both Korean and English.
         - Keep Korean and English sections semantically equivalent.
         - Compare this release against the previous tag.
-        - Keep each bullet short and concrete.
-        - Put major user-facing changes in highlights.
-        - Put smaller polish, fixes, and maintenance changes in fixes.
-        - Mention APK assets and clarify whether release APK assets are signed or unsigned based on their filenames.
-        - Do not invent changes not supported by the commit list.
+        - Create descriptive product-area sections such as Lyrics and AI, Playback and LP Mode, UI and Settings, or Reliability. Use only sections supported by the changes.
+        - Cover every supplied commit hash exactly once in Korean and exactly once in English. Equivalent items in both languages must list the same hashes.
+        - Combine commits only when they are tightly related parts of one user-facing change. Do not cap the number of sections or items.
+        - Make every details field explain what changed, when it matters, and what the user will notice. Include defaults, compatibility behavior, localization, cache handling, and edge cases when supported.
+        - Put user-facing changes first and maintenance changes last.
+        - The template already describes each APK and its signature state, so do not duplicate download instructions inside the change sections.
+        - Do not invent changes not supported by the commit evidence.
         - Do not mention secrets, private URLs, or internal token endpoints.
         - Do not include a Full Changelog link; the template adds it.
 
-        Commits:
-        {log_text or "(no commit log)"}
+        Commit evidence:
+        {commit_evidence(commits)}
 
-        Diff stat:
+        Aggregate diff stat:
         {stat_text or "(no diff stat)"}
 
         APK assets:
@@ -333,11 +572,14 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
         "messages": [
             {
                 "role": "system",
-                "content": "You generate accurate, concise GitHub release notes from git metadata only.",
+                "content": (
+                    "Generate accurate, detailed, and complete release notes from "
+                    "git evidence. Never omit a supplied commit."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.25,
+        "temperature": 0.15,
     }
     request = urllib.request.Request(
         api_url,
@@ -372,7 +614,7 @@ def ai_release_content(current_tag, previous, version, log_text, stat_text, asse
     if not choices:
         return {}
     message = choices[0].get("message") or {}
-    return parse_ai_json(message.get("content") or "")
+    return parse_ai_json(message.get("content") or "", commits)
 
 
 def main():
@@ -381,15 +623,18 @@ def main():
         current_tag = run_git(["rev-parse", "--short", "HEAD"])
     current_sha = resolve_commit(current_tag)
     previous = previous_tag(current_tag)
-    range_spec = commit_range(previous, resolve_range_ref(current_tag))
-    log_text = git_log(range_spec)
+    current_ref = resolve_range_ref(current_tag)
+    range_spec = commit_range(previous, current_ref)
     stat_text = git_diff_stat(range_spec)
+    commits = release_commits(range_spec, current_ref)
     version = read_gradle_version()
     assets = apk_assets(os.environ.get("APK_DIR", "release-apks"))
 
-    content = ai_release_content(current_tag, previous, version, log_text, stat_text, assets)
+    content = ai_release_content(
+        current_tag, previous, version, commits, stat_text, assets
+    )
     if not content:
-        content = fallback_content(current_tag, previous, log_text, assets)
+        content = fallback_content(current_tag, commits)
     notes = render_notes(current_tag, previous, version, assets, content)
 
     metadata = {
@@ -402,6 +647,8 @@ def main():
             compare_url(current_tag, previous)
         ),
         "apks": assets,
+        "commitCount": len(commits),
+        "coveredCommits": [commit["hash"] for commit in commits],
     }
 
     out_dir = Path(os.environ.get("RELEASE_METADATA_DIR", "release-metadata"))

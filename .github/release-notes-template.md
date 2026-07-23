@@ -9,11 +9,7 @@
 ### 요약
 {ko_summary}
 
-### 주요 변경
-{ko_highlights}
-
-### 개선 및 수정
-{ko_fixes}
+{ko_sections}
 
 ### 다운로드
 {ko_downloads}
@@ -23,11 +19,7 @@
 ### Summary
 {en_summary}
 
-### Highlights
-{en_highlights}
-
-### Improvements and Fixes
-{en_fixes}
+{en_sections}
 
 ### Downloads
 {en_downloads}
