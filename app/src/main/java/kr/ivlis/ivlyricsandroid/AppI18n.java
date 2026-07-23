@@ -132,6 +132,7 @@ final class AppI18n {
         addProviderLoadingStrings(languages);
         addCulturalAnnotationStrings(languages);
         addSettingsTranslationOverrides(languages);
+        addLyricsToolsTranslationOverrides(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -144,6 +145,18 @@ final class AppI18n {
             }
             Map<String, String> copy = new LinkedHashMap<>(table);
             SettingsTranslationOverrides.apply(language.code, copy);
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addLyricsToolsTranslationOverrides(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            LyricsToolsTranslationOverrides.apply(language.code, copy);
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
