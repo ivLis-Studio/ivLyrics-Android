@@ -46,14 +46,3 @@ __pycache__/
 # Local test harnesses
 **/test/
 **/tests/
-
-# Keep focused release-regression coverage under version control.
-!app/src/test/
-app/src/test/**
-!app/src/test/java/
-!app/src/test/java/kr/
-!app/src/test/java/kr/ivlis/
-!app/src/test/java/kr/ivlis/ivlyricsandroid/
-!app/src/test/java/kr/ivlis/ivlyricsandroid/PaxsenixLyricsProviderEntityTest.java
-!app/src/test/java/kr/ivlis/ivlyricsandroid/LyricsLanguageDetectorTest.java
-!app/src/test/java/kr/ivlis/ivlyricsandroid/SpotifyDjLyricsTimelineTest.java
