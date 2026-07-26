@@ -8862,11 +8862,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void handleLyricsMetaLongPress(View target) {
-        dismissLyricsMetaTip();
-        if (target != null) {
-            target.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-        }
-        toggleLyricsLanguageSettings();
+        openLyricsMetaMenuFromMain(target);
     }
 
     private void scheduleLyricsMetaLongPress(View target) {
@@ -9263,36 +9259,6 @@ public final class MainActivity extends Activity implements
             handler.removeCallbacks(lyricsMetaLongPressRunnable);
             lyricsMetaLongPressRunnable = null;
         }
-    }
-
-    private void toggleLyricsLanguageSettings() {
-        if (lyricsLanguageSettingsPanel == null) {
-            return;
-        }
-        lyricsLanguageSettingsVisible = !lyricsLanguageSettingsVisible;
-        if (lyricsLanguageSettingsVisible) {
-            updateLyricsLanguageSettingsUi();
-            lyricsLanguageSettingsPanel.setVisibility(View.VISIBLE);
-            lyricsLanguageSettingsPanel.setAlpha(0f);
-            lyricsLanguageSettingsPanel.setTranslationY(-dp(8));
-            lyricsLanguageSettingsPanel.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(160L)
-                    .start();
-        } else {
-            lyricsLanguageSettingsPanel.animate()
-                    .alpha(0f)
-                    .translationY(-dp(8))
-                    .setDuration(130L)
-                    .withEndAction(() -> {
-                        lyricsLanguageSettingsPanel.setVisibility(View.GONE);
-                        lyricsLanguageSettingsPanel.setAlpha(1f);
-                        lyricsLanguageSettingsPanel.setTranslationY(0f);
-                    })
-                    .start();
-        }
-        updateLyricsLanguageButtonState();
     }
 
     private void handleLaunchIntent(Intent intent) {
