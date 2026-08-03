@@ -4261,7 +4261,7 @@ final class AppI18n {
             case "pt":
                 return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, duet, male e female com um seletor de cor.", "Normal", "Dueto", "Masculino", "Feminino", "Cor escolhida", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s e invalido.");
             case "bn":
-                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্স রঙ রঙ নির্বাচনকারী দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "নির্বাচিত রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
+                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্সের রঙ নির্বাচনকারী দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "নির্বাচিত রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
             case "it":
                 return speakerColorStringsValues("Colori vocali", "Regola i colori normal, duet, male e female con un selettore colore.", "Normal", "Duetto", "Maschile", "Femminile", "Colore scelto", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non e valido.");
             case "th":
@@ -5962,7 +5962,7 @@ final class AppI18n {
                 "status.waiting_current_track", "वर्तमान में चल रहे गीत",
                 "status.spotify_required_plain", "Spotify API की प्रतीक्षा में",
                 "loading.generating", "आवश्यक है",
-                "loading.pronunciation", "उत्पन्न हो रहा है उच्चारण उत्पन्न हो रहा है...",
+                "loading.pronunciation", "उच्चारण उत्पन्न हो रहा है...",
                 "loading.translation", "अनुवाद उत्पन्न कर रहा है...",
                 "lyrics.empty_none", "कोई गीत नहीं",
                 "interlude.prelude", "पहचान",
@@ -8851,7 +8851,7 @@ final class AppI18n {
                 "setting.noise", "Tekstur kebisingan",
                 "setting.noise_desc", "Menambahkan tekstur butiran halus seperti ivLyrics asli.",
                 "setting.reduce_motion", "Mengurangi gerakan",
-                "setting.reduce_motion_desc", "Menghentikan gerakan latar belakang album/gradien otomatis. Lirik",
+                "setting.reduce_motion_desc", "Menghentikan gerakan latar belakang album/gradien otomatis.",
                 "section.ai_lyrics", "AI",
                 "section.ai_lyrics_desc", "Hasilkan pengucapan dan terjemahan dengan petunjuk yang kompatibel dengan ivLyrics.",
                 "section.provider", "Penyedia",

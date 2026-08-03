@@ -5,12 +5,14 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.os.Build;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -117,14 +119,23 @@ final class SpotifyShortcutOverlayController {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        ,
                 PixelFormat.TRANSLUCENT
         );
         params.gravity = Gravity.TOP | Gravity.START;
         params.x = prefs.getInt(KEY_X, dp(DEFAULT_X_DP));
         params.y = prefs.getInt(KEY_Y, dp(DEFAULT_Y_DP));
+        clampPosition();
         try {
             windowManager.addView(bubble, params);
+            bubble.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (clampPosition()) {
+                    try {
+                        windowManager.updateViewLayout(view, params);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            });
         } catch (RuntimeException ignored) {
             bubble = null;
             params = null;
@@ -185,7 +196,8 @@ final class SpotifyShortcutOverlayController {
                     dragging = true;
                 }
                 params.x = downX + Math.round(dx);
-                params.y = Math.max(0, downY + Math.round(dy));
+                params.y = downY + Math.round(dy);
+                clampPosition();
                 try {
                     windowManager.updateViewLayout(target, params);
                 } catch (RuntimeException ignored) {
@@ -215,10 +227,46 @@ final class SpotifyShortcutOverlayController {
         if (params == null) {
             return;
         }
+        clampPosition();
         prefs.edit()
                 .putInt(KEY_X, params.x)
                 .putInt(KEY_Y, params.y)
                 .apply();
+    }
+
+    private boolean clampPosition() {
+        if (params == null || windowManager == null) {
+            return false;
+        }
+        Rect bounds;
+        int insetLeft = 0;
+        int insetTop = 0;
+        int insetRight = 0;
+        int insetBottom = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.view.WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+            bounds = metrics.getBounds();
+            android.graphics.Insets insets = metrics.getWindowInsets().getInsetsIgnoringVisibility(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
+            );
+            insetLeft = insets.left;
+            insetTop = insets.top;
+            insetRight = insets.right;
+            insetBottom = insets.bottom;
+        } else {
+            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            windowManager.getDefaultDisplay().getRealMetrics(metrics);
+            bounds = new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+        }
+        int minX = insetLeft;
+        int minY = insetTop;
+        int maxX = Math.max(minX, bounds.width() - insetRight - bubbleSizePx);
+        int maxY = Math.max(minY, bounds.height() - insetBottom - bubbleSizePx);
+        int oldX = params.x;
+        int oldY = params.y;
+        params.x = Math.max(minX, Math.min(maxX, params.x));
+        params.y = Math.max(minY, Math.min(maxY, params.y));
+        return oldX != params.x || oldY != params.y;
     }
 
     private void openLyricsPage() {

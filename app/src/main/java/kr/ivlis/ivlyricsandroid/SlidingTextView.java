@@ -79,7 +79,7 @@ final class SlidingTextView extends TextView {
         float availableWidth = Math.max(1f, availableRight - availableLeft);
         float textWidth = paint.measureText(text);
 
-        if (textWidth <= availableWidth) {
+        if (textWidth <= availableWidth || !MotionPreferences.animationsEnabled(getContext())) {
             drawStaticText(canvas, text, textWidth, availableLeft, availableRight);
             return;
         }

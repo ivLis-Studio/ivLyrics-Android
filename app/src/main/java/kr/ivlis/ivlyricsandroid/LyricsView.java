@@ -9,9 +9,11 @@ import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
+import android.graphics.Rect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.SystemClock;
+import android.os.Bundle;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.util.TypedValue;
@@ -19,6 +21,10 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.OverScroller;
 
 import java.util.ArrayList;
@@ -27,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -163,6 +170,9 @@ public final class LyricsView extends View {
     private OnSeekListener seekListener;
     private LineHitTarget pressedTarget;
     private int hitTargetCount;
+    private int accessibilityFocusedId = View.NO_ID;
+    private int hoveredVirtualId = View.NO_ID;
+    private final AccessibilityNodeProvider accessibilityNodeProvider = new LyricsAccessibilityNodeProvider();
     private boolean smoothNextSeekCenter;
     private boolean smoothSeekCenterActive;
 
@@ -562,6 +572,7 @@ public final class LyricsView extends View {
     }
 
     private void init() {
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         lyricTypeface = AppFonts.semiBold(getContext());
         setWillNotDraw(false);
         setClickable(true);
@@ -575,6 +586,127 @@ public final class LyricsView extends View {
         manualScroller = new OverScroller(getContext());
         textPaint.setTypeface(lyricTypeface);
         textPaint.setSubpixelText(true);
+    }
+
+    @Override
+    public AccessibilityNodeProvider getAccessibilityNodeProvider() {
+        return accessibilityNodeProvider;
+    }
+
+    @Override
+    public boolean dispatchHoverEvent(MotionEvent event) {
+        AccessibilityManager manager = (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (manager == null || !manager.isTouchExplorationEnabled() || hitTargetCount == 0) {
+            return super.dispatchHoverEvent(event);
+        }
+        int id = virtualIdAt(event.getY());
+        if (event.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT) id = View.NO_ID;
+        if (id != hoveredVirtualId) {
+            if (hoveredVirtualId != View.NO_ID) sendVirtualEvent(hoveredVirtualId, AccessibilityEvent.TYPE_VIEW_HOVER_EXIT);
+            hoveredVirtualId = id;
+            if (id != View.NO_ID) sendVirtualEvent(id, AccessibilityEvent.TYPE_VIEW_HOVER_ENTER);
+        }
+        return id != View.NO_ID || event.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT;
+    }
+
+    private int virtualIdAt(float y) {
+        for (int i = 0; i < hitTargetCount; i++) {
+            LineHitTarget target = hitTargets.get(i);
+            if (y >= target.top && y <= target.bottom) return target.virtualId;
+        }
+        return View.NO_ID;
+    }
+
+    private void sendVirtualEvent(int id, int type) {
+        LineHitTarget target = hitTargetForVirtualId(id);
+        if (id == View.NO_ID) return;
+        AccessibilityEvent event = AccessibilityEvent.obtain(type);
+        event.setPackageName(getContext().getPackageName());
+        event.setClassName(android.widget.Button.class.getName());
+        event.setSource(this, id);
+        if (target != null && !target.label.isEmpty()) event.getText().add(target.label);
+        if (getParent() != null) getParent().requestSendAccessibilityEvent(this, event);
+    }
+
+    private final class LyricsAccessibilityNodeProvider extends AccessibilityNodeProvider {
+        @Override public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualViewId) {
+            if (virtualViewId == View.NO_ID) {
+                AccessibilityNodeInfo host = AccessibilityNodeInfo.obtain(LyricsView.this);
+                onInitializeAccessibilityNodeInfo(host);
+                host.setClassName(android.widget.ScrollView.class.getName());
+                for (int i = 0; i < hitTargetCount; i++) host.addChild(LyricsView.this, hitTargets.get(i).virtualId);
+                return host;
+            }
+            LineHitTarget target = hitTargetForVirtualId(virtualViewId);
+            if (target == null) return null;
+            AccessibilityNodeInfo node = AccessibilityNodeInfo.obtain();
+            node.setPackageName(getContext().getPackageName());
+            node.setClassName(android.widget.Button.class.getName());
+            node.setSource(LyricsView.this, virtualViewId);
+            node.setParent(LyricsView.this);
+            node.setText(target.label);
+            node.setContentDescription(target.label);
+            node.setClickable(seekListener != null);
+            node.setEnabled(true);
+            node.setVisibleToUser(target.bottom > 0 && target.top < getHeight());
+            node.setSelected(target.active);
+            node.setBoundsInParent(new Rect(0, Math.max(0, Math.round(target.top)), getWidth(), Math.min(getHeight(), Math.round(target.bottom))));
+            int[] location = new int[2];
+            getLocationOnScreen(location);
+            node.setBoundsInScreen(new Rect(
+                    location[0],
+                    location[1] + Math.max(0, Math.round(target.top)),
+                    location[0] + getWidth(),
+                    location[1] + Math.min(getHeight(), Math.round(target.bottom))
+            ));
+            if (seekListener != null) node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+            if (accessibilityFocusedId == virtualViewId) {
+                node.setAccessibilityFocused(true);
+                node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS);
+            } else node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS);
+            return node;
+        }
+
+        @Override public boolean performAction(int virtualViewId, int action, Bundle arguments) {
+            LineHitTarget target = hitTargetForVirtualId(virtualViewId);
+            if (target == null) return false;
+            if (action == AccessibilityNodeInfo.ACTION_CLICK && seekListener != null) {
+                seekListener.onSeekRequested(target.seekTimeMs);
+                sendVirtualEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED);
+                return true;
+            }
+            if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                int previous = accessibilityFocusedId;
+                if (previous != View.NO_ID && previous != virtualViewId) {
+                    accessibilityFocusedId = View.NO_ID;
+                    sendVirtualEvent(previous, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);
+                }
+                accessibilityFocusedId = virtualViewId;
+                sendVirtualEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
+                invalidate();
+                return true;
+            }
+            if (action == AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS && accessibilityFocusedId == virtualViewId) {
+                accessibilityFocusedId = View.NO_ID;
+                sendVirtualEvent(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);
+                invalidate();
+                return true;
+            }
+            return false;
+        }
+
+        @Override public AccessibilityNodeInfo findFocus(int focus) {
+            if (focus != AccessibilityNodeInfo.FOCUS_ACCESSIBILITY || accessibilityFocusedId == View.NO_ID) return null;
+            return createAccessibilityNodeInfo(accessibilityFocusedId);
+        }
+    }
+
+    private LineHitTarget hitTargetForVirtualId(int virtualId) {
+        for (int i = 0; i < hitTargetCount; i++) {
+            LineHitTarget target = hitTargets.get(i);
+            if (target.virtualId == virtualId) return target;
+        }
+        return null;
     }
 
     @Override
@@ -684,7 +816,8 @@ public final class LyricsView extends View {
                 && activeIndex < displayLines.size()
                 && displayLines.get(activeIndex).isInterlude();
         boolean vocalAnchorMoving = Math.abs(targetVocalAnchorOffset - animatedVocalAnchorOffsetPx) > 0.5f;
-        if (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f) {
+        if (MotionPreferences.animationsEnabled(getContext())
+                && (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f)) {
             postInvalidateOnAnimation();
         } else if (vocalAnchorMoving) {
             postInvalidateOnAnimation();
@@ -804,6 +937,11 @@ public final class LyricsView extends View {
 
     private void updateDisplayCenter(int activeIndex) {
         long now = SystemClock.uptimeMillis();
+        if (!MotionPreferences.animationsEnabled(getContext()) && !manualScrollActive) {
+            animatedCenterIndex = activeIndex;
+            centerInitialized = true;
+            return;
+        }
         if (manualScrollActive) {
             if (!draggingLyrics && manualScroller != null && manualScroller.computeScrollOffset()) {
                 manualCenterIndex = clampCenterIndex(manualScroller.getCurrY() / Math.max(1f, manualScrollPixelsPerIndex));
@@ -1819,9 +1957,42 @@ public final class LyricsView extends View {
                 baselineCenter - layout.height * 0.5f - padding,
                 baselineCenter + layout.height * 0.5f + padding,
                 baselineCenter,
-                layout.displayLine.seekTimeMs()
+                layout.displayLine.seekTimeMs(),
+                accessibilityLabel(layout.displayLine),
+                layout.active,
+                layout.displayLine.displayIndex + 1
         );
         hitTargetCount++;
+    }
+
+    private String accessibilityLabel(DisplayLine displayLine) {
+        if (displayLine == null) return "";
+        if (displayLine.isInterlude()) {
+            return "prelude".equals(displayLine.interludeInfo.kind) ? preludeLabel
+                    : "postlude".equals(displayLine.interludeInfo.kind) ? postludeLabel : breakLabel;
+        }
+        LyricsLine line = displayLine.line;
+        if (line == null) return "";
+        LinkedHashSet<String> originals = new LinkedHashSet<>();
+        LinkedHashSet<String> pronunciations = new LinkedHashSet<>();
+        LinkedHashSet<String> translations = new LinkedHashSet<>();
+        addAccessibilityText(originals, line.text);
+        addAccessibilityText(pronunciations, line.pronunciationText);
+        addAccessibilityText(translations, line.translationText);
+        for (LyricsLine.VocalPart part : line.vocalParts) {
+            addAccessibilityText(originals, part.text);
+            addAccessibilityText(pronunciations, part.pronunciationText);
+            addAccessibilityText(translations, part.translationText);
+        }
+        List<String> ordered = new ArrayList<>(originals);
+        ordered.addAll(pronunciations);
+        ordered.addAll(translations);
+        return android.text.TextUtils.join(". ", ordered);
+    }
+
+    private void addAccessibilityText(Set<String> values, String text) {
+        String normalized = text == null ? "" : text.trim();
+        if (!normalized.isEmpty()) values.add(normalized);
     }
 
     private void beginHitTargetFrame() {
@@ -3022,7 +3193,7 @@ public final class LyricsView extends View {
     }
 
     private void drawLoadingSkeleton(Canvas canvas) {
-        long now = SystemClock.uptimeMillis();
+        long now = MotionPreferences.animationsEnabled(getContext()) ? SystemClock.uptimeMillis() : 0L;
         float left = contentLeft();
         float availableWidth = contentWidth();
         float centerY = getHeight() * verticalCenterBias;
@@ -3134,6 +3305,7 @@ public final class LyricsView extends View {
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
+        if (!MotionPreferences.animationsEnabled(getContext())) return 0f;
         long now = System.currentTimeMillis();
         float phase = ((now + rowIndex * 95L + segmentIndex * 62L) % (long) WAVE_PERIOD_MS) / WAVE_PERIOD_MS;
         float wave = (float) Math.sin(phase * Math.PI * 2.0);
@@ -3151,7 +3323,7 @@ public final class LyricsView extends View {
             float textSize,
             int rowIndex
     ) {
-        if (!animate) {
+        if (!animate || !MotionPreferences.animationsEnabled(getContext())) {
             return;
         }
 
@@ -3214,7 +3386,7 @@ public final class LyricsView extends View {
         textPaint.setTextSize(textSize);
         textPaint.setColor(color);
         textPaint.setAlpha(Color.alpha(color));
-        if (!animate) {
+        if (!animate || !MotionPreferences.animationsEnabled(getContext())) {
             return;
         }
 
@@ -3616,6 +3788,9 @@ public final class LyricsView extends View {
     }
 
     private KaraokeBounce karaokeBounce(TextSegment segment, DrawGroup group) {
+        if (!MotionPreferences.animationsEnabled(getContext())) {
+            return karaokeBounceResult.set(0f, 1f, false);
+        }
         if (karaokeDataAsLineSynced || !karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
@@ -4274,16 +4449,22 @@ public final class LyricsView extends View {
         float bottom;
         float centerY;
         long seekTimeMs;
+        String label = "";
+        boolean active;
+        int virtualId;
 
         void set(LineHitTarget source) {
-            set(source.top, source.bottom, source.centerY, source.seekTimeMs);
+            set(source.top, source.bottom, source.centerY, source.seekTimeMs, source.label, source.active, source.virtualId);
         }
 
-        void set(float top, float bottom, float centerY, long seekTimeMs) {
+        void set(float top, float bottom, float centerY, long seekTimeMs, String label, boolean active, int virtualId) {
             this.top = top;
             this.bottom = bottom;
             this.centerY = centerY;
             this.seekTimeMs = Math.max(0L, seekTimeMs);
+            this.label = label == null ? "" : label;
+            this.active = active;
+            this.virtualId = Math.max(1, virtualId);
         }
     }
 

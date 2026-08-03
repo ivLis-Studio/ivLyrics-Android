@@ -61,6 +61,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.ScrollView;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -204,6 +205,7 @@ public final class MainActivity extends Activity implements
     private FrameLayout landscapeLyricsPane;
     private FrameLayout inAppBrowserPage;
     private FrameLayout inAppBrowserSheet;
+    private int inAppBrowserTopInsetPx;
     private FrameLayout inAppBrowserLoadingView;
     private FrameLayout inAppBrowserHandleTouchTarget;
     private View inAppBrowserHandleView;
@@ -409,6 +411,8 @@ public final class MainActivity extends Activity implements
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
+    private long aiSupplementGeneration;
+    private long aiMetadataGeneration;
     private String currentTmiRequestKey = "";
     private String emptyLyricsPreviewKey = "";
     private LyricsLine cachedPreviewRowsLine;
@@ -2109,7 +2113,15 @@ public final class MainActivity extends Activity implements
         main.setOrientation(LinearLayout.VERTICAL);
         main.setClipChildren(false);
         main.setClipToPadding(false);
-        page.addView(main, new FrameLayout.LayoutParams(
+        ScrollView compactScroll = new ScrollView(this);
+        compactScroll.setFillViewport(true);
+        compactScroll.setClipToPadding(false);
+        compactScroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        compactScroll.addView(main, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        page.addView(compactScroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
@@ -2139,10 +2151,15 @@ public final class MainActivity extends Activity implements
                 0.55f
         ));
 
-        int artworkSize = Math.min(
-                getResources().getDisplayMetrics().widthPixels - dp(32),
-                Math.round(getResources().getDisplayMetrics().heightPixels * 0.45f)
-        );
+        Rect windowBounds = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? getWindowManager().getCurrentWindowMetrics().getBounds()
+                : new Rect(0, 0, getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
+        float heightDp = windowBounds.height() / getResources().getDisplayMetrics().density;
+        float artworkHeightFraction = heightDp < 700f ? 0.31f : 0.45f;
+        int artworkSize = Math.max(dp(132), Math.min(
+                windowBounds.width() - dp(32),
+                Math.round(windowBounds.height() * artworkHeightFraction)
+        ));
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
         artworkParams.gravity = Gravity.CENTER_HORIZONTAL;
         artworkParams.bottomMargin = dp(8);
@@ -2214,8 +2231,9 @@ public final class MainActivity extends Activity implements
         controls.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams controlsParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(76)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
+        controls.setMinimumHeight(dp(76));
         controlsParams.topMargin = dp(8);
         main.addView(controls, controlsParams);
 
@@ -3197,8 +3215,9 @@ public final class MainActivity extends Activity implements
         FrameLayout header = new FrameLayout(this);
         content.addView(header, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(66)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         ));
+        header.setMinimumHeight(dp(66));
 
         View handle = new View(this);
         handle.setBackground(roundDrawable(Color.argb(82, 255, 255, 255), dp(1.5f)));
@@ -3210,9 +3229,10 @@ public final class MainActivity extends Activity implements
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout.LayoutParams metaRowParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(54),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
         );
+        metaRow.setMinimumHeight(dp(54));
         header.addView(metaRow, metaRowParams);
 
         LinearLayout lyricsMeta = new LinearLayout(this);
@@ -3323,6 +3343,14 @@ public final class MainActivity extends Activity implements
         );
         sheetParams.topMargin = inAppBrowserSheetTopMarginPx();
         page.addView(inAppBrowserSheet, sheetParams);
+        page.setOnApplyWindowInsetsListener((view, insets) -> {
+            inAppBrowserTopInsetPx = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    ? insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout()).top
+                    : insets.getSystemWindowInsetTop();
+            updateInAppBrowserSheetLayout();
+            return insets;
+        });
+        page.requestApplyInsets();
 
         inAppBrowserWebView = new WebView(this);
         inAppBrowserWebView.setBackgroundColor(inAppBrowserBackgroundColor());
@@ -11039,6 +11067,7 @@ public final class MainActivity extends Activity implements
     }
 
     private void requestMetadataTranslation(boolean clearCache) {
+        long generation = ++aiMetadataGeneration;
         if (currentTrack == null || !currentTrack.hasUsableMetadata() || aiLyricsRepository == null || aiLyricsSettings == null) {
             return;
         }
@@ -11060,10 +11089,45 @@ public final class MainActivity extends Activity implements
             updateTrackMetadataTextViews(currentTrack);
             return;
         }
-        aiLyricsRepository.loadMetadataTranslation(currentTrack, snapshot, source, clearCache, this);
+        String requestTrackKey = currentLyricsKey;
+        aiLyricsRepository.loadMetadataTranslation(
+                currentTrack,
+                snapshot,
+                source,
+                clearCache,
+                new MetadataGenerationCallback(generation, requestTrackKey)
+        );
+    }
+
+    private final class MetadataGenerationCallback implements AiLyricsRepository.Callback {
+        private final long generation;
+        private final String trackKey;
+        MetadataGenerationCallback(long generation, String trackKey) {
+            this.generation = generation;
+            this.trackKey = trackKey;
+        }
+        private boolean current(String key) {
+            return generation == aiMetadataGeneration && trackKey.equals(currentLyricsKey) && trackKey.equals(key);
+        }
+        @Override public void onAiMetadataTranslationLoaded(String key, AiLyricsRepository.MetadataTranslation value) {
+            if (current(key)) MainActivity.this.onAiMetadataTranslationLoaded(key, value);
+        }
+        @Override public void onAiMetadataTranslationError(String key, String message) {
+            if (current(key)) MainActivity.this.onAiMetadataTranslationError(key, message);
+        }
+        @Override public void onAiLyricsLoaded(String key, LyricsResult result) {}
+        @Override public void onAiLyricsPartialLoaded(String key, LyricsResult result, boolean p, boolean t, boolean f, boolean e) {}
+        @Override public void onAiLyricsError(String key, String message) {}
+        @Override public void onAiLyricsTaskError(String key, String message, boolean p, boolean t, boolean f) {}
+        @Override public void onAiLyricsLog(String key, String message) {}
+        @Override public void onAiTmiLoaded(String key, AiLyricsRepository.TmiInfo info) {}
+        @Override public void onAiTmiError(String key, String message) {}
+        @Override public void onAiCulturalAnnotationsLoaded(String key, String requestKey, List<CulturalAnnotation> annotations) {}
+        @Override public void onAiCulturalAnnotationsError(String key, String requestKey, String message) {}
     }
 
     private void requestAiLyrics(boolean clearCache) {
+        long generation = ++aiSupplementGeneration;
         if (currentTrack == null || currentBaseLyricsResult == null || currentBaseLyricsResult.lines.isEmpty()) {
             aiLyricsGenerating = false;
             setLyricsSupplementLoading(false, false, false);
@@ -11149,7 +11213,57 @@ public final class MainActivity extends Activity implements
         );
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));
         requestJapaneseFurigana(clearCache);
-        aiLyricsRepository.loadSupplements(currentTrack, currentBaseLyricsResult, snapshot, source, clearCache, this);
+        String requestTrackKey = currentLyricsKey;
+        LyricsResult requestBaseResult = currentBaseLyricsResult;
+        aiLyricsRepository.loadSupplements(
+                currentTrack,
+                requestBaseResult,
+                snapshot,
+                source,
+                clearCache,
+                new SupplementGenerationCallback(generation, requestTrackKey, requestBaseResult)
+        );
+    }
+
+    private final class SupplementGenerationCallback implements AiLyricsRepository.Callback {
+        private final long generation;
+        private final String trackKey;
+        private final LyricsResult baseResult;
+
+        SupplementGenerationCallback(long generation, String trackKey, LyricsResult baseResult) {
+            this.generation = generation;
+            this.trackKey = trackKey;
+            this.baseResult = baseResult;
+        }
+
+        private boolean current(String callbackTrackKey) {
+            return generation == aiSupplementGeneration
+                    && trackKey.equals(currentLyricsKey)
+                    && trackKey.equals(callbackTrackKey)
+                    && baseResult == currentBaseLyricsResult;
+        }
+
+        @Override public void onAiLyricsLoaded(String key, LyricsResult result) {
+            if (current(key)) MainActivity.this.onAiLyricsLoaded(key, result);
+        }
+        @Override public void onAiLyricsPartialLoaded(String key, LyricsResult result, boolean pronunciationLoading, boolean translationLoading, boolean finished, boolean hadError) {
+            if (current(key)) MainActivity.this.onAiLyricsPartialLoaded(key, result, pronunciationLoading, translationLoading, finished, hadError);
+        }
+        @Override public void onAiLyricsError(String key, String message) {
+            if (current(key)) MainActivity.this.onAiLyricsError(key, message);
+        }
+        @Override public void onAiLyricsTaskError(String key, String message, boolean pronunciationLoading, boolean translationLoading, boolean finished) {
+            if (current(key)) MainActivity.this.onAiLyricsTaskError(key, message, pronunciationLoading, translationLoading, finished);
+        }
+        @Override public void onAiLyricsLog(String key, String message) {
+            if (current(key)) MainActivity.this.onAiLyricsLog(key, message);
+        }
+        @Override public void onAiMetadataTranslationLoaded(String key, AiLyricsRepository.MetadataTranslation translation) {}
+        @Override public void onAiMetadataTranslationError(String key, String message) {}
+        @Override public void onAiTmiLoaded(String key, AiLyricsRepository.TmiInfo info) {}
+        @Override public void onAiTmiError(String key, String message) {}
+        @Override public void onAiCulturalAnnotationsLoaded(String key, String requestKey, List<CulturalAnnotation> annotations) {}
+        @Override public void onAiCulturalAnnotationsError(String key, String requestKey, String message) {}
     }
 
     private void requestCulturalAnnotations(boolean clearCache) {
@@ -13341,7 +13455,7 @@ public final class MainActivity extends Activity implements
     }
 
     private int inAppBrowserSheetTopMarginPx() {
-        int topInset = statusBarInsetPx();
+        int topInset = inAppBrowserTopInsetPx;
         int margin = topInset + dp(2);
         return Math.max(dp(isLandscapeLayout() ? 8 : 18), margin);
     }
@@ -13350,20 +13464,13 @@ public final class MainActivity extends Activity implements
     private int statusBarInsetPx() {
         Window window = getWindow();
         View decor = window == null ? null : window.getDecorView();
-        if (decor != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            WindowInsets insets = decor.getRootWindowInsets();
-            if (insets != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    return insets.getInsets(WindowInsets.Type.statusBars()).top;
-                }
-                return insets.getSystemWindowInsetTop();
-            }
-        }
-        if (isLandscapeLayout()) {
+        WindowInsets insets = decor == null ? null : decor.getRootWindowInsets();
+        if (insets == null) {
             return 0;
         }
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        return resourceId > 0 ? getResources().getDimensionPixelSize(resourceId) : 0;
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout()).top
+                : insets.getSystemWindowInsetTop();
     }
 
     private void injectInAppBrowserProfileCss(WebView view, String url) {
