@@ -2031,6 +2031,13 @@ public final class LyricsView extends View {
                 group.rowSeed + rowIndex
         );
 
+        if (row.continuousShaping && !row.hasRuby()) {
+            drawContinuouslyShapedRow(canvas, row, left, baseline, group, rowIndex, fadeAlpha);
+            canvas.restoreToCount(canvasSave);
+            resetPaintEffects();
+            return;
+        }
+
         if (!group.active && !row.hasRuby()) {
             configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, false, group.textSize, false, group.typeface);
             canvas.drawText(row.text, left, baseline, textPaint);
@@ -2070,6 +2077,149 @@ public final class LyricsView extends View {
 
         canvas.restoreToCount(canvasSave);
         resetPaintEffects();
+    }
+
+    private void drawContinuouslyShapedRow(
+            Canvas canvas,
+            TextRow row,
+            float left,
+            float baseline,
+            DrawGroup group,
+            int rowIndex,
+            float fadeAlpha
+    ) {
+        float offsetY = "wave".equals(group.kind)
+                ? baseWaveOffset(group.kind, group.rowSeed + rowIndex, 0, group.textSize)
+                : 0f;
+        configurePaint(
+                scaleAlpha(group.inactiveColor, fadeAlpha),
+                group.kind,
+                group.active,
+                group.textSize,
+                false,
+                group.typeface
+        );
+        canvas.drawText(row.text, left, baseline + offsetY, textPaint);
+
+        if (!group.active) {
+            return;
+        }
+        float fill = continuousRowFillFraction(row);
+        if (fill <= 0f) {
+            return;
+        }
+        drawContinuousActiveFill(
+                canvas,
+                row,
+                left,
+                baseline + offsetY,
+                group,
+                fill,
+                fadeAlpha
+        );
+    }
+
+    private float continuousRowFillFraction(TextRow row) {
+        if (row == null || row.segments.isEmpty()) {
+            return 0f;
+        }
+        float total = 0f;
+        float filled = 0f;
+        for (TextSegment segment : row.segments) {
+            float weight = Math.max(0f, segment.textWidth);
+            total += weight;
+            filled += weight * segmentFillFraction(segment);
+        }
+        return total <= 0f ? 0f : clamp(filled / total);
+    }
+
+    private void drawContinuousActiveFill(
+            Canvas canvas,
+            TextRow row,
+            float left,
+            float baseline,
+            DrawGroup group,
+            float fill,
+            float fadeAlpha
+    ) {
+        float safeFill = clamp(fill);
+        float right = left + row.width;
+        float fillWidth = row.width * safeFill;
+        float top = baseline - group.textSize * 1.28f;
+        float bottom = baseline + group.textSize * 0.48f;
+        float softWidth = Math.min(sp(7f), Math.max(0f, row.width * 0.10f));
+        int activeColor = scaleAlpha(group.activeColor, fadeAlpha);
+        boolean rightToLeft = isRightToLeftText(row.text);
+
+        int clipSave = canvas.save();
+        configurePaint(activeColor, group.kind, true, group.textSize, true, group.typeface);
+        if (rightToLeft) {
+            float fillLeft = right - fillWidth;
+            float clipLeft = safeFill >= 0.995f
+                    ? left
+                    : Math.max(left, fillLeft - softWidth);
+            canvas.clipRect(clipLeft, top, right, bottom);
+            if (safeFill < 0.995f && softWidth > 1f) {
+                float softStart = Math.max(left, fillLeft - softWidth);
+                float softEnd = Math.max(softStart + 1f, Math.min(right, fillLeft + softWidth * 0.42f));
+                textPaint.setShader(new LinearGradient(
+                        softStart,
+                        0f,
+                        softEnd,
+                        0f,
+                        new int[]{
+                                withAlpha(activeColor, 0),
+                                activeColor,
+                                activeColor
+                        },
+                        new float[]{0f, 0.66f, 1f},
+                        Shader.TileMode.CLAMP
+                ));
+            }
+        } else {
+            float fillRight = left + fillWidth;
+            float clipRight = safeFill >= 0.995f
+                    ? right
+                    : Math.min(right, fillRight + softWidth);
+            canvas.clipRect(left, top, clipRight, bottom);
+            if (safeFill < 0.995f && softWidth > 1f) {
+                float softStart = Math.max(left, fillRight - softWidth * 0.42f);
+                float softEnd = Math.max(softStart + 1f, Math.min(right, fillRight + softWidth));
+                textPaint.setShader(new LinearGradient(
+                        softStart,
+                        0f,
+                        softEnd,
+                        0f,
+                        new int[]{
+                                activeColor,
+                                activeColor,
+                                withAlpha(activeColor, 0)
+                        },
+                        new float[]{0f, 0.34f, 1f},
+                        Shader.TileMode.CLAMP
+                ));
+            }
+        }
+        canvas.drawText(row.text, left, baseline, textPaint);
+        textPaint.setShader(null);
+        canvas.restoreToCount(clipSave);
+    }
+
+    private static boolean isRightToLeftText(String text) {
+        String value = text == null ? "" : text;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            byte direction = Character.getDirectionality(codePoint);
+            if (direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT
+                    || direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) {
+                return true;
+            }
+            if (direction == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
+                return false;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return false;
     }
 
     private float alignedRowLeft(TextRow row) {
@@ -2186,7 +2336,15 @@ public final class LyricsView extends View {
         List<TextRow> rows = shouldWrapByWords(segments)
                 ? wrapWordUnits(buildWordWrapUnits(segments), maxWidth)
                 : wrapIndividualSegments(segments, maxWidth);
-        return rows.isEmpty() ? Collections.singletonList(new TextRow(segments)) : rows;
+        if (rows.isEmpty()) {
+            rows = Collections.singletonList(new TextRow(segments));
+        }
+        for (TextRow row : rows) {
+            if (row.continuousShaping) {
+                row.width = Math.max(0f, textPaint.measureText(row.text));
+            }
+        }
+        return rows;
     }
 
     private List<TextRow> wrapIndividualSegments(List<TextSegment> segments, float maxWidth) {
@@ -2510,8 +2668,8 @@ public final class LyricsView extends View {
                         value,
                         syllable.startTimeMs,
                         syllable.endTimeMs,
-                        index,
-                        1,
+                        charOffset,
+                        charLength,
                         rubyForRange(rubyAnnotations, charOffset, charLength)
                 ));
                 charOffset += charLength;
@@ -2525,18 +2683,26 @@ public final class LyricsView extends View {
 
         List<String> chars = splitChars(text);
         long duration = Math.max(0L, endTimeMs - startTimeMs);
+        List<LyricsLine.Syllable> syntheticSyllables = new ArrayList<>(chars.size());
         for (int index = 0; index < chars.size(); index++) {
             String value = chars.get(index);
             long start = duration <= 0L ? 0L : startTimeMs + Math.round(duration * (index / (float) Math.max(1, chars.size())));
             long end = duration <= 0L ? 0L : startTimeMs + Math.round(duration * ((index + 1) / (float) Math.max(1, chars.size())));
+            syntheticSyllables.add(new LyricsLine.Syllable(value, start, end));
+        }
+        int charOffset = 0;
+        for (LyricsLine.Syllable syllable : TimedSyllableNormalizer.normalize(syntheticSyllables)) {
+            String value = syllable.text == null ? "" : syllable.text;
+            int charLength = Math.max(1, value.codePointCount(0, value.length()));
             segments.add(createMeasuredSegment(
                     value,
-                    start,
-                    end,
-                    index,
-                    1,
-                    rubyForRange(rubyAnnotations, index, 1)
+                    syllable.startTimeMs,
+                    syllable.endTimeMs,
+                    charOffset,
+                    charLength,
+                    rubyForRange(rubyAnnotations, charOffset, charLength)
             ));
+            charOffset += charLength;
         }
         return segments;
     }
@@ -4124,8 +4290,9 @@ public final class LyricsView extends View {
     private static final class TextRow {
         final List<TextSegment> segments;
         final String text;
-        final float width;
+        float width;
         final boolean hasRuby;
+        final boolean continuousShaping;
 
         TextRow(List<TextSegment> segments) {
             this.segments = segments == null ? Collections.emptyList() : segments;
@@ -4142,6 +4309,7 @@ public final class LyricsView extends View {
             this.text = builder.toString();
             this.width = Math.max(0f, totalWidth);
             this.hasRuby = nextHasRuby;
+            this.continuousShaping = TimedSyllableNormalizer.requiresContinuousShaping(this.text);
         }
 
         boolean hasRuby() {

@@ -506,6 +506,9 @@ final class MainLyricPreviewView extends View {
 
     private float measureLineWidth(PreviewLine line) {
         if (line != null && line.hasKaraoke()) {
+            if (TimedSyllableNormalizer.requiresContinuousShaping(line.text)) {
+                return textPaint.measureText(line.text);
+            }
             float width = 0f;
             for (LyricsLine.Syllable syllable : line.syllables) {
                 if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
@@ -702,6 +705,31 @@ final class MainLyricPreviewView extends View {
             rowWidth += segment.width;
         }
 
+        if (TimedSyllableNormalizer.requiresContinuousShaping(line.text)) {
+            rowWidth = textPaint.measureText(line.text);
+            int rowSave = canvas.save();
+            applyCanvasEffect(canvas, line.kind, x + rowWidth * 0.5f, baseline, textSize, line.rowSeed());
+            configureTextPaint(inactiveColor, line.kind, textSize, false);
+            canvas.drawText(line.text, x, baseline, textPaint);
+            float fill = continuousFillFraction(segments, positionMs);
+            if (fill > 0f) {
+                drawContinuousActiveFill(
+                        canvas,
+                        line.text,
+                        x,
+                        rowWidth,
+                        baseline,
+                        line.kind,
+                        textSize,
+                        activeColor,
+                        fill
+                );
+            }
+            canvas.restoreToCount(rowSave);
+            resetPaintEffects();
+            return;
+        }
+
         int rowSave = canvas.save();
         applyCanvasEffect(canvas, line.kind, x + rowWidth * 0.5f, baseline, textSize, line.rowSeed());
         float cursor = x;
@@ -733,6 +761,95 @@ final class MainLyricPreviewView extends View {
         }
         canvas.restoreToCount(rowSave);
         resetPaintEffects();
+    }
+
+    private float continuousFillFraction(List<TextSegment> segments, long positionMs) {
+        float total = 0f;
+        float filled = 0f;
+        for (TextSegment segment : segments) {
+            float weight = Math.max(0f, segment.textWidth);
+            total += weight;
+            filled += weight * segmentFillFraction(segment, positionMs);
+        }
+        return total <= 0f ? 0f : clamp(filled / total);
+    }
+
+    private void drawContinuousActiveFill(
+            Canvas canvas,
+            String text,
+            float left,
+            float width,
+            float baseline,
+            String kind,
+            float textSize,
+            int activeColor,
+            float fill
+    ) {
+        float safeFill = clamp(fill);
+        float right = left + width;
+        float fillWidth = width * safeFill;
+        float top = baseline - textSize * 1.28f;
+        float bottom = baseline + textSize * 0.48f;
+        float softWidth = Math.min(sp(7f), Math.max(0f, width * 0.10f));
+        boolean rightToLeft = isRightToLeftText(text);
+
+        int clipSave = canvas.save();
+        configureTextPaint(activeColor, kind, textSize, true);
+        if (rightToLeft) {
+            float fillLeft = right - fillWidth;
+            float clipLeft = safeFill >= 0.995f ? left : Math.max(left, fillLeft - softWidth);
+            canvas.clipRect(clipLeft, top, right, bottom);
+            if (safeFill < 0.995f && softWidth > 1f) {
+                float softStart = Math.max(left, fillLeft - softWidth);
+                float softEnd = Math.max(softStart + 1f, Math.min(right, fillLeft + softWidth * 0.42f));
+                textPaint.setShader(new LinearGradient(
+                        softStart,
+                        0f,
+                        softEnd,
+                        0f,
+                        new int[]{Color.argb(0, 255, 255, 255), activeColor, activeColor},
+                        new float[]{0f, 0.66f, 1f},
+                        Shader.TileMode.CLAMP
+                ));
+            }
+        } else {
+            float fillRight = left + fillWidth;
+            float clipRight = safeFill >= 0.995f ? right : Math.min(right, fillRight + softWidth);
+            canvas.clipRect(left, top, clipRight, bottom);
+            if (safeFill < 0.995f && softWidth > 1f) {
+                float softStart = Math.max(left, fillRight - softWidth * 0.42f);
+                float softEnd = Math.max(softStart + 1f, Math.min(right, fillRight + softWidth));
+                textPaint.setShader(new LinearGradient(
+                        softStart,
+                        0f,
+                        softEnd,
+                        0f,
+                        new int[]{activeColor, activeColor, Color.argb(0, 255, 255, 255)},
+                        new float[]{0f, 0.34f, 1f},
+                        Shader.TileMode.CLAMP
+                ));
+            }
+        }
+        canvas.drawText(text, left, baseline, textPaint);
+        textPaint.setShader(null);
+        canvas.restoreToCount(clipSave);
+    }
+
+    private static boolean isRightToLeftText(String text) {
+        String value = text == null ? "" : text;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            byte direction = Character.getDirectionality(codePoint);
+            if (direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT
+                    || direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) {
+                return true;
+            }
+            if (direction == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
+                return false;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return false;
     }
 
     private void drawActiveFill(
@@ -868,8 +985,8 @@ final class MainLyricPreviewView extends View {
                     value,
                     syllable.startTimeMs,
                     syllable.endTimeMs,
-                    index,
-                    1,
+                    charOffset,
+                    charLength,
                     rubyForRange(rubyAnnotations, charOffset, charLength)
             ));
             charOffset += charLength;
