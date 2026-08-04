@@ -341,9 +341,11 @@ public final class NowPlayingService extends NotificationListenerService {
                         )
                 )
         );
-        if (artwork == null && !artworkUri.isEmpty()) {
-            artwork = artworkCache.get(artworkUri);
-            if (artwork == null) {
+        if (!artworkUri.isEmpty()) {
+            Bitmap uriArtwork = artworkCache.get(artworkUri);
+            if (isHigherResolutionArtwork(uriArtwork, artwork)) {
+                artwork = uriArtwork;
+            } else if (uriArtwork == null) {
                 requestArtworkLoad(controller, artworkUri);
             }
         }
@@ -408,6 +410,18 @@ public final class NowPlayingService extends NotificationListenerService {
         } catch (RuntimeException ignored) {
             artworkLoading.remove(cacheKey);
         }
+    }
+
+    private boolean isHigherResolutionArtwork(Bitmap candidate, Bitmap current) {
+        if (candidate == null || candidate.isRecycled()) {
+            return false;
+        }
+        if (current == null || current.isRecycled()) {
+            return true;
+        }
+        long candidateArea = (long) candidate.getWidth() * candidate.getHeight();
+        long currentArea = (long) current.getWidth() * current.getHeight();
+        return candidateArea > currentArea;
     }
 
     private Bitmap loadArtworkBitmap(String artworkUri) {

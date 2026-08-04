@@ -74,6 +74,7 @@ final class LyricsRepository {
     private static final long LYRICS_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1_000L;
     private static final long OPENDB_FRESH_MS = 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
+    private static final int SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES = 8;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
     private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
@@ -92,6 +93,26 @@ final class LyricsRepository {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
+    private final Map<String, Bitmap> spotifyArtworkCache = new LinkedHashMap<String, Bitmap>(
+            SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES + 1,
+            0.75f,
+            true
+    ) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Bitmap> eldest) {
+            return size() > SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES;
+        }
+    };
+    private final Map<String, SpotifyTrackMatch> spotifyArtworkMetadataCache = new LinkedHashMap<String, SpotifyTrackMatch>(
+            SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES + 1,
+            0.75f,
+            true
+    ) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, SpotifyTrackMatch> eldest) {
+            return size() > SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES;
+        }
+    };
     private final AtomicLong providerPolicyGeneration = new AtomicLong();
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
@@ -318,6 +339,7 @@ final class LyricsRepository {
         if (cached != null && !shouldRevalidateCachedResult(cached, providerSettings, track)) {
             emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist);
             callback.onLyricsLoaded(key, privacySafeContributorFallback(cached));
+            requestSpotifyArtwork(track, cached, key, callback);
             return;
         }
         if (cached != null) {
@@ -350,6 +372,7 @@ final class LyricsRepository {
                             + " / contributors=" + reusableCached.contributors.size());
                     LyricsResult finalCached = safeCached;
                     postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
+                    requestSpotifyArtwork(track, safeCached, key, callback);
                     return;
                 }
                 if (reusableCached != null) {
@@ -656,6 +679,7 @@ final class LyricsRepository {
                     ? ""
                     : " / trackId=" + cachedBase.spotifyTrackId));
             publishResolvedMetadata(trackKey, cachedBase.isrc, cachedBase.spotifyTrackId, callback);
+            resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
         } else {
             spotifyMatch = fetchSpotifyIsrc(
                     track,
@@ -1222,6 +1246,23 @@ final class LyricsRepository {
         if (callback == null || match == null || match.artworkUrl.isEmpty()) {
             return;
         }
+        if (!match.spotifyId.isEmpty()) {
+            synchronized (spotifyArtworkMetadataCache) {
+                spotifyArtworkMetadataCache.put(match.spotifyId, match);
+            }
+        }
+        String cacheKey = firstNonEmpty(match.spotifyId, match.artworkUrl) + "|" + match.artworkUrl;
+        Bitmap cachedArtwork;
+        synchronized (spotifyArtworkCache) {
+            cachedArtwork = spotifyArtworkCache.get(cacheKey);
+        }
+        if (cachedArtwork != null && !cachedArtwork.isRecycled()) {
+            String artworkKey = "spotify:" + match.spotifyId + ":artwork:" + match.artworkUrl;
+            log.write("spotify artwork: memory cache hit "
+                    + cachedArtwork.getWidth() + "x" + cachedArtwork.getHeight());
+            mainHandler.post(() -> callback.onLyricsArtworkLoaded(trackKey, cachedArtwork, artworkKey));
+            return;
+        }
         try {
             Bitmap artwork = loadBitmap(match.artworkUrl);
             if (artwork == null) {
@@ -1229,6 +1270,9 @@ final class LyricsRepository {
                 return;
             }
             String artworkKey = "spotify:" + match.spotifyId + ":artwork:" + match.artworkUrl;
+            synchronized (spotifyArtworkCache) {
+                spotifyArtworkCache.put(cacheKey, artwork);
+            }
             log.write("spotify artwork: loaded "
                     + artwork.getWidth()
                     + "x"
@@ -1241,6 +1285,102 @@ final class LyricsRepository {
         } catch (Exception error) {
             log.write("spotify artwork error: " + error.getMessage());
         }
+    }
+
+    private void requestSpotifyArtwork(
+            TrackSnapshot track,
+            LyricsResult cachedBase,
+            String trackKey,
+            Callback callback
+    ) {
+        if (track == null || callback == null || executor.isShutdown()) {
+            return;
+        }
+        try {
+            executor.execute(() -> {
+                LogSink log = message -> emitLog(trackKey, callback, message);
+                resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
+            });
+        } catch (RuntimeException ignored) {
+            // The activity may close while a cache-hit artwork refresh is being queued.
+        }
+    }
+
+    private void resolveAndPublishSpotifyArtwork(
+            TrackSnapshot track,
+            LyricsResult cachedBase,
+            String trackKey,
+            Callback callback,
+            LogSink log
+    ) {
+        if (track == null || callback == null) {
+            return;
+        }
+        String spotifyTrackId = firstNonEmpty(
+                track.trackId,
+                cachedBase == null ? "" : cachedBase.spotifyTrackId
+        );
+        SpotifyTrackMatch match = null;
+        if (!spotifyTrackId.isEmpty()) {
+            synchronized (spotifyArtworkMetadataCache) {
+                match = spotifyArtworkMetadataCache.get(spotifyTrackId);
+            }
+            if (match != null) {
+                log.write("spotify artwork metadata: memory cache hit id=" + spotifyTrackId);
+                publishResolvedSpotifyMetadata(trackKey, match, callback);
+                publishSpotifyArtwork(trackKey, match, callback, log);
+                return;
+            }
+            try {
+                String token = getSpotifyAccessToken(false, log);
+                if (token.isEmpty()) {
+                    return;
+                }
+                try {
+                    match = fetchSpotifyTrackById(
+                            token,
+                            spotifyTrackId,
+                            "artwork metadata",
+                            Collections.singletonMap("Authorization", "Bearer " + token),
+                            false,
+                            log
+                    );
+                } catch (HttpStatusException error) {
+                    if (!isSpotifyTokenFailure(error)) {
+                        throw error;
+                    }
+                    log.write("spotify token: rejected by artwork request ("
+                            + error.getMessage() + "), refreshing");
+                    invalidateSpotifyToken();
+                    token = getSpotifyAccessToken(true, log);
+                    if (!token.isEmpty()) {
+                        match = fetchSpotifyTrackById(
+                                token,
+                                spotifyTrackId,
+                                "artwork metadata after refresh",
+                                Collections.singletonMap("Authorization", "Bearer " + token),
+                                false,
+                                log
+                        );
+                    }
+                }
+            } catch (Exception error) {
+                log.write("spotify artwork metadata error: " + error.getMessage());
+            }
+        } else {
+            log.write("spotify artwork: cached track id unavailable; resolving from playback metadata");
+            match = fetchSpotifyIsrc(track, log, null);
+        }
+        if (match == null) {
+            return;
+        }
+        if (!match.spotifyId.isEmpty()) {
+            synchronized (spotifyArtworkMetadataCache) {
+                spotifyArtworkMetadataCache.put(match.spotifyId, match);
+            }
+        }
+        publishResolvedSpotifyMetadata(trackKey, match, callback);
+        publishSpotifyArtwork(trackKey, match, callback, log);
     }
 
     private void publishResolvedSpotifyMetadata(String trackKey, SpotifyTrackMatch match, Callback callback) {

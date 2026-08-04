@@ -2139,7 +2139,7 @@ public final class MainActivity extends Activity implements
         top.addView(menuButton, menuParams);
 
         artworkView = new ImageView(this);
-        artworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         artworkView.setAdjustViewBounds(false);
         artworkView.setCropToPadding(false);
         artworkView.setBackground(albumFallbackDrawable());
@@ -2377,7 +2377,7 @@ public final class MainActivity extends Activity implements
         ));
 
         pictureInPictureArtworkView = new ImageView(this);
-        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         pictureInPictureArtworkView.setAdjustViewBounds(false);
         pictureInPictureArtworkView.setCropToPadding(false);
         pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
@@ -2469,7 +2469,7 @@ public final class MainActivity extends Activity implements
         content.addView(meta, metaParams);
 
         pictureInPictureArtworkView = new ImageView(this);
-        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         pictureInPictureArtworkView.setAdjustViewBounds(false);
         pictureInPictureArtworkView.setCropToPadding(false);
         pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
@@ -2550,7 +2550,7 @@ public final class MainActivity extends Activity implements
         content.addView(meta, metaParams);
 
         pictureInPictureArtworkView = new ImageView(this);
-        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         pictureInPictureArtworkView.setAdjustViewBounds(false);
         pictureInPictureArtworkView.setCropToPadding(false);
         pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
@@ -2668,7 +2668,7 @@ public final class MainActivity extends Activity implements
         ));
 
         artworkView = new ImageView(this);
-        artworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         artworkView.setAdjustViewBounds(false);
         artworkView.setCropToPadding(false);
         artworkView.setBackground(albumFallbackDrawable());
@@ -10598,7 +10598,7 @@ public final class MainActivity extends Activity implements
         ));
 
         ImageView cover = new ImageView(this);
-        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cover.setScaleType(ImageView.ScaleType.FIT_CENTER);
         Bitmap artwork = currentArtworkBitmap != null ? currentArtworkBitmap : snapshot.artwork;
         if (artwork == null) {
             cover.setBackground(albumFallbackDrawable());
@@ -14435,18 +14435,18 @@ public final class MainActivity extends Activity implements
         }
         if (artwork != null) {
             if (artworkView != null) {
-                artworkView.setBackgroundColor(Color.TRANSPARENT);
-                artworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                artworkView.setBackground(albumFallbackDrawable());
+                artworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 artworkView.setImageBitmap(artwork);
             }
             if (lyricsArtworkView != null) {
-                lyricsArtworkView.setBackgroundColor(Color.TRANSPARENT);
-                lyricsArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                lyricsArtworkView.setBackground(albumFallbackDrawable());
+                lyricsArtworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 lyricsArtworkView.setImageBitmap(artwork);
             }
             if (pictureInPictureArtworkView != null) {
-                pictureInPictureArtworkView.setBackgroundColor(Color.TRANSPARENT);
-                pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                pictureInPictureArtworkView.setBackground(albumFallbackDrawable());
+                pictureInPictureArtworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 pictureInPictureArtworkView.setImageBitmap(artwork);
             }
         } else {
