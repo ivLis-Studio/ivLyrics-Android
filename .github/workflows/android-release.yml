@@ -33,6 +33,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate release webhook helper
+        run: node --test .github/scripts/send_release_webhook.test.mjs
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -193,3 +196,12 @@ jobs:
               --notes-file release-metadata/release-notes.md \
               "${args[@]}"
           fi
+
+      - name: Send Android release notes to Discord
+        env:
+          RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_NOTES_WEBHOOK_URL }}
+          RELEASE_PLATFORM: android
+          RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
+          RELEASE_TITLE: ivLyrics Android ${{ steps.collect.outputs.release_tag }}
+          RELEASE_NOTES_PATH: release-metadata/release-notes.md
+        run: node .github/scripts/send_release_webhook.mjs
