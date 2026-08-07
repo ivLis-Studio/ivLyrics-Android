@@ -17,9 +17,13 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Outline;
+import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -43,6 +47,7 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
+import android.text.style.ReplacementSpan;
 import android.util.Rational;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -185,6 +190,7 @@ public final class MainActivity extends Activity implements
     private AiLyricsRepository aiLyricsRepository;
     private FuriganaRepository furiganaRepository;
     private YouTubeBackgroundRepository youtubeBackgroundRepository;
+    private CreatorSupportRepository creatorSupportRepository;
     private UpdateChecker updateChecker;
     private AiLyricsSettings aiLyricsSettings;
     private LyricsProviderSettings lyricsProviderSettings;
@@ -411,6 +417,10 @@ public final class MainActivity extends Activity implements
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
+    private final Map<String, CreatorSupportRepository.Presentation> creatorSupportPresentations = new HashMap<>();
+    private String creatorSupportInFlightKey = "";
+    private String creatorSupportResolvedKey = "";
+    private long creatorSupportGeneration;
     private long aiSupplementGeneration;
     private long aiMetadataGeneration;
     private String currentTmiRequestKey = "";
@@ -533,6 +543,7 @@ public final class MainActivity extends Activity implements
         currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
         creatorPrivacyRepository = new CreatorPrivacyRepository(this);
+        creatorSupportRepository = new CreatorSupportRepository(this);
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
@@ -920,6 +931,9 @@ public final class MainActivity extends Activity implements
         }
         if (updateChecker != null) {
             updateChecker.shutdown();
+        }
+        if (creatorSupportRepository != null) {
+            creatorSupportRepository.shutdown();
         }
         unregisterAudioDeviceCallback();
         destroyInAppBrowserWebView();
@@ -11686,6 +11700,7 @@ public final class MainActivity extends Activity implements
         }
         updateLyricsProviderAttribution(result);
         updateLyricsContributorCredit(result);
+        requestCreatorSupportPresentations(result);
         applyLandscapeNoLyricsLayout(true);
     }
 
@@ -11798,42 +11813,45 @@ public final class MainActivity extends Activity implements
         updateLyricsProviderAttributionView(
                 landscapeLyricsProviderAttributionView,
                 provider,
-                LyricsProviderAttribution.landscapeContributorNames(result, ui("lyrics.credit_anonymous"))
+                provider.isEmpty() || result == null
+                        ? ""
+                        : contributorCreditText(result.contributors, 3, false)
         );
     }
 
     private void updateLyricsProviderAttributionView(
             ProviderAttributionView attribution,
             String provider,
-            String contributorNames
+            CharSequence contributorCredit
     ) {
         if (attribution == null) {
             return;
         }
         String value = provider == null ? "" : provider.trim();
-        String names = contributorNames == null ? "" : contributorNames.trim();
-        String contributorCredit = value.isEmpty() || names.isEmpty()
-                ? ""
-                : uiFormat("lyrics.credit_sync_by_format", names);
+        CharSequence credit = contributorCredit == null ? "" : contributorCredit;
+        if (value.isEmpty()) {
+            credit = "";
+        }
+        String creditDescription = credit.toString().trim();
         attribution.value.setText(value);
         attribution.label.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
         attribution.value.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
         if (attribution.contributor != null) {
-            attribution.contributor.setText(contributorCredit);
-            attribution.contributor.setVisibility(contributorCredit.isEmpty() ? View.GONE : View.VISIBLE);
+            attribution.contributor.setText(credit);
+            attribution.contributor.setVisibility(creditDescription.isEmpty() ? View.GONE : View.VISIBLE);
         }
         if (attribution.separator != null) {
             attribution.separator.setVisibility(
-                    !value.isEmpty() && !contributorCredit.isEmpty() ? View.VISIBLE : View.GONE
+                    !value.isEmpty() && !creditDescription.isEmpty() ? View.VISIBLE : View.GONE
             );
         }
 
         String providerDescription = value.isEmpty()
                 ? ""
                 : ui("lyrics.provider_attribution_label") + " " + value;
-        String description = contributorCredit.isEmpty()
+        String description = creditDescription.isEmpty()
                 ? providerDescription
-                : providerDescription + ", " + contributorCredit;
+                : providerDescription + ", " + creditDescription;
         attribution.container.setContentDescription(description.isEmpty() ? null : description);
         attribution.container.setVisibility(description.isEmpty() ? View.GONE : View.VISIBLE);
     }
@@ -11877,11 +11895,11 @@ public final class MainActivity extends Activity implements
     private SpannableString contributorCreditText(
             List<LyricsResult.SyncContributor> contributors,
             int limit,
-            boolean linked
+            boolean allowProfileLinks
     ) {
         String names = contributorNames(contributors, limit);
         SpannableString text = new SpannableString(uiFormat("lyrics.credit_sync_by_format", names));
-        if (!linked || contributors == null || contributors.isEmpty()) {
+        if (contributors == null || contributors.isEmpty()) {
             return text;
         }
         int namesStart = text.toString().indexOf(names);
@@ -11901,7 +11919,20 @@ public final class MainActivity extends Activity implements
                 continue;
             }
             int end = start + displayName.length();
-            if (!contributor.anonymous && contributor.profileAvailable && !contributor.userHash.isEmpty()) {
+            CreatorSupportRepository.Presentation support =
+                    creatorSupportPresentations.get(contributor.userHash);
+            if (support != null && support.hasDecoration()) {
+                text.setSpan(
+                        new SupporterNameSpan(support),
+                        start,
+                        end,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                );
+            }
+            if (allowProfileLinks
+                    && !contributor.anonymous
+                    && contributor.profileAvailable
+                    && !contributor.userHash.isEmpty()) {
                 text.setSpan(new ClickableSpan() {
                     @Override
                     public void onClick(View widget) {
@@ -11911,7 +11942,9 @@ public final class MainActivity extends Activity implements
                     @Override
                     public void updateDrawState(TextPaint ds) {
                         super.updateDrawState(ds);
-                        ds.setColor(Color.argb(150, 255, 255, 255));
+                        if (support == null || !support.hasDecoration()) {
+                            ds.setColor(Color.argb(150, 255, 255, 255));
+                        }
                         ds.setUnderlineText(false);
                     }
                 }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -11919,6 +11952,52 @@ public final class MainActivity extends Activity implements
             searchFrom = end;
         }
         return text;
+    }
+
+    private void requestCreatorSupportPresentations(LyricsResult result) {
+        if (creatorSupportRepository == null) {
+            return;
+        }
+        String requestKey = creatorSupportRequestKey(result);
+        if (requestKey.isEmpty()) {
+            creatorSupportPresentations.clear();
+            creatorSupportInFlightKey = "";
+            creatorSupportResolvedKey = "";
+            return;
+        }
+        if (requestKey.equals(creatorSupportInFlightKey) || requestKey.equals(creatorSupportResolvedKey)) {
+            return;
+        }
+
+        creatorSupportInFlightKey = requestKey;
+        long generation = ++creatorSupportGeneration;
+        creatorSupportRepository.load(result.contributors, presentations -> handler.post(() -> {
+            if (generation != creatorSupportGeneration
+                    || !requestKey.equals(creatorSupportRequestKey(currentLyricsResult))) {
+                return;
+            }
+            creatorSupportPresentations.clear();
+            creatorSupportPresentations.putAll(presentations);
+            creatorSupportInFlightKey = "";
+            creatorSupportResolvedKey = requestKey;
+            updateLyricsProviderAttribution(currentLyricsResult);
+            updateLyricsContributorCredit(currentLyricsResult);
+        }));
+    }
+
+    private String creatorSupportRequestKey(LyricsResult result) {
+        if (result == null || result.contributors.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(currentLyricsKey == null ? "" : currentLyricsKey);
+        int count = Math.min(3, result.contributors.size());
+        for (int index = 0; index < count; index++) {
+            LyricsResult.SyncContributor contributor = result.contributors.get(index);
+            if (contributor != null && !contributor.userHash.isEmpty()) {
+                builder.append('|').append(contributor.userHash);
+            }
+        }
+        return builder.indexOf("|") < 0 ? "" : builder.toString();
     }
 
     private String contributorNames(List<LyricsResult.SyncContributor> contributors, int limit) {
@@ -14760,6 +14839,66 @@ public final class MainActivity extends Activity implements
 
     private interface ChoiceHandler {
         void onChoice(String code);
+    }
+
+    private static final class SupporterNameSpan extends ReplacementSpan {
+        private final CreatorSupportRepository.Presentation presentation;
+
+        SupporterNameSpan(CreatorSupportRepository.Presentation presentation) {
+            this.presentation = presentation;
+        }
+
+        @Override
+        public int getSize(
+                Paint paint,
+                CharSequence text,
+                int start,
+                int end,
+                Paint.FontMetricsInt fontMetrics
+        ) {
+            if (fontMetrics != null) {
+                paint.getFontMetricsInt(fontMetrics);
+            }
+            return Math.round(paint.measureText(text, start, end));
+        }
+
+        @Override
+        public void draw(
+                Canvas canvas,
+                CharSequence text,
+                int start,
+                int end,
+                float x,
+                int top,
+                int y,
+                int bottom,
+                Paint paint
+        ) {
+            Paint styledPaint = new Paint(paint);
+            float width = Math.max(1f, styledPaint.measureText(text, start, end));
+            if (presentation.usesGradient()) {
+                double radians = Math.toRadians(presentation.gradientAngle);
+                float directionX = (float) Math.sin(radians);
+                float directionY = (float) -Math.cos(radians);
+                float centerX = x + width / 2f;
+                float centerY = (top + bottom) / 2f;
+                float projection = Math.abs(directionX) * width / 2f
+                        + Math.abs(directionY) * Math.max(1f, bottom - top) / 2f;
+                styledPaint.setShader(new LinearGradient(
+                        centerX - directionX * projection,
+                        centerY - directionY * projection,
+                        centerX + directionX * projection,
+                        centerY + directionY * projection,
+                        Color.parseColor(presentation.gradientStartColor),
+                        Color.parseColor(presentation.gradientEndColor),
+                        Shader.TileMode.CLAMP
+                ));
+            } else {
+                styledPaint.setShader(null);
+                styledPaint.setColor(Color.parseColor(presentation.solidColor));
+            }
+            canvas.drawText(text, start, end, x, y, styledPaint);
+        }
     }
 
     private static final class ProviderAttributionView {
