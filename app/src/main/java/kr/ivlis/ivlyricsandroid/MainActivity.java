@@ -2136,8 +2136,9 @@ public final class MainActivity extends Activity implements
             return buildLandscapeMainPage();
         }
 
+        int pageHorizontalPadding = dp(24);
         FrameLayout page = new FrameLayout(this);
-        page.setPadding(dp(24), dp(20), dp(24), dp(26));
+        page.setPadding(pageHorizontalPadding, dp(20), pageHorizontalPadding, dp(26));
         page.setClipChildren(false);
         page.setClipToPadding(false);
 
@@ -2189,7 +2190,7 @@ public final class MainActivity extends Activity implements
         float heightDp = windowBounds.height() / getResources().getDisplayMetrics().density;
         float artworkHeightFraction = heightDp < 700f ? 0.31f : 0.45f;
         int artworkSize = Math.max(dp(132), Math.min(
-                windowBounds.width() - dp(32),
+                windowBounds.width() - pageHorizontalPadding * 2,
                 Math.round(windowBounds.height() * artworkHeightFraction)
         ));
         LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(artworkSize, artworkSize);
