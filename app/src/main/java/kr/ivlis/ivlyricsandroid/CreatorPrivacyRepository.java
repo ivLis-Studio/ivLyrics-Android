@@ -44,6 +44,7 @@ final class CreatorPrivacyRepository {
     private static final String KEY_AUTH_TOKEN = "auth_token";
     private static final String KEY_AUTH_USER_HASH = "auth_user_hash";
     private static final String KEY_AUTH_EXPIRES_AT = "auth_expires_at";
+    private static final String KEY_CLOUD_SAVE_DEVICE_ID = "cloud_save_device_id";
     private static final String KEYSTORE_PROVIDER = "AndroidKeyStore";
     private static final String KEYSTORE_ALIAS = "ivlyrics_creator_session_v1";
     private static final String CIPHER_TRANSFORMATION = "AES/GCM/NoPadding";
@@ -75,6 +76,20 @@ final class CreatorPrivacyRepository {
 
     String authenticatedUserHash() {
         return preferences.getString(KEY_AUTH_USER_HASH, "").trim();
+    }
+
+    String requireCloudAuthToken() throws IOException {
+        return requireAuthToken();
+    }
+
+    String cloudSaveDeviceId() {
+        String current = preferences.getString(KEY_CLOUD_SAVE_DEVICE_ID, "").trim();
+        if (current.matches("android-[A-Za-z0-9-]{16,80}")) {
+            return current;
+        }
+        String generated = "android-" + UUID.randomUUID();
+        preferences.edit().putString(KEY_CLOUD_SAVE_DEVICE_ID, generated).apply();
+        return generated;
     }
 
     LoginStart startDiscordLogin(String languageTag) throws IOException {

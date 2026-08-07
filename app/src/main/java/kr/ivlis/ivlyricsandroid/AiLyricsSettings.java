@@ -12,9 +12,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChangeListener {
     static final String PREFS_NAME = "ai_lyrics_settings";
@@ -139,6 +141,28 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     private static final String DEFAULT_PIP_LYRICS_TEXT_ALIGNMENT = LYRICS_ALIGN_CENTER;
     private static final int DEFAULT_PIP_LYRICS_SIZE_PERCENT = 150;
     private static final String DEFAULT_SOLID_BACKGROUND_COLOR = "#1e3a8a";
+    private static final Set<String> CLOUD_SETTING_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+            KEY_TRANSLATION_ENABLED, KEY_PRONUNCIATION_ENABLED, KEY_PROVIDER, KEY_TARGET_LANG, KEY_UI_LANG,
+            KEY_OUTPUT_LANG, KEY_PRONUNCIATION_LANG, KEY_LANGUAGE_RULES, KEY_MODEL, KEY_MAX_TOKENS,
+            KEY_TEMPERATURE, KEY_PREVIEW_MODE, KEY_PREVIEW_ITEMS, KEY_AUTO_INSTRUMENTAL_BREAK,
+            KEY_INTERLUDE_LABELS_ENABLED, KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, KEY_KARAOKE_BOUNCE_EFFECT,
+            KEY_KARAOKE_DATA_AS_LINE_SYNCED, KEY_BACKGROUND_MODE, KEY_BACKGROUND_BRIGHTNESS,
+            KEY_BACKGROUND_BLUR, KEY_BACKGROUND_NOISE, KEY_BACKGROUND_REDUCE_MOTION,
+            KEY_BACKGROUND_SOLID_COLOR, KEY_BACKGROUND_VIDEO_SCALE, KEY_LANDSCAPE_AUTO_HIDE_CONTROLS,
+            KEY_LANDSCAPE_CENTER_NO_LYRICS, KEY_KEEP_SCREEN_ON, KEY_PIP_SHOW_ARTWORK,
+            KEY_PIP_ORIENTATION, KEY_PIP_LYRICS_TEXT_ALIGNMENT, KEY_PIP_LYRICS_SIZE_PERCENT,
+            KEY_GLOBAL_SYNC_OFFSET, KEY_METADATA_TRANSLATION_ENABLED, KEY_JAPANESE_FURIGANA_ENABLED,
+            KEY_CULTURAL_ANNOTATIONS_ENABLED, KEY_CULTURAL_ANNOTATIONS_FONT_FAMILY,
+            KEY_CULTURAL_ANNOTATIONS_FONT_SIZE, KEY_CULTURAL_ANNOTATIONS_FONT_WEIGHT,
+            KEY_CULTURAL_ANNOTATIONS_OPACITY, KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_FAMILY,
+            KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_SIZE, KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT,
+            KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY, KEY_TYPOGRAPHY_SETTINGS,
+            KEY_VINYL_ALBUM_SIZE_PERCENT, KEY_VINYL_RECORD_SIZE_PERCENT, KEY_VINYL_ANIMATIONS_ENABLED,
+            KEY_VINYL_CENTER_ROTATION_ENABLED, KEY_VINYL_LYRICS_ENABLED, KEY_VINYL_TONEARM_STYLE,
+            KEY_VINYL_TONEARM_FINISH, KEY_VINYL_TONEARM_SIZE_PERCENT, KEY_SPEAKER_COLOR_SETTINGS,
+            KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, KEY_LYRICS_TEXT_ALIGNMENT
+    )));
+    private static final Set<String> CLOUD_FLOAT_SETTING_KEYS = Collections.singleton(KEY_TEMPERATURE);
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
             new Provider(
@@ -280,6 +304,46 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     AiLyricsSettings(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         prefs.registerOnSharedPreferenceChangeListener(this);
+    }
+
+    JSONObject exportCloudSettings() throws JSONException {
+        JSONObject result = new JSONObject();
+        Map<String, ?> stored = prefs.getAll();
+        for (String key : CLOUD_SETTING_KEYS) {
+            Object value = stored.get(key);
+            if (value instanceof Boolean || value instanceof Number || value instanceof String) {
+                result.put(key, value);
+            }
+        }
+        return result;
+    }
+
+    synchronized void importCloudSettings(JSONObject source) throws JSONException {
+        if (source == null) {
+            return;
+        }
+        SharedPreferences.Editor editor = prefs.edit();
+        Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!CLOUD_SETTING_KEYS.contains(key) || source.isNull(key)) {
+                continue;
+            }
+            Object value = source.get(key);
+            if (value instanceof Boolean) {
+                editor.putBoolean(key, (Boolean) value);
+            } else if (value instanceof Number) {
+                if (CLOUD_FLOAT_SETTING_KEYS.contains(key)) {
+                    editor.putFloat(key, ((Number) value).floatValue());
+                } else {
+                    editor.putInt(key, ((Number) value).intValue());
+                }
+            } else if (value instanceof String) {
+                editor.putString(key, (String) value);
+            }
+        }
+        editor.apply();
+        cachedSnapshot = null;
     }
 
     synchronized Snapshot snapshot() {

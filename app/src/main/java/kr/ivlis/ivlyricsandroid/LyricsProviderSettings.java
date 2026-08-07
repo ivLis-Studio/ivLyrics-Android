@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +48,52 @@ final class LyricsProviderSettings {
         preferences = appContext == null
                 ? null
                 : appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    JSONObject exportCloudSettings() throws JSONException {
+        JSONObject result = new JSONObject();
+        if (preferences == null) {
+            return result;
+        }
+        for (Map.Entry<String, ?> entry : preferences.getAll().entrySet()) {
+            if (!isCloudSettingKey(entry.getKey())) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value instanceof Boolean || value instanceof String) {
+                result.put(entry.getKey(), value);
+            }
+        }
+        return result;
+    }
+
+    void importCloudSettings(JSONObject source) throws JSONException {
+        if (preferences == null || source == null) {
+            return;
+        }
+        SharedPreferences.Editor editor = preferences.edit();
+        java.util.Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!isCloudSettingKey(key) || source.isNull(key)) {
+                continue;
+            }
+            Object value = source.get(key);
+            if (value instanceof Boolean) {
+                editor.putBoolean(key, (Boolean) value);
+            } else if (value instanceof String) {
+                editor.putString(key, (String) value);
+            }
+        }
+        editor.apply();
+    }
+
+    private static boolean isCloudSettingKey(String key) {
+        return KEY_ORDER.equals(key)
+                || KEY_PREFER_SYNC_DATA.equals(key)
+                || KEY_TYPE_FIRST.equals(key)
+                || key.startsWith(KEY_ENABLED_PREFIX)
+                || key.startsWith(KEY_TYPE_PREFIX);
     }
 
     Snapshot snapshot() {

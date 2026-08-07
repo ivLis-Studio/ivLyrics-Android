@@ -138,20 +138,29 @@ final class CreatorSupportRepository {
     }
 
     private String loadTier(String userHash) {
+        try {
+            return loadTierForUser(userHash);
+        } catch (Exception ignored) {
+            return "none";
+        }
+    }
+
+    String loadTierForUser(String userHash) throws Exception {
         TierCacheEntry cached = readTierCache(userHash);
         long now = System.currentTimeMillis();
         if (cached != null && cached.expiresAt > now) {
             return cached.tier;
         }
-        try {
-            String tier = fetchTier(userHash);
-            preferences.edit()
-                    .putString(CACHE_KEY_PREFIX + userHash, tier + ":" + (now + TIER_CACHE_TTL_MS))
-                    .apply();
-            return tier;
-        } catch (Exception ignored) {
-            return "none";
-        }
+        return refreshTierForUser(userHash);
+    }
+
+    String refreshTierForUser(String userHash) throws Exception {
+        long now = System.currentTimeMillis();
+        String tier = fetchTier(userHash);
+        preferences.edit()
+                .putString(CACHE_KEY_PREFIX + userHash, tier + ":" + (now + TIER_CACHE_TTL_MS))
+                .apply();
+        return tier;
     }
 
     private TierCacheEntry readTierCache(String userHash) {

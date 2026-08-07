@@ -97,8 +97,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -195,6 +197,7 @@ public final class MainActivity extends Activity implements
     private AiLyricsSettings aiLyricsSettings;
     private LyricsProviderSettings lyricsProviderSettings;
     private CreatorPrivacyRepository creatorPrivacyRepository;
+    private CloudSettingsRepository cloudSettingsRepository;
 
     private LyricsView lyricsView;
     private LyricsView landscapeLyricsView;
@@ -398,6 +401,11 @@ public final class MainActivity extends Activity implements
     private TextView creatorPrivacyStatusView;
     private TextView creatorPrivacyAccountButton;
     private TextView creatorPrivacyRefreshButton;
+    private TextView cloudSettingsStatusView;
+    private TextView cloudSettingsRefreshButton;
+    private TextView cloudSettingsUploadButton;
+    private TextView cloudSettingsApplyButton;
+    private TextView cloudSettingsDeleteButton;
     private TextView onboardingWelcomeText;
     private TextView onboardingStepLabel;
     private TextView onboardingBackButton;
@@ -498,6 +506,10 @@ public final class MainActivity extends Activity implements
     private boolean creatorPrivacyLoginInProgress;
     private boolean creatorPrivacyLoaded;
     private boolean creatorProfilePrivate;
+    private boolean cloudSettingsRequestInFlight;
+    private boolean cloudSettingsLoaded;
+    private CloudSettingsRepository.CloudRecord cloudSettingsRecord = CloudSettingsRepository.CloudRecord.empty();
+    private String cloudSettingsStatusOverride = "";
     private boolean automaticUpdateCheckStarted;
     private boolean spotifySetupRequired;
     private boolean manualLrclibSearchInFlight;
@@ -543,6 +555,12 @@ public final class MainActivity extends Activity implements
         currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
         creatorPrivacyRepository = new CreatorPrivacyRepository(this);
+        cloudSettingsRepository = new CloudSettingsRepository(
+                this,
+                creatorPrivacyRepository,
+                aiLyricsSettings,
+                lyricsProviderSettings
+        );
         creatorSupportRepository = new CreatorSupportRepository(this);
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
@@ -4657,6 +4675,20 @@ public final class MainActivity extends Activity implements
                 buildCreatorPrivacyControl()
         ), topMargin(matchWrap(), dp(16)));
 
+        LinearLayout cloudSyncGroup = settingGroup(
+                ui("cloud_sync.section"),
+                ui("cloud_sync.monthly_required") + "\n" + ui("cloud_sync.section_desc"),
+                buildCloudSettingsControl()
+        );
+        GradientDrawable cloudSyncBackground = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.argb(42, 124, 58, 237), Color.argb(22, 236, 72, 153)}
+        );
+        cloudSyncBackground.setCornerRadius(dp(8));
+        cloudSyncBackground.setStroke(dp(1), Color.argb(112, 167, 139, 250));
+        cloudSyncGroup.setBackground(cloudSyncBackground);
+        settingsSystemPage.addView(cloudSyncGroup, topMargin(matchWrap(), dp(16)));
+
         updateStatusView = label(ui("update.status_idle"), 12f, Color.argb(180, 255, 255, 255), AppFonts.regular(this));
         updateStatusView.setLineSpacing(dp(2), 1f);
 
@@ -6024,6 +6056,265 @@ public final class MainActivity extends Activity implements
         return view;
     }
 
+    private View buildCloudSettingsControl() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        cloudSettingsStatusView = label("", 11f, Color.argb(180, 255, 255, 255), AppFonts.regular(this));
+        cloudSettingsStatusView.setLineSpacing(dp(2), 1f);
+        cloudSettingsStatusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        content.addView(cloudSettingsStatusView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout firstRow = new LinearLayout(this);
+        firstRow.setOrientation(LinearLayout.HORIZONTAL);
+        firstRow.setGravity(Gravity.CENTER_VERTICAL);
+        content.addView(firstRow, topMargin(matchWrap(), dp(10)));
+
+        cloudSettingsRefreshButton = debugButton(ui("cloud_sync.refresh"));
+        cloudSettingsRefreshButton.setOnClickListener(view -> refreshCloudSettings());
+        firstRow.addView(cloudSettingsRefreshButton, weightedButtonParams(1f, dp(4)));
+
+        cloudSettingsUploadButton = primaryButton(ui("cloud_sync.upload"));
+        cloudSettingsUploadButton.setOnClickListener(view -> uploadCloudSettings());
+        firstRow.addView(cloudSettingsUploadButton, weightedButtonParams(1f, dp(4)));
+
+        LinearLayout secondRow = new LinearLayout(this);
+        secondRow.setOrientation(LinearLayout.HORIZONTAL);
+        secondRow.setGravity(Gravity.CENTER_VERTICAL);
+        content.addView(secondRow, topMargin(matchWrap(), dp(8)));
+
+        cloudSettingsApplyButton = primaryButton(ui("cloud_sync.apply"));
+        cloudSettingsApplyButton.setOnClickListener(view -> confirmApplyCloudSettings());
+        secondRow.addView(cloudSettingsApplyButton, weightedButtonParams(1f, dp(4)));
+
+        cloudSettingsDeleteButton = debugButton(ui("cloud_sync.delete"));
+        cloudSettingsDeleteButton.setOnClickListener(view -> confirmDeleteCloudSettings());
+        secondRow.addView(cloudSettingsDeleteButton, weightedButtonParams(1f, dp(4)));
+
+        updateCloudSettingsControls();
+        return content;
+    }
+
+    private void updateCloudSettingsControls() {
+        if (cloudSettingsRepository == null || creatorPrivacyRepository == null) return;
+        boolean authenticated = creatorPrivacyRepository.hasAuthenticatedSession();
+        if (cloudSettingsStatusView != null) {
+            String status;
+            if (cloudSettingsRequestInFlight) {
+                status = ui("cloud_sync.status_working");
+            } else if (!authenticated) {
+                status = ui("cloud_sync.login_required");
+            } else if (!cloudSettingsStatusOverride.isEmpty()) {
+                status = ui(cloudSettingsStatusOverride);
+            } else if (!cloudSettingsLoaded) {
+                status = ui("cloud_sync.status_not_loaded");
+            } else if (!cloudSettingsRecord.exists) {
+                status = ui("cloud_sync.status_empty");
+            } else {
+                Locale locale = Locale.forLanguageTag(currentUiLanguageTag());
+                String updated = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale)
+                        .format(new Date(cloudSettingsRecord.updatedAt * 1000L));
+                status = uiFormat("cloud_sync.status_found_format", cloudSettingsRecord.revision, updated);
+            }
+            cloudSettingsStatusView.setText(status);
+        }
+        boolean enabled = authenticated && !cloudSettingsRequestInFlight;
+        if (cloudSettingsRefreshButton != null) cloudSettingsRefreshButton.setEnabled(enabled);
+        if (cloudSettingsUploadButton != null) cloudSettingsUploadButton.setEnabled(enabled);
+        if (cloudSettingsApplyButton != null) {
+            boolean canApply = enabled && cloudSettingsLoaded && cloudSettingsRecord.exists;
+            cloudSettingsApplyButton.setEnabled(canApply);
+            cloudSettingsApplyButton.setAlpha(canApply ? 1f : 0.45f);
+        }
+        if (cloudSettingsDeleteButton != null) cloudSettingsDeleteButton.setEnabled(enabled);
+        float alpha = enabled ? 1f : 0.45f;
+        if (cloudSettingsRefreshButton != null) cloudSettingsRefreshButton.setAlpha(alpha);
+        if (cloudSettingsUploadButton != null) cloudSettingsUploadButton.setAlpha(alpha);
+        if (cloudSettingsDeleteButton != null) cloudSettingsDeleteButton.setAlpha(alpha);
+    }
+
+    private void refreshCloudSettings() {
+        runCloudSettingsOperation("refresh", () -> cloudSettingsRepository.load(currentUiLanguageTag()));
+    }
+
+    private void uploadCloudSettings() {
+        if (!prepareCloudSettingsOperation()) return;
+        cloudSettingsStatusOverride = "";
+        cloudSettingsRequestInFlight = true;
+        updateCloudSettingsControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                requireMonthlyCloudSupport();
+                CloudSettingsRepository.CloudRecord current = cloudSettingsRepository.load(languageTag);
+                CloudSettingsRepository.CloudRecord saved = cloudSettingsRepository.save(current.revision, languageTag);
+                handler.post(() -> {
+                    cloudSettingsRequestInFlight = false;
+                    cloudSettingsLoaded = true;
+                    cloudSettingsRecord = saved;
+                    cloudSettingsStatusOverride = "";
+                    updateCloudSettingsControls();
+                    showSavedToast(ui("cloud_sync.uploaded"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> finishCloudSettingsFailure(error));
+            }
+        });
+    }
+
+    private void confirmApplyCloudSettings() {
+        if (!cloudSettingsLoaded || !cloudSettingsRecord.exists) return;
+        new AlertDialog.Builder(this)
+                .setTitle(ui("cloud_sync.apply"))
+                .setMessage(ui("cloud_sync.confirm_apply"))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> applyCloudSettings())
+                .show();
+    }
+
+    private void applyCloudSettings() {
+        if (!prepareCloudSettingsOperation()) return;
+        cloudSettingsStatusOverride = "";
+        cloudSettingsRequestInFlight = true;
+        updateCloudSettingsControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                requireMonthlyCloudSupport();
+                CloudSettingsRepository.CloudRecord record = cloudSettingsRepository.load(languageTag);
+                cloudSettingsRepository.apply(record);
+                handler.post(() -> {
+                    cloudSettingsRequestInFlight = false;
+                    cloudSettingsLoaded = true;
+                    cloudSettingsRecord = record;
+                    cloudSettingsStatusOverride = "";
+                    showSavedToast(ui("cloud_sync.applied"));
+                    recreate();
+                });
+            } catch (Exception error) {
+                handler.post(() -> finishCloudSettingsFailure(error));
+            }
+        });
+    }
+
+    private void confirmDeleteCloudSettings() {
+        if (!prepareCloudSettingsOperation()) return;
+        new AlertDialog.Builder(this)
+                .setTitle(ui("cloud_sync.delete"))
+                .setMessage(ui("cloud_sync.confirm_delete"))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> deleteCloudSettings())
+                .show();
+    }
+
+    private void deleteCloudSettings() {
+        if (!prepareCloudSettingsOperation()) return;
+        cloudSettingsStatusOverride = "";
+        cloudSettingsRequestInFlight = true;
+        updateCloudSettingsControls();
+        String languageTag = currentUiLanguageTag();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                cloudSettingsRepository.delete(languageTag);
+                handler.post(() -> {
+                    cloudSettingsRequestInFlight = false;
+                    cloudSettingsLoaded = true;
+                    cloudSettingsRecord = CloudSettingsRepository.CloudRecord.empty();
+                    cloudSettingsStatusOverride = "";
+                    updateCloudSettingsControls();
+                    showSavedToast(ui("cloud_sync.deleted"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> finishCloudSettingsFailure(error));
+            }
+        });
+    }
+
+    private interface CloudRecordOperation {
+        CloudSettingsRepository.CloudRecord run() throws Exception;
+    }
+
+    private void runCloudSettingsOperation(String label, CloudRecordOperation operation) {
+        if (!prepareCloudSettingsOperation()) return;
+        cloudSettingsStatusOverride = "";
+        cloudSettingsRequestInFlight = true;
+        updateCloudSettingsControls();
+        creatorPrivacyExecutor.execute(() -> {
+            try {
+                requireMonthlyCloudSupport();
+                CloudSettingsRepository.CloudRecord record = operation.run();
+                handler.post(() -> {
+                    cloudSettingsRequestInFlight = false;
+                    cloudSettingsLoaded = true;
+                    cloudSettingsRecord = record;
+                    cloudSettingsStatusOverride = "";
+                    updateCloudSettingsControls();
+                });
+            } catch (Exception error) {
+                appendLog("cloud settings " + label + " failed: " + error.getMessage());
+                handler.post(() -> finishCloudSettingsFailure(error));
+            }
+        });
+    }
+
+    private boolean prepareCloudSettingsOperation() {
+        if (cloudSettingsRepository == null || creatorPrivacyRepository == null || cloudSettingsRequestInFlight) {
+            return false;
+        }
+        if (!creatorPrivacyRepository.hasAuthenticatedSession()) {
+            showSavedToast(ui("cloud_sync.login_required"));
+            beginCreatorPrivacyLogin();
+            return false;
+        }
+        return true;
+    }
+
+    private void requireMonthlyCloudSupport() throws Exception {
+        if (creatorSupportRepository == null || creatorPrivacyRepository == null) {
+            throw new IOException("Supporter role lookup is unavailable");
+        }
+        String userHash = creatorPrivacyRepository.authenticatedUserHash();
+        String tier = creatorSupportRepository.refreshTierForUser(userHash);
+        if (!"monthly".equals(tier)) {
+            throw new CloudSettingsRepository.CloudSaveException(
+                    "Cloud sync is available to Monthly Supporters only",
+                    "monthly_supporter_required",
+                    403
+            );
+        }
+    }
+
+    private void finishCloudSettingsFailure(Exception error) {
+        cloudSettingsRequestInFlight = false;
+        String key = "cloud_sync.failed";
+        if (error instanceof CreatorPrivacyRepository.AuthenticationException) {
+            key = "cloud_sync.login_required";
+        } else if (error instanceof CloudSettingsRepository.CloudSaveException) {
+            String code = ((CloudSettingsRepository.CloudSaveException) error).code;
+            if ("monthly_supporter_required".equals(code)) {
+                key = "cloud_sync.monthly_required";
+            } else if ("revision_conflict".equals(code)) {
+                key = "cloud_sync.conflict";
+            } else if ("discord_login_required".equals(code)) {
+                key = "cloud_sync.login_required";
+            }
+        }
+        cloudSettingsStatusOverride = key;
+        updateCloudSettingsControls();
+        appendLog("cloud settings failed: " + error.getMessage());
+        showSavedToast(ui(key));
+        if ("cloud_sync.monthly_required".equals(key) && !isFinishing()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(ui("cloud_sync.section"))
+                    .setMessage(ui("cloud_sync.monthly_required"))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+        }
+    }
+
     private View buildCreatorPrivacyControl() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -6124,6 +6415,7 @@ public final class MainActivity extends Activity implements
             creatorPrivacyRefreshButton.setEnabled(enabled);
             creatorPrivacyRefreshButton.setAlpha(enabled ? 1f : 0.45f);
         }
+        updateCloudSettingsControls();
     }
 
     private void setCreatorPrivacySwitchChecked(boolean checked) {

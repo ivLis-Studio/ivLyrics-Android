@@ -126,6 +126,7 @@ final class AppI18n {
         addGlobalSyncOffsetStrings(languages);
         addVinylStrings(languages);
         addCreatorPrivacyStrings(languages);
+        addCloudSyncStrings(languages);
         addLyricsProviderSettingsStrings(languages);
         addPaxsenixProviderStrings(languages);
         addSettingsNavigationStrings(languages);
@@ -551,6 +552,169 @@ final class AppI18n {
                 copy.put(keys[index], values[index]);
             }
             languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addCloudSyncStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "cloud_sync.section", "cloud_sync.section_desc", "cloud_sync.status_working",
+                "cloud_sync.login_required", "cloud_sync.status_not_loaded", "cloud_sync.status_empty",
+                "cloud_sync.status_found_format", "cloud_sync.refresh", "cloud_sync.upload",
+                "cloud_sync.apply", "cloud_sync.delete", "cloud_sync.uploaded", "cloud_sync.applied",
+                "cloud_sync.deleted", "cloud_sync.confirm_apply", "cloud_sync.confirm_delete",
+                "cloud_sync.failed", "cloud_sync.monthly_required", "cloud_sync.conflict"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) continue;
+            String[] values = cloudSyncStrings(language.code);
+            if (values.length != keys.length) {
+                throw new IllegalStateException("Invalid cloud sync translations: " + language.code);
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], values[index]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String[] cloudSyncStrings(String language) {
+        switch (language) {
+            case "ko": return new String[] {
+                    "클라우드 설정 동기화", "월간 후원자는 Android 설정을 기기 사이에 저장할 수 있습니다. API 키, 계정 정보와 곡별 오프셋은 제외됩니다.",
+                    "클라우드 설정을 확인하는 중…", "Discord 로그인이 필요합니다.", "새로고침하여 Android 클라우드 저장본을 확인하세요.",
+                    "저장된 Android 설정이 없습니다.", "리비전 %d · %s", "새로고침", "현재 설정 업로드", "클라우드 설정 적용", "클라우드 저장본 삭제",
+                    "현재 Android 설정을 업로드했습니다.", "클라우드 Android 설정을 적용했습니다.", "Android 클라우드 저장본을 삭제했습니다.",
+                    "현재 Android 설정이 클라우드 설정으로 교체됩니다. 계속할까요?", "저장된 Android 클라우드 설정을 삭제할까요?",
+                    "클라우드 설정을 처리하지 못했습니다.", "클라우드 동기화는 월간 후원자 전용 기능입니다.", "다른 기기에서 설정이 변경되었습니다. 새로고침 후 다시 시도하세요."
+            };
+            case "zh-CN": return new String[] {
+                    "云端设置同步", "月度支持者可在设备间保存 Android 设置。API 密钥、账户信息和单曲偏移不会同步。",
+                    "正在检查云端设置…", "需要登录 Discord。", "请刷新以检查 Android 云端存档。", "尚未保存 Android 设置。",
+                    "修订 %d · %s", "刷新", "上传当前设置", "应用云端设置", "删除云端存档", "已上传当前 Android 设置。", "已应用 Android 云端设置。", "已删除 Android 云端存档。",
+                    "当前 Android 设置将被云端设置替换。是否继续？", "要删除已保存的 Android 云端设置吗？", "无法处理云端设置。", "云同步仅面向月度支持者。", "设置已在其他设备上更改。请刷新后重试。"
+            };
+            case "zh-TW": return new String[] {
+                    "雲端設定同步", "月度支持者可在裝置間儲存 Android 設定。API 金鑰、帳戶資訊與單曲偏移不會同步。",
+                    "正在檢查雲端設定…", "需要登入 Discord。", "請重新整理以檢查 Android 雲端存檔。", "尚未儲存 Android 設定。",
+                    "修訂 %d · %s", "重新整理", "上傳目前設定", "套用雲端設定", "刪除雲端存檔", "已上傳目前的 Android 設定。", "已套用 Android 雲端設定。", "已刪除 Android 雲端存檔。",
+                    "目前的 Android 設定將由雲端設定取代。要繼續嗎？", "要刪除已儲存的 Android 雲端設定嗎？", "無法處理雲端設定。", "雲端同步僅供月度支持者使用。", "設定已在其他裝置上變更。請重新整理後再試。"
+            };
+            case "ja": return new String[] {
+                    "クラウド設定同期", "月額サポーターは Android 設定を端末間で保存できます。API キー、アカウント情報、曲別オフセットは除外されます。",
+                    "クラウド設定を確認中…", "Discord へのログインが必要です。", "更新して Android のクラウド保存を確認してください。", "保存された Android 設定はありません。",
+                    "リビジョン %d · %s", "更新", "現在の設定をアップロード", "クラウド設定を適用", "クラウド保存を削除", "現在の Android 設定をアップロードしました。", "Android のクラウド設定を適用しました。", "Android のクラウド保存を削除しました。",
+                    "現在の Android 設定はクラウド設定に置き換えられます。続行しますか？", "保存済みの Android クラウド設定を削除しますか？", "クラウド設定を処理できませんでした。", "クラウド同期は月額サポーター専用です。", "別の端末で設定が変更されました。更新してもう一度お試しください。"
+            };
+            case "hi": return new String[] {
+                    "क्लाउड सेटिंग सिंक", "मासिक समर्थक Android सेटिंग को डिवाइसों के बीच सहेज सकते हैं। API कुंजियाँ, खाता जानकारी और प्रति-गीत ऑफ़सेट शामिल नहीं हैं।",
+                    "क्लाउड सेटिंग जाँची जा रही हैं…", "Discord लॉगिन आवश्यक है।", "Android क्लाउड सेव देखने के लिए रीफ़्रेश करें।", "कोई Android सेटिंग सहेजी नहीं गई है।",
+                    "संशोधन %d · %s", "रीफ़्रेश", "मौजूदा सेटिंग अपलोड करें", "क्लाउड सेटिंग लागू करें", "क्लाउड सेव हटाएँ", "मौजूदा Android सेटिंग अपलोड हो गईं।", "Android क्लाउड सेटिंग लागू हो गईं।", "Android क्लाउड सेव हटा दिया गया।",
+                    "मौजूदा Android सेटिंग क्लाउड सेटिंग से बदल जाएँगी। जारी रखें?", "सहेजी गई Android क्लाउड सेटिंग हटाएँ?", "क्लाउड सेटिंग संसाधित नहीं हो सकीं।", "क्लाउड सिंक केवल मासिक समर्थकों के लिए है।", "सेटिंग किसी दूसरे डिवाइस पर बदली गई हैं। रीफ़्रेश करके फिर प्रयास करें।"
+            };
+            case "es": return new String[] {
+                    "Sincronización en la nube", "Los colaboradores mensuales pueden guardar los ajustes de Android entre dispositivos. Se excluyen las claves API, la cuenta y los desfases por canción.",
+                    "Comprobando ajustes en la nube…", "Debes iniciar sesión en Discord.", "Actualiza para comprobar la copia de Android.", "No hay ajustes de Android guardados.",
+                    "Revisión %d · %s", "Actualizar", "Subir ajustes actuales", "Aplicar ajustes de la nube", "Eliminar copia", "Se subieron los ajustes actuales de Android.", "Se aplicaron los ajustes de Android de la nube.", "Se eliminó la copia de Android.",
+                    "Los ajustes actuales de Android se sustituirán por los de la nube. ¿Continuar?", "¿Eliminar los ajustes de Android guardados en la nube?", "No se pudieron procesar los ajustes en la nube.", "La sincronización en la nube es exclusiva para colaboradores mensuales.", "Los ajustes cambiaron en otro dispositivo. Actualiza e inténtalo de nuevo."
+            };
+            case "fr": return new String[] {
+                    "Synchronisation des réglages", "Les soutiens mensuels peuvent enregistrer les réglages Android entre appareils. Les clés API, le compte et les décalages par titre sont exclus.",
+                    "Vérification des réglages cloud…", "Une connexion Discord est requise.", "Actualisez pour vérifier la sauvegarde Android.", "Aucun réglage Android n’est enregistré.",
+                    "Révision %d · %s", "Actualiser", "Envoyer les réglages actuels", "Appliquer les réglages cloud", "Supprimer la sauvegarde", "Les réglages Android actuels ont été envoyés.", "Les réglages Android du cloud ont été appliqués.", "La sauvegarde Android a été supprimée.",
+                    "Les réglages Android actuels seront remplacés par ceux du cloud. Continuer ?", "Supprimer les réglages Android enregistrés dans le cloud ?", "Impossible de traiter les réglages cloud.", "La synchronisation cloud est réservée aux soutiens mensuels.", "Les réglages ont changé sur un autre appareil. Actualisez puis réessayez."
+            };
+            case "ar": return new String[] {
+                    "مزامنة الإعدادات السحابية", "يمكن للداعمين الشهريين حفظ إعدادات Android بين الأجهزة. تُستثنى مفاتيح API ومعلومات الحساب وإزاحات كل أغنية.",
+                    "جارٍ التحقق من إعدادات السحابة…", "يلزم تسجيل الدخول إلى Discord.", "حدّث للتحقق من نسخة Android السحابية.", "لا توجد إعدادات Android محفوظة.",
+                    "المراجعة %d · %s", "تحديث", "رفع الإعدادات الحالية", "تطبيق إعدادات السحابة", "حذف النسخة السحابية", "تم رفع إعدادات Android الحالية.", "تم تطبيق إعدادات Android السحابية.", "تم حذف نسخة Android السحابية.",
+                    "ستُستبدل إعدادات Android الحالية بإعدادات السحابة. هل تريد المتابعة؟", "هل تريد حذف إعدادات Android المحفوظة في السحابة؟", "تعذرت معالجة إعدادات السحابة.", "المزامنة السحابية متاحة للداعمين الشهريين فقط.", "تغيّرت الإعدادات على جهاز آخر. حدّث وحاول مجددًا."
+            };
+            case "fa": return new String[] {
+                    "همگام‌سازی تنظیمات ابری", "حامیان ماهانه می‌توانند تنظیمات Android را میان دستگاه‌ها ذخیره کنند. کلیدهای API، اطلاعات حساب و جابه‌جایی هر آهنگ مستثنا هستند.",
+                    "در حال بررسی تنظیمات ابری…", "ورود به Discord لازم است.", "برای بررسی ذخیره ابری Android تازه‌سازی کنید.", "هیچ تنظیم Android ذخیره نشده است.",
+                    "بازبینی %d · %s", "تازه‌سازی", "بارگذاری تنظیمات فعلی", "اعمال تنظیمات ابری", "حذف ذخیره ابری", "تنظیمات فعلی Android بارگذاری شد.", "تنظیمات ابری Android اعمال شد.", "ذخیره ابری Android حذف شد.",
+                    "تنظیمات فعلی Android با تنظیمات ابری جایگزین می‌شود. ادامه می‌دهید؟", "تنظیمات ذخیره‌شده Android از ابر حذف شود؟", "پردازش تنظیمات ابری ممکن نشد.", "همگام‌سازی ابری فقط برای حامیان ماهانه است.", "تنظیمات در دستگاه دیگری تغییر کرده است. تازه‌سازی و دوباره تلاش کنید."
+            };
+            case "de": return new String[] {
+                    "Cloud-Einstellungen", "Monatliche Unterstützer können Android-Einstellungen zwischen Geräten speichern. API-Schlüssel, Kontodaten und Titel-Offsets sind ausgeschlossen.",
+                    "Cloud-Einstellungen werden geprüft…", "Eine Discord-Anmeldung ist erforderlich.", "Aktualisiere, um die Android-Cloud-Sicherung zu prüfen.", "Keine Android-Einstellungen gespeichert.",
+                    "Revision %d · %s", "Aktualisieren", "Aktuelle Einstellungen hochladen", "Cloud-Einstellungen anwenden", "Cloud-Sicherung löschen", "Aktuelle Android-Einstellungen wurden hochgeladen.", "Android-Cloud-Einstellungen wurden angewendet.", "Android-Cloud-Sicherung wurde gelöscht.",
+                    "Die aktuellen Android-Einstellungen werden durch die Cloud-Einstellungen ersetzt. Fortfahren?", "Gespeicherte Android-Cloud-Einstellungen löschen?", "Cloud-Einstellungen konnten nicht verarbeitet werden.", "Cloud-Synchronisierung ist nur für monatliche Unterstützer verfügbar.", "Die Einstellungen wurden auf einem anderen Gerät geändert. Aktualisiere und versuche es erneut."
+            };
+            case "ru": return new String[] {
+                    "Синхронизация настроек", "Ежемесячные подписчики могут сохранять настройки Android между устройствами. Ключи API, данные аккаунта и смещения треков исключены.",
+                    "Проверка облачных настроек…", "Требуется вход через Discord.", "Обновите, чтобы проверить облачную копию Android.", "Настройки Android ещё не сохранены.",
+                    "Ревизия %d · %s", "Обновить", "Загрузить текущие настройки", "Применить настройки из облака", "Удалить облачную копию", "Текущие настройки Android загружены.", "Облачные настройки Android применены.", "Облачная копия Android удалена.",
+                    "Текущие настройки Android будут заменены облачными. Продолжить?", "Удалить сохранённые облачные настройки Android?", "Не удалось обработать облачные настройки.", "Облачная синхронизация доступна только ежемесячным подписчикам.", "Настройки изменены на другом устройстве. Обновите и повторите попытку."
+            };
+            case "sv": return new String[] {
+                    "Synkronisering av molninställningar", "Månadssupportrar kan spara Android-inställningar mellan enheter. API-nycklar, kontoinformation och låtförskjutningar undantas.",
+                    "Kontrollerar molninställningar…", "Discord-inloggning krävs.", "Uppdatera för att kontrollera Android-molnkopian.", "Inga Android-inställningar har sparats.",
+                    "Revision %d · %s", "Uppdatera", "Ladda upp aktuella inställningar", "Använd molninställningar", "Ta bort molnkopian", "Aktuella Android-inställningar har laddats upp.", "Android-molninställningarna har tillämpats.", "Android-molnkopian har tagits bort.",
+                    "Aktuella Android-inställningar ersätts av molninställningarna. Fortsätta?", "Ta bort sparade Android-inställningar från molnet?", "Molninställningarna kunde inte behandlas.", "Molnsynkronisering är endast för månadssupportrar.", "Inställningarna ändrades på en annan enhet. Uppdatera och försök igen."
+            };
+            case "pt": return new String[] {
+                    "Sincronização na nuvem", "Apoiadores mensais podem salvar as configurações do Android entre dispositivos. Chaves de API, conta e ajustes por faixa são excluídos.",
+                    "Verificando configurações na nuvem…", "É necessário entrar no Discord.", "Atualize para verificar o backup do Android.", "Nenhuma configuração do Android foi salva.",
+                    "Revisão %d · %s", "Atualizar", "Enviar configurações atuais", "Aplicar configurações da nuvem", "Excluir backup", "As configurações atuais do Android foram enviadas.", "As configurações do Android na nuvem foram aplicadas.", "O backup do Android foi excluído.",
+                    "As configurações atuais do Android serão substituídas pelas da nuvem. Continuar?", "Excluir as configurações do Android salvas na nuvem?", "Não foi possível processar as configurações na nuvem.", "A sincronização na nuvem é exclusiva para apoiadores mensais.", "As configurações mudaram em outro dispositivo. Atualize e tente novamente."
+            };
+            case "bn": return new String[] {
+                    "ক্লাউড সেটিং সিঙ্ক", "মাসিক সমর্থকেরা ডিভাইসগুলোর মধ্যে Android সেটিং সংরক্ষণ করতে পারেন। API কী, অ্যাকাউন্ট তথ্য ও প্রতি-গানের অফসেট বাদ থাকে।",
+                    "ক্লাউড সেটিং যাচাই করা হচ্ছে…", "Discord লগইন প্রয়োজন।", "Android ক্লাউড সেভ দেখতে রিফ্রেশ করুন।", "কোনো Android সেটিং সংরক্ষিত নেই।",
+                    "রিভিশন %d · %s", "রিফ্রেশ", "বর্তমান সেটিং আপলোড", "ক্লাউড সেটিং প্রয়োগ", "ক্লাউড সেভ মুছুন", "বর্তমান Android সেটিং আপলোড হয়েছে।", "Android ক্লাউড সেটিং প্রয়োগ হয়েছে।", "Android ক্লাউড সেভ মুছে ফেলা হয়েছে।",
+                    "বর্তমান Android সেটিং ক্লাউড সেটিং দিয়ে প্রতিস্থাপিত হবে। চালিয়ে যাবেন?", "সংরক্ষিত Android ক্লাউড সেটিং মুছবেন?", "ক্লাউড সেটিং প্রক্রিয়া করা যায়নি।", "ক্লাউড সিঙ্ক শুধু মাসিক সমর্থকদের জন্য।", "অন্য ডিভাইসে সেটিং বদলেছে। রিফ্রেশ করে আবার চেষ্টা করুন।"
+            };
+            case "cs": return new String[] {
+                    "Synchronizace nastavení", "Měsíční podporovatelé mohou ukládat nastavení Androidu mezi zařízeními. Klíče API, údaje účtu a posuny skladeb jsou vyloučeny.",
+                    "Kontrola cloudových nastavení…", "Je vyžadováno přihlášení přes Discord.", "Obnovte stav cloudové zálohy Androidu.", "Nejsou uložena žádná nastavení Androidu.",
+                    "Revize %d · %s", "Obnovit", "Nahrát aktuální nastavení", "Použít cloudová nastavení", "Smazat cloudovou zálohu", "Aktuální nastavení Androidu byla nahrána.", "Cloudová nastavení Androidu byla použita.", "Cloudová záloha Androidu byla smazána.",
+                    "Aktuální nastavení Androidu budou nahrazena cloudovými. Pokračovat?", "Smazat uložená cloudová nastavení Androidu?", "Cloudová nastavení se nepodařilo zpracovat.", "Cloudová synchronizace je pouze pro měsíční podporovatele.", "Nastavení se změnila na jiném zařízení. Obnovte je a zkuste to znovu."
+            };
+            case "it": return new String[] {
+                    "Sincronizzazione cloud", "I sostenitori mensili possono salvare le impostazioni Android tra dispositivi. Chiavi API, account e offset per brano sono esclusi.",
+                    "Verifica delle impostazioni cloud…", "È necessario accedere a Discord.", "Aggiorna per controllare il salvataggio Android.", "Nessuna impostazione Android salvata.",
+                    "Revisione %d · %s", "Aggiorna", "Carica impostazioni attuali", "Applica impostazioni cloud", "Elimina salvataggio", "Le impostazioni Android attuali sono state caricate.", "Le impostazioni Android cloud sono state applicate.", "Il salvataggio Android è stato eliminato.",
+                    "Le impostazioni Android attuali verranno sostituite da quelle cloud. Continuare?", "Eliminare le impostazioni Android salvate nel cloud?", "Impossibile elaborare le impostazioni cloud.", "La sincronizzazione cloud è riservata ai sostenitori mensili.", "Le impostazioni sono cambiate su un altro dispositivo. Aggiorna e riprova."
+            };
+            case "th": return new String[] {
+                    "ซิงค์การตั้งค่าบนคลาวด์", "ผู้สนับสนุนรายเดือนบันทึกการตั้งค่า Android ระหว่างอุปกรณ์ได้ โดยไม่รวมคีย์ API ข้อมูลบัญชี และออฟเซ็ตแต่ละเพลง",
+                    "กำลังตรวจสอบการตั้งค่าบนคลาวด์…", "ต้องเข้าสู่ระบบ Discord", "รีเฟรชเพื่อตรวจสอบข้อมูล Android บนคลาวด์", "ยังไม่มีการตั้งค่า Android ที่บันทึกไว้",
+                    "รุ่นแก้ไข %d · %s", "รีเฟรช", "อัปโหลดการตั้งค่าปัจจุบัน", "ใช้การตั้งค่าจากคลาวด์", "ลบข้อมูลบนคลาวด์", "อัปโหลดการตั้งค่า Android ปัจจุบันแล้ว", "ใช้การตั้งค่า Android จากคลาวด์แล้ว", "ลบข้อมูล Android บนคลาวด์แล้ว",
+                    "การตั้งค่า Android ปัจจุบันจะถูกแทนที่ด้วยการตั้งค่าจากคลาวด์ ดำเนินการต่อหรือไม่", "ลบการตั้งค่า Android ที่บันทึกบนคลาวด์หรือไม่", "ประมวลผลการตั้งค่าบนคลาวด์ไม่ได้", "การซิงค์คลาวด์มีไว้สำหรับผู้สนับสนุนรายเดือนเท่านั้น", "การตั้งค่าถูกเปลี่ยนบนอุปกรณ์อื่น โปรดรีเฟรชแล้วลองอีกครั้ง"
+            };
+            case "vi": return new String[] {
+                    "Đồng bộ cài đặt đám mây", "Người ủng hộ hằng tháng có thể lưu cài đặt Android giữa các thiết bị. Khóa API, thông tin tài khoản và độ lệch từng bài bị loại trừ.",
+                    "Đang kiểm tra cài đặt đám mây…", "Cần đăng nhập Discord.", "Hãy làm mới để kiểm tra bản lưu Android.", "Chưa có cài đặt Android được lưu.",
+                    "Bản sửa đổi %d · %s", "Làm mới", "Tải lên cài đặt hiện tại", "Áp dụng cài đặt đám mây", "Xóa bản lưu", "Đã tải lên cài đặt Android hiện tại.", "Đã áp dụng cài đặt Android từ đám mây.", "Đã xóa bản lưu Android.",
+                    "Cài đặt Android hiện tại sẽ bị thay thế bằng cài đặt đám mây. Tiếp tục?", "Xóa cài đặt Android đã lưu trên đám mây?", "Không thể xử lý cài đặt đám mây.", "Đồng bộ đám mây chỉ dành cho người ủng hộ hằng tháng.", "Cài đặt đã thay đổi trên thiết bị khác. Hãy làm mới rồi thử lại."
+            };
+            case "id": return new String[] {
+                    "Sinkronisasi pengaturan cloud", "Pendukung bulanan dapat menyimpan pengaturan Android antarperangkat. Kunci API, informasi akun, dan offset per lagu tidak disertakan.",
+                    "Memeriksa pengaturan cloud…", "Login Discord diperlukan.", "Segarkan untuk memeriksa simpanan cloud Android.", "Belum ada pengaturan Android yang disimpan.",
+                    "Revisi %d · %s", "Segarkan", "Unggah pengaturan saat ini", "Terapkan pengaturan cloud", "Hapus simpanan cloud", "Pengaturan Android saat ini telah diunggah.", "Pengaturan cloud Android telah diterapkan.", "Simpanan cloud Android telah dihapus.",
+                    "Pengaturan Android saat ini akan diganti dengan pengaturan cloud. Lanjutkan?", "Hapus pengaturan Android yang tersimpan di cloud?", "Pengaturan cloud tidak dapat diproses.", "Sinkronisasi cloud hanya untuk pendukung bulanan.", "Pengaturan berubah di perangkat lain. Segarkan dan coba lagi."
+            };
+            case "ms": return new String[] {
+                    "Penyegerakan tetapan awan", "Penyokong bulanan boleh menyimpan tetapan Android antara peranti. Kunci API, maklumat akaun dan ofset setiap lagu dikecualikan.",
+                    "Menyemak tetapan awan…", "Log masuk Discord diperlukan.", "Muat semula untuk menyemak simpanan awan Android.", "Tiada tetapan Android disimpan.",
+                    "Semakan %d · %s", "Muat semula", "Muat naik tetapan semasa", "Gunakan tetapan awan", "Padam simpanan awan", "Tetapan Android semasa telah dimuat naik.", "Tetapan awan Android telah digunakan.", "Simpanan awan Android telah dipadam.",
+                    "Tetapan Android semasa akan digantikan dengan tetapan awan. Teruskan?", "Padam tetapan Android yang disimpan dalam awan?", "Tetapan awan tidak dapat diproses.", "Penyegerakan awan hanya untuk penyokong bulanan.", "Tetapan berubah pada peranti lain. Muat semula dan cuba lagi."
+            };
+            case "tr": return new String[] {
+                    "Bulut ayarları eşitleme", "Aylık destekçiler Android ayarlarını cihazlar arasında saklayabilir. API anahtarları, hesap bilgileri ve şarkı bazlı kaydırmalar hariç tutulur.",
+                    "Bulut ayarları kontrol ediliyor…", "Discord girişi gereklidir.", "Android bulut kaydını kontrol etmek için yenileyin.", "Kaydedilmiş Android ayarı yok.",
+                    "Revizyon %d · %s", "Yenile", "Geçerli ayarları yükle", "Bulut ayarlarını uygula", "Bulut kaydını sil", "Geçerli Android ayarları yüklendi.", "Android bulut ayarları uygulandı.", "Android bulut kaydı silindi.",
+                    "Geçerli Android ayarları bulut ayarlarıyla değiştirilecek. Devam edilsin mi?", "Buluta kaydedilmiş Android ayarları silinsin mi?", "Bulut ayarları işlenemedi.", "Bulut eşitleme yalnızca aylık destekçilere özeldir.", "Ayarlar başka bir cihazda değişti. Yenileyip tekrar deneyin."
+            };
+            default: return new String[] {
+                    "Cloud settings sync", "Monthly Supporters can save Android settings across devices. API keys, account data, and per-track offsets are excluded.",
+                    "Checking cloud settings…", "Discord login is required.", "Refresh to check the Android cloud save.", "No Android settings have been saved.",
+                    "Revision %d · %s", "Refresh", "Upload current settings", "Apply cloud settings", "Delete cloud save", "Current Android settings were uploaded.", "Android cloud settings were applied.", "Android cloud save was deleted.",
+                    "Current Android settings will be replaced by the cloud settings. Continue?", "Delete the saved Android cloud settings?", "Cloud settings could not be processed.", "Cloud sync is available to Monthly Supporters only.", "Settings changed on another device. Refresh and try again."
+            };
         }
     }
 
