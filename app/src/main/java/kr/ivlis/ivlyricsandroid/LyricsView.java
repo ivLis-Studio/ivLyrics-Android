@@ -57,7 +57,6 @@ public final class LyricsView extends View {
     private static final int KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
     private static final float WAVE_PERIOD_MS = 980f;
     private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
-    private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
     private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
     private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
     private static final float[] EFFECT_TRANSLATE_X = {0f, -0.5f, 0.45f, -0.25f};
@@ -2494,9 +2493,9 @@ public final class LyricsView extends View {
         textPaint.setTextSize(textSize);
         textPaint.setTypeface(lyricTypeface);
 
-        List<TextSegment> segments = splitSegmentsAtWhitespace(
+        List<TextSegment> segments = applyLatinWordFillTiming(splitSegmentsAtWhitespace(
                 buildSegments(text, rubyText, syllables, startTimeMs, endTimeMs)
-        );
+        ));
         if (segments.isEmpty()) {
             return Collections.singletonList(new TextRow(Collections.singletonList(
                     new TextSegment("", 0f, 0f, 0L, 0L, 0, 1, "")
@@ -2618,6 +2617,86 @@ public final class LyricsView extends View {
         return result;
     }
 
+    /**
+     * Keep the original segments for per-glyph motion, but let the fill travel evenly
+     * across each Latin word's complete timing span.
+     */
+    private List<TextSegment> applyLatinWordFillTiming(List<TextSegment> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<TextSegment> result = new ArrayList<>(segments.size());
+        List<TextSegment> word = new ArrayList<>();
+        for (TextSegment segment : segments) {
+            if (isWhitespace(segment.text)) {
+                appendLatinWordFillTiming(result, word);
+                result.add(segment);
+            } else {
+                word.add(segment);
+            }
+        }
+        appendLatinWordFillTiming(result, word);
+        return result;
+    }
+
+    private void appendLatinWordFillTiming(List<TextSegment> result, List<TextSegment> word) {
+        if (word == null || word.isEmpty()) {
+            return;
+        }
+
+        StringBuilder text = new StringBuilder();
+        boolean hasRuby = false;
+        for (TextSegment segment : word) {
+            text.append(segment.text);
+            hasRuby |= segment.rubyText != null && !segment.rubyText.trim().isEmpty();
+        }
+        if (!hasRuby && isLatinWordText(text.toString())) {
+            TextSegment first = word.get(0);
+            long wordEndTimeMs = first.endTimeMs;
+            int totalUnits = 0;
+            for (TextSegment segment : word) {
+                wordEndTimeMs = Math.max(wordEndTimeMs, segment.endTimeMs);
+                totalUnits += Math.max(1, codePointCount(segment.text));
+            }
+            long wordStartTimeMs = first.startTimeMs;
+            long durationMs = Math.max(0L, wordEndTimeMs - wordStartTimeMs);
+            int completedUnits = 0;
+            for (TextSegment segment : word) {
+                int units = Math.max(1, codePointCount(segment.text));
+                long fillStartTimeMs = wordStartTimeMs + Math.round(
+                        durationMs * (completedUnits / (float) totalUnits)
+                );
+                completedUnits += units;
+                long fillEndTimeMs = wordStartTimeMs + Math.round(
+                        durationMs * (completedUnits / (float) totalUnits)
+                );
+                result.add(segment.withFillTiming(fillStartTimeMs, fillEndTimeMs));
+            }
+        } else {
+            result.addAll(word);
+        }
+        word.clear();
+    }
+
+    private static boolean isLatinWordText(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        boolean hasLatinLetter = false;
+        for (int offset = 0; offset < text.length();) {
+            int codePoint = text.codePointAt(offset);
+            if (Character.isLetter(codePoint)) {
+                if (Character.UnicodeScript.of(codePoint) != Character.UnicodeScript.LATIN) {
+                    return false;
+                }
+                hasLatinLetter = true;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return hasLatinLetter;
+    }
+
     private boolean canBreakBetweenSegments(List<TextSegment> left, TextSegment right) {
         if (left == null || left.isEmpty() || right == null) {
             return true;
@@ -2648,7 +2727,14 @@ public final class LyricsView extends View {
         long end = duration <= 0L
                 ? source.endTimeMs
                 : source.startTimeMs + Math.round(duration * (Math.min(totalLength, safeEnd) / (float) totalLength));
-        return createMeasuredSegment(
+        long fillDuration = Math.max(0L, source.fillEndTimeMs - source.fillStartTimeMs);
+        long fillStart = fillDuration <= 0L
+                ? source.fillStartTimeMs
+                : source.fillStartTimeMs + Math.round(fillDuration * (safeOffset / (float) totalLength));
+        long fillEnd = fillDuration <= 0L
+                ? source.fillEndTimeMs
+                : source.fillStartTimeMs + Math.round(fillDuration * (Math.min(totalLength, safeEnd) / (float) totalLength));
+        TextSegment split = createMeasuredSegment(
                 builder.toString(),
                 start,
                 Math.max(start, end),
@@ -2656,6 +2742,7 @@ public final class LyricsView extends View {
                 length,
                 rubyForSplitSegment(source, safeOffset, length)
         );
+        return split.withFillTiming(fillStart, Math.max(fillStart, fillEnd));
     }
 
     private String rubyForSplitSegment(TextSegment source, int start, int length) {
@@ -3295,13 +3382,13 @@ public final class LyricsView extends View {
     }
 
     private float segmentFillFraction(TextSegment segment) {
-        if (positionMs >= segment.endTimeMs) {
+        if (positionMs >= segment.fillEndTimeMs) {
             return 1f;
         }
-        if (positionMs <= segment.startTimeMs || segment.endTimeMs <= segment.startTimeMs) {
+        if (positionMs <= segment.fillStartTimeMs || segment.fillEndTimeMs <= segment.fillStartTimeMs) {
             return 0f;
         }
-        return clamp((positionMs - segment.startTimeMs) / (float) (segment.endTimeMs - segment.startTimeMs));
+        return clamp((positionMs - segment.fillStartTimeMs) / (float) (segment.fillEndTimeMs - segment.fillStartTimeMs));
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
@@ -3768,15 +3855,15 @@ public final class LyricsView extends View {
                 if (segment.width <= 0f || isWhitespace(segment.text)) {
                     continue;
                 }
-                if (positionMs >= segment.startTimeMs && positionMs < segment.endTimeMs) {
+                if (positionMs >= segment.fillStartTimeMs && positionMs < segment.fillEndTimeMs) {
                     return segment.sourceIndex;
                 }
-                if (positionMs >= segment.endTimeMs && segment.endTimeMs >= fallbackEnd) {
-                    fallbackEnd = segment.endTimeMs;
+                if (positionMs >= segment.fillEndTimeMs && segment.fillEndTimeMs >= fallbackEnd) {
+                    fallbackEnd = segment.fillEndTimeMs;
                     fallbackIndex = segment.sourceIndex;
                 }
-                if (positionMs < segment.startTimeMs && segment.startTimeMs < nextStart) {
-                    nextStart = segment.startTimeMs;
+                if (positionMs < segment.fillStartTimeMs && segment.fillStartTimeMs < nextStart) {
+                    nextStart = segment.fillStartTimeMs;
                     nextIndex = segment.sourceIndex;
                 }
             }
@@ -3806,11 +3893,11 @@ public final class LyricsView extends View {
         long now = SystemClock.uptimeMillis();
         if (state == null) {
             if (completedBounceKeys.contains(bounceKey)
-                    || positionMs < segment.startTimeMs - KARAOKE_BOUNCE_PRELEAD_MS
-                    || positionMs > segment.startTimeMs + KARAOKE_BOUNCE_RISE_MS) {
+                    || positionMs < segment.fillStartTimeMs
+                    || positionMs > segment.fillStartTimeMs + KARAOKE_BOUNCE_RISE_MS) {
                 return KaraokeBounce.IDLE;
             }
-            long offsetFromStart = Math.max(-KARAOKE_BOUNCE_PRELEAD_MS, positionMs - segment.startTimeMs);
+            long offsetFromStart = Math.max(0L, positionMs - segment.fillStartTimeMs);
             float attenuation = Math.max(0.22f, 1f - distance * 0.23f);
             state = new BounceState(now - offsetFromStart, attenuation);
             bounceStates.put(bounceKey, state);
@@ -3818,7 +3905,7 @@ public final class LyricsView extends View {
 
         float totalWindow = KARAOKE_BOUNCE_RISE_MS + KARAOKE_BOUNCE_RELEASE_MS;
         float elapsed = now - state.startUptimeMs;
-        if (elapsed < -KARAOKE_BOUNCE_PRELEAD_MS) {
+        if (elapsed < 0f) {
             return KaraokeBounce.IDLE;
         }
         if (elapsed > totalWindow) {
@@ -3828,12 +3915,9 @@ public final class LyricsView extends View {
         }
 
         float waveStrength;
-        if (elapsed < 0f) {
-            float preProgress = (elapsed + KARAOKE_BOUNCE_PRELEAD_MS) / (float) KARAOKE_BOUNCE_PRELEAD_MS;
-            waveStrength = easeOutCubic(preProgress) * 0.22f;
-        } else if (elapsed <= KARAOKE_BOUNCE_RISE_MS) {
+        if (elapsed <= KARAOKE_BOUNCE_RISE_MS) {
             float riseProgress = elapsed / (float) KARAOKE_BOUNCE_RISE_MS;
-            waveStrength = 0.22f + easeOutCubic(riseProgress) * 0.78f;
+            waveStrength = easeOutCubic(riseProgress);
         } else {
             float fallProgress = Math.min(1f, (elapsed - KARAOKE_BOUNCE_RISE_MS) / (float) KARAOKE_BOUNCE_RELEASE_MS);
             waveStrength = (float) Math.pow(1f - fallProgress, 1.38f);
@@ -4515,6 +4599,8 @@ public final class LyricsView extends View {
         final float textInset;
         final long startTimeMs;
         final long endTimeMs;
+        final long fillStartTimeMs;
+        final long fillEndTimeMs;
         final int sourceIndex;
         final int sourceLength;
         final String rubyText;
@@ -4531,15 +4617,47 @@ public final class LyricsView extends View {
         }
 
         TextSegment(String text, float textWidth, float width, long startTimeMs, long endTimeMs, int sourceIndex, int sourceLength, String rubyText) {
+            this(text, textWidth, width, startTimeMs, endTimeMs, startTimeMs, endTimeMs, sourceIndex, sourceLength, rubyText);
+        }
+
+        TextSegment(
+                String text,
+                float textWidth,
+                float width,
+                long startTimeMs,
+                long endTimeMs,
+                long fillStartTimeMs,
+                long fillEndTimeMs,
+                int sourceIndex,
+                int sourceLength,
+                String rubyText
+        ) {
             this.text = text == null ? "" : text;
             this.textWidth = Math.max(0f, textWidth);
             this.width = Math.max(0f, width);
             this.textInset = Math.max(0f, (this.width - this.textWidth) * 0.5f);
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
+            this.fillStartTimeMs = Math.max(0L, fillStartTimeMs);
+            this.fillEndTimeMs = Math.max(this.fillStartTimeMs, fillEndTimeMs);
             this.sourceIndex = Math.max(0, sourceIndex);
             this.sourceLength = Math.max(1, sourceLength);
             this.rubyText = rubyText == null ? "" : rubyText;
+        }
+
+        TextSegment withFillTiming(long fillStartTimeMs, long fillEndTimeMs) {
+            return new TextSegment(
+                    text,
+                    textWidth,
+                    width,
+                    startTimeMs,
+                    endTimeMs,
+                    fillStartTimeMs,
+                    fillEndTimeMs,
+                    sourceIndex,
+                    sourceLength,
+                    rubyText
+            );
         }
 
         String bounceKey(String prefix) {
