@@ -3701,6 +3701,7 @@ final class LyricsRepository {
             boolean profileAvailable = false;
             boolean anonymous = false;
             boolean isPrivate = false;
+            LyricsResult.SyncContributor.CreatorDecoration decoration = null;
             boolean explicitAnonymousIdentity = false;
             if (raw instanceof String) {
                 name = ((String) raw).trim();
@@ -3728,6 +3729,16 @@ final class LyricsRepository {
                         : !userHash.isEmpty();
                 if (object.has("linked") && !object.optBoolean("linked", false)) {
                     profileAvailable = false;
+                }
+                JSONObject decorationObject = object.optJSONObject("decoration");
+                if (decorationObject != null) {
+                    decoration = new LyricsResult.SyncContributor.CreatorDecoration(
+                            decorationObject.optString("mode", ""),
+                            decorationObject.optString("solidColor", ""),
+                            decorationObject.optString("gradientStartColor", ""),
+                            decorationObject.optString("gradientEndColor", ""),
+                            decorationObject.optInt("gradientAngle", 90)
+                    );
                 }
             } else {
                 continue;
@@ -3761,7 +3772,8 @@ final class LyricsRepository {
                     userHash,
                     profileAvailable,
                     anonymousIdentity,
-                    isPrivate
+                    isPrivate,
+                    decoration
             ));
         }
         return result.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(result);

@@ -88,11 +88,34 @@ final class LyricsResult {
     }
 
     static final class SyncContributor {
+        static final class CreatorDecoration {
+            final String mode;
+            final String solidColor;
+            final String gradientStartColor;
+            final String gradientEndColor;
+            final int gradientAngle;
+
+            CreatorDecoration(
+                    String mode,
+                    String solidColor,
+                    String gradientStartColor,
+                    String gradientEndColor,
+                    int gradientAngle
+            ) {
+                this.mode = mode == null ? "" : mode.trim();
+                this.solidColor = solidColor == null ? "" : solidColor.trim();
+                this.gradientStartColor = gradientStartColor == null ? "" : gradientStartColor.trim();
+                this.gradientEndColor = gradientEndColor == null ? "" : gradientEndColor.trim();
+                this.gradientAngle = Math.max(0, Math.min(360, gradientAngle));
+            }
+        }
+
         final String name;
         final String userHash;
         final boolean profileAvailable;
         final boolean anonymous;
         final boolean isPrivate;
+        final CreatorDecoration decoration;
 
         SyncContributor(String name, String userHash, boolean profileAvailable) {
             this(name, userHash, profileAvailable, false, false);
@@ -105,6 +128,17 @@ final class LyricsResult {
                 boolean anonymous,
                 boolean isPrivate
         ) {
+            this(name, userHash, profileAvailable, anonymous, isPrivate, null);
+        }
+
+        SyncContributor(
+                String name,
+                String userHash,
+                boolean profileAvailable,
+                boolean anonymous,
+                boolean isPrivate,
+                CreatorDecoration decoration
+        ) {
             String safeName = name == null ? "" : name.trim();
             String safeHash = userHash == null ? "" : userHash.trim();
             boolean hidesIdentity = anonymous || isPrivate;
@@ -113,6 +147,7 @@ final class LyricsResult {
             this.profileAvailable = !hidesIdentity && profileAvailable && !safeHash.isEmpty();
             this.anonymous = hidesIdentity || ("Anonymous".equalsIgnoreCase(this.name) && this.userHash.isEmpty());
             this.isPrivate = isPrivate;
+            this.decoration = hidesIdentity ? null : decoration;
         }
     }
 }
