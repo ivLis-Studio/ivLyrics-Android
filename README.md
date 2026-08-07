@@ -39,6 +39,12 @@ Spotify에서 재생 중인 곡을 감지하고, ivLyrics 커뮤니티 싱크 �
 
 ## 설치
 
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/ivLis-Studio/ivLyrics-Android">
+  <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Obtainium에서 받기" height="60">
+</a>
+
+위 버튼을 누르면 Obtainium에 ivLyrics Android 저장소가 추가되어 GitHub Releases의 새 버전을 확인하고 설치할 수 있습니다.
+
 1. GitHub Releases에서 최신 APK를 다운로드합니다.
 2. Android 기기에 APK를 설치합니다.
 3. 설치 중 보안 안내가 나오면, APK를 받은 앱에 대해 "알 수 없는 앱 설치"를 허용합니다.
