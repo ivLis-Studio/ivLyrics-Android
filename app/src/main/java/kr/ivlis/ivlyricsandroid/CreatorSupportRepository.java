@@ -25,8 +25,6 @@ import java.util.concurrent.Executors;
 
 final class CreatorSupportRepository {
     private static final String DISCORD_USER_ENDPOINT = "https://discord.ivl.is/v1/user/";
-    private static final String DECORATIONS_ENDPOINT =
-            "https://lyrics.api.ivl.is/user/creator-decorations";
     private static final String SUPPORTER_ROLE_ID = "1530978124073013478";
     private static final String MONTHLY_SUPPORTER_ROLE_ID = "1530978173590966282";
     private static final String PREFS_NAME = "creator_support_tier_cache";
@@ -92,40 +90,45 @@ final class CreatorSupportRepository {
             callback.onLoaded(Collections.emptyMap());
             return;
         }
-        executor.execute(() -> callback.onLoaded(loadPresentations(userHashes)));
+        executor.execute(() -> callback.onLoaded(loadPresentations(contributors, userHashes)));
     }
 
     void shutdown() {
         executor.shutdownNow();
     }
 
-    private Map<String, Presentation> loadPresentations(Set<String> userHashes) {
+    private Map<String, Presentation> loadPresentations(
+            List<LyricsResult.SyncContributor> contributors,
+            Set<String> userHashes
+    ) {
         Map<String, String> tiers = new HashMap<>();
         for (String userHash : userHashes) {
             tiers.put(userHash, loadTier(userHash));
         }
 
-        Map<String, JSONObject> decorations;
-        try {
-            decorations = fetchDecorations(userHashes);
-        } catch (Exception ignored) {
-            decorations = Collections.emptyMap();
+        Map<String, LyricsResult.SyncContributor.CreatorDecoration> decorations = new HashMap<>();
+        for (LyricsResult.SyncContributor contributor : contributors) {
+            if (contributor != null
+                    && userHashes.contains(contributor.userHash)
+                    && contributor.decoration != null) {
+                decorations.put(contributor.userHash, contributor.decoration);
+            }
         }
 
         Map<String, Presentation> result = new HashMap<>();
         for (String userHash : userHashes) {
             String tier = tiers.get(userHash);
-            JSONObject decoration = decorations.get(userHash);
+            LyricsResult.SyncContributor.CreatorDecoration decoration = decorations.get(userHash);
             if ("none".equals(tier) || decoration == null) {
                 continue;
             }
             Presentation presentation = new Presentation(
                     tier,
-                    decoration.optString("mode", "solid"),
-                    decoration.optString("solidColor", ""),
-                    decoration.optString("gradientStartColor", ""),
-                    decoration.optString("gradientEndColor", ""),
-                    decoration.optInt("gradientAngle", 90)
+                    decoration.mode,
+                    decoration.solidColor,
+                    decoration.gradientStartColor,
+                    decoration.gradientEndColor,
+                    decoration.gradientAngle
             );
             if (presentation.hasDecoration()) {
                 result.put(userHash, presentation);
@@ -184,31 +187,6 @@ final class CreatorSupportRepository {
             }
         }
         return supporter ? "supporter" : "none";
-    }
-
-    private Map<String, JSONObject> fetchDecorations(Set<String> userHashes) throws Exception {
-        Uri uri = Uri.parse(DECORATIONS_ENDPOINT).buildUpon()
-                .appendQueryParameter("userHashes", String.join(",", userHashes))
-                .build();
-        JSONObject root = getJson(uri.toString());
-        JSONObject data = root.optJSONObject("data");
-        JSONArray items = data == null ? null : data.optJSONArray("items");
-        if (!root.optBoolean("success", false) || items == null) {
-            return Collections.emptyMap();
-        }
-        Map<String, JSONObject> result = new HashMap<>();
-        for (int index = 0; index < items.length(); index++) {
-            JSONObject item = items.optJSONObject(index);
-            if (item == null) {
-                continue;
-            }
-            String userHash = item.optString("userHash", "").trim();
-            JSONObject decoration = item.optJSONObject("decoration");
-            if (userHashes.contains(userHash) && decoration != null) {
-                result.put(userHash, decoration);
-            }
-        }
-        return result;
     }
 
     private JSONObject getJson(String endpoint) throws Exception {
