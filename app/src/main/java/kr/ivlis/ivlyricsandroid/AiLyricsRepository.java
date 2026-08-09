@@ -428,6 +428,14 @@ final class AiLyricsRepository {
             translation = withValue(translation, requests.size(), index, value);
         }
 
+        synchronized void resetPronunciationValues() {
+            pronunciation = Collections.emptyList();
+        }
+
+        synchronized void resetTranslationValues() {
+            translation = Collections.emptyList();
+        }
+
         synchronized void markPronunciationFailed() {
             pronunciationFinished = true;
             hadError = true;
@@ -762,19 +770,24 @@ final class AiLyricsRepository {
             }
         }
 
-        if (!settings.hasApiKey()) {
-            emitLog(trackKey, callback, "ai lyrics skipped: API key missing for " + settings.provider.label);
-            callback.onAiLyricsError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
-            return;
+        boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
+        boolean selectedAiReady = settings.hasReadyAiProvider();
+        boolean keylessTranslationReady = settings.hasKeylessTranslationProvider();
+        boolean requestedPronunciation = rule.pronunciationEnabled;
+        boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
+        if (!selectedAiReady && requestedPronunciation && requestedTranslation && keylessTranslationReady) {
+            emitLog(trackKey, callback, "ai pronunciation skipped: selected AI provider is not fully configured");
         }
-        if (!settings.hasModel()) {
-            emitLog(trackKey, callback, "ai lyrics skipped: model missing for " + settings.provider.label);
-            callback.onAiLyricsError(trackKey, "AI 모델을 직접 선택해 주세요");
+        boolean hasExecutableTask = (requestedPronunciation && selectedAiReady)
+                || (requestedTranslation && (keylessTranslationReady || selectedAiReady));
+        if (!hasExecutableTask && (requestedPronunciation || requestedTranslation)) {
+            String message = AppI18n.t(settings.uiLang, "error.translation_providers_failed");
+            emitLog(trackKey, callback, "ai lyrics skipped: no enabled provider is fully configured");
+            callback.onAiLyricsError(trackKey, message);
             return;
         }
 
-        emitLog(trackKey, callback, "ai lyrics: provider=" + settings.provider.label
-                + " / model=" + settings.model
+        emitLog(trackKey, callback, "ai lyrics: providers=" + String.join(",", settings.enabledAiProviderOrder())
                 + " / source=" + sourceLang
                 + (sourceLang.equalsIgnoreCase(detectedSourceLang) ? "" : " / detected=" + detectedSourceLang)
                 + " / pronunciation=" + pronunciationLang
@@ -783,9 +796,8 @@ final class AiLyricsRepository {
                 + " / pronunciation=" + rule.pronunciationEnabled);
 
         List<SupplementRequest> requests = buildSupplementRequests(baseResult.lines);
-        boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
-        boolean needsPronunciation = rule.pronunciationEnabled;
-        boolean needsTranslation = rule.translationEnabled && !translationSkipped;
+        boolean needsPronunciation = requestedPronunciation && selectedAiReady;
+        boolean needsTranslation = requestedTranslation && (keylessTranslationReady || selectedAiReady);
         if (translationSkipped) {
             emitLog(trackKey, callback, "ai translation skipped: source language matches target (" + sourceLang + " -> " + targetLang + ")");
         }
@@ -1413,43 +1425,106 @@ final class AiLyricsRepository {
             if (pronunciation) {
                 prompt = buildPhoneticPrompt(requests, pronunciationLang);
                 log.write("ai pronunciation stream request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
-                values = loadSupplementValuesStreamFirst(
-                        prompt,
-                        settings,
-                        requests,
-                        SUPPLEMENT_TASK_PRONUNCIATION,
-                        session,
-                        true,
-                        trackKey,
-                        rule,
-                        sourceLang,
-                        targetLang,
-                        pronunciationLang,
-                        translationSkipped,
-                        partialDispatcher,
-                        log
-                );
+                values = null;
+                Exception lastError = null;
+                for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
+                    session.resetPronunciationValues();
+                    try {
+                        log.write("ai pronunciation attempt: provider=" + providerSettings.provider.label
+                                + " / model=" + providerSettings.model);
+                        values = loadSupplementValuesStreamFirst(
+                                prompt,
+                                providerSettings,
+                                requests,
+                                SUPPLEMENT_TASK_PRONUNCIATION,
+                                session,
+                                true,
+                                trackKey,
+                                rule,
+                                sourceLang,
+                                targetLang,
+                                pronunciationLang,
+                                translationSkipped,
+                                partialDispatcher,
+                                log
+                        );
+                        break;
+                    } catch (Exception providerError) {
+                        lastError = providerError;
+                        log.write("ai pronunciation fallback: provider=" + providerSettings.provider.label
+                                + " / error=" + errorMessage(providerError));
+                    }
+                }
+                if (values == null) {
+                    throw lastError == null
+                            ? new IOException(AppI18n.t(settings.uiLang, "error.translation_providers_failed"))
+                            : lastError;
+                }
                 log.write("ai pronunciation response: lines=" + values.size());
                 session.setPronunciation(values);
             } else {
+                values = null;
+                Exception lastError = null;
+                List<String> sourceTexts = new ArrayList<>(requests.size());
+                for (SupplementRequest request : requests) {
+                    sourceTexts.add(request.text);
+                }
                 prompt = buildTranslationPrompt(requests, targetLang);
-                log.write("ai translation stream request: lines=" + expectedLineCount);
-                values = loadSupplementValuesStreamFirst(
-                        prompt,
-                        settings,
-                        requests,
-                        SUPPLEMENT_TASK_TRANSLATION,
-                        session,
-                        false,
-                        trackKey,
-                        rule,
-                        sourceLang,
-                        targetLang,
-                        pronunciationLang,
-                        translationSkipped,
-                        partialDispatcher,
-                        log
-                );
+                for (String providerId : settings.enabledAiProviderOrder()) {
+                    AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById(providerId);
+                    if (provider == null) {
+                        continue;
+                    }
+                    session.resetTranslationValues();
+                    try {
+                        if (provider.keyless) {
+                            log.write("translation attempt: provider=" + provider.label);
+                            KeylessTranslationProviders.Result result = KeylessTranslationProviders.translateWithProvider(
+                                    provider.id,
+                                    sourceTexts,
+                                    targetLang
+                            );
+                            values = result.values;
+                            log.write("translation response: provider=" + result.providerLabel + " / lines=" + values.size());
+                        } else {
+                            AiLyricsSettings.Snapshot providerSettings = settings.forProvider(provider.id);
+                            if (providerSettings == null || !providerSettings.hasApiKey() || !providerSettings.hasModel()) {
+                                log.write("ai translation skipped: provider=" + provider.label + " is not fully configured");
+                                continue;
+                            }
+                            log.write("ai translation stream request: provider=" + provider.label
+                                    + " / model=" + providerSettings.model + " / lines=" + expectedLineCount);
+                            values = loadSupplementValuesStreamFirst(
+                                    prompt,
+                                    providerSettings,
+                                    requests,
+                                    SUPPLEMENT_TASK_TRANSLATION,
+                                    session,
+                                    false,
+                                    trackKey,
+                                    rule,
+                                    sourceLang,
+                                    targetLang,
+                                    pronunciationLang,
+                                    translationSkipped,
+                                    partialDispatcher,
+                                    log
+                            );
+                        }
+                        if (values != null) {
+                            break;
+                        }
+                    } catch (Exception providerError) {
+                        lastError = providerError;
+                        log.write("translation fallback: provider=" + provider.label
+                                + " / error=" + errorMessage(providerError));
+                    }
+                }
+                if (values == null) {
+                    throw lastError == null
+                            ? new IOException(AppI18n.t(settings.uiLang, "error.translation_providers_failed"))
+                            : lastError;
+                }
                 log.write("ai translation response: lines=" + values.size());
                 session.setTranslation(values);
             }
@@ -1673,6 +1748,8 @@ final class AiLyricsRepository {
                 + "|prompt=" + SUPPLEMENT_PROMPT_VERSION
                 + "|task=" + task
                 + "|provider=" + settings.provider.id
+                + "|bingTranslate=" + settings.bingTranslateEnabled
+                + "|googleTranslate=" + settings.googleTranslateEnabled
                 + "|model=" + settings.model
                 + "|url=" + settings.baseUrl
                 + "|tok=" + settings.maxTokens

@@ -15,6 +15,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -50,6 +51,7 @@ import android.text.style.ClickableSpan;
 import android.text.style.ReplacementSpan;
 import android.util.Rational;
 import android.view.Gravity;
+import android.view.DragEvent;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -60,6 +62,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.DecelerateInterpolator;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -269,6 +272,7 @@ public final class MainActivity extends Activity implements
     private PopupWindow lyricsMetaMenuPopup;
     private ScrollView lyricsMetaMenuScrollView;
     private AlertDialog tmiDialog;
+    private AlertDialog firstLanguagePromptDialog;
     private LinearLayout tmiDialogBody;
     private TextView tmiDialogRegenerateButton;
     private TransportButtonView playPauseButton;
@@ -1362,6 +1366,11 @@ public final class MainActivity extends Activity implements
         }
 
         if (trackChanged) {
+            if (firstLanguagePromptDialog != null) {
+                firstLanguagePromptDialog.setOnDismissListener(null);
+                firstLanguagePromptDialog.dismiss();
+                firstLanguagePromptDialog = null;
+            }
             currentLyricsKey = nextKey;
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
             currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(currentLyricsKey);
@@ -1519,7 +1528,9 @@ public final class MainActivity extends Activity implements
         updateDetectedLyricsSourceLanguage(result);
         updateLyricsLanguageSettingsUi();
         requestMetadataTranslation(false);
-        requestAiLyrics(false);
+        if (!maybeShowFirstLanguagePrompt()) {
+            requestAiLyrics(false);
+        }
         syncYouTubeBackgroundState();
     }
 
@@ -1640,7 +1651,9 @@ public final class MainActivity extends Activity implements
         setManualLrclibStatus(ui("lyrics.lrclib_search.loaded"));
         showSavedToast(ui("lyrics.lrclib_search.loaded"));
         requestMetadataTranslation(false);
-        requestAiLyrics(false);
+        if (!maybeShowFirstLanguagePrompt()) {
+            requestAiLyrics(false);
+        }
         syncYouTubeBackgroundState();
     }
 
@@ -7458,64 +7471,178 @@ public final class MainActivity extends Activity implements
     }
 
     private void buildProviderButtons() {
-        if (providerButtonsContainer == null) {
+        if (providerButtonsContainer == null || aiLyricsSettings == null) {
             return;
         }
         providerButtonsContainer.removeAllViews();
-        LinearLayout row = null;
-        for (int index = 0; index < AiLyricsSettings.PROVIDERS.size(); index++) {
-            if (index % 2 == 0) {
-                row = addChoiceGridRow(providerButtonsContainer);
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        for (int index = 0; index < snapshot.aiProviderOrder.size(); index++) {
+            AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById(snapshot.aiProviderOrder.get(index));
+            if (provider == null) {
+                continue;
             }
-            AiLyricsSettings.Provider provider = AiLyricsSettings.PROVIDERS.get(index);
-            TextView button = providerButton(provider);
-            row.addView(button, choiceGridButtonParams(index, 54));
+            View card = providerButton(provider, snapshot, index);
+            LinearLayout.LayoutParams params = matchWrap();
+            if (providerButtonsContainer.getChildCount() > 0) {
+                params.topMargin = dp(8);
+            }
+            providerButtonsContainer.addView(card, params);
         }
-        updateProviderButtons();
+        updatePollinationsAuthUi(snapshot);
+        updatePaxsenixModelPickerUi(snapshot);
     }
 
-    private TextView providerButton(AiLyricsSettings.Provider provider) {
-        TextView button = label(provider.label, 12f, Color.WHITE, AppFonts.semiBold(this));
-        makeRemoteFocusable(button);
-        button.setTag(provider.id);
-        button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
-        button.setPadding(dp(10), 0, dp(10), 0);
-        button.setContentDescription(providerDescription(provider));
-        button.setOnClickListener(view -> {
-            applyAiSettingsFromUi(false);
-            aiLyricsSettings.setProvider(provider.id);
-            populateAiSettingsUi();
-            updateProviderButtons();
-            showSavedToast(ui("toast.provider_saved"));
+    private View providerButton(
+            AiLyricsSettings.Provider provider,
+            AiLyricsSettings.Snapshot snapshot,
+            int providerIndex
+    ) {
+        boolean selected = !provider.keyless && provider.id.equals(snapshot.provider.id);
+        LinearLayout card = new LinearLayout(this);
+        card.setTag(provider.id);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setMinimumHeight(dp(72));
+        card.setBackground(roundDrawable(
+                selected ? Color.argb(42, 120, 167, 255) : Color.argb(24, 255, 255, 255),
+                dp(10)
+        ));
+        makeRemoteFocusable(card);
+
+        TextView grip = label("⋮⋮", 19f, Color.argb(170, 255, 255, 255), AppFonts.semiBold(this));
+        grip.setGravity(Gravity.CENTER);
+        grip.setMinWidth(dp(38));
+        grip.setContentDescription(uiFormat("setting.ai_provider_drag_format", provider.label));
+        grip.setOnLongClickListener(view -> {
+            ClipData data = ClipData.newPlainText("ivlyrics-ai-provider", provider.id);
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                view.startDragAndDrop(data, new View.DragShadowBuilder(card), provider.id, 0);
+            } else {
+                view.startDrag(data, new View.DragShadowBuilder(card), provider.id, 0);
+            }
+            return true;
         });
-        return button;
+        installProviderAccessibilityActions(grip, provider, providerIndex, snapshot.aiProviderOrder.size());
+        card.addView(grip, new LinearLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        TextView title = label(provider.label, 14f, Color.WHITE, AppFonts.semiBold(this));
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        textColumn.addView(title, matchWrap());
+        TextView description = label(providerDescription(provider), 11f, Color.argb(165, 255, 255, 255), AppFonts.regular(this));
+        description.setMaxLines(2);
+        description.setEllipsize(TextUtils.TruncateAt.END);
+        textColumn.addView(description, topMargin(matchWrap(), dp(3)));
+        if (selected) {
+            TextView badge = label(ui("setting.ai_provider_selected"), 10f, Color.rgb(151, 190, 255), AppFonts.semiBold(this));
+            textColumn.addView(badge, topMargin(matchWrap(), dp(3)));
+        }
+        card.addView(textColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        Switch enabledSwitch = new Switch(this);
+        enabledSwitch.setShowText(false);
+        enabledSwitch.setChecked(snapshot.isAiProviderEnabled(provider.id));
+        enabledSwitch.setContentDescription(uiFormat("setting.ai_provider_toggle_format", provider.label));
+        enabledSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            aiLyricsSettings.setAiProviderEnabled(provider.id, isChecked);
+            buildProviderButtons();
+            requestAiLyrics(true);
+            showSavedToast(ui("toast.translation_provider_saved"));
+        });
+        card.addView(enabledSwitch, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        card.setOnDragListener((view, event) -> handleProviderDrag(card, provider.id, event));
+        if (!provider.keyless) {
+            card.setOnClickListener(view -> {
+                if (provider.id.equals(aiLyricsSettings.snapshot().provider.id)) {
+                    return;
+                }
+                applyAiSettingsFromUi(false);
+                aiLyricsSettings.setProvider(provider.id);
+                populateAiSettingsUi();
+                showSavedToast(ui("toast.provider_saved"));
+            });
+        }
+        return card;
+    }
+
+    private boolean handleProviderDrag(View card, String targetId, DragEvent event) {
+        if (aiLyricsSettings == null || event == null) {
+            return false;
+        }
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return event.getLocalState() instanceof String;
+            case DragEvent.ACTION_DRAG_ENTERED:
+                card.setAlpha(0.68f);
+                return true;
+            case DragEvent.ACTION_DRAG_EXITED:
+            case DragEvent.ACTION_DRAG_ENDED:
+                card.setAlpha(1f);
+                return true;
+            case DragEvent.ACTION_DROP:
+                card.setAlpha(1f);
+                String sourceId = event.getLocalState() instanceof String
+                        ? (String) event.getLocalState()
+                        : "";
+                boolean after = event.getY() > card.getHeight() / 2f;
+                aiLyricsSettings.moveAiProvider(sourceId, targetId, after);
+                buildProviderButtons();
+                showSavedToast(ui("toast.translation_provider_saved"));
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void installProviderAccessibilityActions(
+            View grip,
+            AiLyricsSettings.Provider provider,
+            int index,
+            int total
+    ) {
+        final int moveUpAction = 0x01021001;
+        final int moveDownAction = 0x01021002;
+        grip.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override
+            public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                if (index > 0) {
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(moveUpAction, ui("accessibility.move_up")));
+                }
+                if (index < total - 1) {
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(moveDownAction, ui("accessibility.move_down")));
+                }
+            }
+
+            @Override
+            public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                if (action == moveUpAction || action == moveDownAction) {
+                    aiLyricsSettings.moveAiProviderByOffset(provider.id, action == moveUpAction ? -1 : 1);
+                    buildProviderButtons();
+                    host.announceForAccessibility(ui("toast.translation_provider_saved"));
+                    return true;
+                }
+                return super.performAccessibilityAction(host, action, args);
+            }
+        });
     }
 
     private void updateProviderButtons() {
         if (providerButtonsContainer == null || aiLyricsSettings == null) {
             return;
         }
-        String selectedId = aiLyricsSettings.snapshot().provider.id;
-        for (int rowIndex = 0; rowIndex < providerButtonsContainer.getChildCount(); rowIndex++) {
-            View rowView = providerButtonsContainer.getChildAt(rowIndex);
-            if (!(rowView instanceof LinearLayout)) {
-                continue;
-            }
-            LinearLayout row = (LinearLayout) rowView;
-            for (int index = 0; index < row.getChildCount(); index++) {
-                View child = row.getChildAt(index);
-                if (!(child instanceof TextView)) {
-                    continue;
-                }
-                TextView button = (TextView) child;
-                setSelectableButtonState(button, selectedId != null && selectedId.equals(button.getTag()));
-            }
-        }
-        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        updatePollinationsAuthUi(snapshot);
-        updatePaxsenixModelPickerUi(snapshot);
+        buildProviderButtons();
     }
 
     private void updatePaxsenixModelPickerUi(AiLyricsSettings.Snapshot snapshot) {
@@ -7613,7 +7740,16 @@ public final class MainActivity extends Activity implements
     }
 
     private String providerDescription(AiLyricsSettings.Provider provider) {
-        return provider == null ? "" : ui("provider.desc." + provider.id);
+        if (provider == null) {
+            return "";
+        }
+        if (KeylessTranslationProviders.BING_ID.equals(provider.id)) {
+            return ui("setting.bing_translate_provider_desc");
+        }
+        if (KeylessTranslationProviders.GOOGLE_ID.equals(provider.id)) {
+            return ui("setting.google_translate_provider_desc");
+        }
+        return ui("provider.desc." + provider.id);
     }
 
     private String backgroundModeLabel(String modeId) {
@@ -9982,16 +10118,15 @@ public final class MainActivity extends Activity implements
         updateSpeakerColorSettingsUi(snapshot);
         applySpeakerColorSettings(snapshot);
         if (providerSummaryView != null) {
-            providerSummaryView.setText(snapshot.provider.label + " · " + providerDescription(snapshot.provider)
-                    + "\n" + snapshot.provider.defaultBaseUrl);
+            providerSummaryView.setText(ui("setting.ai_provider_order_desc"));
         }
         updatePollinationsAuthUi(snapshot);
         if (aiSettingsStatusView != null) {
             String status = ui("status.ai_disabled");
             if (snapshot.enabled()) {
-                status = !snapshot.hasApiKey()
-                        ? ui("status.ai_key_needed")
-                        : (!snapshot.hasModel() ? ui("status.ai_model_needed") : ui("status.ai_lyrics_active"));
+                status = snapshot.hasAnyTranslationProvider() || snapshot.hasReadyAiProvider()
+                        ? ui("status.ai_lyrics_active")
+                        : ui("status.ai_key_needed");
             }
             aiSettingsStatusView.setText(status);
         }
@@ -10006,11 +10141,15 @@ public final class MainActivity extends Activity implements
         if (aiLyricsSettings == null) {
             return;
         }
-        aiLyricsSettings.setApiKeys(textOf(apiKeysInput));
-        aiLyricsSettings.setModel(textOf(modelInput));
-        aiLyricsSettings.setBaseUrl(textOf(baseUrlInput));
-        aiLyricsSettings.setMaxTokens(parseInt(textOf(maxTokensInput), 16000));
-        aiLyricsSettings.setTemperature(parseFloat(textOf(temperatureInput), 0.3f));
+        AiLyricsSettings.Snapshot current = aiLyricsSettings.snapshot();
+        aiLyricsSettings.setProviderProfile(
+                current.provider.id,
+                textOf(apiKeysInput),
+                textOf(baseUrlInput),
+                textOf(modelInput),
+                parseInt(textOf(maxTokensInput), 16000),
+                parseFloat(textOf(temperatureInput), 0.3f)
+        );
         applyBackgroundSettings(aiLyricsSettings.snapshot());
         if (updateStatus && aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(ui("toast.settings_saved"));
@@ -11433,6 +11572,252 @@ public final class MainActivity extends Activity implements
         @Override public void onAiCulturalAnnotationsError(String key, String requestKey, String message) {}
     }
 
+    private boolean maybeShowFirstLanguagePrompt() {
+        if (aiLyricsSettings == null
+                || currentBaseLyricsResult == null
+                || currentBaseLyricsResult.lines == null
+                || currentBaseLyricsResult.lines.isEmpty()) {
+            return false;
+        }
+        String source = effectiveSelectedSourceLang();
+        if (!aiLyricsSettings.shouldPromptForFirstLanguage(source)) {
+            return false;
+        }
+
+        aiLyricsSettings.markFirstLanguagePrompted(source);
+        String trackKey = currentLyricsKey;
+        Locale displayLocale = Locale.forLanguageTag(
+                aiLyricsSettings.snapshot().uiLang.replace('_', '-')
+        );
+        String languageName = Locale.forLanguageTag(source.replace('_', '-'))
+                .getDisplayLanguage(displayLocale);
+        if (languageName == null || languageName.trim().isEmpty()) {
+            languageName = AiLyricsSettings.languageLabel(source);
+        }
+        final boolean[] continued = {false};
+        Runnable continueCurrentTrack = () -> {
+            if (continued[0]) {
+                return;
+            }
+            continued[0] = true;
+            if (trackKey.equals(currentLyricsKey)) {
+                updateLyricsLanguageSettingsUi();
+                requestAiLyrics(false);
+            }
+        };
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(dp(28), dp(28), dp(28), dp(22));
+        GradientDrawable shellBackground = roundDrawable(Color.rgb(24, 24, 27), dp(24));
+        shellBackground.setStroke(dp(1), Color.argb(26, 255, 255, 255));
+        shell.setBackground(shellBackground);
+
+        TextView icon = label("文A", 17f, Color.rgb(147, 197, 253), AppFonts.bold(this));
+        icon.setGravity(Gravity.CENTER);
+        icon.setLetterSpacing(-0.08f);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        icon.setBackground(roundDrawable(Color.argb(56, 96, 165, 250), dp(29)));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(58), dp(58));
+        iconParams.gravity = Gravity.CENTER_HORIZONTAL;
+        shell.addView(icon, iconParams);
+
+        TextView title = label(
+                uiFormat("first_language.title_format", languageName),
+                20f,
+                Color.rgb(248, 250, 252),
+                AppFonts.bold(this)
+        );
+        title.setGravity(Gravity.CENTER);
+        title.setLineSpacing(0f, 1.08f);
+        shell.addView(title, topMargin(matchWrap(), dp(16)));
+
+        TextView message = label(
+                ui("first_language.message"),
+                16f,
+                Color.argb(150, 248, 250, 252),
+                AppFonts.regular(this)
+        );
+        message.setGravity(Gravity.CENTER);
+        message.setLineSpacing(0f, 1.14f);
+        shell.addView(message, topMargin(matchWrap(), dp(5)));
+
+        TextView hint = label(
+                ui("first_language.hint"),
+                12.5f,
+                Color.argb(116, 248, 250, 252),
+                AppFonts.regular(this)
+        );
+        hint.setGravity(Gravity.CENTER);
+        hint.setLineSpacing(0f, 1.12f);
+        shell.addView(hint, topMargin(matchWrap(), dp(8)));
+
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.VERTICAL);
+        shell.addView(choices, topMargin(matchWrap(), dp(16)));
+
+        Switch pronunciationSwitch = addFirstLanguagePromptToggle(
+                choices,
+                "Abc",
+                ui("first_language.pronunciation"),
+                true
+        );
+        Switch translationSwitch = addFirstLanguagePromptToggle(
+                choices,
+                "文A",
+                ui("first_language.translation"),
+                false
+        );
+
+        TextView action = label(
+                ui("first_language.not_now"),
+                15f,
+                Color.argb(158, 248, 250, 252),
+                AppFonts.semiBold(this)
+        );
+        makeRemoteFocusable(action);
+        action.setGravity(Gravity.CENTER);
+        action.setMinHeight(dp(48));
+        action.setPadding(dp(12), 0, dp(12), 0);
+        shell.addView(action, topMargin(matchWrap(), dp(16)));
+
+        Runnable updateAction = () -> updateFirstLanguagePromptAction(
+                action,
+                pronunciationSwitch.isChecked() || translationSwitch.isChecked()
+        );
+        pronunciationSwitch.setOnCheckedChangeListener((button, checked) -> updateAction.run());
+        translationSwitch.setOnCheckedChangeListener((button, checked) -> updateAction.run());
+        updateAction.run();
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(shell)
+                .create();
+        dialog.setCanceledOnTouchOutside(false);
+        dialog.setOnCancelListener(ignored -> continueCurrentTrack.run());
+        action.setOnClickListener(view -> {
+            boolean pronunciationEnabled = pronunciationSwitch.isChecked();
+            boolean translationEnabled = translationSwitch.isChecked();
+            if (pronunciationEnabled || translationEnabled) {
+                aiLyricsSettings.setLanguageRule(
+                        source,
+                        translationEnabled,
+                        pronunciationEnabled,
+                        aiLyricsSettings.snapshot().defaultRule.targetLang
+                );
+            }
+            continueCurrentTrack.run();
+            dialog.dismiss();
+        });
+
+        firstLanguagePromptDialog = dialog;
+        dialog.setOnDismissListener(ignored -> firstLanguagePromptDialog = null);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.56f);
+            int width = Math.min(
+                    getResources().getDisplayMetrics().widthPixels - dp(32),
+                    dp(440)
+            );
+            window.setLayout(Math.max(dp(300), width), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        return true;
+    }
+
+    private Switch addFirstLanguagePromptToggle(
+            LinearLayout parent,
+            String iconText,
+            String labelText,
+            boolean showDivider
+    ) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(58));
+        row.setPadding(dp(4), 0, dp(4), 0);
+
+        TextView rowIcon = label(
+                iconText,
+                12f,
+                Color.argb(168, 248, 250, 252),
+                AppFonts.bold(this)
+        );
+        rowIcon.setGravity(Gravity.CENTER);
+        rowIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(rowIcon, new LinearLayout.LayoutParams(dp(24), dp(32)));
+
+        TextView rowLabel = label(
+                labelText,
+                16f,
+                Color.rgb(248, 250, 252),
+                AppFonts.semiBold(this)
+        );
+        rowLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+        );
+        labelParams.leftMargin = dp(12);
+        row.addView(rowLabel, labelParams);
+
+        Switch toggle = new Switch(this);
+        toggle.setShowText(false);
+        toggle.setSplitTrack(false);
+        toggle.setContentDescription(labelText);
+        toggle.setMinWidth(dp(50));
+        toggle.setMinimumHeight(dp(48));
+        int[][] states = new int[][] {
+                new int[] {android.R.attr.state_checked},
+                new int[] {-android.R.attr.state_checked}
+        };
+        toggle.setTrackTintList(new ColorStateList(
+                states,
+                new int[] {Color.rgb(47, 125, 221), Color.argb(38, 255, 255, 255)}
+        ));
+        toggle.setThumbTintList(new ColorStateList(
+                states,
+                new int[] {Color.WHITE, Color.WHITE}
+        ));
+        row.addView(toggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(58)
+        ));
+        row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
+        row.setFocusable(false);
+        row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        if (showDivider) {
+            FrameLayout wrapper = new FrameLayout(this);
+            wrapper.addView(row, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(58)
+            ));
+            View divider = new View(this);
+            divider.setBackgroundColor(Color.argb(23, 255, 255, 255));
+            FrameLayout.LayoutParams dividerParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(1),
+                    Gravity.BOTTOM
+            );
+            wrapper.addView(divider, dividerParams);
+            parent.addView(wrapper, matchWrap());
+        } else {
+            parent.addView(row, matchWrap());
+        }
+        return toggle;
+    }
+
+    private void updateFirstLanguagePromptAction(TextView action, boolean hasSelection) {
+        action.setText(ui(hasSelection ? "first_language.apply" : "first_language.not_now"));
+        action.setTextColor(hasSelection ? Color.WHITE : Color.argb(158, 248, 250, 252));
+        action.setBackground(hasSelection
+                ? roundDrawable(Color.rgb(47, 125, 221), dp(12))
+                : roundDrawable(Color.TRANSPARENT, dp(12)));
+    }
+
     private void requestAiLyrics(boolean clearCache) {
         long generation = ++aiSupplementGeneration;
         if (currentTrack == null || currentBaseLyricsResult == null || currentBaseLyricsResult.lines.isEmpty()) {
@@ -11474,7 +11859,12 @@ public final class MainActivity extends Activity implements
             requestJapaneseFurigana(clearCache);
             return;
         }
-        if (!snapshot.hasApiKey()) {
+        boolean selectedAiReady = snapshot.hasApiKey() && snapshot.hasModel();
+        boolean requestedPronunciation = rule.pronunciationEnabled;
+        boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
+        boolean canRunTask = (requestedPronunciation && selectedAiReady)
+                || (requestedTranslation && (snapshot.hasKeylessTranslationProvider() || selectedAiReady));
+        if (!canRunTask && !snapshot.hasApiKey()) {
             aiLyricsGenerating = false;
             currentLyricsResult = currentBaseLyricsResult;
             setLyricsResultOnViews(currentLyricsResult);
@@ -11486,7 +11876,7 @@ public final class MainActivity extends Activity implements
             requestJapaneseFurigana(clearCache);
             return;
         }
-        if (!snapshot.hasModel()) {
+        if (!canRunTask && !snapshot.hasModel()) {
             aiLyricsGenerating = false;
             currentLyricsResult = currentBaseLyricsResult;
             setLyricsResultOnViews(currentLyricsResult);
@@ -11514,8 +11904,8 @@ public final class MainActivity extends Activity implements
         currentLyricsResult = mergeCurrentFuriganaInto(currentBaseLyricsResult);
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(
-                rule.pronunciationEnabled,
-                rule.translationEnabled && !translationSkipped,
+                requestedPronunciation && selectedAiReady,
+                requestedTranslation,
                 shouldGenerateJapaneseFurigana(snapshot, source)
         );
         updateLyricPreview(currentLyricsPlaybackPosition(currentTrack));

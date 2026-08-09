@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 
 import org.json.JSONException;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -22,12 +23,18 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String PREFS_NAME = "ai_lyrics_settings";
     static final String KEY_TRANSLATION_ENABLED = "translation_enabled";
     static final String KEY_PRONUNCIATION_ENABLED = "pronunciation_enabled";
+    static final String KEY_BING_TRANSLATE_ENABLED = "bing_translate_enabled";
+    static final String KEY_GOOGLE_TRANSLATE_ENABLED = "google_translate_enabled";
+    static final String KEY_AI_PROVIDER_ORDER = "ai_provider_order_v1";
+    static final String KEY_AI_PROVIDER_ENABLED = "ai_provider_enabled_v1";
+    static final String KEY_AI_PROVIDER_PROFILES = "ai_provider_profiles_v1";
     static final String KEY_PROVIDER = "provider";
     static final String KEY_TARGET_LANG = "target_lang";
     static final String KEY_UI_LANG = "ui_lang";
     static final String KEY_OUTPUT_LANG = "output_lang";
     static final String KEY_PRONUNCIATION_LANG = "pronunciation_lang";
     static final String KEY_LANGUAGE_RULES = "language_rules_v2";
+    private static final String KEY_FIRST_LANGUAGE_PROMPTED = "first_language_prompted_v1";
     static final String KEY_API_KEYS = "api_keys";
     static final String KEY_POLLINATIONS_ACCESS_TOKEN = "pollinations_access_token";
     static final String KEY_MODEL = "model";
@@ -142,7 +149,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     private static final int DEFAULT_PIP_LYRICS_SIZE_PERCENT = 150;
     private static final String DEFAULT_SOLID_BACKGROUND_COLOR = "#1e3a8a";
     private static final Set<String> CLOUD_SETTING_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
-            KEY_TRANSLATION_ENABLED, KEY_PRONUNCIATION_ENABLED, KEY_PROVIDER, KEY_TARGET_LANG, KEY_UI_LANG,
+            KEY_TRANSLATION_ENABLED, KEY_PRONUNCIATION_ENABLED, KEY_BING_TRANSLATE_ENABLED,
+            KEY_GOOGLE_TRANSLATE_ENABLED, KEY_AI_PROVIDER_ORDER, KEY_AI_PROVIDER_ENABLED,
+            KEY_PROVIDER, KEY_TARGET_LANG, KEY_UI_LANG,
             KEY_OUTPUT_LANG, KEY_PRONUNCIATION_LANG, KEY_LANGUAGE_RULES, KEY_MODEL, KEY_MAX_TOKENS,
             KEY_TEMPERATURE, KEY_PREVIEW_MODE, KEY_PREVIEW_ITEMS, KEY_AUTO_INSTRUMENTAL_BREAK,
             KEY_INTERLUDE_LABELS_ENABLED, KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, KEY_KARAOKE_BOUNCE_EFFECT,
@@ -230,6 +239,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     "https://enter.pollinations.ai"
             )
     ));
+    static final List<Provider> ALL_AI_PROVIDERS = allAiProviders();
+    static final List<String> DEFAULT_AI_PROVIDER_ORDER = defaultAiProviderOrder();
     static final List<BackgroundMode> BACKGROUND_MODES = Collections.unmodifiableList(Arrays.asList(
             new BackgroundMode(BACKGROUND_MODE_GRADIENT, "앨범 커버", "현재 앨범 커버를 크게 블러 처리해 배경으로 사용합니다."),
             new BackgroundMode(BACKGROUND_MODE_BLUR_GRADIENT, "블러 그라데이션", "앨범 색상을 추출해 움직이는 블러 그라데이션을 만듭니다."),
@@ -352,8 +363,13 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         }
         String providerId = prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER);
         Provider provider = providerById(providerId);
-        String baseUrl = prefs.getString(KEY_BASE_URL, provider.defaultBaseUrl);
-        String model = prefs.getString(KEY_MODEL, provider.defaultModel);
+        Map<String, ProviderProfile> providerProfiles = loadProviderProfiles();
+        ProviderProfile providerProfile = providerProfiles.get(provider.id);
+        if (providerProfile == null) {
+            providerProfile = ProviderProfile.defaults(provider);
+        }
+        List<String> providerOrder = loadAiProviderOrder();
+        Map<String, Boolean> providerEnabled = loadAiProviderEnabled();
         RuleConfig ruleConfig = loadRuleConfig();
         String outputLang = storedOutputLanguage(ruleConfig);
         ruleConfig = ruleConfig.withTarget(outputLang);
@@ -363,12 +379,12 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 provider,
                 ruleConfig.defaultRule,
                 ruleConfig.languageRules,
-                prefs.getString(KEY_API_KEYS, ""),
+                providerProfile.apiKeys,
                 prefs.getString(KEY_POLLINATIONS_ACCESS_TOKEN, ""),
-                baseUrl == null || baseUrl.trim().isEmpty() ? provider.defaultBaseUrl : baseUrl.trim(),
-                model == null || model.trim().isEmpty() ? provider.defaultModel : model.trim(),
-                Math.max(256, prefs.getInt(KEY_MAX_TOKENS, 16000)),
-                clampFloat(prefs.getFloat(KEY_TEMPERATURE, 0.3f), 0f, 2f),
+                providerProfile.baseUrl.isEmpty() ? provider.defaultBaseUrl : providerProfile.baseUrl,
+                providerProfile.model,
+                providerProfile.maxTokens,
+                providerProfile.temperature,
                 normalizePreviewMode(prefs.getString(KEY_PREVIEW_MODE, PREVIEW_MODE_ORIGINAL)),
                 normalizePreviewItems(prefs.contains(KEY_PREVIEW_ITEMS)
                         ? prefs.getInt(KEY_PREVIEW_ITEMS, PREVIEW_ITEM_ORIGINAL)
@@ -388,6 +404,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 normalizePipLyricsSizePercent(prefs.getInt(KEY_PIP_LYRICS_SIZE_PERCENT, DEFAULT_PIP_LYRICS_SIZE_PERCENT)),
                 prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
+                Boolean.TRUE.equals(providerEnabled.get(KeylessTranslationProviders.BING_ID)),
+                Boolean.TRUE.equals(providerEnabled.get(KeylessTranslationProviders.GOOGLE_ID)),
+                providerOrder,
+                providerEnabled,
+                providerProfiles,
                 prefs.getBoolean(KEY_CULTURAL_ANNOTATIONS_ENABLED, false),
                 normalizeCulturalFontFamily(prefs.getString(KEY_CULTURAL_ANNOTATIONS_FONT_FAMILY, CULTURAL_FONT_PRETENDARD)),
                 clampInt(prefs.getInt(KEY_CULTURAL_ANNOTATIONS_FONT_SIZE, 14), 10, 28),
@@ -433,6 +454,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setJapaneseFuriganaEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_JAPANESE_FURIGANA_ENABLED, enabled).apply();
+    }
+
+    void setBingTranslateEnabled(boolean enabled) {
+        setAiProviderEnabled(KeylessTranslationProviders.BING_ID, enabled);
+    }
+
+    void setGoogleTranslateEnabled(boolean enabled) {
+        setAiProviderEnabled(KeylessTranslationProviders.GOOGLE_ID, enabled);
     }
 
     void setCulturalAnnotationsEnabled(boolean enabled) {
@@ -544,11 +573,52 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setProvider(String providerId) {
         Provider provider = providerById(providerId);
-        prefs.edit()
-                .putString(KEY_PROVIDER, provider.id)
-                .putString(KEY_BASE_URL, provider.defaultBaseUrl)
-                .putString(KEY_MODEL, provider.defaultModel)
-                .apply();
+        prefs.edit().putString(KEY_PROVIDER, provider.id).apply();
+    }
+
+    void setAiProviderEnabled(String providerId, boolean enabled) {
+        Provider provider = aiProviderById(providerId);
+        if (provider == null) {
+            return;
+        }
+        Map<String, Boolean> values = new LinkedHashMap<>(loadAiProviderEnabled());
+        values.put(provider.id, enabled);
+        SharedPreferences.Editor editor = prefs.edit().putString(KEY_AI_PROVIDER_ENABLED, providerEnabledJson(values));
+        if (KeylessTranslationProviders.BING_ID.equals(provider.id)) {
+            editor.putBoolean(KEY_BING_TRANSLATE_ENABLED, enabled);
+        } else if (KeylessTranslationProviders.GOOGLE_ID.equals(provider.id)) {
+            editor.putBoolean(KEY_GOOGLE_TRANSLATE_ENABLED, enabled);
+        }
+        editor.apply();
+    }
+
+    void setAiProviderOrder(List<String> order) {
+        prefs.edit().putString(KEY_AI_PROVIDER_ORDER, providerOrderJson(normalizeAiProviderOrder(order))).apply();
+    }
+
+    void moveAiProvider(String sourceId, String targetId, boolean after) {
+        List<String> order = new ArrayList<>(loadAiProviderOrder());
+        if (sourceId == null || targetId == null || sourceId.equals(targetId) || !order.remove(sourceId)) {
+            return;
+        }
+        int targetIndex = order.indexOf(targetId);
+        if (targetIndex < 0) {
+            return;
+        }
+        order.add(Math.min(order.size(), targetIndex + (after ? 1 : 0)), sourceId);
+        setAiProviderOrder(order);
+    }
+
+    void moveAiProviderByOffset(String providerId, int offset) {
+        List<String> order = new ArrayList<>(loadAiProviderOrder());
+        int from = order.indexOf(providerId);
+        int to = Math.max(0, Math.min(order.size() - 1, from + offset));
+        if (from < 0 || from == to) {
+            return;
+        }
+        order.remove(from);
+        order.add(to, providerId);
+        setAiProviderOrder(order);
     }
 
     void setTargetLang(String lang) {
@@ -607,8 +677,46 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         saveRuleConfig(defaultRule, rules);
     }
 
+    boolean shouldPromptForFirstLanguage(String sourceLang) {
+        String source = normalizeSourceLanguageKey(sourceLang);
+        if (source.isEmpty()
+                || DEFAULT_SOURCE_LANG.equals(source)
+                || "auto".equalsIgnoreCase(source)
+                || "unknown".equalsIgnoreCase(source)
+                || "und".equalsIgnoreCase(source)) {
+            return false;
+        }
+        Snapshot current = snapshot();
+        if (current.languageRules.containsKey(source)) {
+            return false;
+        }
+        int separator = source.indexOf('-');
+        if (separator > 0 && current.languageRules.containsKey(source.substring(0, separator))) {
+            return false;
+        }
+        Set<String> prompted = prefs.getStringSet(KEY_FIRST_LANGUAGE_PROMPTED, Collections.emptySet());
+        if (prompted != null && prompted.contains(source.toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        return !isSameLanguage(source, current.resolveTargetLanguage(source));
+    }
+
+    void markFirstLanguagePrompted(String sourceLang) {
+        String source = normalizeSourceLanguageKey(sourceLang).toLowerCase(Locale.ROOT);
+        if (source.isEmpty() || DEFAULT_SOURCE_LANG.equals(source)) {
+            return;
+        }
+        Set<String> prompted = new LinkedHashSet<>(
+                prefs.getStringSet(KEY_FIRST_LANGUAGE_PROMPTED, Collections.emptySet())
+        );
+        if (prompted.add(source)) {
+            prefs.edit().putStringSet(KEY_FIRST_LANGUAGE_PROMPTED, prompted).apply();
+        }
+    }
+
     void setApiKeys(String apiKeys) {
-        prefs.edit().putString(KEY_API_KEYS, apiKeys == null ? "" : apiKeys.trim()).apply();
+        Snapshot current = snapshot();
+        setProviderProfile(current.provider.id, apiKeys, current.baseUrl, current.model, current.maxTokens, current.temperature);
     }
 
     void setPollinationsAccessToken(String accessToken) {
@@ -622,19 +730,52 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     }
 
     void setModel(String model) {
-        prefs.edit().putString(KEY_MODEL, model == null ? "" : model.trim()).apply();
+        Snapshot current = snapshot();
+        setProviderProfile(current.provider.id, current.apiKeys, current.baseUrl, model, current.maxTokens, current.temperature);
     }
 
     void setBaseUrl(String baseUrl) {
-        prefs.edit().putString(KEY_BASE_URL, baseUrl == null ? "" : baseUrl.trim()).apply();
+        Snapshot current = snapshot();
+        setProviderProfile(current.provider.id, current.apiKeys, baseUrl, current.model, current.maxTokens, current.temperature);
     }
 
     void setMaxTokens(int maxTokens) {
-        prefs.edit().putInt(KEY_MAX_TOKENS, Math.max(256, maxTokens)).apply();
+        Snapshot current = snapshot();
+        setProviderProfile(current.provider.id, current.apiKeys, current.baseUrl, current.model, maxTokens, current.temperature);
     }
 
     void setTemperature(float temperature) {
-        prefs.edit().putFloat(KEY_TEMPERATURE, clampFloat(temperature, 0f, 2f)).apply();
+        Snapshot current = snapshot();
+        setProviderProfile(current.provider.id, current.apiKeys, current.baseUrl, current.model, current.maxTokens, temperature);
+    }
+
+    void setProviderProfile(
+            String providerId,
+            String apiKeys,
+            String baseUrl,
+            String model,
+            int maxTokens,
+            float temperature
+    ) {
+        Provider provider = providerById(providerId);
+        ProviderProfile profile = new ProviderProfile(
+                apiKeys,
+                baseUrl == null || baseUrl.trim().isEmpty() ? provider.defaultBaseUrl : baseUrl,
+                model,
+                maxTokens,
+                temperature
+        );
+        Map<String, ProviderProfile> profiles = new LinkedHashMap<>(loadProviderProfiles());
+        profiles.put(provider.id, profile);
+        SharedPreferences.Editor editor = prefs.edit().putString(KEY_AI_PROVIDER_PROFILES, providerProfilesJson(profiles));
+        if (provider.id.equals(providerById(prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER)).id)) {
+            editor.putString(KEY_API_KEYS, profile.apiKeys)
+                    .putString(KEY_BASE_URL, profile.baseUrl)
+                    .putString(KEY_MODEL, profile.model)
+                    .putInt(KEY_MAX_TOKENS, profile.maxTokens)
+                    .putFloat(KEY_TEMPERATURE, profile.temperature);
+        }
+        editor.apply();
     }
 
     void setPreviewMode(String previewMode) {
@@ -1090,6 +1231,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             }
             object.put("rules", rulesObject);
             prefs.edit().putString(KEY_LANGUAGE_RULES, object.toString()).apply();
+            cachedSnapshot = null;
         } catch (JSONException ignored) {
         }
     }
@@ -1109,6 +1251,197 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 object.optBoolean("pronunciation", fallback.pronunciationEnabled),
                 normalizeTargetLanguage(object.optString("target", fallback.targetLang))
         );
+    }
+
+    private List<String> loadAiProviderOrder() {
+        String raw = prefs.getString(KEY_AI_PROVIDER_ORDER, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return DEFAULT_AI_PROVIDER_ORDER;
+        }
+        List<String> values = new ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(raw);
+            for (int index = 0; index < array.length(); index++) {
+                String id = array.optString(index, "").trim();
+                if (!id.isEmpty()) {
+                    values.add(id);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return normalizeAiProviderOrder(values);
+    }
+
+    private Map<String, Boolean> loadAiProviderEnabled() {
+        Map<String, Boolean> values = new LinkedHashMap<>();
+        String raw = prefs.getString(KEY_AI_PROVIDER_ENABLED, "");
+        if (raw != null && !raw.trim().isEmpty()) {
+            try {
+                JSONObject object = new JSONObject(raw);
+                for (Provider provider : ALL_AI_PROVIDERS) {
+                    if (object.has(provider.id)) {
+                        values.put(provider.id, object.optBoolean(provider.id, provider.defaultEnabled));
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        boolean migrated = values.isEmpty();
+        for (Provider provider : ALL_AI_PROVIDERS) {
+            boolean fallback = provider.defaultEnabled;
+            if (KeylessTranslationProviders.BING_ID.equals(provider.id)) {
+                fallback = prefs.getBoolean(KEY_BING_TRANSLATE_ENABLED, true);
+            } else if (KeylessTranslationProviders.GOOGLE_ID.equals(provider.id)) {
+                fallback = prefs.getBoolean(KEY_GOOGLE_TRANSLATE_ENABLED, true);
+            }
+            values.putIfAbsent(provider.id, fallback);
+        }
+        if (migrated) {
+            Provider legacyProvider = providerById(prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER));
+            boolean legacyConfigured = !prefs.getString(KEY_API_KEYS, "").trim().isEmpty()
+                    || ("pollinations".equals(legacyProvider.id)
+                    && !prefs.getString(KEY_POLLINATIONS_ACCESS_TOKEN, "").trim().isEmpty());
+            if (legacyConfigured) {
+                values.put(legacyProvider.id, true);
+            }
+        }
+        return Collections.unmodifiableMap(values);
+    }
+
+    private Map<String, ProviderProfile> loadProviderProfiles() {
+        Map<String, ProviderProfile> profiles = new LinkedHashMap<>();
+        String raw = prefs.getString(KEY_AI_PROVIDER_PROFILES, "");
+        if (raw != null && !raw.trim().isEmpty()) {
+            try {
+                JSONObject root = new JSONObject(raw);
+                for (Provider provider : PROVIDERS) {
+                    JSONObject object = root.optJSONObject(provider.id);
+                    if (object == null) {
+                        continue;
+                    }
+                    profiles.put(provider.id, new ProviderProfile(
+                            object.optString("apiKeys", ""),
+                            object.optString("baseUrl", provider.defaultBaseUrl),
+                            object.optString("model", provider.defaultModel),
+                            object.optInt("maxTokens", 16000),
+                            (float) object.optDouble("temperature", 0.3)
+                    ));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        Provider legacyProvider = providerById(prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER));
+        for (Provider provider : PROVIDERS) {
+            if (profiles.containsKey(provider.id)) {
+                continue;
+            }
+            if (provider.id.equals(legacyProvider.id)) {
+                profiles.put(provider.id, new ProviderProfile(
+                        prefs.getString(KEY_API_KEYS, ""),
+                        prefs.getString(KEY_BASE_URL, provider.defaultBaseUrl),
+                        prefs.getString(KEY_MODEL, provider.defaultModel),
+                        prefs.getInt(KEY_MAX_TOKENS, 16000),
+                        prefs.getFloat(KEY_TEMPERATURE, 0.3f)
+                ));
+            } else {
+                profiles.put(provider.id, ProviderProfile.defaults(provider));
+            }
+        }
+        return Collections.unmodifiableMap(profiles);
+    }
+
+    static List<String> normalizeAiProviderOrder(List<String> order) {
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        if (order != null) {
+            for (String id : order) {
+                Provider provider = aiProviderById(id);
+                if (provider != null) {
+                    normalized.add(provider.id);
+                }
+            }
+        }
+        normalized.addAll(DEFAULT_AI_PROVIDER_ORDER);
+        return Collections.unmodifiableList(new ArrayList<>(normalized));
+    }
+
+    private static String providerOrderJson(List<String> order) {
+        return new JSONArray(order == null ? Collections.emptyList() : order).toString();
+    }
+
+    private static String providerEnabledJson(Map<String, Boolean> enabled) {
+        JSONObject object = new JSONObject();
+        for (Provider provider : ALL_AI_PROVIDERS) {
+            try {
+                object.put(provider.id, enabled != null && Boolean.TRUE.equals(enabled.get(provider.id)));
+            } catch (JSONException ignored) {
+            }
+        }
+        return object.toString();
+    }
+
+    private static String providerProfilesJson(Map<String, ProviderProfile> profiles) {
+        JSONObject root = new JSONObject();
+        for (Provider provider : PROVIDERS) {
+            ProviderProfile profile = profiles == null ? null : profiles.get(provider.id);
+            if (profile == null) {
+                profile = ProviderProfile.defaults(provider);
+            }
+            try {
+                JSONObject object = new JSONObject();
+                object.put("apiKeys", profile.apiKeys);
+                object.put("baseUrl", profile.baseUrl);
+                object.put("model", profile.model);
+                object.put("maxTokens", profile.maxTokens);
+                object.put("temperature", profile.temperature);
+                root.put(provider.id, object);
+            } catch (JSONException ignored) {
+            }
+        }
+        return root.toString();
+    }
+
+    private static List<Provider> allAiProviders() {
+        List<Provider> providers = new ArrayList<>();
+        providers.add(new Provider(
+                KeylessTranslationProviders.BING_ID,
+                KeylessTranslationProviders.BING_LABEL,
+                "",
+                "",
+                "",
+                "",
+                true,
+                true
+        ));
+        providers.add(new Provider(
+                KeylessTranslationProviders.GOOGLE_ID,
+                KeylessTranslationProviders.GOOGLE_LABEL,
+                "",
+                "",
+                "",
+                "",
+                true,
+                true
+        ));
+        providers.addAll(PROVIDERS);
+        return Collections.unmodifiableList(providers);
+    }
+
+    private static List<String> defaultAiProviderOrder() {
+        List<String> order = new ArrayList<>();
+        for (Provider provider : ALL_AI_PROVIDERS) {
+            order.add(provider.id);
+        }
+        return Collections.unmodifiableList(order);
+    }
+
+    static Provider aiProviderById(String providerId) {
+        String normalized = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
+        for (Provider provider : ALL_AI_PROVIDERS) {
+            if (provider.id.equals(normalized)) {
+                return provider;
+            }
+        }
+        return null;
     }
 
     static Provider providerById(String providerId) {
@@ -1512,14 +1845,52 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String defaultBaseUrl;
         final String defaultModel;
         final String apiKeyUrl;
+        final boolean keyless;
+        final boolean defaultEnabled;
 
         Provider(String id, String label, String description, String defaultBaseUrl, String defaultModel, String apiKeyUrl) {
+            this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, false, false);
+        }
+
+        Provider(
+                String id,
+                String label,
+                String description,
+                String defaultBaseUrl,
+                String defaultModel,
+                String apiKeyUrl,
+                boolean keyless,
+                boolean defaultEnabled
+        ) {
             this.id = id;
             this.label = label;
             this.description = description;
             this.defaultBaseUrl = defaultBaseUrl;
             this.defaultModel = defaultModel;
             this.apiKeyUrl = apiKeyUrl;
+            this.keyless = keyless;
+            this.defaultEnabled = defaultEnabled;
+        }
+    }
+
+    static final class ProviderProfile {
+        final String apiKeys;
+        final String baseUrl;
+        final String model;
+        final int maxTokens;
+        final float temperature;
+
+        ProviderProfile(String apiKeys, String baseUrl, String model, int maxTokens, float temperature) {
+            this.apiKeys = apiKeys == null ? "" : apiKeys.trim();
+            this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
+            this.model = model == null ? "" : model.trim();
+            this.maxTokens = Math.max(256, maxTokens);
+            this.temperature = clampFloat(temperature, 0f, 2f);
+        }
+
+        static ProviderProfile defaults(Provider provider) {
+            Provider safe = provider == null ? PROVIDERS.get(0) : provider;
+            return new ProviderProfile("", safe.defaultBaseUrl, safe.defaultModel, 16000, 0.3f);
         }
     }
 
@@ -1781,6 +2152,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final int pipLyricsSizePercent;
         final boolean metadataTranslationEnabled;
         final boolean japaneseFuriganaEnabled;
+        final boolean bingTranslateEnabled;
+        final boolean googleTranslateEnabled;
+        final List<String> aiProviderOrder;
+        final Map<String, Boolean> aiProviderEnabled;
+        final Map<String, ProviderProfile> providerProfiles;
         final boolean culturalAnnotationsEnabled;
         final String culturalAnnotationsFontFamily;
         final int culturalAnnotationsFontSize;
@@ -1827,6 +2203,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 int pipLyricsSizePercent,
                 boolean metadataTranslationEnabled,
                 boolean japaneseFuriganaEnabled,
+                boolean bingTranslateEnabled,
+                boolean googleTranslateEnabled,
+                List<String> aiProviderOrder,
+                Map<String, Boolean> aiProviderEnabled,
+                Map<String, ProviderProfile> providerProfiles,
                 boolean culturalAnnotationsEnabled,
                 String culturalAnnotationsFontFamily,
                 int culturalAnnotationsFontSize,
@@ -1876,6 +2257,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.pipLyricsSizePercent = normalizePipLyricsSizePercent(pipLyricsSizePercent);
             this.metadataTranslationEnabled = metadataTranslationEnabled;
             this.japaneseFuriganaEnabled = japaneseFuriganaEnabled;
+            this.bingTranslateEnabled = bingTranslateEnabled;
+            this.googleTranslateEnabled = googleTranslateEnabled;
+            this.aiProviderOrder = normalizeAiProviderOrder(aiProviderOrder);
+            this.aiProviderEnabled = Collections.unmodifiableMap(new LinkedHashMap<>(aiProviderEnabled));
+            this.providerProfiles = Collections.unmodifiableMap(new LinkedHashMap<>(providerProfiles));
             this.culturalAnnotationsEnabled = culturalAnnotationsEnabled;
             this.culturalAnnotationsFontFamily = normalizeCulturalFontFamily(culturalAnnotationsFontFamily);
             this.culturalAnnotationsFontSize = clampInt(culturalAnnotationsFontSize, 10, 28);
@@ -1920,6 +2306,112 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return model != null && !model.trim().isEmpty();
         }
 
+        boolean hasKeylessTranslationProvider() {
+            return bingTranslateEnabled || googleTranslateEnabled;
+        }
+
+        boolean isAiProviderEnabled(String providerId) {
+            return Boolean.TRUE.equals(aiProviderEnabled.get(providerId));
+        }
+
+        List<String> enabledAiProviderOrder() {
+            List<String> enabled = new ArrayList<>();
+            for (String providerId : aiProviderOrder) {
+                if (isAiProviderEnabled(providerId)) {
+                    enabled.add(providerId);
+                }
+            }
+            return Collections.unmodifiableList(enabled);
+        }
+
+        List<Snapshot> readyAiProviderSnapshots() {
+            List<Snapshot> snapshots = new ArrayList<>();
+            for (String providerId : enabledAiProviderOrder()) {
+                Provider candidate = aiProviderById(providerId);
+                if (candidate == null || candidate.keyless) {
+                    continue;
+                }
+                Snapshot candidateSnapshot = forProvider(providerId);
+                if (candidateSnapshot != null && candidateSnapshot.hasApiKey() && candidateSnapshot.hasModel()) {
+                    snapshots.add(candidateSnapshot);
+                }
+            }
+            return Collections.unmodifiableList(snapshots);
+        }
+
+        boolean hasReadyAiProvider() {
+            return !readyAiProviderSnapshots().isEmpty();
+        }
+
+        boolean hasAnyTranslationProvider() {
+            if (hasKeylessTranslationProvider()) {
+                return true;
+            }
+            return hasReadyAiProvider();
+        }
+
+        Snapshot forProvider(String providerId) {
+            Provider candidate = aiProviderById(providerId);
+            if (candidate == null || candidate.keyless) {
+                return null;
+            }
+            ProviderProfile profile = providerProfiles.get(candidate.id);
+            if (profile == null) {
+                profile = ProviderProfile.defaults(candidate);
+            }
+            return new Snapshot(
+                    uiLang,
+                    outputLang,
+                    candidate,
+                    defaultRule,
+                    languageRules,
+                    profile.apiKeys,
+                    pollinationsAccessToken,
+                    profile.baseUrl,
+                    profile.model,
+                    profile.maxTokens,
+                    profile.temperature,
+                    previewMode,
+                    previewItems,
+                    autoInstrumentalBreakEnabled,
+                    interludeLabelsEnabled,
+                    syncedLyricsKaraokeAnimationEnabled,
+                    karaokeBounceEffectEnabled,
+                    karaokeDataAsLineSynced,
+                    background,
+                    landscapeAutoHideControls,
+                    landscapeCenterNoLyrics,
+                    keepScreenOn,
+                    pipShowArtwork,
+                    pipOrientation,
+                    pipLyricsTextAlignment,
+                    pipLyricsSizePercent,
+                    metadataTranslationEnabled,
+                    japaneseFuriganaEnabled,
+                    bingTranslateEnabled,
+                    googleTranslateEnabled,
+                    aiProviderOrder,
+                    aiProviderEnabled,
+                    providerProfiles,
+                    culturalAnnotationsEnabled,
+                    culturalAnnotationsFontFamily,
+                    culturalAnnotationsFontSize,
+                    culturalAnnotationsFontWeight,
+                    culturalAnnotationsOpacity,
+                    culturalAnnotationsVinylFontFamily,
+                    culturalAnnotationsVinylFontSize,
+                    culturalAnnotationsVinylFontWeight,
+                    culturalAnnotationsVinylOpacity,
+                    typography,
+                    vinyl,
+                    speakerColors,
+                    useSyncCreatorSpeakerColors,
+                    lyricsTextAlignment,
+                    spotifyClientId,
+                    spotifyClientSecret
+            );
+        }
+
         boolean hasSpotifyApiCredentials() {
             return !spotifyClientId.trim().isEmpty() && !spotifyClientSecret.trim().isEmpty();
         }
@@ -1957,12 +2449,26 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     .append("|output=").append(outputLang)
                     .append("|resolvedOutput=").append(resolveOutputLanguage(outputLang, uiLang))
                     .append("|translationTarget=").append(defaultRule.targetLang)
+                    .append("|bingTranslate=").append(bingTranslateEnabled)
+                    .append("|googleTranslate=").append(googleTranslateEnabled)
                     .append("|default=").append(defaultRule.cacheKey())
                     .append("|furigana=").append(japaneseFuriganaEnabled)
                     .append("|model=").append(model)
                     .append("|url=").append(baseUrl)
                     .append("|tok=").append(maxTokens)
                     .append("|temp=").append(temperature);
+            for (String providerId : aiProviderOrder) {
+                builder.append("|provider=").append(providerId)
+                        .append(":enabled=").append(isAiProviderEnabled(providerId));
+                ProviderProfile profile = providerProfiles.get(providerId);
+                if (profile != null) {
+                    builder.append(":model=").append(profile.model)
+                            .append(":url=").append(profile.baseUrl)
+                            .append(":tok=").append(profile.maxTokens)
+                            .append(":temp=").append(profile.temperature)
+                            .append(":key=").append(profile.apiKeys.hashCode());
+                }
+            }
             for (LanguageRule rule : languageRules.values()) {
                 builder.append("|rule=").append(rule.cacheKey());
             }

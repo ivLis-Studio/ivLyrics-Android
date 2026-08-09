@@ -132,10 +132,346 @@ final class AppI18n {
         addSettingsNavigationStrings(languages);
         addProviderLoadingStrings(languages);
         addCulturalAnnotationStrings(languages);
+        addKeylessTranslationProviderStrings(languages);
+        addAiProviderOrderStrings(languages);
+        addFirstLanguagePromptStrings(languages);
         addSettingsTranslationOverrides(languages);
         addLyricsToolsTranslationOverrides(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addFirstLanguagePromptStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "first_language.title_format",
+                "first_language.message",
+                "first_language.hint",
+                "first_language.original",
+                "first_language.pronunciation",
+                "first_language.translation",
+                "first_language.both",
+                "first_language.not_now",
+                "first_language.apply"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = addedTranslationStrings(language.code);
+            for (int i = 0; i < keys.length; i++) {
+                copy.put(keys[i], values[i]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addKeylessTranslationProviderStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "setting.bing_translate_provider_desc",
+                "setting.google_translate_provider_desc",
+                "toast.translation_provider_saved",
+                "error.translation_providers_failed"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            String[] values = addedTranslationStrings(language.code);
+            for (int i = 0; i < keys.length; i++) {
+                copy.put(keys[i], values[i + 9]);
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addAiProviderOrderStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "setting.ai_provider_order_desc",
+                "setting.ai_provider_drag_format",
+                "setting.ai_provider_toggle_format",
+                "setting.ai_provider_selected",
+                "accessibility.move_up",
+                "accessibility.move_down"
+        };
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            String[] values = aiProviderOrderStrings(language.code);
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], values[index]);
+            }
+            String translationOnlyDescription = translationOnlyProviderDescription(language.code);
+            copy.put("setting.bing_translate_provider_desc", translationOnlyDescription);
+            copy.put("setting.google_translate_provider_desc", translationOnlyDescription);
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String translationOnlyProviderDescription(String languageCode) {
+        switch (languageCode) {
+            case "ko": return "번역 전용 제공자입니다. 통합 목록에서 지정한 순서에 따라 사용됩니다.";
+            case "zh-CN": return "仅用于翻译的提供商，按统一列表中的位置使用。";
+            case "zh-TW": return "僅用於翻譯的供應商，依統一清單中的位置使用。";
+            case "ja": return "翻訳専用プロバイダーで、統合リスト内の位置に従って使用されます。";
+            case "hi": return "केवल अनुवाद का प्रदाता, जिसे एकीकृत सूची में उसके स्थान के अनुसार उपयोग किया जाता है।";
+            case "es": return "Proveedor solo para traducción, usado según su posición en la lista unificada.";
+            case "fr": return "Fournisseur dédié à la traduction, utilisé selon sa position dans la liste unifiée.";
+            case "ar": return "موفّر مخصّص للترجمة، يُستخدم وفق موضعه في القائمة الموحّدة.";
+            case "fa": return "ارائه‌دهنده مخصوص ترجمه که بر اساس جایگاهش در فهرست یکپارچه استفاده می‌شود.";
+            case "de": return "Reiner Übersetzungsanbieter, der gemäß seiner Position in der gemeinsamen Liste verwendet wird.";
+            case "ru": return "Провайдер только для перевода, используемый по его позиции в общем списке.";
+            case "sv": return "Leverantör endast för översättning som används enligt sin plats i den gemensamma listan.";
+            case "pt": return "Provedor exclusivo para tradução, usado conforme sua posição na lista unificada.";
+            case "bn": return "শুধু অনুবাদের জন্য প্রদানকারী, একীভূত তালিকায় এর অবস্থান অনুযায়ী ব্যবহৃত হয়।";
+            case "cs": return "Poskytovatel pouze pro překlad, použitý podle své pozice ve společném seznamu.";
+            case "it": return "Provider dedicato alla traduzione, usato in base alla sua posizione nell'elenco unificato.";
+            case "th": return "ผู้ให้บริการแปลเท่านั้น ใช้ตามตำแหน่งในรายการรวม";
+            case "vi": return "Nhà cung cấp chỉ dành cho dịch thuật, được dùng theo vị trí trong danh sách hợp nhất.";
+            case "id": return "Penyedia khusus terjemahan yang digunakan sesuai posisinya dalam daftar terpadu.";
+            case "ms": return "Penyedia khusus untuk terjemahan yang digunakan mengikut kedudukannya dalam senarai bersepadu.";
+            case "tr": return "Birleşik listedeki konumuna göre kullanılan yalnızca çeviri sağlayıcısıdır.";
+            case "en":
+            default: return "Translation-only provider used according to its position in the unified list.";
+        }
+    }
+
+    private static String[] aiProviderOrderStrings(String languageCode) {
+        switch (languageCode) {
+            case "ko": return new String[]{"사용할 제공자를 각각 켜고 끌 수 있습니다. 위에서부터 차례로 시도하며, 손잡이를 드래그해 순서를 바꿀 수 있습니다.", "%s 순서 변경", "%s 사용 여부", "세부 설정 편집 중", "위로 이동", "아래로 이동"};
+            case "zh-CN": return new String[]{"可分别启用或停用每个提供商。系统会从上到下依次尝试；拖动手柄可调整顺序。", "调整 %s 的顺序", "启用或停用 %s", "正在编辑详细设置", "上移", "下移"};
+            case "zh-TW": return new String[]{"可分別啟用或停用每個供應商。系統會由上而下依序嘗試；拖曳把手可調整順序。", "調整 %s 的順序", "啟用或停用 %s", "正在編輯詳細設定", "上移", "下移"};
+            case "ja": return new String[]{"各プロバイダーを個別にオン／オフできます。上から順に試行し、ハンドルをドラッグして順序を変更できます。", "%s の順序を変更", "%s のオン／オフ", "詳細設定を編集中", "上へ移動", "下へ移動"};
+            case "hi": return new String[]{"हर प्रदाता को अलग से चालू या बंद करें। ऊपर से क्रम में प्रयास किया जाता है; क्रम बदलने के लिए हैंडल खींचें।", "%s का क्रम बदलें", "%s चालू या बंद करें", "विस्तृत सेटिंग संपादित हो रही है", "ऊपर ले जाएँ", "नीचे ले जाएँ"};
+            case "es": return new String[]{"Activa o desactiva cada proveedor por separado. Se prueban de arriba abajo; arrastra el control para cambiar el orden.", "Reordenar %s", "Activar o desactivar %s", "Editando ajustes detallados", "Mover arriba", "Mover abajo"};
+            case "fr": return new String[]{"Activez ou désactivez chaque fournisseur séparément. Ils sont essayés de haut en bas ; faites glisser la poignée pour les réordonner.", "Réorganiser %s", "Activer ou désactiver %s", "Modification des réglages détaillés", "Monter", "Descendre"};
+            case "ar": return new String[]{"يمكن تشغيل كل مزوّد أو إيقافه بشكل مستقل. تتم المحاولة من الأعلى إلى الأسفل؛ اسحب المقبض لتغيير الترتيب.", "تغيير ترتيب %s", "تشغيل أو إيقاف %s", "جارٍ تعديل الإعدادات التفصيلية", "نقل لأعلى", "نقل لأسفل"};
+            case "fa": return new String[]{"هر ارائه‌دهنده را جداگانه روشن یا خاموش کنید. از بالا به پایین امتحان می‌شوند؛ برای تغییر ترتیب دستگیره را بکشید.", "تغییر ترتیب %s", "روشن یا خاموش کردن %s", "در حال ویرایش تنظیمات جزئی", "انتقال به بالا", "انتقال به پایین"};
+            case "de": return new String[]{"Jeden Anbieter einzeln ein- oder ausschalten. Die Reihenfolge wird von oben nach unten versucht; zum Ändern den Griff ziehen.", "%s neu anordnen", "%s ein- oder ausschalten", "Detaileinstellungen werden bearbeitet", "Nach oben", "Nach unten"};
+            case "ru": return new String[]{"Каждого провайдера можно включать отдельно. Они используются сверху вниз; перетащите маркер, чтобы изменить порядок.", "Изменить порядок %s", "Включить или выключить %s", "Редактируются подробные настройки", "Переместить вверх", "Переместить вниз"};
+            case "sv": return new String[]{"Slå på eller av varje leverantör separat. De provas uppifrån och ned; dra handtaget för att ändra ordningen.", "Ändra ordning för %s", "Slå på eller av %s", "Redigerar detaljinställningar", "Flytta upp", "Flytta ned"};
+            case "pt": return new String[]{"Ative ou desative cada provedor separadamente. Eles são testados de cima para baixo; arraste a alça para reordenar.", "Reordenar %s", "Ativar ou desativar %s", "Editando configurações detalhadas", "Mover para cima", "Mover para baixo"};
+            case "bn": return new String[]{"প্রতিটি প্রদানকারী আলাদাভাবে চালু বা বন্ধ করুন। উপর থেকে নিচে চেষ্টা করা হয়; ক্রম বদলাতে হ্যান্ডেল টানুন।", "%s-এর ক্রম বদলান", "%s চালু বা বন্ধ করুন", "বিস্তারিত সেটিং সম্পাদনা হচ্ছে", "উপরে সরান", "নিচে সরান"};
+            case "cs": return new String[]{"Každého poskytovatele lze zapnout zvlášť. Zkoušejí se shora dolů; pořadí změníte přetažením úchytu.", "Změnit pořadí %s", "Zapnout nebo vypnout %s", "Úprava podrobného nastavení", "Posunout nahoru", "Posunout dolů"};
+            case "it": return new String[]{"Attiva o disattiva ogni provider separatamente. Vengono provati dall’alto verso il basso; trascina la maniglia per riordinarli.", "Riordina %s", "Attiva o disattiva %s", "Modifica delle impostazioni dettagliate", "Sposta su", "Sposta giù"};
+            case "th": return new String[]{"เปิดหรือปิดผู้ให้บริการแต่ละรายแยกกัน ระบบจะลองจากบนลงล่าง ลากที่จับเพื่อเปลี่ยนลำดับ", "เปลี่ยนลำดับ %s", "เปิดหรือปิด %s", "กำลังแก้ไขการตั้งค่าโดยละเอียด", "เลื่อนขึ้น", "เลื่อนลง"};
+            case "vi": return new String[]{"Bật hoặc tắt riêng từng nhà cung cấp. Hệ thống thử từ trên xuống; kéo tay nắm để đổi thứ tự.", "Sắp xếp lại %s", "Bật hoặc tắt %s", "Đang sửa cài đặt chi tiết", "Di chuyển lên", "Di chuyển xuống"};
+            case "id": return new String[]{"Aktifkan atau nonaktifkan tiap penyedia secara terpisah. Dicoba dari atas ke bawah; seret pegangan untuk mengubah urutan.", "Ubah urutan %s", "Aktifkan atau nonaktifkan %s", "Mengedit pengaturan terperinci", "Pindah ke atas", "Pindah ke bawah"};
+            case "ms": return new String[]{"Hidupkan atau matikan setiap penyedia secara berasingan. Ia dicuba dari atas ke bawah; seret pemegang untuk menukar susunan.", "Susun semula %s", "Hidupkan atau matikan %s", "Mengedit tetapan terperinci", "Alih ke atas", "Alih ke bawah"};
+            case "tr": return new String[]{"Her sağlayıcıyı ayrı ayrı açıp kapatın. Yukarıdan aşağıya denenir; sıralamayı değiştirmek için tutamacı sürükleyin.", "%s sırasını değiştir", "%s öğesini aç veya kapat", "Ayrıntılı ayarlar düzenleniyor", "Yukarı taşı", "Aşağı taşı"};
+            case "en":
+            default: return new String[]{"Turn each provider on or off independently. Providers are tried from top to bottom; drag the handle to reorder them.", "Reorder %s", "Turn %s on or off", "Editing detailed settings", "Move up", "Move down"};
+        }
+    }
+
+    private static String[] addedTranslationStrings(String languageCode) {
+        switch (languageCode) {
+            case "ko": return new String[] {
+                    "%s 곡을 처음 재생하시네요", "이 노래는 어떻게 번역할까요?",
+                    "다음에 설정하시려면, 플레이어의 곡 제목을 꾹 눌러주세요.",
+                    "원문만", "발음", "번역", "발음 + 번역", "설정하지 않기", "이 설정으로 적용",
+                    "번역 전용 공급자입니다. 실패하면 Google Translate와 선택한 AI 공급자 순으로 넘어갑니다.",
+                    "번역 전용 공급자입니다. Bing Translate가 실패하거나 꺼져 있을 때 사용합니다.",
+                    "번역 공급자 설정 저장됨",
+                    "활성화된 번역 제공자로 번역하지 못했습니다"
+            };
+            case "zh-CN": return new String[] {
+                    "第一次播放%s歌曲", "要如何翻译这首歌？",
+                    "以后如需设置，请长按播放器中的歌曲标题。",
+                    "仅原文", "发音", "翻译", "发音 + 翻译", "不进行设置", "应用这些设置",
+                    "仅用于翻译的提供商。失败时将依次尝试 Google Translate 和所选 AI 提供商。",
+                    "仅用于翻译的提供商，在 Bing Translate 被禁用或不可用时使用。",
+                    "翻译提供商设置已保存",
+                    "无法使用已启用的翻译提供商完成翻译。"
+            };
+            case "zh-TW": return new String[] {
+                    "第一次播放%s歌曲", "要如何翻譯這首歌？",
+                    "日後若要設定，請長按播放器中的歌曲標題。",
+                    "僅原文", "發音", "翻譯", "發音 + 翻譯", "不要設定", "套用這些設定",
+                    "僅用於翻譯的供應商。失敗時會依序改用 Google Translate 和所選的 AI 供應商。",
+                    "僅用於翻譯的供應商，會在 Bing Translate 已停用或無法使用時使用。",
+                    "翻譯供應商設定已儲存",
+                    "無法使用已啟用的翻譯供應商完成翻譯。"
+            };
+            case "ja": return new String[] {
+                    "%sの曲を初めて再生しています", "この曲をどのように翻訳しますか？",
+                    "後で設定するには、プレーヤーの曲名を長押ししてください。",
+                    "原文のみ", "発音", "翻訳", "発音 + 翻訳", "設定しない", "この設定を適用",
+                    "翻訳専用プロバイダーです。失敗した場合は Google 翻訳、選択した AI プロバイダーの順に切り替えます。",
+                    "翻訳専用プロバイダーです。Bing Translate が無効または利用できない場合に使用します。",
+                    "翻訳プロバイダーの設定を保存しました",
+                    "有効な翻訳プロバイダーで翻訳できませんでした。"
+            };
+            case "hi": return new String[] {
+                    "आप पहली बार %s गीत चला रहे हैं", "इस गीत का अनुवाद कैसे किया जाए?",
+                    "बाद में सेट करने के लिए, प्लेयर में गीत के शीर्षक को दबाकर रखें।",
+                    "केवल मूल", "उच्चारण", "अनुवाद", "उच्चारण + अनुवाद", "सेट न करें", "ये सेटिंग लागू करें",
+                    "सिर्फ़ अनुवाद के लिए प्रदाता। विफल होने पर Google Translate और फिर चुने गए AI प्रदाता का उपयोग करता है।",
+                    "सिर्फ़ अनुवाद के लिए प्रदाता, जिसका उपयोग Bing Translate के बंद या अनुपलब्ध होने पर किया जाता है।",
+                    "अनुवाद प्रदाता सेटिंग सहेजी गई",
+                    "चालू किए गए अनुवाद प्रदाताओं से अनुवाद नहीं हो सका।"
+            };
+            case "es": return new String[] {
+                    "Es la primera vez que reproduces una canción en %s", "¿Cómo quieres traducir esta canción?",
+                    "Para configurarlo más tarde, mantén pulsado el título de la canción en el reproductor.",
+                    "Solo original", "Pronunciación", "Traducción", "Pronunciación + traducción", "No configurar", "Aplicar estos ajustes",
+                    "Proveedor solo para traducción. Si falla, recurre a Google Translate y luego al proveedor de IA seleccionado.",
+                    "Proveedor solo para traducción que se usa cuando Bing Translate está desactivado o no está disponible.",
+                    "Configuración del proveedor de traducción guardada",
+                    "No se pudo traducir con los proveedores de traducción activados."
+            };
+            case "fr": return new String[] {
+                    "Première lecture d’une chanson en %s", "Comment souhaitez-vous traduire cette chanson ?",
+                    "Pour le configurer plus tard, maintenez le titre de la chanson appuyé dans le lecteur.",
+                    "Original uniquement", "Prononciation", "Traduction", "Prononciation + traduction", "Ne pas configurer", "Appliquer ces réglages",
+                    "Fournisseur dédié à la traduction. En cas d’échec, utilise Google Translate, puis le fournisseur d’IA sélectionné.",
+                    "Fournisseur dédié à la traduction, utilisé lorsque Bing Translate est désactivé ou indisponible.",
+                    "Réglage du fournisseur de traduction enregistré",
+                    "La traduction a échoué avec les fournisseurs de traduction activés."
+            };
+            case "ar": return new String[] {
+                    "هذه أول مرة تشغّل فيها أغنية باللغة %s", "كيف تريد ترجمة هذه الأغنية؟",
+                    "للإعداد لاحقًا، اضغط مطولًا على عنوان الأغنية في المشغّل.",
+                    "النص الأصلي فقط", "النطق", "الترجمة", "النطق + الترجمة", "عدم الإعداد", "تطبيق هذه الإعدادات",
+                    "موفّر مخصّص للترجمة. عند الفشل، ينتقل إلى Google Translate ثم موفّر الذكاء الاصطناعي المحدد.",
+                    "موفّر مخصّص للترجمة يُستخدم عند تعطيل Bing Translate أو عدم توفره.",
+                    "تم حفظ إعداد موفّر الترجمة",
+                    "تعذرت الترجمة باستخدام موفّري الترجمة المفعّلين."
+            };
+            case "fa": return new String[] {
+                    "این نخستین بار است که آهنگی به زبان %s پخش می‌کنید", "این آهنگ چگونه ترجمه شود؟",
+                    "برای تنظیم در آینده، عنوان آهنگ را در پخش‌کننده لمس طولانی کنید.",
+                    "فقط متن اصلی", "تلفظ", "ترجمه", "تلفظ + ترجمه", "تنظیم نشود", "اعمال این تنظیمات",
+                    "ارائه‌دهنده مخصوص ترجمه. در صورت شکست، ابتدا از Google Translate و سپس ارائه‌دهنده هوش مصنوعی انتخاب‌شده استفاده می‌شود.",
+                    "ارائه‌دهنده مخصوص ترجمه که هنگام غیرفعال یا دردسترس نبودن Bing Translate استفاده می‌شود.",
+                    "تنظیم ارائه‌دهنده ترجمه ذخیره شد",
+                    "ترجمه با ارائه‌دهندگان ترجمه فعال انجام نشد."
+            };
+            case "de": return new String[] {
+                    "Du spielst zum ersten Mal einen Song auf %s ab", "Wie soll dieser Song übersetzt werden?",
+                    "Halte für eine spätere Einrichtung den Songtitel im Player gedrückt.",
+                    "Nur Original", "Aussprache", "Übersetzung", "Aussprache + Übersetzung", "Nicht einrichten", "Diese Einstellungen anwenden",
+                    "Anbieter nur für Übersetzungen. Bei einem Fehler wird Google Translate und danach der ausgewählte KI-Anbieter verwendet.",
+                    "Anbieter nur für Übersetzungen, der verwendet wird, wenn Bing Translate deaktiviert oder nicht verfügbar ist.",
+                    "Einstellung des Übersetzungsanbieters gespeichert",
+                    "Die Übersetzung mit den aktivierten Übersetzungsanbietern ist fehlgeschlagen."
+            };
+            case "ru": return new String[] {
+                    "Песня на языке «%s» воспроизводится впервые", "Как перевести эту песню?",
+                    "Чтобы настроить позже, нажмите и удерживайте название песни в плеере.",
+                    "Только оригинал", "Произношение", "Перевод", "Произношение + перевод", "Не настраивать", "Применить эти настройки",
+                    "Провайдер только для перевода. При сбое используется Google Translate, а затем выбранный ИИ-провайдер.",
+                    "Провайдер только для перевода, используемый, когда Bing Translate отключён или недоступен.",
+                    "Настройка провайдера перевода сохранена",
+                    "Не удалось выполнить перевод с помощью включённых провайдеров."
+            };
+            case "sv": return new String[] {
+                    "Första gången du spelar en låt på %s", "Hur ska den här låten översättas?",
+                    "Om du vill konfigurera detta senare håller du ned låttiteln i spelaren.",
+                    "Endast original", "Uttal", "Översättning", "Uttal + översättning", "Konfigurera inte", "Tillämpa dessa inställningar",
+                    "Leverantör endast för översättning. Vid fel används Google Translate och sedan den valda AI-leverantören.",
+                    "Leverantör endast för översättning som används när Bing Translate är avstängt eller inte tillgängligt.",
+                    "Inställningen för översättningsleverantör har sparats",
+                    "Det gick inte att översätta med de aktiverade översättningsleverantörerna."
+            };
+            case "pt": return new String[] {
+                    "Primeira vez que você reproduz uma música em %s", "Como esta música deve ser traduzida?",
+                    "Para configurar mais tarde, mantenha pressionado o título da música no reprodutor.",
+                    "Somente original", "Pronúncia", "Tradução", "Pronúncia + tradução", "Não configurar", "Aplicar estas configurações",
+                    "Provedor exclusivo para tradução. Em caso de falha, usa o Google Translate e depois o provedor de IA selecionado.",
+                    "Provedor exclusivo para tradução usado quando o Bing Translate está desativado ou indisponível.",
+                    "Configuração do provedor de tradução salva",
+                    "Não foi possível traduzir com os provedores de tradução ativados."
+            };
+            case "bn": return new String[] {
+                    "আপনি প্রথমবার %s ভাষার গান চালাচ্ছেন", "এই গানটি কীভাবে অনুবাদ করা হবে?",
+                    "পরে সেট করতে, প্লেয়ারে গানের শিরোনামটি চেপে ধরে রাখুন।",
+                    "শুধু মূল লেখা", "উচ্চারণ", "অনুবাদ", "উচ্চারণ + অনুবাদ", "সেট আপ করবেন না", "এই সেটিংস প্রয়োগ করুন",
+                    "শুধু অনুবাদের জন্য প্রদানকারী। ব্যর্থ হলে Google Translate এবং তারপর নির্বাচিত AI প্রদানকারী ব্যবহার করে।",
+                    "শুধু অনুবাদের জন্য প্রদানকারী, Bing Translate বন্ধ বা অনুপলব্ধ হলে ব্যবহৃত হয়।",
+                    "অনুবাদ প্রদানকারীর সেটিং সংরক্ষিত হয়েছে",
+                    "চালু থাকা অনুবাদ প্রদানকারীগুলো দিয়ে অনুবাদ করা যায়নি।"
+            };
+            case "cs": return new String[] {
+                    "Poprvé přehráváte skladbu v jazyce %s", "Jak se má tato skladba přeložit?",
+                    "Chcete-li nastavit později, podržte název skladby v přehrávači.",
+                    "Pouze originál", "Výslovnost", "Překlad", "Výslovnost + překlad", "Nenastavovat", "Použít tato nastavení",
+                    "Poskytovatel pouze pro překlad. Při selhání použije Google Translate a poté vybraného poskytovatele AI.",
+                    "Poskytovatel pouze pro překlad, který se použije, když je Bing Translate vypnutý nebo nedostupný.",
+                    "Nastavení poskytovatele překladu bylo uloženo",
+                    "Překlad pomocí zapnutých poskytovatelů se nezdařil."
+            };
+            case "it": return new String[] {
+                    "È la prima volta che riproduci un brano in %s", "Come vuoi tradurre questo brano?",
+                    "Per configurarlo in seguito, tieni premuto il titolo del brano nel lettore.",
+                    "Solo originale", "Pronuncia", "Traduzione", "Pronuncia + traduzione", "Non configurare", "Applica queste impostazioni",
+                    "Provider dedicato alla traduzione. In caso di errore usa Google Translate e poi il provider IA selezionato.",
+                    "Provider dedicato alla traduzione, usato quando Bing Translate è disattivato o non disponibile.",
+                    "Impostazione del provider di traduzione salvata",
+                    "Non è stato possibile tradurre con i provider di traduzione attivati."
+            };
+            case "th": return new String[] {
+                    "นี่เป็นครั้งแรกที่คุณเล่นเพลงภาษา%s", "ต้องการแปลเพลงนี้อย่างไร?",
+                    "หากต้องการตั้งค่าในภายหลัง ให้แตะชื่อเพลงในเครื่องเล่นค้างไว้",
+                    "ต้นฉบับเท่านั้น", "คำอ่าน", "คำแปล", "คำอ่าน + คำแปล", "ไม่ต้องตั้งค่า", "ใช้การตั้งค่าเหล่านี้",
+                    "ผู้ให้บริการสำหรับการแปลเท่านั้น หากล้มเหลวจะใช้ Google Translate แล้วตามด้วยผู้ให้บริการ AI ที่เลือก",
+                    "ผู้ให้บริการสำหรับการแปลเท่านั้น ซึ่งจะใช้เมื่อปิด Bing Translate หรือใช้งานไม่ได้",
+                    "บันทึกการตั้งค่าผู้ให้บริการแปลแล้ว",
+                    "ไม่สามารถแปลด้วยผู้ให้บริการแปลที่เปิดใช้งานอยู่ได้"
+            };
+            case "vi": return new String[] {
+                    "Đây là lần đầu bạn phát một bài hát bằng %s", "Bạn muốn dịch bài hát này như thế nào?",
+                    "Để thiết lập sau, hãy nhấn và giữ tên bài hát trong trình phát.",
+                    "Chỉ lời gốc", "Cách phát âm", "Bản dịch", "Cách phát âm + bản dịch", "Không thiết lập", "Áp dụng các cài đặt này",
+                    "Nhà cung cấp chỉ dành cho dịch thuật. Nếu thất bại, hệ thống sẽ dùng Google Translate rồi đến nhà cung cấp AI đã chọn.",
+                    "Nhà cung cấp chỉ dành cho dịch thuật, được dùng khi Bing Translate bị tắt hoặc không khả dụng.",
+                    "Đã lưu cài đặt nhà cung cấp dịch",
+                    "Không thể dịch bằng các nhà cung cấp dịch đang bật."
+            };
+            case "id": return new String[] {
+                    "Pertama kali memutar lagu berbahasa %s", "Bagaimana lagu ini akan diterjemahkan?",
+                    "Untuk mengaturnya nanti, tekan dan tahan judul lagu di pemutar.",
+                    "Hanya lirik asli", "Pelafalan", "Terjemahan", "Pelafalan + terjemahan", "Jangan siapkan", "Terapkan pengaturan ini",
+                    "Penyedia khusus terjemahan. Jika gagal, beralih ke Google Translate lalu penyedia AI yang dipilih.",
+                    "Penyedia khusus terjemahan yang digunakan saat Bing Translate dinonaktifkan atau tidak tersedia.",
+                    "Pengaturan penyedia terjemahan disimpan",
+                    "Tidak dapat menerjemahkan dengan penyedia terjemahan yang diaktifkan."
+            };
+            case "ms": return new String[] {
+                    "Kali pertama memainkan lagu dalam bahasa %s", "Bagaimanakah lagu ini harus diterjemahkan?",
+                    "Untuk menetapkannya kemudian, tekan dan tahan tajuk lagu dalam pemain.",
+                    "Asal sahaja", "Sebutan", "Terjemahan", "Sebutan + terjemahan", "Jangan sediakan", "Gunakan tetapan ini",
+                    "Penyedia khusus untuk terjemahan. Jika gagal, Google Translate dan kemudian penyedia AI yang dipilih akan digunakan.",
+                    "Penyedia khusus untuk terjemahan yang digunakan apabila Bing Translate dimatikan atau tidak tersedia.",
+                    "Tetapan penyedia terjemahan disimpan",
+                    "Tidak dapat menterjemah dengan penyedia terjemahan yang diaktifkan."
+            };
+            case "tr": return new String[] {
+                    "İlk kez %s dilinde bir şarkı çalıyorsunuz", "Bu şarkı nasıl çevrilsin?",
+                    "Daha sonra ayarlamak için oynatıcıdaki şarkı adına basılı tutun.",
+                    "Yalnızca orijinal", "Telaffuz", "Çeviri", "Telaffuz + çeviri", "Ayarlama", "Bu ayarları uygula",
+                    "Yalnızca çeviri sağlayıcısıdır. Başarısız olursa Google Translate, ardından seçili AI sağlayıcısı kullanılır.",
+                    "Bing Translate devre dışı veya kullanılamaz olduğunda kullanılan yalnızca çeviri sağlayıcısıdır.",
+                    "Çeviri sağlayıcısı ayarı kaydedildi",
+                    "Etkin çeviri sağlayıcılarıyla çeviri yapılamadı."
+            };
+            case "en":
+            default: return new String[] {
+                    "First time playing a %s song", "How should this song be translated?",
+                    "To configure this later, press and hold the song title in the player.",
+                    "Original only", "Pronunciation", "Translation", "Pronunciation + translation", "Don't configure", "Apply these settings",
+                    "Translation-only provider. Falls back to Google Translate, then the selected AI provider.",
+                    "Translation-only provider used when Bing Translate is disabled or unavailable.",
+                    "Translation provider setting saved",
+                    "Translation failed with the enabled translation providers."
+            };
+        }
     }
 
     private static void addSettingsTranslationOverrides(Map<String, Map<String, String>> languages) {
