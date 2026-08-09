@@ -2343,6 +2343,16 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return !readyAiProviderSnapshots().isEmpty();
         }
 
+        boolean hasEnabledAiProvider() {
+            for (String providerId : enabledAiProviderOrder()) {
+                Provider candidate = aiProviderById(providerId);
+                if (candidate != null && !candidate.keyless) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         boolean hasAnyTranslationProvider() {
             if (hasKeylessTranslationProvider()) {
                 return true;

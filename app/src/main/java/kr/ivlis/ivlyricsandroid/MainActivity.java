@@ -11669,6 +11669,25 @@ public final class MainActivity extends Activity implements
                 false
         );
 
+        AiLyricsSettings.Snapshot providerSnapshot = aiLyricsSettings.snapshot();
+        final TextView providerHint;
+        if (providerSnapshot.hasKeylessTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()) {
+            providerHint = label(
+                    "✦  " + ui("first_language.ai_provider_hint"),
+                    12.5f,
+                    Color.rgb(219, 234, 254),
+                    AppFonts.regular(this)
+            );
+            providerHint.setLineSpacing(0f, 1.16f);
+            providerHint.setPadding(dp(12), dp(10), dp(12), dp(10));
+            GradientDrawable providerHintBackground = roundDrawable(Color.argb(26, 59, 130, 246), dp(11));
+            providerHintBackground.setStroke(dp(1), Color.argb(56, 96, 165, 250));
+            providerHint.setBackground(providerHintBackground);
+            shell.addView(providerHint, topMargin(matchWrap(), dp(14)));
+        } else {
+            providerHint = null;
+        }
+
         TextView action = label(
                 ui("first_language.not_now"),
                 15f,
@@ -11685,9 +11704,17 @@ public final class MainActivity extends Activity implements
                 action,
                 pronunciationSwitch.isChecked() || translationSwitch.isChecked()
         );
-        pronunciationSwitch.setOnCheckedChangeListener((button, checked) -> updateAction.run());
+        Runnable updatePromptState = () -> {
+            updateAction.run();
+            if (providerHint != null) {
+                providerHint.setText("✦  " + ui(pronunciationSwitch.isChecked()
+                        ? "first_language.pronunciation_ai_provider_hint"
+                        : "first_language.ai_provider_hint"));
+            }
+        };
+        pronunciationSwitch.setOnCheckedChangeListener((button, checked) -> updatePromptState.run());
         translationSwitch.setOnCheckedChangeListener((button, checked) -> updateAction.run());
-        updateAction.run();
+        updatePromptState.run();
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(shell)

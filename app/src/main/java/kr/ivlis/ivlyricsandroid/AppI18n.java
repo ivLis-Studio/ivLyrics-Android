@@ -151,7 +151,8 @@ final class AppI18n {
                 "first_language.translation",
                 "first_language.both",
                 "first_language.not_now",
-                "first_language.apply"
+                "first_language.apply",
+                "first_language.ai_provider_hint"
         };
         for (AiLyricsSettings.Language language : UI_LANGUAGES) {
             Map<String, String> table = languages.get(language.code);
@@ -160,10 +161,71 @@ final class AppI18n {
             }
             Map<String, String> copy = new LinkedHashMap<>(table);
             String[] values = addedTranslationStrings(language.code);
-            for (int i = 0; i < keys.length; i++) {
+            for (int i = 0; i < keys.length - 1; i++) {
                 copy.put(keys[i], values[i]);
             }
+            copy.put(keys[keys.length - 1], firstLanguageAIProviderHint(language.code));
+            copy.put(
+                    "first_language.pronunciation_ai_provider_hint",
+                    firstLanguagePronunciationAIProviderHint(language.code)
+            );
             languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static String firstLanguagePronunciationAIProviderHint(String languageCode) {
+        switch (languageCode) {
+            case "ko": return "발음은 AI 제공자 설정에서 AI 제공자를 추가해야 실제로 생성됩니다.";
+            case "zh-CN": return "只有在 AI 提供商设置中添加 AI 提供商后，才能实际生成发音。";
+            case "zh-TW": return "只有在 AI 供應商設定中加入 AI 供應商後，才能實際產生發音。";
+            case "ja": return "発音を実際に生成するには、AIプロバイダー設定でAIプロバイダーを追加する必要があります。";
+            case "hi": return "उच्चारण वास्तव में तभी बनाया जाएगा जब आप AI प्रदाता सेटिंग में कोई AI प्रदाता जोड़ेंगे।";
+            case "es": return "La pronunciación solo se generará después de añadir un proveedor de IA en los ajustes de proveedores.";
+            case "fr": return "La prononciation ne sera générée qu’après l’ajout d’un fournisseur d’IA dans les réglages correspondants.";
+            case "ar": return "لن يتم إنشاء النطق فعليًا إلا بعد إضافة موفّر ذكاء اصطناعي من إعدادات الموفّرين.";
+            case "fa": return "تلفظ فقط پس از افزودن یک ارائه‌دهنده هوش مصنوعی در تنظیمات ارائه‌دهندگان واقعاً تولید می‌شود.";
+            case "de": return "Die Aussprache wird erst erzeugt, wenn du in den KI-Anbietereinstellungen einen KI-Anbieter hinzufügst.";
+            case "ru": return "Произношение будет создано только после добавления ИИ-провайдера в настройках провайдеров.";
+            case "sv": return "Uttal genereras först när du har lagt till en AI-leverantör i inställningarna.";
+            case "pt": return "A pronúncia só será gerada depois de adicionar um provedor de IA nas configurações.";
+            case "bn": return "AI প্রদানকারী সেটিংসে একটি AI প্রদানকারী যোগ করার পরেই উচ্চারণ আসলে তৈরি হবে।";
+            case "cs": return "Výslovnost se skutečně vygeneruje až po přidání poskytovatele AI v jeho nastavení.";
+            case "it": return "La pronuncia verrà generata solo dopo aver aggiunto un provider IA nelle impostazioni.";
+            case "th": return "ระบบจะสร้างคำอ่านจริงก็ต่อเมื่อคุณเพิ่มผู้ให้บริการ AI ในการตั้งค่าผู้ให้บริการ AI";
+            case "vi": return "Phần phát âm chỉ được tạo sau khi bạn thêm nhà cung cấp AI trong phần cài đặt nhà cung cấp AI.";
+            case "id": return "Pelafalan baru akan dibuat setelah Anda menambahkan penyedia AI di pengaturan penyedia AI.";
+            case "ms": return "Sebutan hanya akan dijana selepas anda menambah penyedia AI dalam tetapan penyedia AI.";
+            case "tr": return "Telaffuz ancak AI sağlayıcı ayarlarından bir AI sağlayıcısı ekledikten sonra oluşturulur.";
+            case "en":
+            default: return "Pronunciation is generated only after you add an AI provider in AI provider settings.";
+        }
+    }
+
+    private static String firstLanguageAIProviderHint(String languageCode) {
+        switch (languageCode) {
+            case "ko": return "현재 Bing과 Google 번역만 활성화되어 있어요. 더 자연스럽고 풍부한 번역을 원한다면 AI 제공자 설정에서 AI 제공자를 추가해 주세요.";
+            case "zh-CN": return "目前仅启用了 Bing 和 Google 翻译。如需更自然、更丰富的翻译，请在 AI 提供商设置中添加一个 AI 提供商。";
+            case "zh-TW": return "目前僅啟用了 Bing 和 Google 翻譯。如需更自然、更豐富的翻譯，請在 AI 供應商設定中加入 AI 供應商。";
+            case "ja": return "現在は Bing と Google 翻訳のみが有効です。より自然で豊かな翻訳を楽しむには、AIプロバイダー設定でAIプロバイダーを追加してください。";
+            case "hi": return "अभी केवल Bing और Google अनुवाद सक्रिय हैं। अधिक स्वाभाविक और बेहतर अनुवाद के लिए AI प्रदाता सेटिंग में कोई AI प्रदाता जोड़ें।";
+            case "es": return "Solo están activos Bing y Google Translate. Añade un proveedor de IA en sus ajustes para obtener traducciones más naturales y completas.";
+            case "fr": return "Seuls Bing et Google Traduction sont actifs. Ajoutez un fournisseur d’IA dans ses réglages pour obtenir des traductions plus naturelles et plus riches.";
+            case "ar": return "المفعّل حاليًا هو Bing وGoogle Translate فقط. أضف موفّر ذكاء اصطناعي من إعدادات الموفّرين للحصول على ترجمة أكثر سلاسة وثراءً.";
+            case "fa": return "در حال حاضر فقط ترجمه Bing وGoogle فعال است. برای ترجمه‌ای طبیعی‌تر و غنی‌تر، در تنظیمات ارائه‌دهنده هوش مصنوعی یک ارائه‌دهنده اضافه کنید.";
+            case "de": return "Derzeit sind nur Bing und Google Übersetzer aktiv. Füge in den KI-Anbietereinstellungen einen KI-Anbieter hinzu, um natürlichere und umfassendere Übersetzungen zu erhalten.";
+            case "ru": return "Сейчас активны только Bing и Google Переводчик. Добавьте ИИ-провайдера в его настройках, чтобы получать более естественные и содержательные переводы.";
+            case "sv": return "Just nu är endast Bing och Google Översätt aktiva. Lägg till en AI-leverantör i inställningarna för mer naturliga och innehållsrika översättningar.";
+            case "pt": return "Apenas o Bing e o Google Tradutor estão ativos. Adicione um provedor de IA nas configurações para obter traduções mais naturais e completas.";
+            case "bn": return "বর্তমানে শুধু Bing ও Google অনুবাদ সক্রিয় আছে। আরও স্বাভাবিক ও সমৃদ্ধ অনুবাদের জন্য AI প্রদানকারী সেটিংসে একটি AI প্রদানকারী যোগ করুন।";
+            case "cs": return "Aktivní jsou pouze překladače Bing a Google. Pro přirozenější a bohatší překlady přidejte v nastavení poskytovatele AI.";
+            case "it": return "Al momento sono attivi solo Bing e Google Traduttore. Aggiungi un provider IA nelle impostazioni per ottenere traduzioni più naturali e complete.";
+            case "th": return "ขณะนี้เปิดใช้เฉพาะ Bing และ Google แปลภาษา เพิ่มผู้ให้บริการ AI ในการตั้งค่าเพื่อรับคำแปลที่เป็นธรรมชาติและครบถ้วนยิ่งขึ้น";
+            case "vi": return "Hiện chỉ có Bing và Google Dịch được bật. Hãy thêm một nhà cung cấp AI trong phần cài đặt để có bản dịch tự nhiên và phong phú hơn.";
+            case "id": return "Saat ini hanya Bing dan Google Terjemahan yang aktif. Tambahkan penyedia AI di pengaturannya untuk terjemahan yang lebih alami dan kaya.";
+            case "ms": return "Buat masa ini hanya Bing dan Google Terjemah diaktifkan. Tambahkan penyedia AI dalam tetapan untuk terjemahan yang lebih semula jadi dan lengkap.";
+            case "tr": return "Şu anda yalnızca Bing ve Google Çeviri etkin. Daha doğal ve zengin çeviriler için AI sağlayıcı ayarlarından bir AI sağlayıcısı ekleyin.";
+            case "en":
+            default: return "Only Bing and Google Translate are active. Add an AI provider in AI provider settings for more natural, richer translations.";
         }
     }
 
