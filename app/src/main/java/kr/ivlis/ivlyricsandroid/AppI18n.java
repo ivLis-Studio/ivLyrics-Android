@@ -137,8 +137,309 @@ final class AppI18n {
         addFirstLanguagePromptStrings(languages);
         addSettingsTranslationOverrides(languages);
         addLyricsToolsTranslationOverrides(languages);
+        addTranslationQualityOverrides(languages);
+        addSpotifyOpenFailureTranslations(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addSpotifyOpenFailureTranslations(
+            Map<String, Map<String, String>> languages
+    ) {
+        String[][] translations = {
+                {"zh-CN", "无法打开 Spotify"},
+                {"zh-TW", "無法開啟 Spotify"},
+                {"ja", "Spotifyを開けません"},
+                {"hi", "Spotify नहीं खोला जा सका"},
+                {"es", "No se pudo abrir Spotify"},
+                {"fr", "Impossible d’ouvrir Spotify"},
+                {"ar", "تعذر فتح Spotify"},
+                {"fa", "Spotify باز نشد"},
+                {"de", "Spotify konnte nicht geöffnet werden"},
+                {"ru", "Не удалось открыть Spotify"},
+                {"sv", "Det gick inte att öppna Spotify"},
+                {"pt", "Não foi possível abrir o Spotify"},
+                {"bn", "Spotify খোলা যায়নি"},
+                {"it", "Impossibile aprire Spotify"},
+                {"th", "ไม่สามารถเปิด Spotify ได้"},
+                {"vi", "Không thể mở Spotify"},
+                {"id", "Spotify tidak dapat dibuka"},
+                {"ms", "Spotify tidak dapat dibuka"}
+        };
+        for (String[] translation : translations) {
+            applyTranslationOverrides(
+                    languages,
+                    translation[0],
+                    new String[]{"toast.spotify_open_failed", translation[1]}
+            );
+        }
+    }
+
+    private static void addTranslationQualityOverrides(Map<String, Map<String, String>> languages) {
+        applyTranslationOverrides(languages, "zh-TW", new String[]{
+                "button.save_start", "儲存並開始",
+                "status.spotify_required_subtitle", "請先儲存 Client ID 和 Client Secret",
+                "button.save_regenerate", "儲存並重新產生",
+                "lyrics.rule.save_target", "儲存目標",
+                "lyrics.button.translation_on", "翻譯已開啟",
+                "lyrics.button.pronunciation_on", "發音已開啟",
+        });
+        applyTranslationOverrides(languages, "hi", new String[]{
+                "button.save_start", "सहेजें और शुरू करें",
+                "status.spotify_required_subtitle", "पहले Client ID और Client Secret सहेजें",
+                "section.language_desc", "ऐप की भाषा और उच्चारण/अनुवाद की आउटपुट भाषा प्रबंधित करें।",
+                "setting.pronunciation_language", "उच्चारण/अनुवाद की भाषा",
+                "setting.pronunciation_language_desc", "उच्चारण और अनुवाद के लिए एक ही भाषा इस्तेमाल होती है। इसे ऐप की भाषा के समान रखें या कोई भाषा चुनकर तय करें।",
+                "setting.metadata_translation_desc", "गीत का शीर्षक और कलाकार का नाम भी चुनी हुई आउटपुट भाषा में दिखाया जाता है।",
+                "button.save_regenerate", "सहेजें और फिर से बनाएँ",
+                "lyrics.rule.save_target", "सहेजने का लक्ष्य",
+                "toast.pronunciation_language_saved", "उच्चारण/अनुवाद की भाषा सहेज दी गई",
+                "label.same_as_ui_language", "ऐप की भाषा के समान",
+        });
+        applyTranslationOverrides(languages, "es", new String[]{
+                "button.save_start", "Guardar y empezar",
+                "status.spotify_required_subtitle", "Guarda primero el Client ID y el Client Secret",
+                "button.save_regenerate", "Guardar y volver a generar",
+                "lyrics.rule.save_target", "Destino de guardado",
+                "lyrics.button.translation_on", "Traducción activada",
+                "lyrics.button.pronunciation_on", "Pronunciación activada",
+        });
+        applyTranslationOverrides(languages, "fr", new String[]{
+                "button.save_start", "Enregistrer et démarrer",
+                "status.spotify_required_subtitle", "Enregistrez d’abord le Client ID et le Client Secret",
+                "section.language_desc", "Gérez la langue d’affichage de l’application et la langue de sortie de la prononciation/traduction.",
+                "setting.pronunciation_language_desc", "Langue commune à la prononciation et à la traduction. Utilisez la langue de l’interface ou choisissez une langue précise.",
+                "setting.metadata_translation_desc", "Le titre et l’artiste sont également affichés dans la langue de sortie choisie.",
+                "button.save_regenerate", "Enregistrer et régénérer",
+                "lyrics.rule.save_target", "Cible d’enregistrement",
+                "lyrics.button.translation_on", "Traduction activée",
+                "lyrics.button.pronunciation_on", "Prononciation activée",
+                "toast.pronunciation_language_saved", "Langue de prononciation/traduction enregistrée",
+                "lyrics.lrclib_search.empty_title", "Saisissez le titre à rechercher.",
+                "setting.keep_screen_on", "Garder l’écran allumé",
+                "setting.keep_screen_on_desc", "Empêche l’écran du téléphone de s’éteindre pendant l’utilisation de l’application.",
+                "toast.keep_screen_on_on", "Écran maintenu allumé",
+                "toast.keep_screen_on_off", "Extinction automatique autorisée",
+                "label.same_as_ui_language", "Identique à la langue de l’interface",
+                "toast.typography_saved", "Typographie enregistrée",
+                "typography.slot.main_title_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.main_artist_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.main_preview_original_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.main_preview_pronunciation_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.main_preview_translation_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.lyrics_header_title_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.lyrics_header_artist_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.lyrics_original_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.lyrics_pronunciation_desc", "Ajustez la taille et la graisse de cet élément.",
+                "typography.slot.lyrics_translation_desc", "Ajustez la taille et la graisse de cet élément.",
+                "section.speaker_colors_desc", "Réglez les couleurs normale, duo, homme et femme à l’aide d’un sélecteur de couleur.",
+                "toast.speaker_colors_saved", "Couleurs vocales enregistrées",
+                "toast.speaker_colors_reset", "Couleurs vocales réinitialisées",
+        });
+        applyTranslationOverrides(languages, "ar", new String[]{
+                "button.save_start", "حفظ وبدء الاستخدام",
+                "status.spotify_required_subtitle", "احفظ Client ID وClient Secret أولًا",
+                "button.save_regenerate", "حفظ وإعادة إنشاء",
+                "lyrics.rule.save_target", "وجهة الحفظ",
+                "lyrics.button.translation_on", "الترجمة مفعّلة",
+                "lyrics.button.pronunciation_on", "النطق مفعّل",
+        });
+        applyTranslationOverrides(languages, "fa", new String[]{
+                "button.save_start", "ذخیره و شروع",
+                "status.spotify_required_subtitle", "ابتدا Client ID وClient Secret را ذخیره کنید",
+                "button.save_regenerate", "ذخیره و تولید دوباره",
+                "lyrics.rule.save_target", "مقصد ذخیره",
+                "lyrics.button.translation_on", "ترجمه روشن",
+                "lyrics.button.pronunciation_on", "تلفظ روشن",
+        });
+        applyTranslationOverrides(languages, "de", new String[]{
+                "button.save_start", "Speichern und starten",
+                "status.spotify_required_subtitle", "Speichere zuerst Client ID und Client Secret",
+                "section.language_desc", "App-Sprache und Ausgabesprache für Aussprache/Übersetzung verwalten.",
+                "setting.pronunciation_language", "Aussprache-/Übersetzungssprache",
+                "setting.pronunciation_language_desc", "Gemeinsame Sprache für Aussprache und Übersetzung. Verwende die Sprache der Benutzeroberfläche oder wähle eine feste Sprache.",
+                "setting.metadata_translation_desc", "Titel und Künstler werden ebenfalls in der gewählten Ausgabesprache angezeigt.",
+                "button.save_regenerate", "Speichern und neu erstellen",
+                "lyrics.menu_tip", "Einmal tippen öffnet Spotify, langes Drücken öffnet Übersetzung und Aussprache.",
+                "lyrics.rule.save_target", "Speicherziel",
+                "lyrics.button.translation_on", "Übersetzung ein",
+                "lyrics.button.pronunciation_on", "Aussprache ein",
+                "field.solid_color_desc", "Wählen Sie die Farbe für den einfarbigen Hintergrundmodus.",
+                "toast.pronunciation_language_saved", "Aussprache-/Übersetzungssprache gespeichert",
+                "lyrics.lrclib_search.artist_hint", "Künstler",
+                "lyrics.lrclib_search.field_artist", "Künstler",
+                "lyrics.lrclib_search.selecting", "Ausgewählte LRCLIB-Lyrics werden geladen...",
+                "repo.detail.manual_lrclib", "Manuell ausgewählte LRCLIB-Lyrics.",
+                "onboarding.preview.line4", "Titel oder Künstler antippen, um zu Spotify zurückzukehren.",
+                "setting.keep_screen_on_desc", "Verhindert, dass sich der Bildschirm während der App-Nutzung automatisch ausschaltet.",
+                "label.same_as_ui_language", "Wie die Sprache der Benutzeroberfläche",
+                "section.typography_desc", "Textgröße und Schriftstärke für Hauptplayer und Liedtextseite einzeln anpassen.",
+                "typography.size", "Größe",
+                "typography.weight", "Stärke",
+                "typography.slot.main_title_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.main_artist_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.main_preview_original_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.main_preview_pronunciation_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.main_preview_translation", "Übersetzung unten im Hauptbildschirm",
+                "typography.slot.main_preview_translation_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.lyrics_header_title_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.lyrics_header_artist", "Künstler der Lyrics-Seite",
+                "typography.slot.lyrics_header_artist_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.lyrics_original_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.lyrics_pronunciation_desc", "Größe und Stärke dieses Elements anpassen.",
+                "typography.slot.lyrics_translation", "Übersetzung der Lyrics-Seite",
+                "typography.slot.lyrics_translation_desc", "Größe und Stärke dieses Elements anpassen.",
+                "section.speaker_colors_desc", "Passe die Farben für Standard, Duett, männlich und weiblich mit einem Farbwähler an.",
+                "speaker_color.hex_hint", "Ausgewählte Farbe",
+                "toast.speaker_colors_reset", "Vokal-Farben zurückgesetzt",
+                "toast.invalid_color_format", "Das Farbformat von %s ist ungültig.",
+                "setting.video_scale_desc", "Vergrößert das Hintergrundvideo, wenn die Quelle schwarze Balken hat oder den Bildschirm stärker füllen soll.",
+        });
+        applyTranslationOverrides(languages, "ru", new String[]{
+                "button.save_start", "Сохранить и начать",
+                "status.spotify_required_subtitle", "Сначала сохраните Client ID и Client Secret",
+                "button.save_regenerate", "Сохранить и создать заново",
+                "lyrics.rule.save_target", "Место сохранения",
+                "lyrics.button.translation_on", "Перевод включён",
+                "lyrics.button.pronunciation_on", "Произношение включено",
+        });
+        applyTranslationOverrides(languages, "sv", new String[]{
+                "button.save_start", "Spara och starta",
+                "status.spotify_required_subtitle", "Spara Client ID och Client Secret först",
+                "button.save_regenerate", "Spara och skapa igen",
+                "lyrics.rule.save_target", "Sparmål",
+                "lyrics.button.translation_on", "Översättning på",
+        });
+        applyTranslationOverrides(languages, "pt", new String[]{
+                "button.save_start", "Salvar e iniciar",
+                "status.spotify_required_subtitle", "Salve primeiro o Client ID e o Client Secret",
+                "section.language_desc", "Gerencie o idioma do app e o idioma de saída da pronúncia/tradução.",
+                "setting.pronunciation_language", "Idioma da pronúncia/tradução",
+                "setting.pronunciation_language_desc", "Idioma compartilhado pela pronúncia e pela tradução. Use o idioma da interface ou escolha um idioma específico.",
+                "setting.metadata_translation_desc", "O título e o artista também são exibidos no idioma de saída escolhido.",
+                "button.save_regenerate", "Salvar e gerar novamente",
+                "lyrics.menu_tip", "Toque uma vez para abrir o Spotify; mantenha pressionado para abrir tradução e pronúncia.",
+                "lyrics.rule.save_target", "Destino de salvamento",
+                "lyrics.button.translation_on", "Tradução ativada",
+                "lyrics.button.pronunciation_on", "Pronúncia ativada",
+                "toast.pronunciation_language_saved", "Idioma da pronúncia/tradução salvo",
+                "lyrics.lrclib_search.title_hint", "Título",
+                "lyrics.lrclib_search.field_title", "Título",
+                "lyrics.lrclib_search.empty_title", "Digite o título da música.",
+                "onboarding.preview.line4", "Toque no título ou artista para voltar ao Spotify.",
+                "toast.keep_screen_on_off", "Desligamento automático permitido",
+                "section.typography_desc", "Personalize o tamanho e o peso do texto no player principal e na página de letras.",
+                "typography.slot.main_title", "Título principal",
+                "typography.slot.main_preview_pronunciation", "Pronúncia na parte inferior da tela principal",
+                "typography.slot.main_preview_translation", "Tradução na parte inferior da tela principal",
+                "typography.slot.lyrics_header_title", "Título da página de letras",
+                "typography.slot.lyrics_header_artist", "Artista da página de letras",
+                "typography.slot.lyrics_original", "Original da página de letras",
+                "typography.slot.lyrics_pronunciation", "Pronuncia da página de letras",
+                "typography.slot.lyrics_translation", "Traducao da página de letras",
+                "section.speaker_colors_desc", "Ajuste as cores normal, dueto, masculina e feminina com um seletor de cor.",
+                "toast.invalid_color_format", "O formato de cor de %s é inválido.",
+        });
+        applyTranslationOverrides(languages, "bn", new String[]{
+                "button.save_start", "সংরক্ষণ করে শুরু করুন",
+                "status.spotify_required_subtitle", "প্রথমে Client ID ও Client Secret সংরক্ষণ করুন",
+                "section.language_desc", "অ্যাপের ভাষা এবং উচ্চারণ/অনুবাদের আউটপুট ভাষা পরিচালনা করুন।",
+                "setting.pronunciation_language", "উচ্চারণ/অনুবাদের ভাষা",
+                "setting.pronunciation_language_desc", "উচ্চারণ ও অনুবাদের জন্য একই ভাষা ব্যবহার করা হয়। অ্যাপের ভাষার সঙ্গে মিলিয়ে রাখুন অথবা নির্দিষ্ট একটি ভাষা বেছে নিন।",
+                "setting.metadata_translation_desc", "গানের শিরোনাম ও শিল্পীর নামও নির্বাচিত আউটপুট ভাষায় দেখানো হয়।",
+                "button.save_regenerate", "সংরক্ষণ করে আবার তৈরি করুন",
+                "lyrics.rule.save_target", "সংরক্ষণের লক্ষ্য",
+                "lyrics.button.translation_on", "অনুবাদ চালু",
+                "lyrics.button.pronunciation_on", "উচ্চারণ চালু",
+                "toast.pronunciation_language_saved", "উচ্চারণ/অনুবাদের ভাষা সংরক্ষণ করা হয়েছে",
+                "label.same_as_ui_language", "অ্যাপের ভাষার মতোই",
+        });
+        applyTranslationOverrides(languages, "it", new String[]{
+                "button.save_start", "Salva e inizia",
+                "status.spotify_required_subtitle", "Salva prima il Client ID e il Client Secret",
+                "button.save_regenerate", "Salva e rigenera",
+                "lyrics.rule.save_target", "Destinazione di salvataggio",
+                "lyrics.button.translation_on", "Traduzione attiva",
+                "lyrics.button.pronunciation_on", "Pronuncia attiva",
+        });
+        applyTranslationOverrides(languages, "th", new String[]{
+                "button.save_start", "บันทึกและเริ่ม",
+                "status.spotify_required_subtitle", "บันทึก Client ID และ Client Secret ก่อน",
+                "button.save_regenerate", "บันทึกและสร้างใหม่",
+                "lyrics.rule.save_target", "เป้าหมายการบันทึก",
+                "lyrics.button.translation_on", "เปิดการแปล",
+                "lyrics.button.pronunciation_on", "เปิดการออกเสียง",
+        });
+        applyTranslationOverrides(languages, "vi", new String[]{
+                "button.save_start", "Lưu và bắt đầu",
+                "status.spotify_required_subtitle", "Trước tiên, hãy lưu Client ID và Client Secret",
+                "section.language_desc", "Quản lý ngôn ngữ hiển thị của ứng dụng và ngôn ngữ đầu ra cho phát âm/bản dịch.",
+                "setting.pronunciation_language", "Ngôn ngữ phát âm/bản dịch",
+                "setting.pronunciation_language_desc", "Ngôn ngữ dùng chung cho phát âm và bản dịch. Dùng ngôn ngữ giao diện hoặc chọn một ngôn ngữ cố định.",
+                "setting.metadata_translation_desc", "Tiêu đề bài hát và nghệ sĩ cũng được hiển thị bằng ngôn ngữ đầu ra đã chọn.",
+                "button.save_regenerate", "Lưu và tạo lại",
+                "lyrics.rule.save_target", "Đích lưu",
+                "lyrics.button.translation_on", "Bật bản dịch",
+                "lyrics.button.pronunciation_on", "Bật phát âm",
+                "field.solid_color_desc", "Chọn màu dùng cho chế độ nền đơn sắc.",
+                "toast.pronunciation_language_saved", "Đã lưu ngôn ngữ phát âm/bản dịch",
+                "label.same_as_ui_language", "Giống ngôn ngữ giao diện",
+                "section.typography_desc", "Tùy chỉnh riêng cỡ chữ và độ đậm cho màn hình chính và trang lời bài hát.",
+                "typography.slot.main_title_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.main_artist_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.main_preview_original", "Lời gốc ở cuối màn hình chính",
+                "typography.slot.main_preview_original_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.main_preview_pronunciation", "Phát âm ở cuối màn hình chính",
+                "typography.slot.main_preview_pronunciation_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.main_preview_translation", "Bản dịch ở cuối màn hình chính",
+                "typography.slot.main_preview_translation_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.lyrics_header_title", "Tiêu đề trang lời bài hát",
+                "typography.slot.lyrics_header_title_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.lyrics_header_artist", "Nghệ sĩ trên trang lời bài hát",
+                "typography.slot.lyrics_header_artist_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.lyrics_original", "Lời gốc trên trang lời bài hát",
+                "typography.slot.lyrics_original_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.lyrics_pronunciation", "Phát âm trên trang lời bài hát",
+                "typography.slot.lyrics_pronunciation_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "typography.slot.lyrics_translation", "Bản dịch trên trang lời bài hát",
+                "typography.slot.lyrics_translation_desc", "Điều chỉnh cỡ chữ và độ đậm của mục này.",
+                "section.speaker_colors_desc", "Điều chỉnh màu giọng thường, song ca, nam và nữ bằng bộ chọn màu.",
+                "toast.speaker_colors_saved", "Đã lưu màu giọng hát",
+                "toast.speaker_colors_reset", "Đã đặt lại màu giọng hát",
+                "toast.invalid_color_format", "Định dạng màu của %s không hợp lệ.",
+        });
+        applyTranslationOverrides(languages, "id", new String[]{
+                "button.save_start", "Simpan dan mulai",
+                "status.spotify_required_subtitle", "Simpan Client ID dan Client Secret terlebih dahulu",
+                "button.save_regenerate", "Simpan dan buat ulang",
+                "lyrics.rule.save_target", "Tujuan penyimpanan",
+                "lyrics.button.translation_on", "Terjemahan aktif",
+                "lyrics.button.pronunciation_on", "Pelafalan aktif",
+        });
+        applyTranslationOverrides(languages, "ms", new String[]{
+                "button.save_start", "Simpan dan mula",
+                "status.spotify_required_subtitle", "Simpan Client ID dan Client Secret dahulu",
+                "button.save_regenerate", "Simpan dan jana semula",
+                "lyrics.rule.save_target", "Destinasi simpanan",
+                "lyrics.button.translation_on", "Terjemahan dihidupkan",
+                "lyrics.button.pronunciation_on", "Sebutan dihidupkan",
+        });
+    }
+
+    private static void applyTranslationOverrides(
+            Map<String, Map<String, String>> languages,
+            String languageCode,
+            String[] entries
+    ) {
+        Map<String, String> table = languages.get(languageCode);
+        if (table == null) {
+            return;
+        }
+        Map<String, String> copy = new LinkedHashMap<>(table);
+        for (int index = 0; index + 1 < entries.length; index += 2) {
+            copy.put(entries[index], entries[index + 1]);
+        }
+        languages.put(languageCode, Collections.unmodifiableMap(copy));
     }
 
     private static void addFirstLanguagePromptStrings(Map<String, Map<String, String>> languages) {
@@ -10512,7 +10813,14 @@ final class AppI18n {
                 throw new IllegalStateException("Missing i18n table: " + language.code);
             }
             if (!table.keySet().equals(english.keySet())) {
-                throw new IllegalStateException("Incomplete i18n table: " + language.code);
+                java.util.Set<String> missing = new java.util.LinkedHashSet<>(english.keySet());
+                missing.removeAll(table.keySet());
+                java.util.Set<String> extra = new java.util.LinkedHashSet<>(table.keySet());
+                extra.removeAll(english.keySet());
+                throw new IllegalStateException(
+                        "Incomplete i18n table: " + language.code
+                                + " missing=" + missing
+                                + " extra=" + extra);
             }
             for (Map.Entry<String, String> entry : table.entrySet()) {
                 if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
