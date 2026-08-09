@@ -117,11 +117,43 @@ final class KeylessTranslationProviders {
         throw new IOException("Unknown keyless translation provider: " + providerId);
     }
 
+    static Result translateMetadataWithProvider(
+            String providerId,
+            List<String> texts,
+            String targetLanguage
+    ) throws Exception {
+        if (BING_ID.equals(providerId)) {
+            return new Result(
+                    translateBatched(texts, targetLanguage, 2_800, KeylessTranslationProviders::translateBingText, false),
+                    BING_ID,
+                    BING_LABEL
+            );
+        }
+        if (GOOGLE_ID.equals(providerId)) {
+            return new Result(
+                    translateBatched(texts, targetLanguage, 3_500, KeylessTranslationProviders::translateGoogleText, false),
+                    GOOGLE_ID,
+                    GOOGLE_LABEL
+            );
+        }
+        throw new IOException("Unknown keyless translation provider: " + providerId);
+    }
+
     private static List<String> translateBatched(
             List<String> source,
             String targetLanguage,
             int maxCharacters,
             TextTranslator translator
+    ) throws Exception {
+        return translateBatched(source, targetLanguage, maxCharacters, translator, true);
+    }
+
+    private static List<String> translateBatched(
+            List<String> source,
+            String targetLanguage,
+            int maxCharacters,
+            TextTranslator translator,
+            boolean preserveLyricsStructure
     ) throws Exception {
         List<String> safeSource = source == null ? Collections.emptyList() : source;
         List<String> output = new ArrayList<>(Collections.nCopies(safeSource.size(), ""));
@@ -138,7 +170,7 @@ final class KeylessTranslationProviders {
                 end++;
             }
             List<String> chunk = safeSource.subList(start, Math.max(start + 1, end));
-            List<String> translated = translateAligned(chunk, targetLanguage, translator);
+            List<String> translated = translateAligned(chunk, targetLanguage, translator, preserveLyricsStructure);
             for (int index = 0; index < translated.size(); index++) {
                 output.set(start + index, translated.get(index));
             }
@@ -150,7 +182,8 @@ final class KeylessTranslationProviders {
     private static List<String> translateAligned(
             List<String> lines,
             String targetLanguage,
-            TextTranslator translator
+            TextTranslator translator,
+            boolean preserveLyricsStructure
     ) throws Exception {
         if (lines.isEmpty()) {
             return Collections.emptyList();
@@ -176,10 +209,13 @@ final class KeylessTranslationProviders {
             List<String> output = new ArrayList<>(lines.size());
             for (int index = 0; index < lines.size(); index++) {
                 String source = lines.get(index);
-                String translated = source.trim().isEmpty() || PROTECTED_LINE_PATTERN.matcher(source).matches()
+                String translated = source.trim().isEmpty()
+                        || (preserveLyricsStructure && PROTECTED_LINE_PATTERN.matcher(source).matches())
                         ? source
                         : split[index];
-                output.add(repairVocalParts(source, translated, targetLanguage, translator));
+                output.add(preserveLyricsStructure
+                        ? repairVocalParts(source, translated, targetLanguage, translator)
+                        : translated);
             }
             return output;
         }
@@ -189,8 +225,8 @@ final class KeylessTranslationProviders {
 
         int middle = (lines.size() + 1) / 2;
         List<String> output = new ArrayList<>(lines.size());
-        output.addAll(translateAligned(lines.subList(0, middle), targetLanguage, translator));
-        output.addAll(translateAligned(lines.subList(middle, lines.size()), targetLanguage, translator));
+        output.addAll(translateAligned(lines.subList(0, middle), targetLanguage, translator, preserveLyricsStructure));
+        output.addAll(translateAligned(lines.subList(middle, lines.size()), targetLanguage, translator, preserveLyricsStructure));
         return output;
     }
 

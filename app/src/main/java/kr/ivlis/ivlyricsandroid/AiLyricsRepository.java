@@ -1125,14 +1125,12 @@ final class AiLyricsRepository {
         if (!settings.metadataTranslationEnabled || AiLyricsSettings.isSameLanguage(sourceLang, targetLang)) {
             return;
         }
-        if (!settings.hasApiKey()) {
-            emitLog(trackKey, callback, "ai metadata skipped: API key missing for " + settings.provider.label);
-            callback.onAiMetadataTranslationError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
-            return;
-        }
-        if (!settings.hasModel()) {
-            emitLog(trackKey, callback, "ai metadata skipped: model missing for " + settings.provider.label);
-            callback.onAiMetadataTranslationError(trackKey, "AI 모델을 직접 선택해 주세요");
+        if (!settings.hasAnyTranslationProvider()) {
+            emitLog(trackKey, callback, "metadata translation skipped: no ready translation provider");
+            callback.onAiMetadataTranslationError(
+                    trackKey,
+                    AppI18n.t(settings.uiLang, "error.translation_providers_failed")
+            );
             return;
         }
 
@@ -1140,44 +1138,96 @@ final class AiLyricsRepository {
                 + trackKey
                 + "|source=" + sourceLang
                 + "|target=" + targetLang
-                + "|provider=" + settings.provider.id
-                + "|model=" + settings.model
-                + "|url=" + settings.baseUrl
-                + "|temp=" + settings.temperature
+                + "|providers=" + sha256(settings.cacheKey())
                 + "|text=" + sha256(title + "\n" + artist);
         if (!bypassCache) {
             MetadataTranslation cached = metadataCache.get(cacheKey);
             if (cached != null) {
-                emitLog(trackKey, callback, "ai metadata cache hit: " + settings.provider.label);
+                emitLog(trackKey, callback, "metadata translation cache hit");
                 callback.onAiMetadataTranslationLoaded(trackKey, cached);
                 return;
             }
             MetadataTranslation persisted = metadataTranslationFromPrefs(cacheKey);
             if (persisted != null) {
                 metadataCache.put(cacheKey, persisted);
-                emitLog(trackKey, callback, "ai metadata disk cache hit: " + settings.provider.label);
+                emitLog(trackKey, callback, "metadata translation disk cache hit");
                 callback.onAiMetadataTranslationLoaded(trackKey, persisted);
                 return;
             }
         }
 
-        emitLog(trackKey, callback, "ai metadata: provider=" + settings.provider.label
+        emitLog(trackKey, callback, "metadata translation: providers="
+                + String.join(",", settings.enabledAiProviderOrder())
                 + " / source=" + sourceLang
                 + (sourceLang.equalsIgnoreCase(detectedSourceLang) ? "" : " / detected=" + detectedSourceLang)
                 + " / target=" + targetLang);
 
         executor.execute(() -> {
             LogSink log = message -> emitLog(trackKey, callback, message);
+            Exception lastError = null;
+            MetadataTranslation translation = null;
             try {
-                String raw = callProviderRaw(buildMetadataTranslationPrompt(title, artist, targetLang), settings);
-                MetadataTranslation translation = parseMetadataTranslation(raw, title, artist, sourceLang, targetLang);
+                for (String providerId : settings.enabledAiProviderOrder()) {
+                    AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById(providerId);
+                    if (provider == null) {
+                        continue;
+                    }
+                    try {
+                        if (provider.keyless) {
+                            log.write("metadata translation attempt: provider=" + provider.label);
+                            List<String> sourceTexts = new ArrayList<>();
+                            sourceTexts.add(title);
+                            sourceTexts.add(artist);
+                            KeylessTranslationProviders.Result result = KeylessTranslationProviders.translateMetadataWithProvider(
+                                    provider.id,
+                                    sourceTexts,
+                                    targetLang
+                            );
+                            if (result.values == null || result.values.size() != 2) {
+                                throw new IOException("Invalid metadata translation response from " + provider.label);
+                            }
+                            translation = new MetadataTranslation(
+                                    firstNonEmpty(result.values.get(0), title),
+                                    firstNonEmpty(result.values.get(1), artist),
+                                    sourceLang,
+                                    targetLang
+                            );
+                            log.write("metadata translation response: provider=" + result.providerLabel);
+                        } else {
+                            AiLyricsSettings.Snapshot providerSettings = settings.forProvider(provider.id);
+                            if (providerSettings == null || !providerSettings.hasApiKey() || !providerSettings.hasModel()) {
+                                log.write("metadata translation skipped: provider=" + provider.label + " is not fully configured");
+                                continue;
+                            }
+                            log.write("ai metadata attempt: provider=" + provider.label + " / model=" + providerSettings.model);
+                            String raw = callProviderRaw(
+                                    buildMetadataTranslationPrompt(title, artist, targetLang),
+                                    providerSettings
+                            );
+                            translation = parseMetadataTranslation(raw, title, artist, sourceLang, targetLang);
+                        }
+                        if (translation != null) {
+                            break;
+                        }
+                    } catch (Exception providerError) {
+                        lastError = providerError;
+                        log.write("metadata translation fallback: provider=" + provider.label
+                                + " / error=" + errorMessage(providerError));
+                    }
+                }
+                if (translation == null) {
+                    throw lastError == null
+                            ? new IOException(AppI18n.t(settings.uiLang, "error.translation_providers_failed"))
+                            : lastError;
+                }
                 metadataCache.put(cacheKey, translation);
                 putMetadataTranslationToPrefs(cacheKey, translation);
                 log.write("ai metadata response: title="
                         + (!translation.title.isEmpty())
                         + " / artist="
                         + (!translation.artist.isEmpty()));
-                mainHandler.post(() -> callback.onAiMetadataTranslationLoaded(trackKey, translation));
+                MetadataTranslation resolvedTranslation = translation;
+                mainHandler.post(() -> callback.onAiMetadataTranslationLoaded(trackKey, resolvedTranslation));
             } catch (Exception error) {
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
                 log.write("ai metadata error: " + message);

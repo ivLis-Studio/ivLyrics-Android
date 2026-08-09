@@ -502,6 +502,7 @@ public final class MainActivity extends Activity implements
     private boolean lyricsSupplementTranslationLoading;
     private boolean lyricsSupplementFuriganaLoading;
     private boolean lyricsCulturalAnnotationsLoading;
+    private boolean metadataTranslationLoading;
     private boolean spotifyCredentialsValidationInFlight;
     private volatile boolean pollinationsAuthInFlight;
     private boolean updateCheckInFlight;
@@ -1854,6 +1855,7 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey) || translation == null) {
             return;
         }
+        setMetadataTranslationLoading(false);
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings == null ? null : aiLyricsSettings.snapshot();
         String source = effectiveSelectedSourceLang();
         String target = snapshot == null ? "" : snapshot.resolveTargetLanguage(source);
@@ -1875,6 +1877,7 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
+        setMetadataTranslationLoading(false);
         appendLog("ai metadata failed: " + message);
     }
 
@@ -11514,6 +11517,7 @@ public final class MainActivity extends Activity implements
 
     private void requestMetadataTranslation(boolean clearCache) {
         long generation = ++aiMetadataGeneration;
+        setMetadataTranslationLoading(false);
         if (currentTrack == null || !currentTrack.hasUsableMetadata() || aiLyricsRepository == null || aiLyricsSettings == null) {
             return;
         }
@@ -11528,14 +11532,14 @@ public final class MainActivity extends Activity implements
         String target = snapshot.resolveTargetLanguage(source);
         if (!snapshot.metadataTranslationEnabled
                 || AiLyricsSettings.isSameLanguage(source, target)
-                || !snapshot.hasApiKey()
-                || !snapshot.hasModel()) {
+                || !snapshot.hasAnyTranslationProvider()) {
             translatedTrackTitle = "";
             translatedTrackArtist = "";
             updateTrackMetadataTextViews(currentTrack);
             return;
         }
         String requestTrackKey = currentLyricsKey;
+        setMetadataTranslationLoading(true);
         aiLyricsRepository.loadMetadataTranslation(
                 currentTrack,
                 snapshot,
@@ -12236,7 +12240,7 @@ public final class MainActivity extends Activity implements
         }
         updateLyricsSupplementLoadingText();
         updateLyricsSupplementLoadingIndicator(
-                pronunciation || translation || furigana || lyricsCulturalAnnotationsLoading
+                pronunciation || translation || furigana || lyricsCulturalAnnotationsLoading || metadataTranslationLoading
         );
         updateVinylLoadingIndicator(true);
     }
@@ -12249,6 +12253,20 @@ public final class MainActivity extends Activity implements
                         || lyricsSupplementPronunciationLoading
                         || lyricsSupplementTranslationLoading
                         || lyricsSupplementFuriganaLoading
+                        || metadataTranslationLoading
+        );
+        updateVinylLoadingIndicator(true);
+    }
+
+    private void setMetadataTranslationLoading(boolean loading) {
+        metadataTranslationLoading = loading;
+        updateLyricsSupplementLoadingText();
+        updateLyricsSupplementLoadingIndicator(
+                loading
+                        || lyricsSupplementPronunciationLoading
+                        || lyricsSupplementTranslationLoading
+                        || lyricsSupplementFuriganaLoading
+                        || lyricsCulturalAnnotationsLoading
         );
         updateVinylLoadingIndicator(true);
     }
@@ -12256,6 +12274,9 @@ public final class MainActivity extends Activity implements
     private String vinylLoadingText() {
         if (lyricsCulturalAnnotationsLoading) {
             return ui("loading.cultural_annotations");
+        }
+        if (metadataTranslationLoading) {
+            return ui("loading.translation");
         }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
@@ -12300,6 +12321,9 @@ public final class MainActivity extends Activity implements
     private String supplementLoadingText() {
         if (lyricsCulturalAnnotationsLoading) {
             return ui("loading.cultural_annotations");
+        }
+        if (metadataTranslationLoading) {
+            return ui("loading.translation");
         }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
