@@ -44,12 +44,23 @@ final class AiLyricsRepository {
     private static final int MAX_METADATA_CACHE_ENTRIES = 200;
     private static final int MAX_TMI_CACHE_ENTRIES = 100;
     private static final int MAX_CULTURAL_CACHE_ENTRIES = 100;
+    private static final int MAX_RESEARCH_MODEL_LIMIT_ENTRIES = 64;
+    private static final int DEFAULT_RESEARCH_MAX_TOKENS = 16_000;
+    private static final int DEFAULT_GEMINI_RESEARCH_MAX_TOKENS = 32_768;
     private static final long PERSISTENT_CACHE_MAX_AGE_MS = DiskCachePolicy.MAX_AGE_MS;
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
     private static final Pattern TAGGED_OUTPUT_PATTERN = Pattern.compile(
             "^\\s*(?:[-*]\\s*)?(?:\\[?L(\\d{1,4})\\]?|(?:row|line)\\s*(\\d{1,4})|#?(\\d{1,4}))\\s*(?:\\t|[:：|\\-]|\\.\\s+|\\s+)\\s*(.*)$",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern RESEARCH_TOKEN_LIMIT_PATTERN = Pattern.compile(
+            "(?:MAX[_\\s-]*(?:OUTPUT[_\\s-]*)?TOKENS?|max[_\\s-]*(?:output[_\\s-]*)?tokens?|finish[_\\s-]*reason[^\\n]*(?:length|token)|context[_\\s-]*length)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern RESEARCH_WEB_SEARCH_FAILURE_PATTERN = Pattern.compile(
+            "(?:\\bweb[\\s_-]*search\\b[^\\n]*(?:fail|error|unavailable|unsupported|disabled|timed?\\s*out|empty)|\\b(?:google_search|web_search)\\b|\\btools?\\b[^\\n]*(?:unsupported|not supported|unavailable|invalid|unknown))",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -59,6 +70,7 @@ final class AiLyricsRepository {
     private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
     private final Map<String, TmiInfo> tmiCache = newBoundedCache(MAX_TMI_CACHE_ENTRIES);
     private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
+    private final Map<String, Integer> researchModelLimitCache = newBoundedCache(MAX_RESEARCH_MODEL_LIMIT_ENTRIES);
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
@@ -1383,6 +1395,9 @@ final class AiLyricsRepository {
                     raw = callResearchStreamRaw(prompt, title, artist, settings, true, progressSink);
                     log.write("ai research web search completed");
                 } catch (Exception searchError) {
+                    if (!isResearchWebSearchFailure(searchError)) {
+                        throw searchError;
+                    }
                     webSearchFallback = true;
                     log.write("ai research web search failed; retrying without search: " + errorMessage(searchError));
                     mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, null, true, true));
@@ -2078,27 +2093,43 @@ final class AiLyricsRepository {
             TextDeltaSink sink
     ) throws Exception {
         String providerId = settings.provider.id;
+        int researchMaxTokens = resolveResearchMaxTokens(settings, apiKey);
         if ("gemini".equals(providerId)) {
-            return callGeminiStream(prompt, settings, apiKey, sink, webSearch);
+            return callGeminiStream(prompt, settings, apiKey, sink, webSearch, researchMaxTokens);
         }
         if ("claude".equals(providerId)) {
-            return callClaudeStream(prompt, settings, apiKey, sink, webSearch);
+            return callClaudeStream(prompt, settings, apiKey, sink, webSearch, researchMaxTokens);
         }
         if ("chatgpt".equals(providerId) && webSearch) {
             return callOpenAiResponsesStream(prompt, settings, apiKey, sink);
         }
         String enrichedPrompt = prompt;
         if ("groq".equals(providerId) && webSearch) {
-            String dossier = collectGroqWebResearch(title, artist, settings, apiKey);
+            String dossier;
+            try {
+                dossier = collectGroqWebResearch(title, artist, settings, apiKey);
+            } catch (Exception error) {
+                throw new ResearchWebSearchException("[Groq] Web search failed: " + errorMessage(error), error);
+            }
             enrichedPrompt = appendUntrustedResearch(prompt, "Groq", dossier);
         } else if ("paxsenix".equals(providerId) && webSearch) {
-            String dossier = fetchPaxsenixWebResearch(title, artist, apiKey);
+            String dossier;
+            try {
+                dossier = fetchPaxsenixWebResearch(title, artist, apiKey);
+            } catch (Exception error) {
+                throw new ResearchWebSearchException("[Paxsenix] Web search failed: " + errorMessage(error), error);
+            }
             enrichedPrompt = appendUntrustedResearch(prompt, "Paxsenix", dossier);
         } else if ("pollinations".equals(providerId) && webSearch) {
-            String dossier = collectPollinationsWebResearch(title, artist, settings, apiKey);
+            String dossier;
+            try {
+                dossier = collectPollinationsWebResearch(title, artist, settings, apiKey);
+            } catch (Exception error) {
+                throw new ResearchWebSearchException("[Pollinations] Web search failed: " + errorMessage(error), error);
+            }
             enrichedPrompt = appendUntrustedResearch(prompt, "Pollinations", dossier);
         }
-        return callOpenAiCompatibleStream(enrichedPrompt, settings, apiKey, sink, webSearch);
+        return callOpenAiCompatibleStream(enrichedPrompt, settings, apiKey, sink, webSearch, researchMaxTokens);
     }
 
     private String callProviderStreamRawOnce(
@@ -2180,10 +2211,21 @@ final class AiLyricsRepository {
             TextDeltaSink sink,
             boolean webSearch
     ) throws Exception {
+        return callGeminiStream(prompt, settings, apiKey, sink, webSearch, settings.maxTokens);
+    }
+
+    private String callGeminiStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink,
+            boolean webSearch,
+            int maxTokens
+    ) throws Exception {
         String endpoint = trimRight(settings.baseUrl, "/")
                 + "/models/" + urlPath(settings.model)
                 + ":streamGenerateContent?alt=sse&key=" + urlQuery(apiKey);
-        JSONObject body = geminiBody(prompt, settings);
+        JSONObject body = geminiBody(prompt, settings, maxTokens);
         if (webSearch) body.put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject())));
         return postJsonSse(endpoint, body, Collections.singletonMap("Content-Type", "application/json"), (eventName, data) -> {
             if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) {
@@ -2241,6 +2283,10 @@ final class AiLyricsRepository {
     }
 
     private JSONObject geminiBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        return geminiBody(prompt, settings, settings.maxTokens);
+    }
+
+    private JSONObject geminiBody(String prompt, AiLyricsSettings.Snapshot settings, int maxTokens) throws JSONException {
         JSONObject body = new JSONObject();
         JSONArray contents = new JSONArray();
         JSONObject content = new JSONObject();
@@ -2251,7 +2297,7 @@ final class AiLyricsRepository {
         contents.put(content);
         body.put("contents", contents);
         JSONObject config = new JSONObject();
-        config.put("maxOutputTokens", settings.maxTokens);
+        config.put("maxOutputTokens", maxTokens);
         config.put("temperature", settings.temperature);
         config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
         body.put("generationConfig", config);
@@ -2274,8 +2320,19 @@ final class AiLyricsRepository {
             TextDeltaSink sink,
             boolean webSearch
     ) throws Exception {
+        return callClaudeStream(prompt, settings, apiKey, sink, webSearch, settings.maxTokens);
+    }
+
+    private String callClaudeStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink,
+            boolean webSearch,
+            int maxTokens
+    ) throws Exception {
         String endpoint = trimRight(settings.baseUrl, "/") + "/messages";
-        JSONObject body = claudeBody(prompt, settings);
+        JSONObject body = claudeBody(prompt, settings, maxTokens);
         if (webSearch) body.put("tools", new JSONArray().put(claudeWebSearchTool(settings.model)));
         body.put("stream", true);
         Map<String, String> headers = claudeHeaders(apiKey);
@@ -2335,9 +2392,13 @@ final class AiLyricsRepository {
     }
 
     private JSONObject claudeBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        return claudeBody(prompt, settings, settings.maxTokens);
+    }
+
+    private JSONObject claudeBody(String prompt, AiLyricsSettings.Snapshot settings, int maxTokens) throws JSONException {
         JSONObject body = new JSONObject();
         body.put("model", settings.model);
-        body.put("max_tokens", settings.maxTokens);
+        body.put("max_tokens", maxTokens);
         body.put("temperature", settings.temperature);
         JSONArray messages = new JSONArray();
         messages.put(new JSONObject()
@@ -2371,8 +2432,22 @@ final class AiLyricsRepository {
             TextDeltaSink sink,
             boolean webSearch
     ) throws Exception {
+        return callOpenAiCompatibleStream(prompt, settings, apiKey, sink, webSearch, settings.maxTokens);
+    }
+
+    private String callOpenAiCompatibleStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink,
+            boolean webSearch,
+            int maxTokens
+    ) throws Exception {
         String endpoint = openAiEndpoint(settings);
         JSONObject body = openAiCompatibleBody(prompt, settings);
+        body.remove("max_tokens");
+        body.remove("max_completion_tokens");
+        body.put(researchTokenField(settings.provider.id), maxTokens);
         applyOpenAiResearchOptions(body, settings.provider.id, webSearch);
         if ("groq".equals(settings.provider.id)
                 && settings.model != null
@@ -2626,6 +2701,122 @@ final class AiLyricsRepository {
 
     private String tokenField(String providerId) {
         return "chatgpt".equals(providerId) ? "max_completion_tokens" : "max_tokens";
+    }
+
+    private String researchTokenField(String providerId) {
+        return "chatgpt".equals(providerId) || "groq".equals(providerId)
+                ? "max_completion_tokens"
+                : "max_tokens";
+    }
+
+    private int resolveResearchMaxTokens(AiLyricsSettings.Snapshot settings, String apiKey) {
+        String providerId = settings == null || settings.provider == null ? "" : settings.provider.id;
+        int configured = settings == null ? DEFAULT_RESEARCH_MAX_TOKENS : Math.max(1, settings.maxTokens);
+        boolean supportsAdvertisedLimit = "gemini".equals(providerId)
+                || "paxsenix".equals(providerId)
+                || "claude".equals(providerId)
+                || "groq".equals(providerId)
+                || "openrouter".equals(providerId);
+        if (!supportsAdvertisedLimit) return configured;
+
+        int fallback = Math.max(configured, "gemini".equals(providerId)
+                ? DEFAULT_GEMINI_RESEARCH_MAX_TOKENS
+                : DEFAULT_RESEARCH_MAX_TOKENS);
+        String cacheKey = providerId + "|" + trimRight(settings.baseUrl, "/") + "|" + settings.model;
+        Integer cached = researchModelLimitCache.get(cacheKey);
+        if (cached != null && cached > 0) return cached;
+
+        int resolved = fallback;
+        try {
+            String endpoint = trimRight(settings.baseUrl, "/") + "/models";
+            Map<String, String> headers = new HashMap<>();
+            if ("gemini".equals(providerId)) {
+                endpoint += "?key=" + urlQuery(apiKey);
+                headers.put("Accept", "application/json");
+            } else if ("claude".equals(providerId)) {
+                headers.putAll(claudeHeaders(apiKey));
+            } else {
+                headers.putAll(openAiCompatibleHeaders(settings, apiKey));
+            }
+            JSONObject response = new JSONObject(getText(endpoint, headers));
+            int advertised = advertisedResearchTokenLimit(providerId, settings.model, response);
+            if (advertised > 0) resolved = advertised;
+        } catch (Exception ignored) {
+            // Model metadata is optional. A missing field, incompatible custom
+            // endpoint, or temporary lookup failure must never block Research.
+        }
+        researchModelLimitCache.put(cacheKey, resolved);
+        return resolved;
+    }
+
+    static int advertisedResearchTokenLimit(String providerId, String modelId, JSONObject response) {
+        if (response == null) return 0;
+        JSONArray models = "gemini".equals(providerId)
+                ? response.optJSONArray("models")
+                : response.optJSONArray("data");
+        JSONObject selected = null;
+        if (models != null) {
+            for (int index = 0; index < models.length(); index++) {
+                JSONObject candidate = models.optJSONObject(index);
+                if (candidate == null) continue;
+                String candidateId = candidate.optString("id", candidate.optString("name", ""));
+                if (candidateId.startsWith("models/")) candidateId = candidateId.substring("models/".length());
+                if (candidateId.equals(modelId)) {
+                    selected = candidate;
+                    break;
+                }
+            }
+        }
+        if (selected == null) {
+            String directId = response.optString("id", response.optString("name", ""));
+            if (directId.startsWith("models/")) directId = directId.substring("models/".length());
+            if (directId.equals(modelId)) selected = response;
+        }
+        if (selected == null) return 0;
+
+        if ("gemini".equals(providerId)) {
+            return positiveInt(selected.opt("outputTokenLimit"));
+        }
+        if ("paxsenix".equals(providerId)) {
+            return positiveInt(selected.opt("max_output_tokens"));
+        }
+        if ("claude".equals(providerId)) {
+            return positiveInt(selected.opt("max_tokens"));
+        }
+        if ("groq".equals(providerId)) {
+            return positiveInt(selected.opt("max_completion_tokens"));
+        }
+        if ("openrouter".equals(providerId)) {
+            JSONObject topProvider = selected.optJSONObject("top_provider");
+            int nested = positiveInt(topProvider == null ? null : topProvider.opt("max_completion_tokens"));
+            return nested > 0 ? nested : positiveInt(selected.opt("max_completion_tokens"));
+        }
+        return 0;
+    }
+
+    private static int positiveInt(Object value) {
+        if (value == null || value == JSONObject.NULL) return 0;
+        try {
+            long parsed = value instanceof Number
+                    ? ((Number) value).longValue()
+                    : Long.parseLong(String.valueOf(value).trim());
+            return parsed > 0 ? (int) Math.min(parsed, Integer.MAX_VALUE) : 0;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private static boolean isResearchWebSearchFailure(Exception error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String message = current.getMessage() == null ? "" : current.getMessage();
+            if (RESEARCH_TOKEN_LIMIT_PATTERN.matcher(message).find()) return false;
+        }
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof ResearchWebSearchException) return true;
+            String message = current.getMessage() == null ? "" : current.getMessage();
+            if (RESEARCH_WEB_SEARCH_FAILURE_PATTERN.matcher(message).find()) return true;
+        }
+        return false;
     }
 
     private String postJson(String endpoint, JSONObject body, Map<String, String> headers) throws IOException {
@@ -3993,6 +4184,12 @@ final class AiLyricsRepository {
         HttpStatusException(int statusCode, String message) {
             super(message);
             this.statusCode = statusCode;
+        }
+    }
+
+    private static final class ResearchWebSearchException extends IOException {
+        ResearchWebSearchException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }
