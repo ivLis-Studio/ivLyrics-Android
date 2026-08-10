@@ -23,6 +23,16 @@ final class SyncDataApplier {
     }
 
     static ApplyResult applyWithDiagnostics(List<LyricsLine> baseLyrics, JSONObject syncBody, TrackSnapshot track) {
+        return applyWithDiagnostics(baseLyrics, syncBody, track, "", 0L);
+    }
+
+    static ApplyResult applyWithDiagnostics(
+            List<LyricsLine> baseLyrics,
+            JSONObject syncBody,
+            TrackSnapshot track,
+            String currentProvider,
+            long currentLrclibId
+    ) {
         List<String> diagnostics = new ArrayList<>();
         if (baseLyrics == null || baseLyrics.isEmpty() || syncBody == null) {
             return ApplyResult.empty("missing base lyrics or sync body");
@@ -70,11 +80,23 @@ final class SyncDataApplier {
             if (!expectedFingerprint.isEmpty()) {
                 String actualFingerprint = lyricsFingerprint(joinLinesForFingerprint(baseLines));
                 if (!expectedFingerprint.equals(actualFingerprint)) {
-                    return ApplyResult.empty("source fingerprint mismatch: expected="
-                            + expectedFingerprint
-                            + " actual=" + actualFingerprint);
+                    if (canApplyLrclibFingerprintFallback(
+                            source,
+                            currentProvider,
+                            currentLrclibId,
+                            hasSourceLineShape
+                    )) {
+                        diagnostics.add("source fingerprint compatibility fallback: provider=lrclib"
+                                + " / lrclibId=" + currentLrclibId
+                                + " / exactLineShape=true");
+                    } else {
+                        return ApplyResult.empty("source fingerprint mismatch: expected="
+                                + expectedFingerprint
+                                + " actual=" + actualFingerprint);
+                    }
+                } else {
+                    diagnostics.add("source fingerprint matched: " + actualFingerprint);
                 }
-                diagnostics.add("source fingerprint matched: " + actualFingerprint);
             }
         }
 
@@ -192,6 +214,42 @@ final class SyncDataApplier {
             diagnostics.add("skipped unusable sync lines=" + skippedLines);
         }
         return new ApplyResult(result, diagnostics);
+    }
+
+    private static boolean canApplyLrclibFingerprintFallback(
+            JSONObject source,
+            String currentProvider,
+            long currentLrclibId,
+            boolean hasExactLineShape
+    ) {
+        if (!hasExactLineShape || source == null || currentLrclibId <= 0L) {
+            return false;
+        }
+        if (!"lrclib".equals(source.optString("provider", "").trim().toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        if (!"lrclib".equals(currentProvider == null ? "" : currentProvider.trim().toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        return sourceLrclibId(source) == currentLrclibId;
+    }
+
+    private static long sourceLrclibId(JSONObject source) {
+        Object value = source == null ? null : source.opt("lrclibId");
+        if (value == null || value == JSONObject.NULL) {
+            value = source == null ? null : source.opt("id");
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Long.parseLong(((String) value).trim());
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     private static TimedSyllables buildLineSyllables(

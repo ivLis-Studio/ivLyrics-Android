@@ -9,6 +9,10 @@ import java.util.RandomAccess;
 
 /** Expands provider word/chunk timings into renderer-safe user-perceived characters. */
 final class TimedSyllableNormalizer {
+    private static final long PRE_WHITESPACE_MIN_DURATION_MS = 40L;
+    private static final double PRE_WHITESPACE_NEXT_DURATION_RATIO = 0.35;
+    private static final long PRE_WHITESPACE_MAX_DURATION_MS = 60L;
+
     private TimedSyllableNormalizer() {
     }
 
@@ -33,7 +37,7 @@ final class TimedSyllableNormalizer {
             }
             if (allSingleGrapheme) {
                 if (!containsNull) {
-                    return preserveJoining ? mergeWordRuns(syllables) : syllables;
+                    return finalizeTimings(syllables, preserveJoining);
                 }
                 List<LyricsLine.Syllable> normalized = new ArrayList<>(syllables.size());
                 for (int index = 0; index < syllables.size(); index++) {
@@ -42,7 +46,7 @@ final class TimedSyllableNormalizer {
                         normalized.add(syllable);
                     }
                 }
-                return preserveJoining ? mergeWordRuns(normalized) : normalized;
+                return finalizeTimings(normalized, preserveJoining);
             }
         }
 
@@ -87,7 +91,55 @@ final class TimedSyllableNormalizer {
             }
         }
         List<LyricsLine.Syllable> result = changed ? normalized : syllables;
-        return preserveJoining ? mergeWordRuns(result) : result;
+        return finalizeTimings(result, preserveJoining);
+    }
+
+    private static List<LyricsLine.Syllable> finalizeTimings(
+            List<LyricsLine.Syllable> syllables,
+            boolean preserveJoining
+    ) {
+        List<LyricsLine.Syllable> compensated = compensatePreWhitespaceTimings(syllables);
+        return preserveJoining ? mergeWordRuns(compensated) : compensated;
+    }
+
+    private static List<LyricsLine.Syllable> compensatePreWhitespaceTimings(
+            List<LyricsLine.Syllable> syllables
+    ) {
+        if (syllables == null || syllables.size() < 2) {
+            return syllables == null ? Collections.emptyList() : syllables;
+        }
+
+        List<LyricsLine.Syllable> result = null;
+        for (int index = 0; index < syllables.size() - 1; index++) {
+            LyricsLine.Syllable current = syllables.get(index);
+            LyricsLine.Syllable next = syllables.get(index + 1);
+            if (current == null || next == null || isWhitespace(current.text) || !isWhitespace(next.text)) {
+                continue;
+            }
+
+            long durationMs = Math.max(0L, current.endTimeMs - current.startTimeMs);
+            if (durationMs >= PRE_WHITESPACE_MIN_DURATION_MS) {
+                continue;
+            }
+
+            long nextDurationMs = Math.max(0L, next.endTimeMs - next.startTimeMs);
+            long compensatedDurationMs = Math.max(
+                    PRE_WHITESPACE_MIN_DURATION_MS,
+                    Math.min(
+                            PRE_WHITESPACE_MAX_DURATION_MS,
+                            Math.round(nextDurationMs * PRE_WHITESPACE_NEXT_DURATION_RATIO)
+                    )
+            );
+            if (result == null) {
+                result = new ArrayList<>(syllables);
+            }
+            result.set(index, new LyricsLine.Syllable(
+                    current.text,
+                    current.startTimeMs,
+                    current.startTimeMs + compensatedDurationMs
+            ));
+        }
+        return result == null ? syllables : result;
     }
 
     static boolean requiresContinuousShaping(String text) {

@@ -1073,7 +1073,13 @@ final class LyricsRepository {
                 + " / " + (lineSynced ? "LRCLIB synced" : "LRCLIB plain"));
 
         if (syncData != null) {
-            SyncDataApplier.ApplyResult applied = SyncDataApplier.applyWithDiagnostics(baseLines, syncData.syncBody, track);
+            SyncDataApplier.ApplyResult applied = SyncDataApplier.applyWithDiagnostics(
+                    baseLines,
+                    syncData.syncBody,
+                    track,
+                    LRCLIB_PROVIDER_ID,
+                    candidate.id
+            );
             for (String diagnostic : applied.diagnostics) {
                 log.write("sync-data apply: " + diagnostic);
             }
@@ -3996,6 +4002,9 @@ final class LyricsRepository {
                 return 0L;
             }
             Object rawId = source.opt("lrclibId");
+            if (rawId == null || rawId == JSONObject.NULL) {
+                rawId = source.opt("id");
+            }
             if (rawId instanceof Number) {
                 return Math.max(0L, ((Number) rawId).longValue());
             }
