@@ -3413,6 +3413,12 @@ public final class MainActivity extends Activity implements
         WebSettings settings = inAppBrowserWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setSafeBrowsingEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         attachInAppBrowserContentSwipe(inAppBrowserWebView);
@@ -14110,6 +14116,13 @@ public final class MainActivity extends Activity implements
         if (safeUrl.isEmpty() || inAppBrowserPage == null || inAppBrowserWebView == null) {
             return;
         }
+        if (!InAppBrowserUrlPolicy.isAllowedInitialUrl(safeUrl, creatorPrivacyLoginInProgress)) {
+            appendLog("blocked untrusted in-app browser URL");
+            if (InAppBrowserUrlPolicy.isExternalHttpUrl(safeUrl)) {
+                openExternalBrowserUrl(safeUrl);
+            }
+            return;
+        }
         inAppBrowserInitialUrl = safeUrl;
         applyInAppBrowserChromeTheme();
         showInAppBrowserLoading(true);
@@ -14611,8 +14624,12 @@ public final class MainActivity extends Activity implements
 
     private boolean shouldOpenBrowserNavigationExternally(String url) {
         String safeUrl = url == null ? "" : url.trim();
-        if (safeUrl.isEmpty() || safeUrl.startsWith("about:") || safeUrl.startsWith("data:")) {
+        if (safeUrl.isEmpty() || "about:blank".equalsIgnoreCase(safeUrl)) {
             return false;
+        }
+        if (!InAppBrowserUrlPolicy.isExternalHttpUrl(safeUrl)) {
+            appendLog("blocked non-HTTP in-app browser navigation");
+            return true;
         }
         if (normalizeBrowserUrl(safeUrl).equals(normalizeBrowserUrl(inAppBrowserInitialUrl))) {
             return false;
@@ -14649,23 +14666,7 @@ public final class MainActivity extends Activity implements
     }
 
     private boolean isCreatorPrivacyLoginWebUrl(String url) {
-        try {
-            Uri uri = Uri.parse(url == null ? "" : url.trim());
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!"https".equals(scheme)) {
-                return false;
-            }
-            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-            return host.equals("discord.com")
-                    || host.endsWith(".discord.com")
-                    || host.equals("discordapp.com")
-                    || host.endsWith(".discordapp.com")
-                    || host.equals("ivl.is")
-                    || host.equals("lyrics.ivl.is")
-                    || host.equals("lyrics.api.ivl.is");
-        } catch (Exception ignored) {
-            return false;
-        }
+        return InAppBrowserUrlPolicy.isAllowedCreatorLoginUrl(url);
     }
 
     private boolean isSameLyricsProfileNavigation(String nextUrl, String initialUrl) {
@@ -14712,6 +14713,10 @@ public final class MainActivity extends Activity implements
     }
 
     private void openExternalBrowserUrl(String url) {
+        if (!InAppBrowserUrlPolicy.isExternalHttpUrl(url)) {
+            appendLog("blocked non-HTTP external browser URL");
+            return;
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
