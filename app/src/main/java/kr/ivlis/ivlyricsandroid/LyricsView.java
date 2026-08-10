@@ -27,6 +27,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.OverScroller;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -37,6 +38,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class LyricsView extends View {
@@ -70,6 +72,13 @@ public final class LyricsView extends View {
     private static final int SPEAKER_SFX_COLOR = Color.rgb(244, 166, 200);
     private static final int SPEAKER_KEY_CACHE_LIMIT = 64;
     private static final Pattern MARKUP_TAG_PATTERN = Pattern.compile("<[^>]+>");
+    private static final Pattern INTERLUDE_HTML_TAG_PATTERN = Pattern.compile("</?[a-z][^>]*>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern INTERLUDE_NUMERIC_ENTITY_PATTERN = Pattern.compile("&#(?:x([0-9a-f]+)|([0-9]+));?", Pattern.CASE_INSENSITIVE);
+    private static final String[][] INTERLUDE_MARKER_WRAPPERS = {
+            {"<", ">"}, {"＜", "＞"}, {"〈", "〉"}, {"《", "》"},
+            {"[", "]"}, {"［", "］"}, {"【", "】"},
+            {"(", ")"}, {"（", "）"}, {"{", "}"}, {"｛", "｝"}
+    };
     private static final float[] LOADING_SKELETON_WIDTH_FACTORS = {0.62f, 0.86f, 0.74f, 0.92f, 0.56f};
     private static final float[] LOADING_SKELETON_SHIMMER_STOPS = {0f, 0.5f, 1f};
     private static final int[] LOADING_SKELETON_SHIMMER_COLORS = {0x00ffffff, 0x4effffff, 0x00ffffff};
@@ -3820,10 +3829,8 @@ public final class LyricsView extends View {
     }
 
     private boolean isInterludeMarkerText(String text) {
-        String normalized = text == null ? "" : text
-                .replace("&nbsp;", " ")
-                .replace("&NBSP;", " ")
-                .trim();
+        String normalized = unwrapInterludeMarkerText(decodeInterludeMarkerText(text));
+        normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC).trim();
         if (normalized.isEmpty()) {
             return true;
         }
@@ -3839,10 +3846,72 @@ public final class LyricsView extends View {
 
     private boolean isInterludeMarkerCodePoint(int codePoint) {
         return Character.isWhitespace(codePoint)
+                || Character.isSpaceChar(codePoint)
                 || codePoint == 0x00A0
-                || (codePoint >= 0x200B && codePoint <= 0x200D)
+                || (codePoint >= 0x200B && codePoint <= 0x200F)
+                || (codePoint >= 0x202A && codePoint <= 0x202E)
+                || (codePoint >= 0x2060 && codePoint <= 0x2069)
+                || codePoint == 0xFE0E
+                || codePoint == 0xFE0F
                 || codePoint == 0xFEFF
-                || (codePoint >= 0x2669 && codePoint <= 0x266C);
+                || (codePoint >= 0x2669 && codePoint <= 0x266F)
+                || (codePoint >= 0x1D100 && codePoint <= 0x1D1FF)
+                || (codePoint >= 0x1F3B5 && codePoint <= 0x1F3BC);
+    }
+
+    private String decodeInterludeMarkerText(String text) {
+        String decoded = text == null ? "" : text;
+        if (decoded.indexOf('&') >= 0) {
+            decoded = decoded
+                    .replaceAll("(?i)&amp;", "&")
+                    .replaceAll("(?i)&lt;", "<")
+                    .replaceAll("(?i)&gt;", ">")
+                    .replaceAll("(?i)&nbsp;", " ")
+                    .replaceAll("(?i)&sung;", "♪")
+                    .replaceAll("(?i)&flat;", "♭")
+                    .replaceAll("(?i)&natur;", "♮")
+                    .replaceAll("(?i)&sharp;", "♯");
+        }
+
+        Matcher matcher = INTERLUDE_NUMERIC_ENTITY_PATTERN.matcher(decoded);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String value = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            int radix = matcher.group(1) != null ? 16 : 10;
+            String replacement = matcher.group();
+            try {
+                int codePoint = Integer.parseInt(value, radix);
+                if (Character.isValidCodePoint(codePoint)) {
+                    replacement = new String(Character.toChars(codePoint));
+                }
+            } catch (NumberFormatException ignored) {
+                // Keep malformed entities intact so they are not mistaken for a marker.
+            }
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(result);
+        String resolved = result.toString();
+        return resolved.indexOf('<') >= 0
+                ? INTERLUDE_HTML_TAG_PATTERN.matcher(resolved).replaceAll("")
+                : resolved;
+    }
+
+    private String unwrapInterludeMarkerText(String text) {
+        String value = text == null ? "" : text.trim();
+        for (int depth = 0; depth < 3 && value.length() >= 2; depth++) {
+            boolean unwrapped = false;
+            for (String[] wrapper : INTERLUDE_MARKER_WRAPPERS) {
+                if (value.startsWith(wrapper[0]) && value.endsWith(wrapper[1])) {
+                    value = value.substring(wrapper[0].length(), value.length() - wrapper[1].length()).trim();
+                    unwrapped = true;
+                    break;
+                }
+            }
+            if (!unwrapped) {
+                break;
+            }
+        }
+        return value;
     }
 
     private int findActiveSegmentIndex(List<TextRow> rows) {
