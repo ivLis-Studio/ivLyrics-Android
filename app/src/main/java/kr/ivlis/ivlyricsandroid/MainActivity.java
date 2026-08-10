@@ -122,7 +122,6 @@ public final class MainActivity extends Activity implements
     static final String EXTRA_OPEN_LYRICS_PAGE = "kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE";
     private static final String EXTRA_DEBUG_LYRICS_LOADING_PROVIDER =
             "kr.ivlis.ivlyricsandroid.DEBUG_LYRICS_LOADING_PROVIDER";
-    private static final String ACTION_UPDATE_INSTALL_RESULT = "kr.ivlis.ivlyricsandroid.UPDATE_INSTALL_RESULT";
     private static final int MAX_LOG_LINES = 180;
     private static final long PREVIEW_INTERLUDE_MIN_DURATION_MS = 500L;
     private static final long PREVIEW_TRAILING_INTERLUDE_DELAY_MS = 3_500L;
@@ -9739,9 +9738,6 @@ public final class MainActivity extends Activity implements
         if (intent == null) {
             return;
         }
-        if (ACTION_UPDATE_INSTALL_RESULT.equals(intent.getAction())) {
-            handleUpdateInstallResult(intent);
-        }
         if (intent.getBooleanExtra(EXTRA_OPEN_LYRICS_PAGE, false)) {
             pendingOpenLyricsPageFromIntent = true;
         }
@@ -10848,15 +10844,15 @@ public final class MainActivity extends Activity implements
                 session.fsync(output);
             }
 
-            Intent callback = new Intent(this, MainActivity.class);
-            callback.setAction(ACTION_UPDATE_INSTALL_RESULT);
+            Intent callback = new Intent(this, UpdateInstallResultReceiver.class);
+            callback.setAction(UpdateInstallResultReceiver.ACTION_UPDATE_INSTALL_RESULT);
             callback.putExtra("version", info == null ? "" : info.latestDisplayVersion());
             callback.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             int flags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 flags |= PendingIntent.FLAG_MUTABLE;
             }
-            PendingIntent pendingIntent = PendingIntent.getActivity(this, sessionId, callback, flags);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, sessionId, callback, flags);
             session.commit(pendingIntent.getIntentSender());
             committed = true;
         } finally {
@@ -10886,42 +10882,6 @@ public final class MainActivity extends Activity implements
             } catch (ActivityNotFoundException ignored) {
             }
         }
-    }
-
-    private void handleUpdateInstallResult(Intent intent) {
-        if (intent == null || !ACTION_UPDATE_INSTALL_RESULT.equals(intent.getAction())) {
-            return;
-        }
-        int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            Intent confirmationIntent;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                confirmationIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class);
-            } else {
-                confirmationIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT);
-            }
-            if (confirmationIntent != null) {
-                try {
-                    setUpdateStatus(ui("update.download_complete"));
-                    confirmationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(confirmationIntent);
-                    return;
-                } catch (ActivityNotFoundException | SecurityException error) {
-                    appendLog("update install confirmation failed: " + error.getClass().getSimpleName());
-                }
-            }
-            appendLog("update install result: pending user action without confirmation intent");
-        }
-        if (status == PackageInstaller.STATUS_SUCCESS) {
-            setUpdateStatus(ui("update.download_complete"));
-            return;
-        }
-        String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-        String detail = message == null ? "" : message.trim();
-        appendLog("update install result: status=" + status + " / message=" + detail);
-        setUpdateStatus(detail.isEmpty()
-                ? ui("update.install_failed")
-                : ui("update.install_failed") + ": " + detail);
     }
 
     private void postUpdateStatus(String message) {

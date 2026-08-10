@@ -35,6 +35,10 @@
             android:name=".PictureInPictureActionReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".UpdateInstallResultReceiver"
+            android:exported="false" />
+
         <service
             android:name=".NowPlayingService"
             android:exported="false"
