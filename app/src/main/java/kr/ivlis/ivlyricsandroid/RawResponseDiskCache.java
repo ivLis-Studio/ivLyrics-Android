@@ -10,8 +10,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Locale;
 
 final class RawResponseDiskCache {
@@ -22,7 +20,6 @@ final class RawResponseDiskCache {
 
     private final File directory;
     private final File cacheRoot;
-    private final int maxEntries;
     private final long maxAgeMs;
 
     RawResponseDiskCache(Context context, String namespace, int maxEntries) {
@@ -33,7 +30,8 @@ final class RawResponseDiskCache {
         File root = context.getApplicationContext().getFilesDir();
         this.cacheRoot = new File(root, "lyrics_cache");
         this.directory = new File(cacheRoot, safeNamespace(namespace));
-        this.maxEntries = Math.max(16, maxEntries);
+        // Retention is governed by the shared one-year / 10 GiB policy.
+        // Keep the argument for source compatibility with existing callers.
         this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
 
@@ -86,7 +84,6 @@ final class RawResponseDiskCache {
                 writeUtf8(file, object.toString());
                 temp.delete();
             }
-            prune();
             DiskCachePolicy.pruneToSize(cacheRoot);
         } catch (Exception ignored) {
         }
@@ -116,18 +113,6 @@ final class RawResponseDiskCache {
 
     private File fileForKey(String key) {
         return new File(directory, sha256(key) + ".json");
-    }
-
-    private void prune() {
-        File[] files = directory.listFiles((dir, name) -> name.endsWith(".json"));
-        if (files == null || files.length <= maxEntries) {
-            return;
-        }
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-        int removeCount = files.length - maxEntries;
-        for (int index = 0; index < removeCount; index++) {
-            files[index].delete();
-        }
     }
 
     private static String readUtf8(File file) throws Exception {

@@ -11,8 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -23,7 +21,6 @@ final class LyricsDiskCache {
 
     private final File directory;
     private final File cacheRoot;
-    private final int maxEntries;
     private final long maxAgeMs;
 
     LyricsDiskCache(Context context, String namespace, int maxEntries) {
@@ -35,7 +32,8 @@ final class LyricsDiskCache {
         String safeNamespace = safeNamespace(namespace);
         this.cacheRoot = new File(root, "lyrics_cache");
         this.directory = new File(cacheRoot, safeNamespace);
-        this.maxEntries = Math.max(16, maxEntries);
+        // Retention is governed by the shared one-year / 10 GiB policy.
+        // Keep the argument for source compatibility with existing callers.
         this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
 
@@ -90,7 +88,6 @@ final class LyricsDiskCache {
                 writeUtf8(file, object.toString());
                 temp.delete();
             }
-            prune();
             DiskCachePolicy.pruneToSize(cacheRoot);
         } catch (Exception ignored) {
         }
@@ -141,32 +138,6 @@ final class LyricsDiskCache {
 
     private File fileForKey(String key) {
         return new File(directory, sha256(key) + ".json");
-    }
-
-    private void prune() {
-        File[] files = directory.listFiles((dir, name) -> name.endsWith(".json"));
-        if (files == null || files.length <= maxEntries) {
-            return;
-        }
-        int removeCount = files.length - maxEntries;
-        if (removeCount == 1) {
-            File oldest = files[0];
-            long oldestModified = oldest.lastModified();
-            for (int index = 1; index < files.length; index++) {
-                File candidate = files[index];
-                long candidateModified = candidate.lastModified();
-                if (candidateModified < oldestModified) {
-                    oldest = candidate;
-                    oldestModified = candidateModified;
-                }
-            }
-            oldest.delete();
-            return;
-        }
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-        for (int index = 0; index < removeCount; index++) {
-            files[index].delete();
-        }
     }
 
     private static JSONObject resultToJson(LyricsResult result) throws Exception {
