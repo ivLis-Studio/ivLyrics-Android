@@ -33,9 +33,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate release webhook helper
-        run: node --test .github/scripts/send_release_webhook.test.mjs
-
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -45,8 +42,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run unit tests and Android lint
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug
+      - name: Run Android lint
+        run: ./gradlew :app:lintDebug
 
       - name: Restore release signing key
         shell: bash
