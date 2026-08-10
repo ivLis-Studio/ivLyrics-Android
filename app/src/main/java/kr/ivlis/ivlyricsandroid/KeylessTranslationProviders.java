@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -475,8 +476,12 @@ final class KeylessTranslationProviders {
         return body.toString();
     }
 
-    private static String encode(String value) {
-        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8).replace("+", "%20");
+    static String encode(String value) {
+        try {
+            return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8.name()).replace("+", "%20");
+        } catch (UnsupportedEncodingException impossible) {
+            throw new IllegalStateException("UTF-8 encoding is unavailable", impossible);
+        }
     }
 
     private static String joinLines(List<String> lines) {
