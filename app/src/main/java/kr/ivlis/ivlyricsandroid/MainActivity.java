@@ -18,6 +18,7 @@ import android.content.pm.PackageInstaller;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -90,6 +91,7 @@ import android.webkit.WebViewClient;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -187,6 +189,7 @@ public final class MainActivity extends Activity implements
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService aiModelExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService creatorPrivacyExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService researchMediaExecutor = Executors.newFixedThreadPool(2);
     private final PollinationsAuthClient pollinationsAuthClient = new PollinationsAuthClient();
     private AudioManager audioManager;
     private AudioDeviceCallback audioDeviceCallback;
@@ -274,6 +277,9 @@ public final class MainActivity extends Activity implements
     private AlertDialog firstLanguagePromptDialog;
     private LinearLayout tmiDialogBody;
     private TextView tmiDialogRegenerateButton;
+    private AiLyricsRepository.TmiInfo currentTmiInfo;
+    private float tmiTextScale = 1f;
+    private boolean tmiRequestInFlight;
     private TransportButtonView playPauseButton;
     private View landscapeControlsContainer;
     private ImageButton landscapeMenuButton;
@@ -972,6 +978,7 @@ public final class MainActivity extends Activity implements
         updateExecutor.shutdownNow();
         aiModelExecutor.shutdownNow();
         creatorPrivacyExecutor.shutdownNow();
+        researchMediaExecutor.shutdownNow();
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
@@ -1891,7 +1898,24 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentTmiRequestKey)) {
             return;
         }
+        tmiRequestInFlight = false;
         renderTmiInfo(info);
+    }
+
+    @Override
+    public void onAiTmiPartialLoaded(
+            String trackKey,
+            AiLyricsRepository.TmiInfo info,
+            boolean webSearchFallback,
+            boolean reset
+    ) {
+        if (!trackKey.equals(currentTmiRequestKey)) return;
+        if (reset) {
+            renderTmiLoading(currentTrack);
+            renderResearchSearchWarning();
+            return;
+        }
+        if (info != null) renderTmiInfo(info, true);
     }
 
     @Override
@@ -1899,6 +1923,7 @@ public final class MainActivity extends Activity implements
         if (!trackKey.equals(currentTmiRequestKey)) {
             return;
         }
+        tmiRequestInFlight = false;
         renderTmiError(message);
     }
 
@@ -10978,12 +11003,19 @@ public final class MainActivity extends Activity implements
             return;
         }
         String trackKey = snapshot.stableKey();
+        boolean sameRequest = trackKey.equals(currentTmiRequestKey);
         boolean needsNewDialog = tmiDialog == null
                 || !tmiDialog.isShowing()
                 || !trackKey.equals(currentTmiRequestKey);
         currentTmiRequestKey = trackKey;
         if (needsNewDialog) {
             showTmiDialog(snapshot);
+        }
+
+        if (sameRequest && tmiRequestInFlight && !bypassCache) {
+            if (currentTmiInfo != null) renderTmiInfo(currentTmiInfo, true);
+            else renderTmiLoading(snapshot);
+            return;
         }
 
         AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
@@ -10996,7 +11028,8 @@ public final class MainActivity extends Activity implements
             renderTmiError(ui("status.ai_model_needed"));
             return;
         }
-        aiLyricsRepository.loadTmi(snapshot, settings, bypassCache, this);
+        tmiRequestInFlight = true;
+        aiLyricsRepository.loadTmi(snapshot, currentBaseLyricsResult, settings, bypassCache, this);
     }
 
     private void showTmiDialog(TrackSnapshot snapshot) {
@@ -11059,6 +11092,18 @@ public final class MainActivity extends Activity implements
         close.setOnClickListener(view -> dismissTmiDialog());
         header.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
+        TextView smaller = label("A−", 12f, Color.argb(200, 255, 255, 255), AppFonts.semiBold(this));
+        smaller.setGravity(Gravity.CENTER);
+        makeRemoteFocusable(smaller);
+        smaller.setOnClickListener(view -> changeResearchTextScale(-0.1f));
+        header.addView(smaller, new LinearLayout.LayoutParams(dp(38), dp(38)));
+
+        TextView larger = label("A+", 12f, Color.argb(200, 255, 255, 255), AppFonts.semiBold(this));
+        larger.setGravity(Gravity.CENTER);
+        makeRemoteFocusable(larger);
+        larger.setOnClickListener(view -> changeResearchTextScale(0.1f));
+        header.addView(larger, new LinearLayout.LayoutParams(dp(38), dp(38)));
+
         TextView disclaimer = label(
                 ui("tmi.disclaimer"),
                 11.5f,
@@ -11106,6 +11151,7 @@ public final class MainActivity extends Activity implements
             tmiDialog = null;
             tmiDialogBody = null;
             tmiDialogRegenerateButton = null;
+            currentTmiInfo = null;
         });
         tmiDialog.show();
         Window window = tmiDialog.getWindow();
@@ -11124,6 +11170,7 @@ public final class MainActivity extends Activity implements
         tmiDialog = null;
         tmiDialogBody = null;
         tmiDialogRegenerateButton = null;
+        currentTmiInfo = null;
     }
 
     private void renderTmiLoading(TrackSnapshot snapshot) {
@@ -11175,10 +11222,15 @@ public final class MainActivity extends Activity implements
     }
 
     private void renderTmiInfo(AiLyricsRepository.TmiInfo info) {
+        renderTmiInfo(info, false);
+    }
+
+    private void renderTmiInfo(AiLyricsRepository.TmiInfo info, boolean generating) {
         if (tmiDialogBody == null) {
             return;
         }
-        setTmiRegenerateEnabled(true);
+        currentTmiInfo = info;
+        setTmiRegenerateEnabled(!generating);
         tmiDialogBody.removeAllViews();
         if (info == null || !info.hasContent()) {
             TextView empty = tmiBodyText(ui("tmi.no_data"));
@@ -11186,6 +11238,12 @@ public final class MainActivity extends Activity implements
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
             ));
+            return;
+        }
+
+        if (info.webSearchFallback) renderResearchSearchWarning();
+        if (info.research != null) {
+            renderResearchDocument(info.research, generating);
             return;
         }
 
@@ -11225,6 +11283,176 @@ public final class MainActivity extends Activity implements
         addTmiSourceGroup(ui("tmi.other_sources"), info.otherSources);
     }
 
+    private void renderResearchSearchWarning() {
+        if (tmiDialogBody == null) return;
+        TextView warning = tmiBodyText(ui("research.web_fallback_warning"));
+        warning.setTextColor(Color.rgb(244, 190, 92));
+        warning.setPadding(dp(11), dp(9), dp(11), dp(9));
+        warning.setBackground(roundDrawable(Color.argb(34, 244, 190, 92), dp(11)));
+        tmiDialogBody.addView(warning, topMargin(matchWrap(), dp(8)));
+    }
+
+    private void renderResearchDocument(ResearchDocument research, boolean generating) {
+        if (tmiDialogBody == null || research == null) return;
+        if (!research.hook.isEmpty()) {
+            TextView hook = label(research.hook, 12.5f * tmiTextScale,
+                    Color.rgb(82, 220, 143), AppFonts.semiBold(this));
+            hook.setLineSpacing(dp(3), 1.05f);
+            tmiDialogBody.addView(hook, topMargin(matchWrap(), dp(8)));
+        }
+        if (!research.thesis.isEmpty() || !research.thesisExpanded.isEmpty()) {
+            LinearLayout thesis = tmiCard();
+            thesis.addView(tmiSectionTitle(ui("research.thesis")));
+            if (!research.thesis.isEmpty()) thesis.addView(tmiBodyText(research.thesis), topMargin(matchWrap(), dp(8)));
+            if (!research.thesisExpanded.isEmpty()) thesis.addView(tmiBodyText(research.thesisExpanded), topMargin(matchWrap(), dp(8)));
+            tmiDialogBody.addView(thesis, topMargin(matchWrap(), dp(12)));
+        }
+        renderResearchMedia(research.mediaGallery);
+        for (ResearchDocument.Section section : research.sections) {
+            if (section == null || !section.hasContent()) continue;
+            LinearLayout card = tmiCard();
+            String label = ui("research.section." + section.id);
+            if (label.equals("research.section." + section.id)) label = section.headline;
+            card.addView(tmiSectionTitle(label));
+            if (!section.headline.isEmpty() && !section.headline.equals(label)) {
+                TextView headline = label(section.headline, 16f * tmiTextScale, Color.WHITE, AppFonts.semiBold(this));
+                headline.setLineSpacing(dp(3), 1.04f);
+                card.addView(headline, topMargin(matchWrap(), dp(7)));
+            }
+            for (String paragraph : section.paragraphs) {
+                card.addView(tmiBodyText(paragraph), topMargin(matchWrap(), dp(9)));
+            }
+            for (String detail : section.details) {
+                card.addView(tmiBodyText("• " + detail), topMargin(matchWrap(), dp(7)));
+            }
+            tmiDialogBody.addView(card, topMargin(matchWrap(), dp(10)));
+        }
+        if (!research.funFacts.isEmpty()) {
+            tmiDialogBody.addView(tmiSectionTitle(ui("research.fun_facts")), topMargin(matchWrap(), dp(18)));
+            for (ResearchDocument.Fact fact : research.funFacts) {
+                LinearLayout card = tmiCard();
+                if (!fact.title.isEmpty()) card.addView(tmiSectionTitle(fact.title));
+                if (!fact.body.isEmpty()) card.addView(tmiBodyText(fact.body), topMargin(matchWrap(), dp(7)));
+                if (!fact.whyInteresting.isEmpty()) card.addView(tmiBodyText(fact.whyInteresting), topMargin(matchWrap(), dp(7)));
+                if (!fact.sourceUrl.isEmpty()) card.addView(researchFootnote(fact.sourceUrl), topMargin(matchWrap(), dp(6)));
+                tmiDialogBody.addView(card, topMargin(matchWrap(), dp(8)));
+            }
+        }
+        if (!research.timeline.isEmpty()) {
+            tmiDialogBody.addView(tmiSectionTitle(ui("research.timeline")), topMargin(matchWrap(), dp(18)));
+            for (ResearchDocument.TimelineEvent event : research.timeline) {
+                String text = (event.date.isEmpty() ? "" : event.date + "  ") + event.event
+                        + (event.whyItMatters.isEmpty() ? "" : "\n" + event.whyItMatters);
+                LinearLayout card = tmiCard();
+                card.addView(tmiBodyText(text));
+                if (!event.sourceUrl.isEmpty()) card.addView(researchFootnote(event.sourceUrl), topMargin(matchWrap(), dp(6)));
+                tmiDialogBody.addView(card, topMargin(matchWrap(), dp(8)));
+            }
+        }
+        if (!research.pullQuote.isEmpty()) {
+            TextView quote = label("“" + research.pullQuote + "”", 17f * tmiTextScale,
+                    Color.WHITE, AppFonts.semiBold(this));
+            quote.setLineSpacing(dp(5), 1.06f);
+            quote.setPadding(dp(14), dp(14), dp(14), dp(14));
+            quote.setBackground(roundDrawable(Color.argb(30, 82, 220, 143), dp(14)));
+            tmiDialogBody.addView(quote, topMargin(matchWrap(), dp(18)));
+        }
+        if (!research.sources.isEmpty()) {
+            tmiDialogBody.addView(tmiSectionTitle(ui("research.sources")), topMargin(matchWrap(), dp(18)));
+            for (ResearchDocument.Source source : research.sources) {
+                View row = tmiSourceRow(new AiLyricsRepository.TmiSource(source.title, source.url));
+                if (row != null) tmiDialogBody.addView(row, topMargin(matchWrap(), dp(7)));
+            }
+        }
+        if (generating) {
+            TextView progress = tmiBodyText(ui("research.generating_more"));
+            progress.setTextColor(Color.argb(165, 255, 255, 255));
+            tmiDialogBody.addView(progress, topMargin(matchWrap(), dp(16)));
+        }
+    }
+
+    private void renderResearchMedia(List<ResearchDocument.MediaItem> mediaItems) {
+        if (tmiDialogBody == null || mediaItems == null || mediaItems.isEmpty()) return;
+        for (ResearchDocument.MediaItem media : mediaItems) {
+            if (media == null || media.imageUrl.isEmpty()) continue;
+            LinearLayout card = tmiCard();
+            ImageView image = new ImageView(this);
+            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            image.setBackground(roundDrawable(Color.argb(26, 255, 255, 255), dp(12)));
+            clipRound(image, 12);
+            String destination = !media.url.isEmpty() ? media.url : media.sourceUrl;
+            if (!destination.isEmpty()) {
+                makeRemoteFocusable(image);
+                image.setOnClickListener(view -> openExternalUrl(destination));
+            }
+            card.addView(image, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(170)));
+            if (!media.title.isEmpty()) {
+                card.addView(tmiBodyText(media.title), topMargin(matchWrap(), dp(8)));
+            }
+            tmiDialogBody.addView(card, topMargin(matchWrap(), dp(10)));
+            loadResearchImage(image, media.imageUrl);
+        }
+    }
+
+    private void loadResearchImage(ImageView target, String rawUrl) {
+        if (target == null || rawUrl == null || rawUrl.trim().isEmpty() || researchMediaExecutor.isShutdown()) return;
+        researchMediaExecutor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(rawUrl.trim());
+                if (!"https".equalsIgnoreCase(url.getProtocol()) && !"http".equalsIgnoreCase(url.getProtocol())) return;
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(8_000);
+                connection.setReadTimeout(12_000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("Accept", "image/*");
+                if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) return;
+                int contentLength = connection.getContentLength();
+                if (contentLength > 12 * 1024 * 1024) return;
+                byte[] bytes;
+                try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    int total = 0;
+                    int read;
+                    while ((read = input.read(buffer)) >= 0) {
+                        total += read;
+                        if (total > 12 * 1024 * 1024) return;
+                        output.write(buffer, 0, read);
+                    }
+                    bytes = output.toByteArray();
+                }
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inSampleSize = 1;
+                int maxDimension = Math.max(bounds.outWidth, bounds.outHeight);
+                while (maxDimension / options.inSampleSize > 1600) options.inSampleSize *= 2;
+                Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+                if (bitmap == null) return;
+                handler.post(() -> {
+                    if (!isFinishing() && target.isAttachedToWindow()) target.setImageBitmap(bitmap);
+                });
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private TextView researchFootnote(String url) {
+        TextView view = label(ui("research.source_note"), 10.5f * tmiTextScale,
+                Color.rgb(82, 220, 143), AppFonts.semiBold(this));
+        makeRemoteFocusable(view);
+        view.setOnClickListener(target -> openExternalUrl(url));
+        return view;
+    }
+
+    private void changeResearchTextScale(float delta) {
+        tmiTextScale = Math.max(0.8f, Math.min(1.4f, tmiTextScale + delta));
+        if (currentTmiInfo != null) renderTmiInfo(currentTmiInfo);
+    }
+
     private void addTmiSourceGroup(String title, List<AiLyricsRepository.TmiSource> sources) {
         if (tmiDialogBody == null || sources == null || sources.isEmpty()) {
             return;
@@ -11251,7 +11479,7 @@ public final class MainActivity extends Activity implements
     }
 
     private TextView tmiBodyText(String text) {
-        TextView view = label(text == null ? "" : text.trim(), 13f, Color.argb(218, 255, 255, 255), AppFonts.regular(this));
+        TextView view = label(text == null ? "" : text.trim(), 13f * tmiTextScale, Color.argb(218, 255, 255, 255), AppFonts.regular(this));
         view.setSingleLine(false);
         view.setMaxLines(Integer.MAX_VALUE);
         view.setIncludeFontPadding(true);

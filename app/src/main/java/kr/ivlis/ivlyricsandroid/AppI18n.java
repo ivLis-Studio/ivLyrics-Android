@@ -135,6 +135,7 @@ final class AppI18n {
         addKeylessTranslationProviderStrings(languages);
         addAiProviderOrderStrings(languages);
         addFirstLanguagePromptStrings(languages);
+        ResearchI18n.apply(languages);
         addSettingsTranslationOverrides(languages);
         addLyricsToolsTranslationOverrides(languages);
         addTranslationQualityOverrides(languages);
