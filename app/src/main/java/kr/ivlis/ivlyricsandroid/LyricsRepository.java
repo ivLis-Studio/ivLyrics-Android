@@ -71,7 +71,7 @@ final class LyricsRepository {
     private static final long SPOTIFY_TOKEN_MAX_AGE_MS = 50L * 60L * 1_000L;
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
     private static final long SYNC_DATA_SERVER_CACHE_BYPASS_MS = 30L * 1_000L;
-    private static final long LYRICS_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1_000L;
+    private static final long LYRICS_CACHE_MAX_AGE_MS = DiskCachePolicy.MAX_AGE_MS;
     private static final long OPENDB_FRESH_MS = 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final int SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES = 8;

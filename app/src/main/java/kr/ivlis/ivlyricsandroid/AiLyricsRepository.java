@@ -24,10 +24,10 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -40,6 +40,11 @@ final class AiLyricsRepository {
     private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
     private static final String TMI_PROMPT_VERSION = "origin-v1";
     private static final String CULTURAL_ANNOTATION_PROMPT_VERSION = "cultural-v4";
+    private static final int MAX_LYRICS_MEMORY_ENTRIES = 250;
+    private static final int MAX_METADATA_CACHE_ENTRIES = 200;
+    private static final int MAX_TMI_CACHE_ENTRIES = 100;
+    private static final int MAX_CULTURAL_CACHE_ENTRIES = 100;
+    private static final long PERSISTENT_CACHE_MAX_AGE_MS = DiskCachePolicy.MAX_AGE_MS;
     private static final String SUPPLEMENT_TASK_PRONUNCIATION = "pronunciation";
     private static final String SUPPLEMENT_TASK_TRANSLATION = "translation";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
@@ -50,10 +55,10 @@ final class AiLyricsRepository {
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final Map<String, LyricsResult> cache = new ConcurrentHashMap<>();
-    private final Map<String, MetadataTranslation> metadataCache = new ConcurrentHashMap<>();
-    private final Map<String, TmiInfo> tmiCache = new ConcurrentHashMap<>();
-    private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = new ConcurrentHashMap<>();
+    private final Map<String, LyricsResult> cache = newBoundedCache(MAX_LYRICS_MEMORY_ENTRIES);
+    private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
+    private final Map<String, TmiInfo> tmiCache = newBoundedCache(MAX_TMI_CACHE_ENTRIES);
+    private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
@@ -79,6 +84,16 @@ final class AiLyricsRepository {
         culturalAnnotationPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_cultural_annotations", Context.MODE_PRIVATE);
+    }
+
+    static <K, V> Map<K, V> newBoundedCache(int maxEntries) {
+        final int boundedMaxEntries = Math.max(1, maxEntries);
+        return Collections.synchronizedMap(new LinkedHashMap<K, V>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+                return size() > boundedMaxEntries;
+            }
+        });
     }
 
     interface Callback {
@@ -3239,7 +3254,7 @@ final class AiLyricsRepository {
             return null;
         }
         try {
-            String raw = metadataPrefs.getString(sha256(cacheKey), "");
+            String raw = cachedPreferenceValue(metadataPrefs, sha256(cacheKey));
             if (raw == null || raw.trim().isEmpty()) {
                 return null;
             }
@@ -3272,7 +3287,7 @@ final class AiLyricsRepository {
             object.put("sourceLang", translation.sourceLang);
             object.put("targetLang", translation.targetLang);
             object.put("savedAtMs", System.currentTimeMillis());
-            metadataPrefs.edit().putString(sha256(cacheKey), object.toString()).apply();
+            putBoundedPreference(metadataPrefs, sha256(cacheKey), object.toString(), MAX_METADATA_CACHE_ENTRIES);
         } catch (Exception ignored) {
         }
     }
@@ -3282,7 +3297,7 @@ final class AiLyricsRepository {
             return null;
         }
         try {
-            String raw = tmiPrefs.getString(sha256(cacheKey), "");
+            String raw = cachedPreferenceValue(tmiPrefs, sha256(cacheKey));
             if (raw == null || raw.trim().isEmpty()) {
                 return null;
             }
@@ -3302,7 +3317,7 @@ final class AiLyricsRepository {
             return;
         }
         try {
-            tmiPrefs.edit().putString(sha256(cacheKey), info.toJson(cacheKey).toString()).apply();
+            putBoundedPreference(tmiPrefs, sha256(cacheKey), info.toJson(cacheKey).toString(), MAX_TMI_CACHE_ENTRIES);
         } catch (Exception ignored) {
         }
     }
@@ -3312,7 +3327,7 @@ final class AiLyricsRepository {
             return null;
         }
         try {
-            String raw = culturalAnnotationPrefs.getString(sha256(cacheKey), "");
+            String raw = cachedPreferenceValue(culturalAnnotationPrefs, sha256(cacheKey));
             if (raw == null || raw.trim().isEmpty()) {
                 return null;
             }
@@ -3341,7 +3356,12 @@ final class AiLyricsRepository {
             object.put("cacheKey", cacheKey);
             object.put("annotations", values);
             object.put("savedAtMs", System.currentTimeMillis());
-            culturalAnnotationPrefs.edit().putString(sha256(cacheKey), object.toString()).apply();
+            putBoundedPreference(
+                    culturalAnnotationPrefs,
+                    sha256(cacheKey),
+                    object.toString(),
+                    MAX_CULTURAL_CACHE_ENTRIES
+            );
         } catch (Exception ignored) {
         }
     }
@@ -3350,14 +3370,79 @@ final class AiLyricsRepository {
         if (target == null || prefix == null || prefix.isEmpty()) {
             return;
         }
-        List<String> removeKeys = new ArrayList<>();
-        for (String key : target.keySet()) {
-            if (key != null && key.startsWith(prefix)) {
-                removeKeys.add(key);
+        synchronized (target) {
+            List<String> removeKeys = new ArrayList<>();
+            for (String key : target.keySet()) {
+                if (key != null && key.startsWith(prefix)) {
+                    removeKeys.add(key);
+                }
+            }
+            for (String key : removeKeys) {
+                target.remove(key);
             }
         }
-        for (String key : removeKeys) {
-            target.remove(key);
+    }
+
+    private static String cachedPreferenceValue(SharedPreferences preferences, String key) {
+        if (preferences == null || key == null || key.isEmpty()) {
+            return "";
+        }
+        String raw = preferences.getString(key, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            long savedAtMs = new JSONObject(raw).optLong("savedAtMs", 0L);
+            long ageMs = System.currentTimeMillis() - savedAtMs;
+            if (savedAtMs <= 0L || ageMs < 0L || ageMs > PERSISTENT_CACHE_MAX_AGE_MS) {
+                preferences.edit().remove(key).apply();
+                return "";
+            }
+            return raw;
+        } catch (Exception ignored) {
+            preferences.edit().remove(key).apply();
+            return "";
+        }
+    }
+
+    private static void putBoundedPreference(
+            SharedPreferences preferences,
+            String key,
+            String value,
+            int maxEntries
+    ) {
+        if (preferences == null || key == null || key.isEmpty() || value == null) {
+            return;
+        }
+        synchronized (preferences) {
+            long now = System.currentTimeMillis();
+            List<Map.Entry<String, Long>> validEntries = new ArrayList<>();
+            SharedPreferences.Editor editor = preferences.edit().putString(key, value);
+            for (Map.Entry<String, ?> entry : preferences.getAll().entrySet()) {
+                if (key.equals(entry.getKey())) continue;
+                Object raw = entry.getValue();
+                if (!(raw instanceof String)) {
+                    editor.remove(entry.getKey());
+                    continue;
+                }
+                try {
+                    long savedAtMs = new JSONObject((String) raw).optLong("savedAtMs", 0L);
+                    long ageMs = now - savedAtMs;
+                    if (savedAtMs <= 0L || ageMs < 0L || ageMs > PERSISTENT_CACHE_MAX_AGE_MS) {
+                        editor.remove(entry.getKey());
+                    } else {
+                        validEntries.add(new java.util.AbstractMap.SimpleImmutableEntry<>(entry.getKey(), savedAtMs));
+                    }
+                } catch (Exception ignored) {
+                    editor.remove(entry.getKey());
+                }
+            }
+            validEntries.sort(Map.Entry.comparingByValue());
+            int removeCount = Math.max(0, validEntries.size() + 1 - Math.max(1, maxEntries));
+            for (int index = 0; index < removeCount; index++) {
+                editor.remove(validEntries.get(index).getKey());
+            }
+            editor.apply();
         }
     }
 

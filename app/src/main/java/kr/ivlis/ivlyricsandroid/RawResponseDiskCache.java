@@ -21,16 +21,18 @@ final class RawResponseDiskCache {
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;
+    private final File cacheRoot;
     private final int maxEntries;
     private final long maxAgeMs;
 
     RawResponseDiskCache(Context context, String namespace, int maxEntries) {
-        this(context, namespace, maxEntries, 0L);
+        this(context, namespace, maxEntries, DiskCachePolicy.MAX_AGE_MS);
     }
 
     RawResponseDiskCache(Context context, String namespace, int maxEntries, long maxAgeMs) {
         File root = context.getApplicationContext().getFilesDir();
-        this.directory = new File(root, "lyrics_cache/" + safeNamespace(namespace));
+        this.cacheRoot = new File(root, "lyrics_cache");
+        this.directory = new File(cacheRoot, safeNamespace(namespace));
         this.maxEntries = Math.max(16, maxEntries);
         this.maxAgeMs = Math.max(0L, maxAgeMs);
     }
@@ -85,6 +87,7 @@ final class RawResponseDiskCache {
                 temp.delete();
             }
             prune();
+            DiskCachePolicy.pruneToSize(cacheRoot);
         } catch (Exception ignored) {
         }
     }
