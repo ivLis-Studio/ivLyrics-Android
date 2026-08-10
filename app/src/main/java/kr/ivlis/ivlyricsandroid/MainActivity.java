@@ -928,6 +928,11 @@ public final class MainActivity extends Activity implements
 
     @Override
     protected void onDestroy() {
+        pictureInPictureUiActive = false;
+        pictureInPictureActionsInitialized = false;
+        SpotifyShortcutOverlayController.setIvLyricsForeground(false);
+        NowPlayingService.unregister(this);
+        handler.removeCallbacksAndMessages(null);
         dismissLyricsMetaTip();
         dismissLyricsMetaMenuPopup();
         dismissTmiDialog();
@@ -967,6 +972,7 @@ public final class MainActivity extends Activity implements
         updateExecutor.shutdownNow();
         aiModelExecutor.shutdownNow();
         creatorPrivacyExecutor.shutdownNow();
+        handler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
