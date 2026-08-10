@@ -238,7 +238,7 @@ public final class MainActivity extends Activity implements
     private ProviderAttributionView landscapeLyricsProviderAttributionView;
     private TextView pictureInPictureTitleView;
     private TextView pictureInPictureArtistView;
-    private WebView inAppBrowserWebView;
+    private AccessibleWebView inAppBrowserWebView;
     private MainLyricPreviewView lyricPreviewView;
     private TextView sourceView;
     private TextView statusView;
@@ -3406,7 +3406,7 @@ public final class MainActivity extends Activity implements
         });
         page.requestApplyInsets();
 
-        inAppBrowserWebView = new WebView(this);
+        inAppBrowserWebView = new AccessibleWebView(this);
         inAppBrowserWebView.setBackgroundColor(inAppBrowserBackgroundColor());
         inAppBrowserWebView.setHapticFeedbackEnabled(false);
         inAppBrowserWebView.setOnLongClickListener(view -> true);
@@ -14521,7 +14521,7 @@ public final class MainActivity extends Activity implements
         });
     }
 
-    private void attachInAppBrowserContentSwipe(WebView view) {
+    private void attachInAppBrowserContentSwipe(AccessibleWebView view) {
         view.setOnTouchListener((target, event) -> {
             if (pageVelocityTracker != null) {
                 pageVelocityTracker.addMovement(event);
@@ -14560,6 +14560,7 @@ public final class MainActivity extends Activity implements
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
                     if (!pageDragging) {
+                        target.performClick();
                         recyclePageVelocityTracker();
                         return false;
                     }
@@ -14783,6 +14784,7 @@ public final class MainActivity extends Activity implements
     private void attachLyricsMetaSwipe(View view) {
         makeRemoteFocusable(view);
         view.setClickable(true);
+        view.setOnClickListener(target -> handleLyricsMetaTap());
         view.setOnLongClickListener(target -> {
             handleLyricsMetaLongPress(target);
             return true;
@@ -14835,7 +14837,7 @@ public final class MainActivity extends Activity implements
                     } else if (pageDragging && lyricsPageVisible) {
                         settleLyricsDrag(releaseVelocityY);
                     } else {
-                        handleLyricsMetaTap();
+                        target.performClick();
                     }
                     recyclePageVelocityTracker();
                     return true;
@@ -14856,6 +14858,18 @@ public final class MainActivity extends Activity implements
                     return true;
             }
         });
+    }
+
+    private static final class AccessibleWebView extends WebView {
+        AccessibleWebView(Context context) {
+            super(context);
+        }
+
+        @Override
+        public boolean performClick() {
+            super.performClick();
+            return true;
+        }
     }
 
     private void attachArtworkSwipe(View view) {

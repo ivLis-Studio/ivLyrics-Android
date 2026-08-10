@@ -158,7 +158,7 @@ final class SpotifyShortcutOverlayController {
     }
 
     private View createBubble() {
-        FrameLayout view = new FrameLayout(context);
+        FrameLayout view = new AccessibleFrameLayout(context);
         view.setBackgroundColor(Color.TRANSPARENT);
         view.setPadding(dp(8), dp(8), dp(8), dp(8));
         view.setContentDescription("Open ivLyrics lyrics");
@@ -175,6 +175,18 @@ final class SpotifyShortcutOverlayController {
         view.setOnTouchListener(this::handleTouch);
         view.setOnClickListener(target -> openLyricsPage());
         return view;
+    }
+
+    private static final class AccessibleFrameLayout extends FrameLayout {
+        AccessibleFrameLayout(Context context) {
+            super(context);
+        }
+
+        @Override
+        public boolean performClick() {
+            super.performClick();
+            return true;
+        }
     }
 
     private boolean handleTouch(View target, MotionEvent event) {
