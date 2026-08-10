@@ -2188,7 +2188,7 @@ public final class MainActivity extends Activity implements
 
         ImageButton menuButton = iconButton(R.drawable.ic_more_horizontal, 44, 18, Color.WHITE, Color.TRANSPARENT, ui("settings.title"));
         menuButton.setOnClickListener(view -> showSettingsPanel(true));
-        FrameLayout.LayoutParams menuParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.RIGHT | Gravity.TOP);
+        FrameLayout.LayoutParams menuParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.TOP);
         menuParams.topMargin = dp(8);
         top.addView(menuButton, menuParams);
 
@@ -2272,7 +2272,7 @@ public final class MainActivity extends Activity implements
         times.setGravity(Gravity.CENTER_VERTICAL);
         elapsedView = label("0:00", 12f, Color.argb(204, 255, 255, 255), AppFonts.regular(this));
         remainingView = label("-0:00", 12f, Color.argb(174, 255, 255, 255), AppFonts.regular(this));
-        remainingView.setGravity(Gravity.RIGHT);
+        remainingView.setGravity(Gravity.END);
         times.addView(elapsedView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         times.addView(remainingView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         main.addView(times, new LinearLayout.LayoutParams(
@@ -2819,7 +2819,7 @@ public final class MainActivity extends Activity implements
         times.setGravity(Gravity.CENTER_VERTICAL);
         elapsedView = label("0:00", 11f, Color.argb(204, 255, 255, 255), AppFonts.regular(this));
         remainingView = label("-0:00", 11f, Color.argb(174, 255, 255, 255), AppFonts.regular(this));
-        remainingView.setGravity(Gravity.RIGHT);
+        remainingView.setGravity(Gravity.END);
         times.addView(elapsedView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         times.addView(remainingView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams timesParams = new LinearLayout.LayoutParams(
@@ -2910,10 +2910,10 @@ public final class MainActivity extends Activity implements
         FrameLayout.LayoutParams loadingParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(28),
-                Gravity.RIGHT | Gravity.TOP
+                Gravity.END | Gravity.TOP
         );
         loadingParams.topMargin = dp(8);
-        loadingParams.rightMargin = dp(18);
+        loadingParams.setMarginEnd(dp(18));
         lyricsPane.addView(landscapeLyricsSupplementLoadingIndicator, loadingParams);
         setLoadingIndicatorVisible(
                 landscapeLyricsSupplementLoadingIndicator,
@@ -2924,7 +2924,7 @@ public final class MainActivity extends Activity implements
         ImageButton menuButton = iconButton(R.drawable.ic_more_horizontal, 44, 18, Color.WHITE, Color.TRANSPARENT, ui("settings.title"));
         landscapeMenuButton = menuButton;
         menuButton.setOnClickListener(view -> showSettingsPanel(true));
-        FrameLayout.LayoutParams menuParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.RIGHT | Gravity.TOP);
+        FrameLayout.LayoutParams menuParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.TOP);
         menuParams.topMargin = dp(8);
         page.addView(menuButton, menuParams);
 
@@ -7436,7 +7436,7 @@ public final class MainActivity extends Activity implements
         int type = InputType.TYPE_CLASS_TEXT;
         if (multiLine) {
             type |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
-            input.setGravity(Gravity.TOP | Gravity.LEFT);
+            input.setGravity(Gravity.TOP | Gravity.START);
             input.setMinLines(2);
             input.setMaxLines(4);
             input.setPadding(dp(12), dp(10), dp(12), dp(10));

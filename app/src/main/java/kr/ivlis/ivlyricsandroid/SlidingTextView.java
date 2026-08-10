@@ -104,7 +104,7 @@ final class SlidingTextView extends TextView {
         float x;
         if (horizontalGravity == Gravity.CENTER_HORIZONTAL) {
             x = left + (right - left - textWidth) * 0.5f;
-        } else if (horizontalGravity == Gravity.RIGHT || horizontalGravity == Gravity.END) {
+        } else if (horizontalGravity == Gravity.END) {
             x = right - textWidth;
         } else {
             x = left;
