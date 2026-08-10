@@ -310,10 +310,19 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     private static final Map<String, Language> LANGUAGE_BY_CODE = buildLanguageMap();
 
     private final SharedPreferences prefs;
+    private final SecureStringStore secureStore;
     private volatile Snapshot cachedSnapshot;
 
     AiLyricsSettings(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        secureStore = new SecureStringStore(context.getApplicationContext());
+        secureStore.migrateFrom(
+                prefs,
+                KEY_API_KEYS,
+                KEY_AI_PROVIDER_PROFILES,
+                KEY_POLLINATIONS_ACCESS_TOKEN,
+                KEY_SPOTIFY_CLIENT_SECRET
+        );
         prefs.registerOnSharedPreferenceChangeListener(this);
     }
 
@@ -380,7 +389,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 ruleConfig.defaultRule,
                 ruleConfig.languageRules,
                 providerProfile.apiKeys,
-                prefs.getString(KEY_POLLINATIONS_ACCESS_TOKEN, ""),
+                secureStore.getString(KEY_POLLINATIONS_ACCESS_TOKEN, ""),
                 providerProfile.baseUrl.isEmpty() ? provider.defaultBaseUrl : providerProfile.baseUrl,
                 providerProfile.model,
                 providerProfile.maxTokens,
@@ -424,7 +433,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getBoolean(KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, true),
                 normalizeLyricsTextAlignment(prefs.getString(KEY_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
-                prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
+                secureStore.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
         );
         cachedSnapshot = snapshot;
         return snapshot;
@@ -720,13 +729,13 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     }
 
     void setPollinationsAccessToken(String accessToken) {
-        prefs.edit()
-                .putString(KEY_POLLINATIONS_ACCESS_TOKEN, accessToken == null ? "" : accessToken.trim())
-                .apply();
+        secureStore.putString(KEY_POLLINATIONS_ACCESS_TOKEN, accessToken == null ? "" : accessToken.trim());
+        cachedSnapshot = null;
     }
 
     void clearPollinationsAccessToken() {
-        prefs.edit().remove(KEY_POLLINATIONS_ACCESS_TOKEN).apply();
+        secureStore.remove(KEY_POLLINATIONS_ACCESS_TOKEN);
+        cachedSnapshot = null;
     }
 
     void setModel(String model) {
@@ -767,10 +776,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         );
         Map<String, ProviderProfile> profiles = new LinkedHashMap<>(loadProviderProfiles());
         profiles.put(provider.id, profile);
-        SharedPreferences.Editor editor = prefs.edit().putString(KEY_AI_PROVIDER_PROFILES, providerProfilesJson(profiles));
+        secureStore.putString(KEY_AI_PROVIDER_PROFILES, providerProfilesJson(profiles));
+        SharedPreferences.Editor editor = prefs.edit();
         if (provider.id.equals(providerById(prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER)).id)) {
-            editor.putString(KEY_API_KEYS, profile.apiKeys)
-                    .putString(KEY_BASE_URL, profile.baseUrl)
+            secureStore.putString(KEY_API_KEYS, profile.apiKeys);
+            editor.putString(KEY_BASE_URL, profile.baseUrl)
                     .putString(KEY_MODEL, profile.model)
                     .putInt(KEY_MAX_TOKENS, profile.maxTokens)
                     .putFloat(KEY_TEMPERATURE, profile.temperature);
@@ -911,10 +921,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     }
 
     void setSpotifyApiCredentials(String clientId, String clientSecret) {
+        secureStore.putString(KEY_SPOTIFY_CLIENT_SECRET, clientSecret == null ? "" : clientSecret.trim());
         prefs.edit()
                 .putString(KEY_SPOTIFY_CLIENT_ID, clientId == null ? "" : clientId.trim())
-                .putString(KEY_SPOTIFY_CLIENT_SECRET, clientSecret == null ? "" : clientSecret.trim())
                 .apply();
+        cachedSnapshot = null;
     }
 
     int globalSyncOffsetMs() {
@@ -1298,9 +1309,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         }
         if (migrated) {
             Provider legacyProvider = providerById(prefs.getString(KEY_PROVIDER, DEFAULT_PROVIDER));
-            boolean legacyConfigured = !prefs.getString(KEY_API_KEYS, "").trim().isEmpty()
+            boolean legacyConfigured = !secureStore.getString(KEY_API_KEYS, "").trim().isEmpty()
                     || ("pollinations".equals(legacyProvider.id)
-                    && !prefs.getString(KEY_POLLINATIONS_ACCESS_TOKEN, "").trim().isEmpty());
+                    && !secureStore.getString(KEY_POLLINATIONS_ACCESS_TOKEN, "").trim().isEmpty());
             if (legacyConfigured) {
                 values.put(legacyProvider.id, true);
             }
@@ -1310,7 +1321,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     private Map<String, ProviderProfile> loadProviderProfiles() {
         Map<String, ProviderProfile> profiles = new LinkedHashMap<>();
-        String raw = prefs.getString(KEY_AI_PROVIDER_PROFILES, "");
+        String raw = secureStore.getString(KEY_AI_PROVIDER_PROFILES, "");
         if (raw != null && !raw.trim().isEmpty()) {
             try {
                 JSONObject root = new JSONObject(raw);
@@ -1337,7 +1348,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             }
             if (provider.id.equals(legacyProvider.id)) {
                 profiles.put(provider.id, new ProviderProfile(
-                        prefs.getString(KEY_API_KEYS, ""),
+                        secureStore.getString(KEY_API_KEYS, ""),
                         prefs.getString(KEY_BASE_URL, provider.defaultBaseUrl),
                         prefs.getString(KEY_MODEL, provider.defaultModel),
                         prefs.getInt(KEY_MAX_TOKENS, 16000),
