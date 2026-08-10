@@ -7660,7 +7660,7 @@ final class AppI18n {
                 "debug.refresh", "بازخوانی",
                 "debug.log", "ورود",
                 "debug.log_waiting", "در انتظار گزارش‌ها",
-                "lyrics.tab.language", "زبان009",
+                "lyrics.tab.language", "زبان",
                 "lyrics.tab.sync", "همگام سازی",
                 "lyrics.translation", "ترجمه",
                 "lyrics.pronunciation", "تلفظ",
@@ -10826,6 +10826,11 @@ final class AppI18n {
                 if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                     throw new IllegalStateException(
                             "Blank i18n string: " + language.code + ":" + entry.getKey());
+                }
+                if (entry.getValue().matches(".*\\p{L}\\d{3,}$")) {
+                    throw new IllegalStateException(
+                            "Suspicious numeric suffix in i18n string: "
+                                    + language.code + ":" + entry.getKey());
                 }
             }
         }
