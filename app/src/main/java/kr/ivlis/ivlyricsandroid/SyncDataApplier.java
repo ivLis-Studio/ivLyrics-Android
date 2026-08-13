@@ -270,6 +270,9 @@ final class SyncDataApplier {
             long charEndMs;
             if (charIndex < charCount - 1) {
                 charEndMs = secondsToMs(line.chars.get(charIndex + 1));
+            } else if ("line".equals(line.granularity)) {
+                charEndMs = lineEndMs;
+                adjustedEndMs = lineEndMs;
             } else {
                 long naturalEndMs = secondsToMs(line.chars.get(charIndex) + lastCharMaxDuration);
                 charEndMs = Math.min(lineEndMs, naturalEndMs);
@@ -281,7 +284,41 @@ final class SyncDataApplier {
                     charEndMs
             ));
         }
-        return new TimedSyllables(syllables, adjustedEndMs);
+        return new TimedSyllables(collapseSyllables(syllables, line.granularity, adjustedEndMs), adjustedEndMs);
+    }
+
+    private static List<LyricsLine.Syllable> collapseSyllables(
+            List<LyricsLine.Syllable> source,
+            String granularity,
+            long endTimeMs
+    ) {
+        if (source == null || source.isEmpty() || "character".equals(normalizeGranularity(granularity))) {
+            return source == null ? Collections.emptyList() : source;
+        }
+        if ("line".equals(normalizeGranularity(granularity))) {
+            StringBuilder text = new StringBuilder();
+            for (LyricsLine.Syllable syllable : source) text.append(syllable.text);
+            return Collections.singletonList(new LyricsLine.Syllable(
+                    text.toString(),
+                    source.get(0).startTimeMs,
+                    Math.max(source.get(0).startTimeMs, endTimeMs)
+            ));
+        }
+        List<LyricsLine.Syllable> grouped = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
+        long startTime = 0L;
+        for (LyricsLine.Syllable syllable : source) {
+            if (text.length() > 0 && syllable.startTimeMs != startTime) {
+                grouped.add(new LyricsLine.Syllable(text.toString(), startTime, syllable.startTimeMs));
+                text.setLength(0);
+            }
+            if (text.length() == 0) startTime = syllable.startTimeMs;
+            text.append(syllable.text);
+        }
+        if (text.length() > 0) {
+            grouped.add(new LyricsLine.Syllable(text.toString(), startTime, Math.max(startTime, endTimeMs)));
+        }
+        return grouped;
     }
 
     private static List<LyricsLine.VocalPart> buildVocalParts(
@@ -341,6 +378,8 @@ final class SyncDataApplier {
                 long charEndMs;
                 if (partCharIndex + 1 < part.chars.size()) {
                     charEndMs = secondsToMs(part.chars.get(partCharIndex + 1));
+                } else if ("line".equals(part.granularity)) {
+                    charEndMs = fallbackEndMs;
                 } else {
                     charEndMs = Math.min(fallbackEndMs, charStartMs + Math.round(lastCharMaxDuration * 1000.0));
                 }
@@ -349,7 +388,9 @@ final class SyncDataApplier {
             }
         }
 
-        List<LyricsLine.Syllable> trimmed = trimWhitespaceSyllables(syllables);
+        List<LyricsLine.Syllable> trimmed = trimWhitespaceSyllables(
+                collapseSyllables(syllables, part.granularity, fallbackEndMs)
+        );
         if (trimmed.isEmpty()) {
             return null;
         }
@@ -425,12 +466,14 @@ final class SyncDataApplier {
 
             int start = rawLine.optInt("start", -1);
             int end = rawLine.optInt("end", -1);
-            List<Double> chars = readDoubleArray(rawLine.optJSONArray("chars"));
+            String granularity = normalizeGranularity(rawLine.optString("granularity", "character"));
+            List<Double> chars = readCompactTiming(rawLine, end - start + 1, granularity);
             Parallel parallel = parseParallel(rawLine.optJSONObject("parallel"));
             result.add(new SyncLine(
                     start,
                     end,
                     chars,
+                    granularity,
                     rawLine.optString("speaker", ""),
                     rawLine.optString("speaker-color", ""),
                     rawLine.optString("speaker-fallback", ""),
@@ -459,7 +502,8 @@ final class SyncDataApplier {
             if (rawPart == null) continue;
 
             List<Range> ranges = readRanges(rawPart.optJSONArray("ranges"));
-            List<Double> chars = readDoubleArray(rawPart.optJSONArray("chars"));
+            String granularity = normalizeGranularity(rawPart.optString("granularity", "character"));
+            List<Double> chars = readCompactTiming(rawPart, countRangeChars(ranges), granularity);
             if (ranges.isEmpty() || chars.isEmpty()) {
                 continue;
             }
@@ -470,12 +514,43 @@ final class SyncDataApplier {
                     rawPart.optString("speaker-color", ""),
                     rawPart.optString("speaker-fallback", ""),
                     rawPart.optString("kind", "vocal"),
+                    granularity,
                     ranges,
                     readIntArray(rawPart.optJSONArray("join")),
                     chars
             ));
         }
         return new Parallel(parts, hiddenRanges);
+    }
+
+    private static String normalizeGranularity(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return "line".equals(normalized) || "word".equals(normalized) ? normalized : "character";
+    }
+
+    private static List<Double> readCompactTiming(JSONObject object, int expectedLength, String granularity) {
+        List<Double> chars = readDoubleArray(object.optJSONArray("chars"));
+        if (!chars.isEmpty() || expectedLength <= 0) return chars;
+        if ("line".equals(granularity) && object.has("timing")) {
+            double time = object.optDouble("timing", Double.NaN);
+            if (!Double.isFinite(time)) return Collections.emptyList();
+            return new ArrayList<>(Collections.nCopies(expectedLength, time));
+        }
+        if (!"word".equals(granularity)) return Collections.emptyList();
+        JSONArray timing = object.optJSONArray("timing");
+        if (timing == null || timing.length() == 0) return Collections.emptyList();
+        List<Double> expanded = new ArrayList<>(Collections.nCopies(expectedLength, null));
+        int start = 0;
+        for (int index = 0; index < timing.length(); index++) {
+            JSONArray mark = timing.optJSONArray(index);
+            if (mark == null || mark.length() != 2) return Collections.emptyList();
+            int end = mark.optInt(0, -1);
+            double time = mark.optDouble(1, Double.NaN);
+            if (end < start || end >= expectedLength || !Double.isFinite(time)) return Collections.emptyList();
+            for (int charIndex = start; charIndex <= end; charIndex++) expanded.set(charIndex, time);
+            start = end + 1;
+        }
+        return start == expectedLength ? expanded : Collections.emptyList();
     }
 
     private static List<SyncLine> normalizeParallelParts(List<SyncLine> lines, List<String> fullChars) {
@@ -597,6 +672,7 @@ final class SyncDataApplier {
                     part.speakerColor,
                     part.speakerFallback,
                     part.kind,
+                    part.granularity,
                     Collections.singletonList(range),
                     Collections.emptyList(),
                     new ArrayList<>(part.chars.subList(charOffset, charOffset + charCount))
@@ -735,6 +811,7 @@ final class SyncDataApplier {
                     Math.max(0, line.start - charOffset),
                     Math.max(0, line.end - charOffset),
                     line.chars,
+                    line.granularity,
                     line.speaker,
                     line.speakerColor,
                     line.speakerFallback,
@@ -792,6 +869,7 @@ final class SyncDataApplier {
                     line.start,
                     line.end,
                     chars,
+                    line.granularity,
                     line.speaker,
                     line.speakerColor,
                     line.speakerFallback,
@@ -1183,6 +1261,7 @@ final class SyncDataApplier {
         final int start;
         final int end;
         final List<Double> chars;
+        final String granularity;
         final String speaker;
         final String speakerColor;
         final String speakerFallback;
@@ -1194,6 +1273,7 @@ final class SyncDataApplier {
                 int start,
                 int end,
                 List<Double> chars,
+                String granularity,
                 String speaker,
                 String speakerColor,
                 String speakerFallback,
@@ -1204,6 +1284,7 @@ final class SyncDataApplier {
             this.start = start;
             this.end = end;
             this.chars = chars == null ? Collections.emptyList() : new ArrayList<>(chars);
+            this.granularity = normalizeGranularity(granularity);
             this.speaker = speaker == null ? "" : speaker;
             this.speakerColor = speakerColor == null ? "" : speakerColor;
             this.speakerFallback = speakerFallback == null ? "" : speakerFallback;
@@ -1213,7 +1294,7 @@ final class SyncDataApplier {
         }
 
         SyncLine withParts(List<ParallelPart> nextParts) {
-            return new SyncLine(start, end, chars, speaker, speakerColor, speakerFallback, kind, nextParts, hiddenRanges);
+            return new SyncLine(start, end, chars, granularity, speaker, speakerColor, speakerFallback, kind, nextParts, hiddenRanges);
         }
 
         boolean isUsable(int fullCharCount) {
@@ -1233,6 +1314,7 @@ final class SyncDataApplier {
         final String speakerColor;
         final String speakerFallback;
         final String kind;
+        final String granularity;
         final List<Range> ranges;
         final List<Integer> join;
         final List<Double> chars;
@@ -1244,6 +1326,7 @@ final class SyncDataApplier {
                 String speakerColor,
                 String speakerFallback,
                 String kind,
+                String granularity,
                 List<Range> ranges,
                 List<Integer> join,
                 List<Double> chars
@@ -1254,17 +1337,18 @@ final class SyncDataApplier {
             this.speakerColor = speakerColor == null ? "" : speakerColor;
             this.speakerFallback = speakerFallback == null ? "" : speakerFallback;
             this.kind = kind == null || kind.trim().isEmpty() ? "vocal" : kind.trim();
+            this.granularity = normalizeGranularity(granularity);
             this.ranges = ranges == null ? Collections.emptyList() : new ArrayList<>(ranges);
             this.join = join == null ? Collections.emptyList() : new ArrayList<>(join);
             this.chars = chars == null ? Collections.emptyList() : new ArrayList<>(chars);
         }
 
         ParallelPart withRangesAndChars(List<Range> nextRanges, List<Double> nextChars) {
-            return new ParallelPart(id, role, speaker, speakerColor, speakerFallback, kind, nextRanges, join, nextChars);
+            return new ParallelPart(id, role, speaker, speakerColor, speakerFallback, kind, granularity, nextRanges, join, nextChars);
         }
 
         ParallelPart withChars(List<Double> nextChars) {
-            return new ParallelPart(id, role, speaker, speakerColor, speakerFallback, kind, ranges, join, nextChars);
+            return new ParallelPart(id, role, speaker, speakerColor, speakerFallback, kind, granularity, ranges, join, nextChars);
         }
     }
 
