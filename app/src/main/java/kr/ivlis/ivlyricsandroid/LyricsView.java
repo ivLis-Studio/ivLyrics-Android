@@ -3695,12 +3695,16 @@ public final class LyricsView extends View {
     }
 
     private InterludeInfo interludeInfoForLine(LyricsLine line, int lineIndex, int lineCount) {
-        if (line == null || !line.isTimed() || !isInterludeMarkerText(interludeCandidateText(line))) {
+        String markerText = interludeCandidateText(line);
+        if (line == null || !line.isTimed() || !isInterludeMarkerText(markerText)) {
             return InterludeInfo.none();
         }
         long endTimeMs = Math.max(line.endTimeMs, nextRenderableLineStartAfter(lineIndex));
         long durationMs = endTimeMs > line.startTimeMs ? endTimeMs - line.startTimeMs : 0L;
-        if (durationMs <= INTERLUDE_MIN_DURATION_MS) {
+        long minimumDurationMs = isMusicNoteInterludeMarkerText(markerText)
+                ? 0L
+                : INTERLUDE_MIN_DURATION_MS;
+        if (durationMs <= minimumDurationMs) {
             return InterludeInfo.none();
         }
         return new InterludeInfo(true, line.startTimeMs, endTimeMs, instrumentalKind(lineIndex, lineCount), false);
@@ -3842,6 +3846,31 @@ public final class LyricsView extends View {
             offset += Character.charCount(codePoint);
         }
         return true;
+    }
+
+    private boolean isMusicNoteInterludeMarkerText(String text) {
+        String normalized = unwrapInterludeMarkerText(decodeInterludeMarkerText(text));
+        normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC).trim();
+        if (normalized.isEmpty()) {
+            return false;
+        }
+
+        boolean containsMusicNote = false;
+        for (int offset = 0; offset < normalized.length(); ) {
+            int codePoint = normalized.codePointAt(offset);
+            if (!isInterludeMarkerCodePoint(codePoint)) {
+                return false;
+            }
+            containsMusicNote |= isInterludeMusicNoteCodePoint(codePoint);
+            offset += Character.charCount(codePoint);
+        }
+        return containsMusicNote;
+    }
+
+    private boolean isInterludeMusicNoteCodePoint(int codePoint) {
+        return (codePoint >= 0x2669 && codePoint <= 0x266F)
+                || (codePoint >= 0x1D100 && codePoint <= 0x1D1FF)
+                || (codePoint >= 0x1F3B5 && codePoint <= 0x1F3BC);
     }
 
     private boolean isInterludeMarkerCodePoint(int codePoint) {

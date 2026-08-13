@@ -13674,7 +13674,10 @@ public final class MainActivity extends Activity implements
     private PreviewEntry markerInterludeEntry(LyricsLine line, int lineIndex, int lineCount) {
         long endTimeMs = Math.max(line.endTimeMs, nextPreviewRenderableLineStartAfter(lineIndex));
         long durationMs = endTimeMs > line.startTimeMs ? endTimeMs - line.startTimeMs : 0L;
-        if (durationMs <= PREVIEW_INTERLUDE_MIN_DURATION_MS) {
+        long minimumDurationMs = isPreviewMusicNoteInterludeMarkerText(previewInterludeCandidateText(line))
+                ? 0L
+                : PREVIEW_INTERLUDE_MIN_DURATION_MS;
+        if (durationMs <= minimumDurationMs) {
             return null;
         }
         return PreviewEntry.interlude(line.startTimeMs, endTimeMs, previewInstrumentalKind(lineIndex, lineCount));
@@ -13874,6 +13877,31 @@ public final class MainActivity extends Activity implements
             offset += Character.charCount(codePoint);
         }
         return true;
+    }
+
+    private boolean isPreviewMusicNoteInterludeMarkerText(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+
+        boolean containsMusicNote = false;
+        for (int offset = 0; offset < text.length(); ) {
+            if (isPreviewHtmlSpaceEntity(text, offset, text.length())) {
+                offset += 6;
+                continue;
+            }
+            int codePoint = text.codePointAt(offset);
+            if (!isPreviewInterludeMarkerCodePoint(codePoint)) {
+                return false;
+            }
+            containsMusicNote |= isPreviewMusicNoteCodePoint(codePoint);
+            offset += Character.charCount(codePoint);
+        }
+        return containsMusicNote;
+    }
+
+    private boolean isPreviewMusicNoteCodePoint(int codePoint) {
+        return codePoint >= 0x2669 && codePoint <= 0x266C;
     }
 
     private boolean isPreviewHtmlSpaceEntity(String text, int offset, int end) {
