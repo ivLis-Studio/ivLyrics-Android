@@ -141,6 +141,7 @@ public final class LyricsView extends View {
     private boolean syncedLyricsKaraokeAnimationEnabled = true;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
+    private String lyricsSegmentationLocale = "auto";
     private boolean japaneseFuriganaEnabled;
     private boolean pronunciationLoading;
     private boolean translationLoading;
@@ -435,6 +436,19 @@ public final class LyricsView extends View {
             return;
         }
         karaokeDisplayGranularity = normalized;
+        rowLayoutCache.clear();
+        invalidateFrameGroupCache();
+        bounceStates.clear();
+        completedBounceKeys.clear();
+        postInvalidateOnAnimation();
+    }
+
+    void setLyricsSegmentationLocale(String locale) {
+        String normalized = locale == null || locale.trim().isEmpty() ? "auto" : locale.trim();
+        if (lyricsSegmentationLocale.equalsIgnoreCase(normalized)) {
+            return;
+        }
+        lyricsSegmentationLocale = normalized;
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
         bounceStates.clear();
@@ -2935,7 +2949,7 @@ public final class LyricsView extends View {
         }
         if (syllables != null && !syllables.isEmpty()) {
             List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
-                    ? TimedSyllableNormalizer.groupForWordDisplay(syllables)
+                    ? TimedSyllableNormalizer.groupForWordDisplay(syllables, lyricsSegmentationLocale)
                     : TimedSyllableNormalizer.normalize(syllables);
             int charOffset = 0;
             for (int index = 0; index < renderSyllables.size(); index++) {
@@ -2970,7 +2984,7 @@ public final class LyricsView extends View {
         }
         int charOffset = 0;
         List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
-                ? TimedSyllableNormalizer.groupForWordDisplay(syntheticSyllables)
+                ? TimedSyllableNormalizer.groupForWordDisplay(syntheticSyllables, lyricsSegmentationLocale)
                 : TimedSyllableNormalizer.normalize(syntheticSyllables);
         for (LyricsLine.Syllable syllable : renderSyllables) {
             String value = syllable.text == null ? "" : syllable.text;

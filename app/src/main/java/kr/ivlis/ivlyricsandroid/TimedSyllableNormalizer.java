@@ -252,7 +252,10 @@ final class TimedSyllableNormalizer {
     }
 
     /** Native equivalent of Intl.Segmenter({ granularity: "word" }). */
-    static List<LyricsLine.Syllable> groupForWordDisplay(List<LyricsLine.Syllable> syllables) {
+    static List<LyricsLine.Syllable> groupForWordDisplay(
+            List<LyricsLine.Syllable> syllables,
+            String lyricsLocale
+    ) {
         if (syllables == null || syllables.isEmpty()) {
             return Collections.emptyList();
         }
@@ -278,11 +281,11 @@ final class TimedSyllableNormalizer {
             return Collections.emptyList();
         }
 
-        BreakIterator iterator = BreakIterator.getWordInstance(Locale.getDefault());
-        iterator.setText(text);
+        List<LyricsWordSegmenter.Range> displayRanges = LyricsWordSegmenter.displayRanges(text, lyricsLocale);
         List<LyricsLine.Syllable> result = new ArrayList<>();
-        int rangeStart = iterator.first();
-        for (int rangeEnd = iterator.next(); rangeEnd != BreakIterator.DONE; rangeStart = rangeEnd, rangeEnd = iterator.next()) {
+        for (LyricsWordSegmenter.Range displayRange : displayRanges) {
+            int rangeStart = displayRange.start;
+            int rangeEnd = displayRange.end;
             if (rangeEnd <= rangeStart) {
                 continue;
             }

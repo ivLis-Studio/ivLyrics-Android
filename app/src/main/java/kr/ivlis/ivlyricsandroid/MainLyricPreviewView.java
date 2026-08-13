@@ -97,6 +97,7 @@ final class MainLyricPreviewView extends View {
     private boolean playing;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
+    private String lyricsSegmentationLocale = "auto";
     private float textScale = 1f;
     private String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
     private int culturalAnnotationFontSize = 12;
@@ -172,6 +173,18 @@ final class MainLyricPreviewView extends View {
             return;
         }
         karaokeDisplayGranularity = normalized;
+        textSegmentCache.clear();
+        bounceStates.clear();
+        completedBounceKeys.clear();
+        postInvalidateOnAnimation();
+    }
+
+    void setLyricsSegmentationLocale(String locale) {
+        String normalized = locale == null || locale.trim().isEmpty() ? "auto" : locale.trim();
+        if (lyricsSegmentationLocale.equalsIgnoreCase(normalized)) {
+            return;
+        }
+        lyricsSegmentationLocale = normalized;
         textSegmentCache.clear();
         bounceStates.clear();
         completedBounceKeys.clear();
@@ -976,7 +989,7 @@ final class MainLyricPreviewView extends View {
             return Collections.emptyList();
         }
         List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
-                ? TimedSyllableNormalizer.groupForWordDisplay(syllables)
+                ? TimedSyllableNormalizer.groupForWordDisplay(syllables, lyricsSegmentationLocale)
                 : TimedSyllableNormalizer.normalize(syllables);
         List<RubyAnnotation> rubyAnnotations = line.rubyAnnotations();
         List<TextSegment> segments = new ArrayList<>(renderSyllables.size());

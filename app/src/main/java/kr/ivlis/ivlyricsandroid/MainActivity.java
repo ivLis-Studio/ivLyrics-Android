@@ -561,6 +561,7 @@ public final class MainActivity extends Activity implements
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.AppTheme);
         super.onCreate(savedInstanceState);
+        LyricsWordSegmenter.initialize(getApplicationContext());
         aiLyricsSettings = new AiLyricsSettings(this);
         currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
@@ -9946,6 +9947,7 @@ public final class MainActivity extends Activity implements
     private void updateDetectedLyricsSourceLanguage(LyricsResult result) {
         if (result == null || result.lines == null || result.lines.isEmpty()) {
             detectedLyricsSourceLang = detectCurrentTrackMetadataLanguage();
+            applyLyricsSegmentationLocaleToViews();
             return;
         }
         String detected = AiLyricsRepository.detectLanguage(AiLyricsRepository.buildPayloadText(result.lines));
@@ -9953,6 +9955,16 @@ public final class MainActivity extends Activity implements
         if (detectedLyricsSourceLang == null || detectedLyricsSourceLang.trim().isEmpty()) {
             detectedLyricsSourceLang = detectCurrentTrackMetadataLanguage();
         }
+        applyLyricsSegmentationLocaleToViews();
+    }
+
+    private void applyLyricsSegmentationLocaleToViews() {
+        String locale = effectiveSelectedSourceLang();
+        if (lyricsView != null) lyricsView.setLyricsSegmentationLocale(locale);
+        if (landscapeLyricsView != null) landscapeLyricsView.setLyricsSegmentationLocale(locale);
+        if (pictureInPictureLyricsView != null) pictureInPictureLyricsView.setLyricsSegmentationLocale(locale);
+        if (lyricPreviewView != null) lyricPreviewView.setLyricsSegmentationLocale(locale);
+        if (vinylPlayerModeView != null) vinylPlayerModeView.lyricView().setLyricsSegmentationLocale(locale);
     }
 
     private String detectCurrentTrackMetadataLanguage() {
@@ -12639,18 +12651,21 @@ public final class MainActivity extends Activity implements
     private void setLyricsResultOnViews(LyricsResult result) {
         if (lyricsView != null) {
             configureLyricsViewUiText(lyricsView);
+            lyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             lyricsView.setLoadingState(lyricsLookupInFlight);
             lyricsView.setResult(result);
             applyCulturalAnnotationsToView(lyricsView);
         }
         if (landscapeLyricsView != null) {
             configureLyricsViewUiText(landscapeLyricsView);
+            landscapeLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             landscapeLyricsView.setLoadingState(lyricsLookupInFlight);
             landscapeLyricsView.setResult(result);
             applyCulturalAnnotationsToView(landscapeLyricsView);
         }
         if (pictureInPictureLyricsView != null) {
             configureLyricsViewUiText(pictureInPictureLyricsView);
+            pictureInPictureLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             pictureInPictureLyricsView.setLoadingState(lyricsLookupInFlight);
             pictureInPictureLyricsView.setResult(result);
         }
@@ -13500,9 +13515,11 @@ public final class MainActivity extends Activity implements
             LyricsLine sourceLine
     ) {
         if (lyricPreviewView != null) {
+            lyricPreviewView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             lyricPreviewView.setPreview(rows, positionMs, lineStartMs, lineEndMs, playing);
         }
         if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             vinylPlayerModeView.lyricView().setPreview(
                     vinylPreviewRows(rows, sourceLine),
                     positionMs,
