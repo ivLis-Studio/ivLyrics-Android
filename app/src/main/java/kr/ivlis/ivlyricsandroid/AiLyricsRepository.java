@@ -446,9 +446,21 @@ final class AiLyricsRepository {
         final String translation;
         SupplementResult(SupplementRequest request, String pronunciation, String translation) {
             this.request = request;
-            this.pronunciation = pronunciation == null ? "" : pronunciation;
-            this.translation = translation == null ? "" : translation;
+            String sourceText = request == null ? "" : request.text;
+            String nextPronunciation = sanitizeSupplement(pronunciation, sourceText);
+            String nextTranslation = sanitizeSupplement(translation, sourceText);
+            if (!nextPronunciation.isEmpty()
+                    && LyricsTextComparison.areEquivalent(nextPronunciation, nextTranslation)) {
+                nextPronunciation = "";
+            }
+            this.pronunciation = nextPronunciation;
+            this.translation = nextTranslation;
         }
+    }
+
+    private static String sanitizeSupplement(String value, String sourceText) {
+        String trimmed = value == null ? "" : value.trim();
+        return LyricsTextComparison.areEquivalent(trimmed, sourceText) ? "" : trimmed;
     }
 
     private static final class TaggedOutputLine {
@@ -1032,26 +1044,63 @@ final class AiLyricsRepository {
             return baseLine;
         }
         if (baseLine.vocalParts == null || baseLine.vocalParts.isEmpty()) {
-            return baseLine.withSupplements(
+            String pronunciation = sanitizeSupplement(
                     cachedLine.pronunciationText,
+                    displayLineText(baseLine)
+            );
+            String translation = sanitizeSupplement(
                     cachedLine.translationText,
+                    displayLineText(baseLine)
+            );
+            if (!pronunciation.isEmpty()
+                    && LyricsTextComparison.areEquivalent(pronunciation, translation)) {
+                pronunciation = "";
+            }
+            return baseLine.withSupplements(
+                    pronunciation,
+                    translation,
                     baseLine.furiganaText
             );
         }
 
         List<LyricsLine.VocalPart> parts = new ArrayList<>(baseLine.vocalParts.size());
+        List<String> pronunciationParts = new ArrayList<>();
+        List<String> translationParts = new ArrayList<>();
+        boolean matchedCachedPart = false;
         for (int index = 0; index < baseLine.vocalParts.size(); index++) {
             LyricsLine.VocalPart basePart = baseLine.vocalParts.get(index);
             LyricsLine.VocalPart cachedPart = cachedLine.vocalParts != null && index < cachedLine.vocalParts.size()
                     ? cachedLine.vocalParts.get(index)
                     : null;
-            parts.add(cachedPart == null
-                    ? basePart
-                    : basePart.withSupplements(
-                    cachedPart.pronunciationText,
-                    cachedPart.translationText,
+            if (cachedPart == null) {
+                parts.add(basePart);
+                continue;
+            }
+            matchedCachedPart = true;
+            String sourceText = displayPartText(basePart);
+            String pronunciation = sanitizeSupplement(cachedPart.pronunciationText, sourceText);
+            String translation = sanitizeSupplement(cachedPart.translationText, sourceText);
+            if (!pronunciation.isEmpty()
+                    && LyricsTextComparison.areEquivalent(pronunciation, translation)) {
+                pronunciation = "";
+            }
+            parts.add(basePart.withSupplements(
+                    pronunciation,
+                    translation,
                     basePart.furiganaText
             ));
+            pronunciationParts.add(pronunciation);
+            translationParts.add(translation);
+        }
+        String pronunciationText = matchedCachedPart
+                ? joinNonEmpty(pronunciationParts)
+                : sanitizeSupplement(cachedLine.pronunciationText, displayLineText(baseLine));
+        String translationText = matchedCachedPart
+                ? joinNonEmpty(translationParts)
+                : sanitizeSupplement(cachedLine.translationText, displayLineText(baseLine));
+        if (!pronunciationText.isEmpty()
+                && LyricsTextComparison.areEquivalent(pronunciationText, translationText)) {
+            pronunciationText = "";
         }
         return new LyricsLine(
                 baseLine.startTimeMs,
@@ -1063,10 +1112,25 @@ final class AiLyricsRepository {
                 baseLine.speakerFallback,
                 baseLine.kind,
                 parts,
-                cachedLine.pronunciationText,
-                cachedLine.translationText,
+                pronunciationText,
+                translationText,
                 baseLine.furiganaText
         );
+    }
+
+    private static String joinNonEmpty(List<String> values) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            String trimmed = value == null ? "" : value.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(" / ");
+            }
+            builder.append(trimmed);
+        }
+        return builder.toString();
     }
 
     static boolean hasSameBaseLyrics(LyricsResult expected, LyricsResult candidate) {

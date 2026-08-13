@@ -7946,11 +7946,7 @@ public final class MainActivity extends Activity implements
         showLanguageSelectPopup(anchor, outputLanguageChoices(), aiLyricsSettings.snapshot().outputLang, code -> {
             aiLyricsSettings.setOutputLang(code);
             rebuildLanguageSettingsUi(aiLyricsSettings.snapshot());
-            translatedTrackTitle = "";
-            translatedTrackArtist = "";
-            updateTrackMetadataTextViews(currentTrack);
-            requestMetadataTranslation(true);
-            requestAiLyrics(true);
+            requestAiLyrics(false);
             showSavedToast(ui("toast.pronunciation_language_saved"));
         });
     }
@@ -12512,6 +12508,12 @@ public final class MainActivity extends Activity implements
         if (metadataTranslationLoading) {
             return ui("loading.translation");
         }
+        if (lyricsSupplementTranslationLoading && lyricsSupplementPronunciationLoading) {
+            return aiProviderLoadingText(
+                    "status.ai_generating_provider_format",
+                    "status.ai_generating"
+            );
+        }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
                     "loading.translation_provider_format",
@@ -12558,6 +12560,12 @@ public final class MainActivity extends Activity implements
         }
         if (metadataTranslationLoading) {
             return ui("loading.translation");
+        }
+        if (lyricsSupplementTranslationLoading && lyricsSupplementPronunciationLoading) {
+            return aiProviderLoadingText(
+                    "status.ai_generating_provider_format",
+                    "status.ai_generating"
+            );
         }
         if (lyricsSupplementTranslationLoading) {
             return aiProviderLoadingText(
