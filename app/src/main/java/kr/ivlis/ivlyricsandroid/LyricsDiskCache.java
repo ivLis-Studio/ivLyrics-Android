@@ -312,6 +312,13 @@ final class LyricsDiskCache {
             if (syllable.sourceWordUnit) {
                 object.put("sourceWordUnit", true);
             }
+            if (syllable.inlineStyle) {
+                object.put("inlineStyle", true);
+                object.put("styleKind", syllable.styleKind);
+                object.put("styleSpeaker", syllable.styleSpeaker);
+                object.put("styleSpeakerColor", syllable.styleSpeakerColor);
+                object.put("styleSpeakerFallback", syllable.styleSpeakerFallback);
+            }
             array.put(object);
         }
         return array;
@@ -331,7 +338,12 @@ final class LyricsDiskCache {
                     object.optString("text", ""),
                     object.optLong("startTimeMs", 0L),
                     object.optLong("endTimeMs", 0L),
-                    object.optBoolean("sourceWordUnit", false)
+                    object.optBoolean("sourceWordUnit", false),
+                    object.optBoolean("inlineStyle", false),
+                    object.optString("styleKind", ""),
+                    object.optString("styleSpeaker", ""),
+                    object.optString("styleSpeakerColor", ""),
+                    object.optString("styleSpeakerFallback", "")
             ));
         }
         return syllables;

@@ -125,16 +125,59 @@ final class LyricsLine {
         final long startTimeMs;
         final long endTimeMs;
         final boolean sourceWordUnit;
+        final boolean inlineStyle;
+        final String styleKind;
+        final String styleSpeaker;
+        final String styleSpeakerColor;
+        final String styleSpeakerFallback;
 
         Syllable(String text, long startTimeMs, long endTimeMs) {
             this(text, startTimeMs, endTimeMs, false);
         }
 
         Syllable(String text, long startTimeMs, long endTimeMs, boolean sourceWordUnit) {
+            this(text, startTimeMs, endTimeMs, sourceWordUnit, false, "", "", "", "");
+        }
+
+        Syllable(
+                String text,
+                long startTimeMs,
+                long endTimeMs,
+                boolean sourceWordUnit,
+                boolean inlineStyle,
+                String styleKind,
+                String styleSpeaker,
+                String styleSpeakerColor,
+                String styleSpeakerFallback
+        ) {
             this.text = text == null ? "" : text;
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
             this.sourceWordUnit = sourceWordUnit;
+            this.inlineStyle = inlineStyle;
+            this.styleKind = styleKind == null ? "" : styleKind.trim();
+            this.styleSpeaker = styleSpeaker == null ? "" : styleSpeaker.trim();
+            this.styleSpeakerColor = styleSpeakerColor == null ? "" : styleSpeakerColor.trim();
+            this.styleSpeakerFallback = styleSpeakerFallback == null ? "" : styleSpeakerFallback.trim();
+        }
+
+        Syllable copy(String nextText, long nextStartTimeMs, long nextEndTimeMs, boolean nextSourceWordUnit) {
+            return new Syllable(
+                    nextText,
+                    nextStartTimeMs,
+                    nextEndTimeMs,
+                    nextSourceWordUnit,
+                    inlineStyle,
+                    styleKind,
+                    styleSpeaker,
+                    styleSpeakerColor,
+                    styleSpeakerFallback
+            );
+        }
+
+        String styleKey() {
+            return (inlineStyle ? "1" : "0") + '|' + styleKind + '|' + styleSpeaker + '|'
+                    + styleSpeakerColor + '|' + styleSpeakerFallback;
         }
     }
 

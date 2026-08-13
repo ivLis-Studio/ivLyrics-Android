@@ -366,7 +366,12 @@ final class ParallelVocalLineMerger {
             for (LyricsLine.Syllable syllable : syllables) {
                 String value = stripParenthesisCharacters(syllable.text);
                 if (!value.isEmpty()) {
-                    stripped.add(new LyricsLine.Syllable(value, syllable.startTimeMs, syllable.endTimeMs));
+                    stripped.add(syllable.copy(
+                            value,
+                            syllable.startTimeMs,
+                            syllable.endTimeMs,
+                            syllable.sourceWordUnit
+                    ));
                 }
             }
             syllables = stripped;

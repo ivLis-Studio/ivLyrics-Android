@@ -83,10 +83,11 @@ final class TimedSyllableNormalizer {
                         remainderMs,
                         index + 1
                 );
-                normalized.add(new LyricsLine.Syllable(
+                normalized.add(syllable.copy(
                         graphemes.get(index),
                         partStartMs,
-                        partEndMs
+                        partEndMs,
+                        syllable.sourceWordUnit
                 ));
             }
         }
@@ -133,10 +134,11 @@ final class TimedSyllableNormalizer {
             if (result == null) {
                 result = new ArrayList<>(syllables);
             }
-            result.set(index, new LyricsLine.Syllable(
+            result.set(index, current.copy(
                     current.text,
                     current.startTimeMs,
-                    current.startTimeMs + compensatedDurationMs
+                    current.startTimeMs + compensatedDurationMs,
+                    current.sourceWordUnit
             ));
         }
         return result == null ? syllables : result;
@@ -177,6 +179,7 @@ final class TimedSyllableNormalizer {
         StringBuilder word = new StringBuilder();
         long wordStartMs = 0L;
         long wordEndMs = 0L;
+        LyricsLine.Syllable wordStyle = null;
 
         for (LyricsLine.Syllable syllable : syllables) {
             if (syllable == null) {
@@ -187,19 +190,25 @@ final class TimedSyllableNormalizer {
                 continue;
             }
             if (isWhitespace(text)) {
-                appendWord(result, word, wordStartMs, wordEndMs);
+                appendWord(result, word, wordStartMs, wordEndMs, wordStyle);
+                wordStyle = null;
                 result.add(syllable);
                 continue;
+            }
+            if (word.length() > 0 && wordStyle != null && !wordStyle.styleKey().equals(syllable.styleKey())) {
+                appendWord(result, word, wordStartMs, wordEndMs, wordStyle);
+                wordStyle = null;
             }
             if (word.length() == 0) {
                 wordStartMs = syllable.startTimeMs;
                 wordEndMs = syllable.endTimeMs;
+                wordStyle = syllable;
             } else {
                 wordEndMs = Math.max(wordEndMs, syllable.endTimeMs);
             }
             word.append(text);
         }
-        appendWord(result, word, wordStartMs, wordEndMs);
+        appendWord(result, word, wordStartMs, wordEndMs, wordStyle);
         return result;
     }
 
@@ -207,12 +216,15 @@ final class TimedSyllableNormalizer {
             List<LyricsLine.Syllable> result,
             StringBuilder word,
             long startTimeMs,
-            long endTimeMs
+            long endTimeMs,
+            LyricsLine.Syllable style
     ) {
         if (word.length() == 0) {
             return;
         }
-        result.add(new LyricsLine.Syllable(word.toString(), startTimeMs, endTimeMs));
+        result.add(style == null
+                ? new LyricsLine.Syllable(word.toString(), startTimeMs, endTimeMs)
+                : style.copy(word.toString(), startTimeMs, endTimeMs, style.sourceWordUnit));
         word.setLength(0);
     }
 
@@ -303,11 +315,28 @@ final class TimedSyllableNormalizer {
                 startTimeMs = 0L;
                 endTimeMs = 0L;
             }
-            result.add(new LyricsLine.Syllable(
-                    text.substring(rangeStart, rangeEnd),
-                    startTimeMs,
-                    Math.max(startTimeMs, endTimeMs)
-            ));
+            LyricsLine.Syllable pendingStyle = null;
+            StringBuilder pendingText = new StringBuilder();
+            for (int index = 0; index < source.size(); index++) {
+                int overlapStart = Math.max(rangeStart, starts.get(index));
+                int overlapEnd = Math.min(rangeEnd, ends.get(index));
+                if (overlapEnd <= overlapStart) continue;
+                LyricsLine.Syllable syllable = source.get(index);
+                if (pendingStyle != null && !pendingStyle.styleKey().equals(syllable.styleKey())) {
+                    result.add(pendingStyle.copy(
+                            pendingText.toString(), startTimeMs, Math.max(startTimeMs, endTimeMs), true
+                    ));
+                    pendingText.setLength(0);
+                    pendingStyle = null;
+                }
+                if (pendingStyle == null) pendingStyle = syllable;
+                pendingText.append(text, overlapStart, overlapEnd);
+            }
+            if (pendingStyle != null && pendingText.length() > 0) {
+                result.add(pendingStyle.copy(
+                        pendingText.toString(), startTimeMs, Math.max(startTimeMs, endTimeMs), true
+                ));
+            }
         }
         return result.isEmpty() ? syllables : result;
     }
@@ -345,7 +374,7 @@ final class TimedSyllableNormalizer {
             for (String grapheme : splitGraphemes(syllable.text)) {
                 boolean whitespace = isWhitespace(grapheme);
                 if (whitespaceRun != null && whitespaceRun != whitespace) {
-                    result.add(new LyricsLine.Syllable(
+                    result.add(syllable.copy(
                             run.toString(),
                             syllable.startTimeMs,
                             syllable.endTimeMs,
@@ -357,7 +386,7 @@ final class TimedSyllableNormalizer {
                 run.append(grapheme);
             }
             if (run.length() > 0) {
-                result.add(new LyricsLine.Syllable(
+                result.add(syllable.copy(
                         run.toString(),
                         syllable.startTimeMs,
                         syllable.endTimeMs,

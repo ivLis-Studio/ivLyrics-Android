@@ -109,7 +109,12 @@ final class CulturalAnnotation {
                 Marker marker = localMarkers.get(index);
                 value.insert(marker.endOffset - sourceOffset, "[" + marker.number + "]");
             }
-            result.add(new LyricsLine.Syllable(value.toString(), syllable.startTimeMs, syllable.endTimeMs));
+            result.add(syllable.copy(
+                    value.toString(),
+                    syllable.startTimeMs,
+                    syllable.endTimeMs,
+                    syllable.sourceWordUnit
+            ));
             sourceOffset = endOffset;
         }
         return result;
