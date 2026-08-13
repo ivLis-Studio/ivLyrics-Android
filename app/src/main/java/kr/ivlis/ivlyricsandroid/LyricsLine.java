@@ -124,11 +124,17 @@ final class LyricsLine {
         final String text;
         final long startTimeMs;
         final long endTimeMs;
+        final boolean sourceWordUnit;
 
         Syllable(String text, long startTimeMs, long endTimeMs) {
+            this(text, startTimeMs, endTimeMs, false);
+        }
+
+        Syllable(String text, long startTimeMs, long endTimeMs, boolean sourceWordUnit) {
             this.text = text == null ? "" : text;
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
+            this.sourceWordUnit = sourceWordUnit;
         }
     }
 

@@ -28,10 +28,10 @@ final class LyricsProviderSettings {
     static final String TYPE_PLAIN = "plain";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
-            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true, true),
-            new Provider(PROVIDER_PAXSENIX, "Lyrically (Paxsenix)", "default", PaxsenixLyricsProvider.PROJECT_URL, true, true, true, true, false),
-            new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, true, false),
-            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", false, true, true, true, false)
+            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true),
+            new Provider(PROVIDER_PAXSENIX, "Lyrically (Paxsenix)", "default", PaxsenixLyricsProvider.PROJECT_URL, true, true, true, true),
+            new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, true),
+            new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", false, true, true, true)
     ));
 
     private static final String PREFS_NAME = "lyrics_provider_settings";
@@ -190,6 +190,14 @@ final class LyricsProviderSettings {
         return Collections.unmodifiableList(result);
     }
 
+    static Provider provider(String providerId) {
+        String normalized = normalizeProviderId(providerId);
+        for (Provider provider : PROVIDERS) {
+            if (provider.id.equals(normalized)) return provider;
+        }
+        return null;
+    }
+
     private void writeOrder(List<String> order) {
         if (preferences == null) {
             return;
@@ -236,7 +244,6 @@ final class LyricsProviderSettings {
         final boolean nativeKaraoke;
         final boolean synced;
         final boolean plain;
-        final boolean ivLyricsSync;
 
         Provider(
                 String id,
@@ -246,8 +253,7 @@ final class LyricsProviderSettings {
                 boolean defaultEnabled,
                 boolean nativeKaraoke,
                 boolean synced,
-                boolean plain,
-                boolean ivLyricsSync
+                boolean plain
         ) {
             this.id = id;
             this.label = label;
@@ -257,7 +263,6 @@ final class LyricsProviderSettings {
             this.nativeKaraoke = nativeKaraoke;
             this.synced = synced;
             this.plain = plain;
-            this.ivLyricsSync = ivLyricsSync;
         }
     }
 

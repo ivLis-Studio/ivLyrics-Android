@@ -140,7 +140,7 @@ public final class LyricsView extends View {
     private boolean interludeLabelsEnabled = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = true;
     private boolean karaokeBounceEffectEnabled = true;
-    private boolean karaokeDataAsLineSynced;
+    private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
     private boolean japaneseFuriganaEnabled;
     private boolean pronunciationLoading;
     private boolean translationLoading;
@@ -429,11 +429,12 @@ public final class LyricsView extends View {
         postInvalidateOnAnimation();
     }
 
-    void setKaraokeDataAsLineSynced(boolean enabled) {
-        if (karaokeDataAsLineSynced == enabled) {
+    void setKaraokeDisplayGranularity(String granularity) {
+        String normalized = AiLyricsSettings.normalizeKaraokeDisplayGranularity(granularity);
+        if (karaokeDisplayGranularity.equals(normalized)) {
             return;
         }
-        karaokeDataAsLineSynced = enabled;
+        karaokeDisplayGranularity = normalized;
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
         bounceStates.clear();
@@ -1359,7 +1360,15 @@ public final class LyricsView extends View {
     }
 
     private boolean shouldRenderKaraokeTiming() {
-        return karaoke && !karaokeDataAsLineSynced;
+        return karaoke && !isLineDisplayGranularity();
+    }
+
+    private boolean isLineDisplayGranularity() {
+        return AiLyricsSettings.KARAOKE_DISPLAY_LINE.equals(karaokeDisplayGranularity);
+    }
+
+    private boolean isWordDisplayGranularity() {
+        return AiLyricsSettings.KARAOKE_DISPLAY_WORD.equals(karaokeDisplayGranularity);
     }
 
     private List<DrawGroup> buildLyricGroups(DisplayLine displayLine, boolean active, float distance) {
@@ -1932,7 +1941,7 @@ public final class LyricsView extends View {
                 + ":s:" + Math.round(textSize)
                 + ":ruby:" + (japaneseFuriganaEnabled ? (rubyText == null ? 0 : rubyText.hashCode()) : 0)
                 + ":fake:" + syncedLyricsKaraokeAnimationEnabled
-                + ":line:" + karaokeDataAsLineSynced;
+                + ":granularity:" + karaokeDisplayGranularity;
         List<TextRow> cached = rowLayoutCache.get(key);
         if (cached != null) {
             return cached;
@@ -2921,11 +2930,13 @@ public final class LyricsView extends View {
     ) {
         List<TextSegment> segments = new ArrayList<>();
         List<RubyAnnotation> rubyAnnotations = parseRubyAnnotations(text, rubyText);
-        if (karaokeDataAsLineSynced) {
+        if (isLineDisplayGranularity()) {
             return buildUntimedSegments(text, rubyAnnotations);
         }
         if (syllables != null && !syllables.isEmpty()) {
-            List<LyricsLine.Syllable> renderSyllables = TimedSyllableNormalizer.normalize(syllables);
+            List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
+                    ? TimedSyllableNormalizer.groupForWordDisplay(syllables)
+                    : TimedSyllableNormalizer.normalize(syllables);
             int charOffset = 0;
             for (int index = 0; index < renderSyllables.size(); index++) {
                 LyricsLine.Syllable syllable = renderSyllables.get(index);
@@ -2958,7 +2969,10 @@ public final class LyricsView extends View {
             syntheticSyllables.add(new LyricsLine.Syllable(value, start, end));
         }
         int charOffset = 0;
-        for (LyricsLine.Syllable syllable : TimedSyllableNormalizer.normalize(syntheticSyllables)) {
+        List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
+                ? TimedSyllableNormalizer.groupForWordDisplay(syntheticSyllables)
+                : TimedSyllableNormalizer.normalize(syntheticSyllables);
+        for (LyricsLine.Syllable syllable : renderSyllables) {
             String value = syllable.text == null ? "" : syllable.text;
             int charLength = Math.max(1, value.codePointCount(0, value.length()));
             segments.add(createMeasuredSegment(
@@ -3391,6 +3405,9 @@ public final class LyricsView extends View {
     }
 
     private float segmentFillFraction(TextSegment segment) {
+        if (isWordDisplayGranularity()) {
+            return positionMs >= segment.fillStartTimeMs ? 1f : 0f;
+        }
         if (positionMs >= segment.fillEndTimeMs) {
             return 1f;
         }
@@ -3954,15 +3971,15 @@ public final class LyricsView extends View {
                     continue;
                 }
                 if (positionMs >= segment.fillStartTimeMs && positionMs < segment.fillEndTimeMs) {
-                    return segment.sourceIndex;
+                    return segment.centerSourceIndex();
                 }
                 if (positionMs >= segment.fillEndTimeMs && segment.fillEndTimeMs >= fallbackEnd) {
                     fallbackEnd = segment.fillEndTimeMs;
-                    fallbackIndex = segment.sourceIndex;
+                    fallbackIndex = segment.centerSourceIndex();
                 }
                 if (positionMs < segment.fillStartTimeMs && segment.fillStartTimeMs < nextStart) {
                     nextStart = segment.fillStartTimeMs;
-                    nextIndex = segment.sourceIndex;
+                    nextIndex = segment.centerSourceIndex();
                 }
             }
         }
@@ -3976,7 +3993,7 @@ public final class LyricsView extends View {
         if (!MotionPreferences.animationsEnabled(getContext())) {
             return karaokeBounceResult.set(0f, 1f, false);
         }
-        if (karaokeDataAsLineSynced || !karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
+        if (isLineDisplayGranularity() || !karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
 
@@ -4765,6 +4782,10 @@ public final class LyricsView extends View {
                 cachedBounceKey = safePrefix + ':' + sourceIndex;
             }
             return cachedBounceKey;
+        }
+
+        int centerSourceIndex() {
+            return sourceIndex + Math.max(0, sourceLength - 1) / 2;
         }
     }
 

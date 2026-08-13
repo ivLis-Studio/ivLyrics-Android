@@ -1,6 +1,6 @@
 package kr.ivlis.ivlyricsandroid;
 
-import java.text.BreakIterator;
+import android.icu.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -249,6 +249,120 @@ final class TimedSyllableNormalizer {
 
     static List<String> splitGraphemes(String text) {
         return splitGraphemes(text, BreakIterator.getCharacterInstance(Locale.ROOT));
+    }
+
+    /** Native equivalent of Intl.Segmenter({ granularity: "word" }). */
+    static List<LyricsLine.Syllable> groupForWordDisplay(List<LyricsLine.Syllable> syllables) {
+        if (syllables == null || syllables.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (shouldPreserveSourceWordUnits(syllables)) {
+            return groupPreservedSourceWordUnits(syllables);
+        }
+        List<LyricsLine.Syllable> normalized = normalize(syllables);
+        StringBuilder textBuilder = new StringBuilder();
+        List<LyricsLine.Syllable> source = new ArrayList<>(normalized.size());
+        List<Integer> starts = new ArrayList<>(normalized.size());
+        List<Integer> ends = new ArrayList<>(normalized.size());
+        for (LyricsLine.Syllable syllable : normalized) {
+            if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
+                continue;
+            }
+            starts.add(textBuilder.length());
+            textBuilder.append(syllable.text);
+            ends.add(textBuilder.length());
+            source.add(syllable);
+        }
+        String text = textBuilder.toString();
+        if (text.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        BreakIterator iterator = BreakIterator.getWordInstance(Locale.getDefault());
+        iterator.setText(text);
+        List<LyricsLine.Syllable> result = new ArrayList<>();
+        int rangeStart = iterator.first();
+        for (int rangeEnd = iterator.next(); rangeEnd != BreakIterator.DONE; rangeStart = rangeEnd, rangeEnd = iterator.next()) {
+            if (rangeEnd <= rangeStart) {
+                continue;
+            }
+            long startTimeMs = Long.MAX_VALUE;
+            long endTimeMs = Long.MIN_VALUE;
+            for (int index = 0; index < source.size(); index++) {
+                if (ends.get(index) <= rangeStart || starts.get(index) >= rangeEnd) {
+                    continue;
+                }
+                LyricsLine.Syllable syllable = source.get(index);
+                startTimeMs = Math.min(startTimeMs, syllable.startTimeMs);
+                endTimeMs = Math.max(endTimeMs, syllable.endTimeMs);
+            }
+            if (startTimeMs == Long.MAX_VALUE) {
+                startTimeMs = 0L;
+                endTimeMs = 0L;
+            }
+            result.add(new LyricsLine.Syllable(
+                    text.substring(rangeStart, rangeEnd),
+                    startTimeMs,
+                    Math.max(startTimeMs, endTimeMs)
+            ));
+        }
+        return result.isEmpty() ? syllables : result;
+    }
+
+    private static boolean shouldPreserveSourceWordUnits(List<LyricsLine.Syllable> syllables) {
+        int visibleUnits = 0;
+        boolean hasMultiGraphemeUnit = false;
+        for (LyricsLine.Syllable syllable : syllables) {
+            if (syllable == null || syllable.text == null || syllable.text.isEmpty()
+                    || isWhitespace(syllable.text)) {
+                continue;
+            }
+            if (syllable.sourceWordUnit) {
+                return true;
+            }
+            visibleUnits++;
+            if (!hasMultiGraphemeUnit && splitGraphemes(syllable.text).size() > 1) {
+                hasMultiGraphemeUnit = true;
+            }
+        }
+        // Migrates cached word-sync data written before sourceWordUnit was persisted.
+        return visibleUnits > 1 && hasMultiGraphemeUnit;
+    }
+
+    private static List<LyricsLine.Syllable> groupPreservedSourceWordUnits(
+            List<LyricsLine.Syllable> syllables
+    ) {
+        List<LyricsLine.Syllable> result = new ArrayList<>();
+        for (LyricsLine.Syllable syllable : syllables) {
+            if (syllable == null || syllable.text == null || syllable.text.isEmpty()) {
+                continue;
+            }
+            StringBuilder run = new StringBuilder();
+            Boolean whitespaceRun = null;
+            for (String grapheme : splitGraphemes(syllable.text)) {
+                boolean whitespace = isWhitespace(grapheme);
+                if (whitespaceRun != null && whitespaceRun != whitespace) {
+                    result.add(new LyricsLine.Syllable(
+                            run.toString(),
+                            syllable.startTimeMs,
+                            syllable.endTimeMs,
+                            true
+                    ));
+                    run.setLength(0);
+                }
+                whitespaceRun = whitespace;
+                run.append(grapheme);
+            }
+            if (run.length() > 0) {
+                result.add(new LyricsLine.Syllable(
+                        run.toString(),
+                        syllable.startTimeMs,
+                        syllable.endTimeMs,
+                        true
+                ));
+            }
+        }
+        return result.isEmpty() ? syllables : result;
     }
 
     private static List<String> splitGraphemes(String text, BreakIterator iterator) {

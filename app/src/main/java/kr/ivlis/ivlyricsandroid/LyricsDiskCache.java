@@ -309,6 +309,9 @@ final class LyricsDiskCache {
             object.put("text", syllable.text);
             object.put("startTimeMs", syllable.startTimeMs);
             object.put("endTimeMs", syllable.endTimeMs);
+            if (syllable.sourceWordUnit) {
+                object.put("sourceWordUnit", true);
+            }
             array.put(object);
         }
         return array;
@@ -327,7 +330,8 @@ final class LyricsDiskCache {
             syllables.add(new LyricsLine.Syllable(
                     object.optString("text", ""),
                     object.optLong("startTimeMs", 0L),
-                    object.optLong("endTimeMs", 0L)
+                    object.optLong("endTimeMs", 0L),
+                    object.optBoolean("sourceWordUnit", false)
             ));
         }
         return syllables;

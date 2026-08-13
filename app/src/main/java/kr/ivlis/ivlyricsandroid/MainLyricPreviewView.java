@@ -96,7 +96,7 @@ final class MainLyricPreviewView extends View {
     private long lineEndMs;
     private boolean playing;
     private boolean karaokeBounceEffectEnabled = true;
-    private boolean karaokeDataAsLineSynced;
+    private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
     private float textScale = 1f;
     private String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
     private int culturalAnnotationFontSize = 12;
@@ -166,11 +166,13 @@ final class MainLyricPreviewView extends View {
         postInvalidateOnAnimation();
     }
 
-    void setKaraokeDataAsLineSynced(boolean enabled) {
-        if (karaokeDataAsLineSynced == enabled) {
+    void setKaraokeDisplayGranularity(String granularity) {
+        String normalized = AiLyricsSettings.normalizeKaraokeDisplayGranularity(granularity);
+        if (karaokeDisplayGranularity.equals(normalized)) {
             return;
         }
-        karaokeDataAsLineSynced = enabled;
+        karaokeDisplayGranularity = normalized;
+        textSegmentCache.clear();
         bounceStates.clear();
         completedBounceKeys.clear();
         postInvalidateOnAnimation();
@@ -302,7 +304,7 @@ final class MainLyricPreviewView extends View {
             canvas.drawText(line.text, x, baseline, textPaint);
             return;
         }
-        if (karaokeDataAsLineSynced || !line.hasKaraoke()) {
+        if (isLineDisplayGranularity() || !line.hasKaraoke()) {
             textPaint.setColor(Color.argb(normalAlpha, 255, 255, 255));
             canvas.drawText(line.text, x, baseline, textPaint);
             drawPlainRubyText(canvas, line, x, baseline, textSize, normalAlpha);
@@ -536,7 +538,7 @@ final class MainLyricPreviewView extends View {
     }
 
     private boolean hasKaraokeLine() {
-        if (karaokeDataAsLineSynced) {
+        if (isLineDisplayGranularity()) {
             return false;
         }
         for (PreviewLine line : lines) {
@@ -973,7 +975,9 @@ final class MainLyricPreviewView extends View {
         if (syllables == null || syllables.isEmpty()) {
             return Collections.emptyList();
         }
-        List<LyricsLine.Syllable> renderSyllables = TimedSyllableNormalizer.normalize(syllables);
+        List<LyricsLine.Syllable> renderSyllables = isWordDisplayGranularity()
+                ? TimedSyllableNormalizer.groupForWordDisplay(syllables)
+                : TimedSyllableNormalizer.normalize(syllables);
         List<RubyAnnotation> rubyAnnotations = line.rubyAnnotations();
         List<TextSegment> segments = new ArrayList<>(renderSyllables.size());
         int charOffset = 0;
@@ -1098,6 +1102,9 @@ final class MainLyricPreviewView extends View {
     }
 
     private float segmentFillFraction(TextSegment segment, long positionMs) {
+        if (isWordDisplayGranularity()) {
+            return positionMs >= segment.startTimeMs ? 1f : 0f;
+        }
         if (positionMs >= segment.endTimeMs) {
             return 1f;
         }
@@ -1107,6 +1114,14 @@ final class MainLyricPreviewView extends View {
         return clamp((positionMs - segment.startTimeMs) / (float) (segment.endTimeMs - segment.startTimeMs));
     }
 
+    private boolean isLineDisplayGranularity() {
+        return AiLyricsSettings.KARAOKE_DISPLAY_LINE.equals(karaokeDisplayGranularity);
+    }
+
+    private boolean isWordDisplayGranularity() {
+        return AiLyricsSettings.KARAOKE_DISPLAY_WORD.equals(karaokeDisplayGranularity);
+    }
+
     private int activeSegmentIndex(List<TextSegment> segments, long positionMs) {
         int fallbackIndex = -1;
         long fallbackEnd = Long.MIN_VALUE;
@@ -1114,15 +1129,15 @@ final class MainLyricPreviewView extends View {
         long nextStart = Long.MAX_VALUE;
         for (TextSegment segment : segments) {
             if (positionMs >= segment.startTimeMs && positionMs < segment.endTimeMs) {
-                return segment.sourceIndex;
+                return segment.centerSourceIndex();
             }
             if (positionMs >= segment.endTimeMs && segment.endTimeMs >= fallbackEnd) {
                 fallbackEnd = segment.endTimeMs;
-                fallbackIndex = segment.sourceIndex;
+                fallbackIndex = segment.centerSourceIndex();
             }
             if (positionMs < segment.startTimeMs && segment.startTimeMs < nextStart) {
                 nextStart = segment.startTimeMs;
-                nextIndex = segment.sourceIndex;
+                nextIndex = segment.centerSourceIndex();
             }
         }
         if (fallbackIndex >= 0 && positionMs - fallbackEnd < 2000L) {
@@ -1584,6 +1599,10 @@ final class MainLyricPreviewView extends View {
                 cachedBounceKey = prefix + ':' + sourceIndex;
             }
             return cachedBounceKey;
+        }
+
+        int centerSourceIndex() {
+            return sourceIndex + Math.max(0, sourceLength - 1) / 2;
         }
     }
 

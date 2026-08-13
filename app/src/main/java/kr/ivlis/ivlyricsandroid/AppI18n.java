@@ -110,7 +110,6 @@ final class AppI18n {
         addUpdateStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
         addFuriganaStrings(languages);
-        addKaraokeLineModeStrings(languages);
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
         addCreatorSpeakerColorStrings(languages);
@@ -123,6 +122,7 @@ final class AppI18n {
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
         languages.put("cs", csStrings());
+        addKaraokeLineModeStrings(languages);
         addGlobalSyncOffsetStrings(languages);
         addVinylStrings(languages);
         addCreatorPrivacyStrings(languages);
@@ -2982,54 +2982,69 @@ final class AppI18n {
     private static String[] karaokeLineModeStrings(String lang) {
         switch (normalize(lang)) {
             case "ko":
-                return karaokeLineModeStringsValues("노래방 데이터를 일반 싱크로 표시", "sync-data 노래방 타이밍이 있어도 글자별 채움 없이 라인 단위 싱크 가사처럼 표시합니다.");
+                return karaokeLineModeStringsValues("노래방 데이터를 일반 싱크로 표시", "sync-data 노래방 타이밍이 있어도 글자별 채움 없이 라인 단위 싱크 가사처럼 표시합니다.", "노래방 표시 단위", "노래방 및 일반 줄 싱크의 진행 효과를 글자, 단어 또는 줄 단위로 표시합니다.", "글자", "단어", "줄");
             case "zh-CN":
-                return karaokeLineModeStringsValues("将卡拉 OK 数据显示为行同步", "即使 sync-data 含卡拉 OK 逐字时间，也不做逐字填色，只按整行同步显示。");
+                return karaokeLineModeStringsValues("将卡拉 OK 数据显示为行同步", "即使 sync-data 含卡拉 OK 逐字时间，也不做逐字填色，只按整行同步显示。", "卡拉 OK 显示单位", "将卡拉 OK 与普通行同步歌词的进度按字符、词语或整行显示。", "字符", "词语", "整行");
             case "zh-TW":
-                return karaokeLineModeStringsValues("將卡拉 OK 資料顯示為行同步", "即使 sync-data 含卡拉 OK 逐字時間，也不做逐字填色，只按整行同步顯示。");
+                return karaokeLineModeStringsValues("將卡拉 OK 資料顯示為行同步", "即使 sync-data 含卡拉 OK 逐字時間，也不做逐字填色，只按整行同步顯示。", "卡拉 OK 顯示單位", "將卡拉 OK 與一般行同步歌詞的進度按字元、詞語或整行顯示。", "字元", "詞語", "整行");
             case "ja":
-                return karaokeLineModeStringsValues("カラオケデータを行同期で表示", "sync-data にカラオケの文字タイミングがあっても、文字ごとの塗りなしで通常の行同期歌詞として表示します。");
+                return karaokeLineModeStringsValues("カラオケデータを行同期で表示", "sync-data にカラオケの文字タイミングがあっても、文字ごとの塗りなしで通常の行同期歌詞として表示します。", "カラオケ表示単位", "カラオケと通常の行同期歌詞の進行を、文字・単語・行単位で表示します。", "文字", "単語", "行");
             case "hi":
-                return karaokeLineModeStringsValues("कराओके डेटा को लाइन-सिंक की तरह दिखाएँ", "sync-data में कराओके टाइमिंग होने पर भी अक्षर भराव के बिना सामान्य लाइन-सिंक गीतों की तरह दिखाता है।");
+                return karaokeLineModeStringsValues("कराओके डेटा को लाइन-सिंक की तरह दिखाएँ", "sync-data में कराओके टाइमिंग होने पर भी अक्षर भराव के बिना सामान्य लाइन-सिंक गीतों की तरह दिखाता है।", "कराओके प्रदर्शन इकाई", "कराओके और सामान्य लाइन-सिंक गीतों की प्रगति अक्षर, शब्द या पंक्ति के अनुसार दिखाएँ।", "अक्षर", "शब्द", "पंक्ति");
             case "es":
-                return karaokeLineModeStringsValues("Mostrar karaoke como sincronización por línea", "Aunque sync-data tenga tiempos de karaoke, lo muestra como letras sincronizadas por línea sin relleno por carácter.");
+                return karaokeLineModeStringsValues("Mostrar karaoke como sincronización por línea", "Aunque sync-data tenga tiempos de karaoke, lo muestra como letras sincronizadas por línea sin relleno por carácter.", "Unidad de visualización del karaoke", "Muestra el progreso del karaoke y de las letras sincronizadas por línea por carácter, palabra o línea completa.", "Carácter", "Palabra", "Línea");
             case "fr":
-                return karaokeLineModeStringsValues("Afficher le karaoké en lignes synchronisées", "Même si sync-data contient un minutage karaoké, affiche les paroles comme des lignes synchronisées sans remplissage par caractère.");
+                return karaokeLineModeStringsValues("Afficher le karaoké en lignes synchronisées", "Même si sync-data contient un minutage karaoké, affiche les paroles comme des lignes synchronisées sans remplissage par caractère.", "Unité d’affichage du karaoké", "Affiche la progression du karaoké et des paroles synchronisées par caractère, mot ou ligne entière.", "Caractère", "Mot", "Ligne");
             case "ar":
-                return karaokeLineModeStringsValues("عرض بيانات الكاريوكي كمزامنة سطرية", "حتى عند وجود توقيت كاريوكي في sync-data، يعرض الكلمات كسطور متزامنة عادية من دون تعبئة الأحرف.");
+                return karaokeLineModeStringsValues("عرض بيانات الكاريوكي كمزامنة سطرية", "حتى عند وجود توقيت كاريوكي في sync-data، يعرض الكلمات كسطور متزامنة عادية من دون تعبئة الأحرف.", "وحدة عرض الكاريوكي", "اعرض تقدم الكاريوكي والكلمات المتزامنة حسب الحرف أو الكلمة أو السطر الكامل.", "حرف", "كلمة", "سطر");
             case "fa":
-                return karaokeLineModeStringsValues("نمایش داده کارائوکه به صورت همگام خطی", "حتی اگر sync-data زمان‌بندی کارائوکه داشته باشد، متن را بدون پرشدن کاراکتری و مانند متن همگام خطی نمایش می‌دهد.");
+                return karaokeLineModeStringsValues("نمایش داده کارائوکه به صورت همگام خطی", "حتی اگر sync-data زمان‌بندی کارائوکه داشته باشد، متن را بدون پرشدن کاراکتری و مانند متن همگام خطی نمایش می‌دهد.", "واحد نمایش کارائوکه", "پیشرفت کارائوکه و متن همگام خطی را بر اساس نویسه، واژه یا کل خط نمایش می‌دهد.", "نویسه", "واژه", "خط");
             case "de":
-                return karaokeLineModeStringsValues("Karaoke-Daten als Zeilensync anzeigen", "Auch wenn sync-data Karaoke-Timing enthält, wird es ohne Zeichenfüllung wie normal synchronisierte Zeilen angezeigt.");
+                return karaokeLineModeStringsValues("Karaoke-Daten als Zeilensync anzeigen", "Auch wenn sync-data Karaoke-Timing enthält, wird es ohne Zeichenfüllung wie normal synchronisierte Zeilen angezeigt.", "Karaoke-Anzeigeeinheit", "Zeigt den Fortschritt von Karaoke und zeilensynchronen Texten nach Zeichen, Wort oder ganzer Zeile an.", "Zeichen", "Wort", "Zeile");
             case "ru":
-                return karaokeLineModeStringsValues("Показывать караоке как построчную синхронизацию", "Даже если sync-data содержит караоке-тайминги, текст отображается как обычные синхронные строки без посимвольной заливки.");
+                return karaokeLineModeStringsValues("Показывать караоке как построчную синхронизацию", "Даже если sync-data содержит караоке-тайминги, текст отображается как обычные синхронные строки без посимвольной заливки.", "Единица отображения караоке", "Показывает прогресс караоке и построчно синхронизированного текста по символам, словам или целой строке.", "Символ", "Слово", "Строка");
             case "sv":
-                return karaokeLineModeStringsValues("Visa karaokedata som radsynk", "Även när sync-data har karaoketajming visas texten som vanliga synkade rader utan teckenfyllning.");
+                return karaokeLineModeStringsValues("Visa karaokedata som radsynk", "Även när sync-data har karaoketajming visas texten som vanliga synkade rader utan teckenfyllning.", "Visningsenhet för karaoke", "Visar förloppet för karaoke och radsynkad text per tecken, ord eller hel rad.", "Tecken", "Ord", "Rad");
             case "pt":
-                return karaokeLineModeStringsValues("Mostrar dados de karaokê como sincronização por linha", "Mesmo com tempos de karaokê no sync-data, exibe como letras sincronizadas por linha sem preenchimento por caractere.");
+                return karaokeLineModeStringsValues("Mostrar dados de karaokê como sincronização por linha", "Mesmo com tempos de karaokê no sync-data, exibe como letras sincronizadas por linha sem preenchimento por caractere.", "Unidade de exibição do karaokê", "Mostra o progresso do karaokê e das letras sincronizadas por caractere, palavra ou linha inteira.", "Caractere", "Palavra", "Linha");
             case "bn":
-                return karaokeLineModeStringsValues("কারাওকে ডেটা লাইন-সিঙ্ক হিসেবে দেখান", "sync-data-তে কারাওকে টাইমিং থাকলেও অক্ষরভিত্তিক ভরাট ছাড়া সাধারণ লাইন-সিঙ্ক লিরিক্সের মতো দেখায়।");
+                return karaokeLineModeStringsValues("কারাওকে ডেটা লাইন-সিঙ্ক হিসেবে দেখান", "sync-data-তে কারাওকে টাইমিং থাকলেও অক্ষরভিত্তিক ভরাট ছাড়া সাধারণ লাইন-সিঙ্ক লিরিক্সের মতো দেখায়।", "কারাওকে প্রদর্শন একক", "কারাওকে ও লাইন-সিঙ্ক গানের অগ্রগতি অক্ষর, শব্দ বা পুরো লাইন অনুযায়ী দেখায়।", "অক্ষর", "শব্দ", "লাইন");
+            case "cs":
+                return karaokeLineModeStringsValues("Zobrazit karaoke data jako řádkově synchronizovaná", "Pokud sync-data obsahují časování karaoke, zobrazí je jako běžné řádkově synchronizované texty bez vyplňování jednotlivých znaků.", "Jednotka zobrazení karaoke", "Zobrazuje průběh karaoke a řádkově synchronizovaných textů po znacích, slovech nebo celých řádcích.", "Znak", "Slovo", "Řádek");
             case "it":
-                return karaokeLineModeStringsValues("Mostra il karaoke come sincronizzazione per riga", "Anche se sync-data contiene tempi karaoke, mostra il testo come righe sincronizzate senza riempimento per carattere.");
+                return karaokeLineModeStringsValues("Mostra il karaoke come sincronizzazione per riga", "Anche se sync-data contiene tempi karaoke, mostra il testo come righe sincronizzate senza riempimento per carattere.", "Unità di visualizzazione karaoke", "Mostra l’avanzamento del karaoke e dei testi sincronizzati per carattere, parola o riga intera.", "Carattere", "Parola", "Riga");
             case "th":
-                return karaokeLineModeStringsValues("แสดงข้อมูลคาราโอเกะเป็นซิงก์รายบรรทัด", "แม้ sync-data จะมีจังหวะคาราโอเกะ ก็จะแสดงเป็นเนื้อเพลงซิงก์รายบรรทัดโดยไม่มีการเติมสีทีละตัวอักษร");
+                return karaokeLineModeStringsValues("แสดงข้อมูลคาราโอเกะเป็นซิงก์รายบรรทัด", "แม้ sync-data จะมีจังหวะคาราโอเกะ ก็จะแสดงเป็นเนื้อเพลงซิงก์รายบรรทัดโดยไม่มีการเติมสีทีละตัวอักษร", "หน่วยการแสดงคาราโอเกะ", "แสดงความคืบหน้าของคาราโอเกะและเนื้อเพลงซิงก์ตามตัวอักษร คำ หรือทั้งบรรทัด", "ตัวอักษร", "คำ", "บรรทัด");
             case "vi":
-                return karaokeLineModeStringsValues("Hiển thị dữ liệu karaoke như lời đồng bộ dòng", "Ngay cả khi sync-data có thời gian karaoke, vẫn hiển thị như lời đồng bộ theo dòng, không tô từng ký tự.");
+                return karaokeLineModeStringsValues("Hiển thị dữ liệu karaoke như lời đồng bộ dòng", "Ngay cả khi sync-data có thời gian karaoke, vẫn hiển thị như lời đồng bộ theo dòng, không tô từng ký tự.", "Đơn vị hiển thị karaoke", "Hiển thị tiến trình karaoke và lời đồng bộ theo ký tự, từ hoặc toàn bộ dòng.", "Ký tự", "Từ", "Dòng");
             case "id":
-                return karaokeLineModeStringsValues("Tampilkan data karaoke sebagai sinkron baris", "Meski sync-data memiliki timing karaoke, tampilkan seperti lirik sinkron baris tanpa isi per karakter.");
+                return karaokeLineModeStringsValues("Tampilkan data karaoke sebagai sinkron baris", "Meski sync-data memiliki timing karaoke, tampilkan seperti lirik sinkron baris tanpa isi per karakter.", "Satuan tampilan karaoke", "Tampilkan progres karaoke dan lirik sinkron per karakter, kata, atau seluruh baris.", "Karakter", "Kata", "Baris");
             case "ms":
-                return karaokeLineModeStringsValues("Papar data karaoke sebagai segerak baris", "Walaupun sync-data mempunyai pemasaan karaoke, paparkan seperti lirik segerak baris tanpa isian aksara demi aksara.");
+                return karaokeLineModeStringsValues("Papar data karaoke sebagai segerak baris", "Walaupun sync-data mempunyai pemasaan karaoke, paparkan seperti lirik segerak baris tanpa isian aksara demi aksara.", "Unit paparan karaoke", "Paparkan kemajuan karaoke dan lirik segerak mengikut aksara, perkataan atau seluruh baris.", "Aksara", "Perkataan", "Baris");
             case "tr":
-                return karaokeLineModeStringsValues("Karaoke verisini satır senkronlu göster", "sync-data karaoke zamanlaması içerse bile harf dolumu olmadan normal satır senkronlu söz gibi gösterir.");
+                return karaokeLineModeStringsValues("Karaoke verisini satır senkronlu göster", "sync-data karaoke zamanlaması içerse bile harf dolumu olmadan normal satır senkronlu söz gibi gösterir.", "Karaoke görüntüleme birimi", "Karaoke ve satır senkronlu sözlerin ilerlemesini karakter, kelime veya tüm satır olarak gösterir.", "Karakter", "Kelime", "Satır");
             default:
-                return karaokeLineModeStringsValues("Show karaoke data as line-synced", "When sync-data has karaoke timing, render it like regular line-synced lyrics without per-character fill.");
+                return karaokeLineModeStringsValues("Show karaoke data as line-synced", "When sync-data has karaoke timing, render it like regular line-synced lyrics without per-character fill.", "Karaoke display unit", "Show karaoke and line-synced lyric progress by character, word, or whole line.", "Character", "Word", "Line");
         }
     }
 
-    private static String[] karaokeLineModeStringsValues(String title, String desc) {
+    private static String[] karaokeLineModeStringsValues(
+            String oldTitle,
+            String oldDesc,
+            String title,
+            String desc,
+            String character,
+            String word,
+            String line
+    ) {
         return new String[]{
-                "setting.karaoke_data_as_line_synced", title,
-                "setting.karaoke_data_as_line_synced_desc", desc
+                "setting.karaoke_data_as_line_synced", oldTitle,
+                "setting.karaoke_data_as_line_synced_desc", oldDesc,
+                "setting.karaoke_display_granularity", title,
+                "setting.karaoke_display_granularity_desc", desc,
+                "karaoke.display.character", character,
+                "karaoke.display.word", word,
+                "karaoke.display.line", line
         };
     }
 

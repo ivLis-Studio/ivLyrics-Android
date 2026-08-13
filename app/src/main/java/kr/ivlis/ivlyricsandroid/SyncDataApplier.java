@@ -309,14 +309,24 @@ final class SyncDataApplier {
         long startTime = 0L;
         for (LyricsLine.Syllable syllable : source) {
             if (text.length() > 0 && syllable.startTimeMs != startTime) {
-                grouped.add(new LyricsLine.Syllable(text.toString(), startTime, syllable.startTimeMs));
+                grouped.add(new LyricsLine.Syllable(
+                        text.toString(),
+                        startTime,
+                        syllable.startTimeMs,
+                        true
+                ));
                 text.setLength(0);
             }
             if (text.length() == 0) startTime = syllable.startTimeMs;
             text.append(syllable.text);
         }
         if (text.length() > 0) {
-            grouped.add(new LyricsLine.Syllable(text.toString(), startTime, Math.max(startTime, endTimeMs)));
+            grouped.add(new LyricsLine.Syllable(
+                    text.toString(),
+                    startTime,
+                    Math.max(startTime, endTimeMs),
+                    true
+            ));
         }
         return grouped;
     }

@@ -66,8 +66,7 @@ final class LyricsProviderSelectionPlan {
         LyricsProviderSettings.ProviderConfig config = settings.config(result.providerId);
         return config != null
                 && config.enabled
-                && config.karaoke
-                && config.provider.ivLyricsSync;
+                && config.karaoke;
     }
 
     static boolean shouldRecheckCachedResult(
@@ -82,7 +81,7 @@ final class LyricsProviderSelectionPlan {
         if (canApplyIvLyricsSyncToCachedResult(result, settings)) return true;
         if (!settings.preferSyncDataProvider || TrackSnapshot.normalizeIsrc(resolvedIsrc).isEmpty()) return false;
         LyricsProviderSettings.ProviderConfig current = settings.config(result.providerId);
-        return current == null || !current.provider.ivLyricsSync || !result.karaoke;
+        return current == null || !result.karaoke;
     }
 
     static String preferredIvLyricsSyncProviderId(
@@ -92,14 +91,11 @@ final class LyricsProviderSelectionPlan {
         if (settings == null || availableSyncDataProviders == null || availableSyncDataProviders.isEmpty()) {
             return "";
         }
-        for (LyricsProviderSettings.ProviderConfig config : settings.enabledProviders()) {
-            if (config.karaoke
-                    && config.provider.ivLyricsSync
-                    && availableSyncDataProviders.contains(config.provider.id)) {
-                return config.provider.id;
-            }
-        }
-        return "";
+        List<LyricsProviderSettings.ProviderConfig> preferred = syncDataProvidersInPriorityOrder(
+                settings.enabledProviders(),
+                availableSyncDataProviders
+        );
+        return preferred.isEmpty() ? "" : preferred.get(0).provider.id;
     }
 
     private static List<LyricsProviderSettings.ProviderConfig> preferredProviders(
@@ -110,19 +106,42 @@ final class LyricsProviderSelectionPlan {
         if (!settings.preferSyncDataProvider || syncProviders.isEmpty()) {
             return providers;
         }
-        List<LyricsProviderSettings.ProviderConfig> preferred = new ArrayList<>();
+        List<LyricsProviderSettings.ProviderConfig> preferred = syncDataProvidersInPriorityOrder(
+                providers,
+                syncProviders
+        );
+        Set<String> preferredIds = new LinkedHashSet<>();
+        for (LyricsProviderSettings.ProviderConfig config : preferred) {
+            preferredIds.add(config.provider.id);
+        }
         List<LyricsProviderSettings.ProviderConfig> remaining = new ArrayList<>();
         for (LyricsProviderSettings.ProviderConfig config : providers) {
-            if (config.karaoke
-                    && config.provider.ivLyricsSync
-                    && syncProviders.contains(config.provider.id)) {
-                preferred.add(config);
-            } else {
+            if (!preferredIds.contains(config.provider.id)) {
                 remaining.add(config);
             }
         }
         preferred.addAll(remaining);
         return preferred;
+    }
+
+    private static List<LyricsProviderSettings.ProviderConfig> syncDataProvidersInPriorityOrder(
+            List<LyricsProviderSettings.ProviderConfig> providers,
+            Set<String> syncProviders
+    ) {
+        List<LyricsProviderSettings.ProviderConfig> lrclib = new ArrayList<>();
+        List<LyricsProviderSettings.ProviderConfig> others = new ArrayList<>();
+        for (LyricsProviderSettings.ProviderConfig config : providers) {
+            if (!config.karaoke || !syncProviders.contains(config.provider.id)) {
+                continue;
+            }
+            if (LyricsProviderSettings.PROVIDER_LRCLIB.equals(config.provider.id)) {
+                lrclib.add(config);
+            } else {
+                others.add(config);
+            }
+        }
+        lrclib.addAll(others);
+        return lrclib;
     }
 
     private static boolean canParticipate(
@@ -135,7 +154,7 @@ final class LyricsProviderSelectionPlan {
         }
         if (LyricsProviderSettings.TYPE_KARAOKE.equals(type)) {
             return config.provider.nativeKaraoke
-                    || (config.provider.ivLyricsSync && syncProviders.contains(config.provider.id));
+                    || syncProviders.contains(config.provider.id);
         }
         if (LyricsProviderSettings.TYPE_SYNCED.equals(type)) {
             return config.provider.synced;

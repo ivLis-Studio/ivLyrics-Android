@@ -477,12 +477,12 @@ final class LyricsRepository {
         if (syncDataResponseCache == null) {
             return;
         }
-        String key = syncDataCacheKey(isrc);
-        if (!key.isEmpty()) {
-            syncDataResponseCache.remove(key);
-            clearOpenDbCache();
-            markSyncDataServerCacheBypass(TrackSnapshot.normalizeIsrc(isrc));
+        for (LyricsProviderSettings.Provider provider : LyricsProviderSettings.PROVIDERS) {
+            String key = syncDataCacheKey(isrc, provider.id);
+            if (!key.isEmpty()) syncDataResponseCache.remove(key);
         }
+        clearOpenDbCache();
+        markSyncDataServerCacheBypass(TrackSnapshot.normalizeIsrc(isrc));
     }
 
     private void clearOpenDbCache() {
@@ -735,12 +735,13 @@ final class LyricsRepository {
                 )) {
                     SyncDataResult syncData = fetchSyncData(
                             isrc,
+                            preferredSyncProvider,
                             track,
                             spotifyMatch,
                             log,
                             !cachedBase.contributors.isEmpty()
                     );
-                    return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
+                    return applySyncDataToCachedBase(cachedBase, syncData, configProviderLabel(preferredSyncProvider), track, isrc, spotifyTrackId, log)
                             .withSelection(
                                     cachedBase.providerId,
                                     providerSettings.cacheKeyForProvider(cachedBase.providerId)
@@ -764,12 +765,13 @@ final class LyricsRepository {
                         ? null
                         : fetchSyncData(
                                 isrc,
+                                cachedBase.providerId,
                                 track,
                                 spotifyMatch,
                                 log,
                                 !cachedBase.contributors.isEmpty()
                         );
-                return applySyncDataToCachedBase(cachedBase, syncData, track, isrc, spotifyTrackId, log)
+                return applySyncDataToCachedBase(cachedBase, syncData, configProviderLabel(cachedBase.providerId), track, isrc, spotifyTrackId, log)
                         .withSelection(
                                 cachedBase.providerId,
                                 providerSettings.cacheKeyForProvider(cachedBase.providerId)
@@ -779,7 +781,7 @@ final class LyricsRepository {
                     && !cachedBase.contributors.isEmpty()
                     && syncDataProviders.contains(cachedBase.providerId)
                     && !isrc.isEmpty()) {
-                SyncDataResult currentSyncData = fetchSyncData(isrc, track, spotifyMatch, log, true);
+                SyncDataResult currentSyncData = fetchSyncData(isrc, cachedBase.providerId, track, spotifyMatch, log, true);
                 if (currentSyncData != null) {
                     log.write("sync-data contributors refreshed for cached lyrics: count="
                             + currentSyncData.contributors.size());
@@ -893,7 +895,7 @@ final class LyricsRepository {
                 result = UnisonLyricsProvider.fetch(track, isrc, spotifyTrackId, log::write);
             } else if (LyricsProviderSettings.PROVIDER_LRCLIB.equals(config.provider.id)) {
                 SyncDataResult syncData = !isrc.isEmpty() && config.karaoke && syncDataProviders.contains(config.provider.id)
-                        ? fetchSyncData(isrc, track, spotifyMatch, log)
+                        ? fetchSyncData(isrc, config.provider.id, track, spotifyMatch, log)
                         : null;
                 result = loadLrclibProvider(track, isrc, spotifyTrackId, spotifyMatch, syncData, log);
             }
@@ -903,6 +905,37 @@ final class LyricsRepository {
         }
         if (candidate == null && result != null && !result.lines.isEmpty()) {
             candidate = candidateFromResult(result);
+        }
+        if (candidate != null
+                && !LyricsProviderSettings.PROVIDER_LRCLIB.equals(config.provider.id)
+                && config.karaoke
+                && !isrc.isEmpty()
+                && syncDataProviders.contains(config.provider.id)) {
+            LyricsResult base = candidate.synced != null ? candidate.synced
+                    : (candidate.plain != null ? candidate.plain : candidate.karaoke);
+            if (base == null) {
+                attempts.put(config.provider.id, candidate);
+                return candidate;
+            }
+            SyncDataResult syncData = fetchSyncData(
+                    isrc,
+                    config.provider.id,
+                    track,
+                    spotifyMatch,
+                    log
+            );
+            LyricsResult applied = applySyncDataToCachedBase(
+                    base,
+                    syncData,
+                    config.provider.label,
+                    track,
+                    isrc,
+                    spotifyTrackId,
+                    log
+            );
+            if (applied != null && applied.karaoke) {
+                candidate = new ProviderCandidate(applied, candidate.synced, candidate.plain);
+            }
         }
         attempts.put(config.provider.id, candidate);
         return candidate;
@@ -1009,6 +1042,11 @@ final class LyricsRepository {
         List<String> ids = new ArrayList<>();
         for (LyricsProviderSettings.ProviderConfig provider : providers) ids.add(provider.provider.id);
         return ids.toString();
+    }
+
+    private String configProviderLabel(String providerId) {
+        LyricsProviderSettings.Provider provider = LyricsProviderSettings.provider(providerId);
+        return provider == null ? providerId : provider.label;
     }
 
     private LyricsResult loadLrclibProvider(
@@ -1124,6 +1162,7 @@ final class LyricsRepository {
     private LyricsResult applySyncDataToCachedBase(
             LyricsResult cachedBase,
             SyncDataResult syncData,
+            String providerName,
             TrackSnapshot track,
             String isrc,
             String spotifyTrackId,
@@ -1141,7 +1180,7 @@ final class LyricsRepository {
                         + " / vocalParts=" + countVocalParts(applied.lines));
                 return new LyricsResult(
                         applied.lines,
-                        "ivLyrics sync-data + LRCLIB",
+                        "ivLyrics sync-data + " + providerName,
                         ui("repo.detail.sync_applied_search"),
                         true,
                         isrc,
@@ -1149,7 +1188,7 @@ final class LyricsRepository {
                         syncData.contributors
                 );
             }
-            log.write("sync-data apply failed for cached lyrics: keeping LRCLIB line lyrics");
+            log.write("sync-data apply failed for cached lyrics: keeping provider line lyrics");
         }
 
         String detail = isrc.isEmpty()
@@ -1932,12 +1971,13 @@ final class LyricsRepository {
         }
     }
 
-    private SyncDataResult fetchSyncData(String isrc, TrackSnapshot track, SpotifyTrackMatch spotifyMatch, LogSink log) {
-        return fetchSyncData(isrc, track, spotifyMatch, log, false);
+    private SyncDataResult fetchSyncData(String isrc, String providerId, TrackSnapshot track, SpotifyTrackMatch spotifyMatch, LogSink log) {
+        return fetchSyncData(isrc, providerId, track, spotifyMatch, log, false);
     }
 
     private SyncDataResult fetchSyncData(
             String isrc,
+            String providerId,
             TrackSnapshot track,
             SpotifyTrackMatch spotifyMatch,
             LogSink log,
@@ -1945,15 +1985,16 @@ final class LyricsRepository {
     ) {
         try {
             String normalizedIsrc = TrackSnapshot.normalizeIsrc(isrc);
-            if (normalizedIsrc.isEmpty()) {
+            String normalizedProvider = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
+            if (normalizedIsrc.isEmpty() || LyricsProviderSettings.provider(normalizedProvider) == null) {
                 return null;
             }
-            String cacheKey = syncDataCacheKey(isrc);
+            String cacheKey = syncDataCacheKey(isrc, normalizedProvider);
             String cachedResponse = syncDataResponseCache == null ? "" : syncDataResponseCache.get(cacheKey);
             boolean cachedIdentityRedacted = cachedResponse.contains("\"identityRedacted\":true");
             if (!refreshContributorPrivacy && !cachedResponse.isEmpty() && !cachedIdentityRedacted) {
                 log.write("sync-data cache hit: isrc=" + normalizedIsrc);
-                return parseSyncDataResponse(cachedResponse, log, true);
+                return parseSyncDataResponse(cachedResponse, normalizedProvider, log, true);
             }
             if (cachedIdentityRedacted) {
                 log.write("sync-data timing cache hit; refreshing contributor privacy metadata");
@@ -1969,14 +2010,14 @@ final class LyricsRepository {
                         log.write("sync-data opendb: unavailable after cache clear, skip direct sync-data request");
                         return null;
                     }
-                } else if (!shouldRequestSyncDataFromOpenDb(normalizedIsrc, LRCLIB_PROVIDER_ID, log)) {
+                } else if (!shouldRequestSyncDataFromOpenDb(normalizedIsrc, normalizedProvider, log)) {
                     return null;
                 }
             }
 
             Map<String, String> params = new HashMap<>();
             params.put("isrc", normalizedIsrc);
-            params.put("provider", "lrclib");
+            params.put("provider", normalizedProvider);
             params.put("request-version", SYNC_DATA_REQUEST_VERSION);
             params.put("metadata", "1");
             if (bypassServerCache) {
@@ -1994,7 +2035,7 @@ final class LyricsRepository {
             Map<String, String> headers = syncDataHeaders();
             log.write("sync-data headers: Origin=" + headers.get("Origin"));
             String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers);
-            SyncDataResult result = parseSyncDataResponse(response, log, false);
+            SyncDataResult result = parseSyncDataResponse(response, normalizedProvider, log, false);
             if (syncDataResponseCache != null && !cacheKey.isEmpty()) {
                 String persistentResponse = redactSyncDataContributorIdentitiesForCache(response);
                 if (!persistentResponse.isEmpty()) {
@@ -2284,7 +2325,7 @@ final class LyricsRepository {
         return true;
     }
 
-    private SyncDataResult parseSyncDataResponse(String response, LogSink log, boolean fromCache) throws Exception {
+    private SyncDataResult parseSyncDataResponse(String response, String expectedProvider, LogSink log, boolean fromCache) throws Exception {
         String prefix = fromCache ? "sync-data cached response" : "sync-data response";
         JSONObject root = new JSONObject(response);
         JSONObject data = root.optJSONObject("data");
@@ -2292,11 +2333,16 @@ final class LyricsRepository {
             log.write(prefix + ": no data");
             return null;
         }
+        String responseProvider = data.optString("provider", expectedProvider).trim().toLowerCase(Locale.ROOT);
+        if (!expectedProvider.equals(responseProvider)) {
+            log.write(prefix + ": provider mismatch / expected=" + expectedProvider + " / actual=" + responseProvider);
+            return null;
+        }
         JSONObject syncData = data.optJSONObject("syncData");
         if (syncData != null) {
             SyncDataResult result = new SyncDataResult(
                     syncBodyWithDurationFallback(syncData, data),
-                    data.optString("provider", "lrclib"),
+                    responseProvider,
                     parseSyncContributors(data, syncData)
             );
             log.write(prefix + ": provider=" + result.provider
@@ -2309,7 +2355,7 @@ final class LyricsRepository {
         if (data.optJSONArray("lines") != null) {
             SyncDataResult result = new SyncDataResult(
                     syncBodyWithDurationFallback(data, data),
-                    data.optString("provider", "lrclib"),
+                    responseProvider,
                     parseSyncContributors(data, data)
             );
             log.write(prefix + ": legacy body / provider=" + result.provider
@@ -2323,9 +2369,12 @@ final class LyricsRepository {
         return null;
     }
 
-    private String syncDataCacheKey(String isrc) {
+    private String syncDataCacheKey(String isrc, String providerId) {
         String normalized = TrackSnapshot.normalizeIsrc(isrc);
-        return normalized.isEmpty() ? "" : SYNC_DATA_CACHE_SCHEMA + "|isrc:" + normalized + "|provider:" + LRCLIB_PROVIDER_ID;
+        String provider = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() || provider.isEmpty()
+                ? ""
+                : SYNC_DATA_CACHE_SCHEMA + "|isrc:" + normalized + "|provider:" + provider;
     }
 
     private JSONObject syncBodyWithDurationFallback(JSONObject syncBody, JSONObject wrapper) {
