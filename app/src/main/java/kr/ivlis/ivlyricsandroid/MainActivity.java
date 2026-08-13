@@ -143,8 +143,10 @@ public final class MainActivity extends Activity implements
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
     private static final String UI_HINTS_PREFS = "ui_hints";
+    private static final String RESEARCH_PREFS = "research_preferences";
     private static final String UPDATE_PREFS = "app_updates";
     private static final String KEY_LYRICS_META_MENU_TIP_SHOWN = "lyrics_meta_menu_tip_shown";
+    private static final String KEY_RESEARCH_TOKEN_CONSENT_V1 = "token_consent_v1";
     private static final String KEY_LAST_AUTO_UPDATE_CHECK_MS = "last_auto_update_check_ms";
     private static final long AUTO_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L;
     private static final long PLAYBACK_CLOCK_INTERVAL_MS = 33L;
@@ -274,6 +276,7 @@ public final class MainActivity extends Activity implements
     private PopupWindow lyricsMetaMenuPopup;
     private ScrollView lyricsMetaMenuScrollView;
     private AlertDialog tmiDialog;
+    private AlertDialog researchTokenConsentDialog;
     private AlertDialog firstLanguagePromptDialog;
     private LinearLayout tmiDialogBody;
     private TextView tmiDialogRegenerateButton;
@@ -942,6 +945,7 @@ public final class MainActivity extends Activity implements
         handler.removeCallbacksAndMessages(null);
         dismissLyricsMetaTip();
         dismissLyricsMetaMenuPopup();
+        dismissResearchTokenConsentDialog();
         dismissTmiDialog();
         cancelArtworkLongPress();
         if (pendingLyricsProviderReload != null) {
@@ -990,6 +994,11 @@ public final class MainActivity extends Activity implements
         if (isInAppBrowserVisible()) {
             lastBackPressElapsedMs = 0L;
             showInAppBrowser(false);
+            return;
+        }
+        if (researchTokenConsentDialog != null && researchTokenConsentDialog.isShowing()) {
+            lastBackPressElapsedMs = 0L;
+            dismissResearchTokenConsentDialog();
             return;
         }
         if (tmiDialog != null && tmiDialog.isShowing()) {
@@ -11039,6 +11048,11 @@ public final class MainActivity extends Activity implements
         if (aiLyricsRepository == null || aiLyricsSettings == null) {
             return;
         }
+        AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
+        if (settings.hasApiKey() && settings.hasModel() && !hasResearchTokenConsent()) {
+            showResearchTokenConsentDialog(bypassCache);
+            return;
+        }
         String trackKey = snapshot.stableKey();
         boolean sameRequest = trackKey.equals(currentTmiRequestKey);
         boolean needsNewDialog = tmiDialog == null
@@ -11055,7 +11069,6 @@ public final class MainActivity extends Activity implements
             return;
         }
 
-        AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
         renderTmiLoading(snapshot);
         if (!settings.hasApiKey()) {
             renderTmiError(ui("tmi.require_key"));
@@ -11067,6 +11080,146 @@ public final class MainActivity extends Activity implements
         }
         tmiRequestInFlight = true;
         aiLyricsRepository.loadTmi(snapshot, currentBaseLyricsResult, settings, bypassCache, this);
+    }
+
+    private boolean hasResearchTokenConsent() {
+        return getSharedPreferences(RESEARCH_PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_RESEARCH_TOKEN_CONSENT_V1, false);
+    }
+
+    private void rememberResearchTokenConsent() {
+        getSharedPreferences(RESEARCH_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_RESEARCH_TOKEN_CONSENT_V1, true)
+                .apply();
+    }
+
+    private void showResearchTokenConsentDialog(boolean bypassCache) {
+        if (isFinishing()) {
+            return;
+        }
+        if (researchTokenConsentDialog != null && researchTokenConsentDialog.isShowing()) {
+            return;
+        }
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setGravity(Gravity.CENTER_HORIZONTAL);
+        shell.setPadding(dp(24), dp(24), dp(24), dp(20));
+        GradientDrawable shellBackground = roundDrawable(Color.rgb(18, 20, 30), dp(22));
+        shellBackground.setStroke(dp(1), Color.argb(46, 245, 158, 11));
+        shell.setBackground(shellBackground);
+
+        TextView icon = label("!", 23f, Color.rgb(251, 191, 36), AppFonts.bold(this));
+        icon.setGravity(Gravity.CENTER);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        icon.setBackground(roundDrawable(Color.argb(42, 245, 158, 11), dp(28)));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(56), dp(56));
+        iconParams.gravity = Gravity.CENTER_HORIZONTAL;
+        shell.addView(icon, iconParams);
+
+        TextView eyebrow = label(
+                ui("tmi.title"),
+                11f,
+                Color.rgb(251, 191, 36),
+                AppFonts.semiBold(this)
+        );
+        eyebrow.setGravity(Gravity.CENTER);
+        eyebrow.setLetterSpacing(0.08f);
+        shell.addView(eyebrow, topMargin(matchWrap(), dp(14)));
+
+        TextView title = label(
+                ui("research.token_consent_title"),
+                20f,
+                Color.rgb(248, 250, 252),
+                AppFonts.bold(this)
+        );
+        title.setGravity(Gravity.CENTER);
+        title.setLineSpacing(0f, 1.08f);
+        shell.addView(title, topMargin(matchWrap(), dp(7)));
+
+        TextView body = label(
+                ui("research.token_consent_body"),
+                14.5f,
+                Color.argb(190, 248, 250, 252),
+                AppFonts.regular(this)
+        );
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(0f, 1.15f);
+        shell.addView(body, topMargin(matchWrap(), dp(12)));
+
+        TextView note = label(
+                "•  " + ui("research.token_consent_note"),
+                12.5f,
+                Color.rgb(254, 243, 199),
+                AppFonts.regular(this)
+        );
+        note.setLineSpacing(0f, 1.14f);
+        note.setPadding(dp(12), dp(11), dp(12), dp(11));
+        GradientDrawable noteBackground = roundDrawable(Color.argb(28, 245, 158, 11), dp(11));
+        noteBackground.setStroke(dp(1), Color.argb(58, 245, 158, 11));
+        note.setBackground(noteBackground);
+        shell.addView(note, topMargin(matchWrap(), dp(16)));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        shell.addView(actions, topMargin(matchWrap(), dp(18)));
+
+        TextView cancel = debugButton(ui("button.close"));
+        actions.addView(cancel, new LinearLayout.LayoutParams(0, dp(46), 0.8f));
+
+        TextView agree = debugButton(ui("research.token_consent_agree"));
+        agree.setTextColor(Color.rgb(30, 24, 10));
+        agree.setBackground(roundDrawable(Color.rgb(251, 191, 36), dp(10)));
+        LinearLayout.LayoutParams agreeParams = new LinearLayout.LayoutParams(0, dp(46), 1.35f);
+        agreeParams.leftMargin = dp(8);
+        actions.addView(agree, agreeParams);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(false);
+        scrollView.setClipToPadding(false);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scrollView.addView(shell, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(scrollView)
+                .create();
+        researchTokenConsentDialog = dialog;
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.setOnDismissListener(ignored -> {
+            if (researchTokenConsentDialog == dialog) {
+                researchTokenConsentDialog = null;
+            }
+        });
+        cancel.setOnClickListener(view -> dialog.dismiss());
+        agree.setOnClickListener(view -> {
+            rememberResearchTokenConsent();
+            dialog.dismiss();
+            showTmiForCurrentTrack(bypassCache);
+        });
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.56f);
+            int width = Math.min(
+                    getResources().getDisplayMetrics().widthPixels - dp(32),
+                    dp(440)
+            );
+            window.setLayout(Math.max(dp(300), width), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void dismissResearchTokenConsentDialog() {
+        if (researchTokenConsentDialog != null) {
+            researchTokenConsentDialog.dismiss();
+        }
+        researchTokenConsentDialog = null;
     }
 
     private void showTmiDialog(TrackSnapshot snapshot) {
