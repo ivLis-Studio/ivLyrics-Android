@@ -14,6 +14,7 @@ import java.util.Set;
 final class SyncDataApplier {
     private static final long DURATION_OFFSET_MIN_DIFF_MS = 500L;
     private static final double DURATION_FRONT_OFFSET_RATIO = 0.3;
+    private static final int MAX_STYLE_RANGES_PER_LINE = 256;
 
     private SyncDataApplier() {
     }
@@ -284,8 +285,7 @@ final class SyncDataApplier {
                     charEndMs,
                     false,
                     line.start + charIndex,
-                    line.styleRanges,
-                    line.kind
+                    line.styleRanges
             ));
         }
         return new TimedSyllables(collapseSyllables(syllables, line.granularity, adjustedEndMs), adjustedEndMs);
@@ -353,18 +353,14 @@ final class SyncDataApplier {
             long endTimeMs,
             boolean sourceWordUnit,
             int absoluteIndex,
-            List<StyleRange> styleRanges,
-            String fallbackKind
+            List<StyleRange> styleRanges
     ) {
         if (styleRanges == null || styleRanges.isEmpty()) {
             return new LyricsLine.Syllable(text, startTimeMs, endTimeMs, sourceWordUnit);
         }
-        StyleRange style = null;
-        for (StyleRange candidate : styleRanges) {
-            if (candidate.start <= absoluteIndex && candidate.end >= absoluteIndex) {
-                style = candidate;
-                break;
-            }
+        StyleRange style = findStyleRange(styleRanges, absoluteIndex);
+        if (style == null) {
+            return new LyricsLine.Syllable(text, startTimeMs, endTimeMs, sourceWordUnit);
         }
         return new LyricsLine.Syllable(
                 text,
@@ -372,11 +368,28 @@ final class SyncDataApplier {
                 endTimeMs,
                 sourceWordUnit,
                 true,
-                style == null || style.kind.isEmpty() ? firstNonEmpty(fallbackKind, "vocal") : style.kind,
-                style == null ? "" : style.speaker,
-                style == null ? "" : style.speakerColor,
-                style == null ? "" : style.speakerFallback
+                style.kind,
+                style.speaker,
+                style.speakerColor,
+                style.speakerFallback
         );
+    }
+
+    private static StyleRange findStyleRange(List<StyleRange> styleRanges, int absoluteIndex) {
+        int low = 0;
+        int high = styleRanges == null ? -1 : styleRanges.size() - 1;
+        while (low <= high) {
+            int middle = (low + high) >>> 1;
+            StyleRange range = styleRanges.get(middle);
+            if (absoluteIndex < range.start) {
+                high = middle - 1;
+            } else if (absoluteIndex > range.end) {
+                low = middle + 1;
+            } else {
+                return range;
+            }
+        }
+        return null;
     }
 
     private static List<LyricsLine.VocalPart> buildVocalParts(
@@ -420,10 +433,7 @@ final class SyncDataApplier {
                     long previousTime = syllables.isEmpty()
                             ? secondsToMs(part.chars.get(Math.max(0, Math.min(partCharIndex, part.chars.size() - 1))))
                             : syllables.get(syllables.size() - 1).endTimeMs;
-                    syllables.add(styledSyllable(
-                            " ", previousTime, previousTime, false,
-                            Math.max(line.start, range.start - 1), line.styleRanges, part.kind
-                    ));
+                    syllables.add(new LyricsLine.Syllable(" ", previousTime, previousTime, false));
                 }
             }
 
@@ -446,7 +456,7 @@ final class SyncDataApplier {
                 }
                 syllables.add(styledSyllable(
                         fullChars.get(sourceIndex), charStartMs, charEndMs, false,
-                        sourceIndex, line.styleRanges, part.kind
+                        sourceIndex, line.styleRanges
                 ));
                 partCharIndex++;
             }
@@ -542,7 +552,7 @@ final class SyncDataApplier {
                     rawLine.optString("speaker-color", ""),
                     rawLine.optString("speaker-fallback", ""),
                     rawLine.optString("kind", "vocal"),
-                    readStyleRanges(rawLine.optJSONArray("styleRanges")),
+                    readStyleRanges(rawLine.optJSONArray("styleRanges"), start, end),
                     parallel.parts,
                     parallel.hiddenRanges
             ));
@@ -593,32 +603,97 @@ final class SyncDataApplier {
         return "line".equals(normalized) || "word".equals(normalized) ? normalized : "character";
     }
 
-    private static List<StyleRange> readStyleRanges(JSONArray rawRanges) {
+    private static List<StyleRange> readStyleRanges(JSONArray rawRanges, int lineStart, int lineEnd) {
         if (rawRanges == null || rawRanges.length() == 0) {
             return Collections.emptyList();
         }
         List<StyleRange> result = new ArrayList<>();
+        int previousEnd = lineStart - 1;
         for (int index = 0; index < rawRanges.length(); index++) {
+            if (result.size() >= MAX_STYLE_RANGES_PER_LINE) break;
             JSONObject raw = rawRanges.optJSONObject(index);
             if (raw == null) continue;
             int start = raw.optInt("start", -1);
             int end = raw.optInt("end", -1);
             String kind = raw.optString("kind", "").trim().toLowerCase(Locale.ROOT);
-            String speaker = raw.optString("speaker", "").trim().toUpperCase(Locale.ROOT);
-            if (start < 0 || end < start || (kind.isEmpty() && speaker.isEmpty())) continue;
+            if (!isValidStyleKind(kind)) kind = "";
+            String speaker = normalizeStyleSpeaker(raw.optString("speaker", ""));
+            String speakerColor = normalizeStyleSpeakerColor(raw.optString("speaker-color", ""));
+            String speakerFallback = normalizeStyleSpeakerFallback(raw.optString("speaker-fallback", ""));
+            if (isCustomStyleSpeaker(speaker) && speakerColor.isEmpty()) speaker = "";
+            if (start < lineStart
+                    || end > lineEnd
+                    || end < start
+                    || start <= previousEnd
+                    || (kind.isEmpty() && speaker.isEmpty())) {
+                continue;
+            }
             result.add(new StyleRange(
                     start,
                     end,
                     kind,
                     speaker,
-                    raw.optString("speaker-color", ""),
-                    raw.optString("speaker-fallback", "")
+                    speaker.isEmpty() ? "" : speakerColor,
+                    speaker.isEmpty() ? "" : speakerFallback
             ));
+            previousEnd = end;
         }
-        result.sort((left, right) -> left.start == right.start
-                ? Integer.compare(left.end, right.end)
-                : Integer.compare(left.start, right.start));
         return result;
+    }
+
+    private static boolean isValidStyleKind(String kind) {
+        switch (kind == null ? "" : kind) {
+            case "vocal":
+            case "effect":
+            case "adlib":
+            case "pulse":
+            case "wave":
+            case "sparkle":
+            case "echo":
+            case "whisper":
+            case "bounce":
+            case "sway":
+            case "glow":
+            case "glitch":
+            case "flicker":
+            case "float":
+            case "blur":
+            case "pop":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static String normalizeStyleSpeaker(String value) {
+        String speaker = value == null ? "" : value.trim()
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .replaceAll("\\s+", " ")
+                .toUpperCase(Locale.ROOT);
+        if ("NORMAL".equals(speaker) || "CUSTOM".equals(speaker)) return speaker;
+        if (speaker.matches("^(MALE|FEMALE|DUET) [1-5]$")) return speaker;
+        return speaker.matches("^(MALE|FEMALE|DUET) CUSTOM$") ? speaker : "";
+    }
+
+    private static boolean isCustomStyleSpeaker(String speaker) {
+        return "CUSTOM".equals(speaker) || (speaker != null && speaker.endsWith(" CUSTOM"));
+    }
+
+    private static String normalizeStyleSpeakerColor(String value) {
+        String color = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return color.matches("^#[0-9a-f]{6}$") ? color : "";
+    }
+
+    private static String normalizeStyleSpeakerFallback(String value) {
+        String fallback = value == null ? "" : value.trim()
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .replaceAll("\\s+", " ")
+                .toUpperCase(Locale.ROOT);
+        return "MALE 1".equals(fallback) || "FEMALE 1".equals(fallback) || "DUET 1".equals(fallback)
+                ? fallback
+                : "";
     }
 
     private static List<Double> readCompactTiming(JSONObject object, int expectedLength, String granularity) {

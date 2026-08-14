@@ -2237,7 +2237,7 @@ public final class LyricsView extends View {
         int canvasSave = canvas.save();
         applyCanvasEffect(
                 canvas,
-                row.hasInlineStyles ? "vocal" : group.kind,
+                row.hasInlineEffects ? "vocal" : group.kind,
                 group.active,
                 left + row.width * 0.5f,
                 baseline,
@@ -2245,7 +2245,9 @@ public final class LyricsView extends View {
                 group.rowSeed + rowIndex
         );
 
-        if (row.continuousShaping && !row.hasRuby() && !row.hasInlineStyles) {
+        // Joining scripts must stay in one shaping context. Inline range styling is
+        // intentionally degraded to the row style here instead of splitting glyphs.
+        if (row.continuousShaping && !row.hasRuby()) {
             drawContinuouslyShapedRow(canvas, row, left, baseline, group, rowIndex, fadeAlpha);
             canvas.restoreToCount(canvasSave);
             resetPaintEffects();
@@ -2589,7 +2591,7 @@ public final class LyricsView extends View {
             rows = Collections.singletonList(new TextRow(segments));
         }
         for (TextRow row : rows) {
-            if (row.continuousShaping && !row.hasInlineStyles) {
+            if (row.continuousShaping) {
                 row.width = Math.max(0f, textPaint.measureText(row.text));
             }
         }
@@ -4161,6 +4163,30 @@ public final class LyricsView extends View {
         return value.isEmpty() ? "vocal" : value;
     }
 
+    private static boolean isInlineEffectKind(String kind) {
+        String value = kind == null ? "" : kind.trim().toLowerCase(Locale.ROOT);
+        switch (value) {
+            case "effect":
+            case "adlib":
+            case "pulse":
+            case "wave":
+            case "sparkle":
+            case "echo":
+            case "whisper":
+            case "bounce":
+            case "sway":
+            case "glow":
+            case "glitch":
+            case "flicker":
+            case "float":
+            case "blur":
+            case "pop":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private int colorForSpeaker(String speaker, String speakerColor, String speakerFallback, String role, int fallback) {
         String key = normalizeSpeakerKey(speaker);
         int color = resolvedSpeakerColor(key, speakerColor, speakerFallback);
@@ -4772,6 +4798,7 @@ public final class LyricsView extends View {
         final boolean hasRuby;
         final boolean continuousShaping;
         final boolean hasInlineStyles;
+        final boolean hasInlineEffects;
 
         TextRow(List<TextSegment> segments) {
             this.segments = segments == null ? Collections.emptyList() : segments;
@@ -4779,6 +4806,7 @@ public final class LyricsView extends View {
             float totalWidth = 0f;
             boolean nextHasRuby = false;
             boolean nextHasInlineStyles = false;
+            boolean nextHasInlineEffects = false;
             for (TextSegment segment : this.segments) {
                 builder.append(segment.text);
                 totalWidth += segment.width;
@@ -4786,12 +4814,14 @@ public final class LyricsView extends View {
                     nextHasRuby = true;
                 }
                 nextHasInlineStyles |= segment.inlineStyle;
+                nextHasInlineEffects |= segment.inlineStyle && isInlineEffectKind(segment.styleKind);
             }
             this.text = builder.toString();
             this.width = Math.max(0f, totalWidth);
             this.hasRuby = nextHasRuby;
             this.continuousShaping = TimedSyllableNormalizer.requiresContinuousShaping(this.text);
             this.hasInlineStyles = nextHasInlineStyles;
+            this.hasInlineEffects = nextHasInlineEffects;
         }
 
         boolean hasRuby() {
