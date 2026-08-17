@@ -33,6 +33,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_UI_LANG = "ui_lang";
     static final String KEY_OUTPUT_LANG = "output_lang";
     static final String KEY_PRONUNCIATION_LANG = "pronunciation_lang";
+    static final String KEY_PRONUNCIATION_NOTATION = "pronunciation_notation_v1";
     static final String KEY_LANGUAGE_RULES = "language_rules_v2";
     private static final String KEY_FIRST_LANGUAGE_PROMPTED = "first_language_prompted_v1";
     static final String KEY_API_KEYS = "api_keys";
@@ -103,6 +104,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String BACKGROUND_MODE_VIDEO = "video-background";
     static final String BACKGROUND_MODE_SOLID = "solid-background";
     static final String OUTPUT_LANG_SAME_UI = "same_ui";
+    static final String PRONUNCIATION_NOTATION_TRANSLATION = "translation";
+    static final String PRONUNCIATION_NOTATION_LATIN = "latin";
+    static final String PRONUNCIATION_NOTATION_IPA = "ipa";
     static final String VINYL_TONEARM_STYLE_S = "s";
     static final String VINYL_TONEARM_STYLE_STRAIGHT = "straight";
     static final String VINYL_TONEARM_STYLE_J = "j";
@@ -156,7 +160,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_TRANSLATION_ENABLED, KEY_PRONUNCIATION_ENABLED, KEY_BING_TRANSLATE_ENABLED,
             KEY_GOOGLE_TRANSLATE_ENABLED, KEY_AI_PROVIDER_ORDER, KEY_AI_PROVIDER_ENABLED,
             KEY_PROVIDER, KEY_TARGET_LANG, KEY_UI_LANG,
-            KEY_OUTPUT_LANG, KEY_PRONUNCIATION_LANG, KEY_LANGUAGE_RULES, KEY_MODEL, KEY_MAX_TOKENS,
+            KEY_OUTPUT_LANG, KEY_PRONUNCIATION_LANG, KEY_PRONUNCIATION_NOTATION,
+            KEY_LANGUAGE_RULES, KEY_MODEL, KEY_MAX_TOKENS,
             KEY_TEMPERATURE, KEY_PREVIEW_MODE, KEY_PREVIEW_ITEMS, KEY_AUTO_INSTRUMENTAL_BREAK,
             KEY_INTERLUDE_LABELS_ENABLED, KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, KEY_KARAOKE_BOUNCE_EFFECT,
             KEY_KARAOKE_DATA_AS_LINE_SYNCED, KEY_KARAOKE_DISPLAY_GRANULARITY,
@@ -390,6 +395,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         Snapshot snapshot = new Snapshot(
                 normalizedUiLanguage(prefs.getString(KEY_UI_LANG, autoTargetLanguage())),
                 outputLang,
+                normalizePronunciationNotation(prefs.getString(
+                        KEY_PRONUNCIATION_NOTATION,
+                        PRONUNCIATION_NOTATION_TRANSLATION
+                )),
                 provider,
                 ruleConfig.defaultRule,
                 ruleConfig.languageRules,
@@ -464,6 +473,12 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setPronunciationLang(String lang) {
         setOutputLang(lang);
+    }
+
+    void setPronunciationNotation(String notation) {
+        prefs.edit()
+                .putString(KEY_PRONUNCIATION_NOTATION, normalizePronunciationNotation(notation))
+                .apply();
     }
 
     void setMetadataTranslationEnabled(boolean enabled) {
@@ -1562,6 +1577,15 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         return LANGUAGE_BY_CODE.containsKey(normalized.toLowerCase(Locale.ROOT)) ? normalized : DEFAULT_TARGET_LANG_RULES;
     }
 
+    static String normalizePronunciationNotation(String notation) {
+        String normalized = notation == null ? "" : notation.trim().toLowerCase(Locale.ROOT);
+        if (PRONUNCIATION_NOTATION_LATIN.equals(normalized)
+                || PRONUNCIATION_NOTATION_IPA.equals(normalized)) {
+            return normalized;
+        }
+        return PRONUNCIATION_NOTATION_TRANSLATION;
+    }
+
     static String normalizePreviewMode(String mode) {
         String value = mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT);
         if (PREVIEW_MODE_TRANSLATION.equals(value)) {
@@ -2161,6 +2185,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final class Snapshot {
         final String uiLang;
         final String outputLang;
+        final String pronunciationNotation;
         final Provider provider;
         final LanguageRule defaultRule;
         final Map<String, LanguageRule> languageRules;
@@ -2213,6 +2238,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         Snapshot(
                 String uiLang,
                 String outputLang,
+                String pronunciationNotation,
                 Provider provider,
                 LanguageRule defaultRule,
                 Map<String, LanguageRule> languageRules,
@@ -2263,6 +2289,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         ) {
             this.uiLang = normalizedUiLanguage(uiLang);
             this.outputLang = normalizeOutputLanguage(outputLang);
+            this.pronunciationNotation = normalizePronunciationNotation(pronunciationNotation);
             this.provider = provider;
             this.defaultRule = defaultRule == null
                     ? new LanguageRule(DEFAULT_SOURCE_LANG, false, false, DEFAULT_TARGET_LANG_RULES)
@@ -2409,6 +2436,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return new Snapshot(
                     uiLang,
                     outputLang,
+                    pronunciationNotation,
                     candidate,
                     defaultRule,
                     languageRules,
@@ -2495,6 +2523,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             builder.append(provider.id)
                     .append("|output=").append(outputLang)
                     .append("|resolvedOutput=").append(resolveOutputLanguage(outputLang, uiLang))
+                    .append("|pronunciationNotation=").append(pronunciationNotation)
                     .append("|translationTarget=").append(defaultRule.targetLang)
                     .append("|bingTranslate=").append(bingTranslateEnabled)
                     .append("|googleTranslate=").append(googleTranslateEnabled)

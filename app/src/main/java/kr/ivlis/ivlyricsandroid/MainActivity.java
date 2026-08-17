@@ -320,6 +320,7 @@ public final class MainActivity extends Activity implements
     private View pollinationsAuthGroup;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
+    private TextView pronunciationNotationSelectButton;
     private TextView settingsCategoryTitleView;
     private TextView sourceLanguageSelectButton;
     private ScrollView settingsScrollView;
@@ -4215,6 +4216,16 @@ public final class MainActivity extends Activity implements
                 outputLanguageSelectButton
         ), topMargin(matchWrap(), dp(12)));
 
+        pronunciationNotationSelectButton = settingsSelectButton("");
+        pronunciationNotationSelectButton.setOnClickListener(
+                view -> showPronunciationNotationPopup(pronunciationNotationSelectButton)
+        );
+        settingsGeneralPage.addView(settingGroup(
+                ui("setting.pronunciation_notation"),
+                ui("setting.pronunciation_notation_desc"),
+                pronunciationNotationSelectButton
+        ), topMargin(matchWrap(), dp(12)));
+
         metadataTranslationSwitch = settingSwitch(
                 ui("setting.metadata_translation"),
                 ui("setting.metadata_translation_desc")
@@ -7912,6 +7923,7 @@ public final class MainActivity extends Activity implements
         }
         updateUiLanguageSelect(snapshot.uiLang);
         updateOutputLanguageSelect(snapshot.outputLang);
+        updatePronunciationNotationSelect(snapshot.pronunciationNotation);
         rebuildPreviewModeButtons(snapshot.previewItems);
         updateSourceLanguageSelect();
         populateSelectedLanguageRule(snapshot);
@@ -7965,6 +7977,59 @@ public final class MainActivity extends Activity implements
             requestAiLyrics(false);
             showSavedToast(ui("toast.pronunciation_language_saved"));
         });
+    }
+
+    private void updatePronunciationNotationSelect(String notation) {
+        if (pronunciationNotationSelectButton == null) {
+            return;
+        }
+        pronunciationNotationSelectButton.setText(pronunciationNotationLabel(notation) + "  v");
+    }
+
+    private void showPronunciationNotationPopup(View anchor) {
+        if (anchor == null || aiLyricsSettings == null) {
+            return;
+        }
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        showLanguageSelectPopup(
+                anchor,
+                pronunciationNotationChoices(),
+                snapshot.pronunciationNotation,
+                notation -> {
+                    aiLyricsSettings.setPronunciationNotation(notation);
+                    updatePronunciationNotationSelect(notation);
+                    requestAiLyrics(false);
+                    showSavedToast(ui("toast.settings_saved"));
+                }
+        );
+    }
+
+    private List<LanguageChoice> pronunciationNotationChoices() {
+        List<LanguageChoice> choices = new ArrayList<>();
+        choices.add(new LanguageChoice(
+                AiLyricsSettings.PRONUNCIATION_NOTATION_TRANSLATION,
+                ui("pronunciation.notation.translation")
+        ));
+        choices.add(new LanguageChoice(
+                AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN,
+                ui("pronunciation.notation.latin")
+        ));
+        choices.add(new LanguageChoice(
+                AiLyricsSettings.PRONUNCIATION_NOTATION_IPA,
+                ui("pronunciation.notation.ipa")
+        ));
+        return choices;
+    }
+
+    private String pronunciationNotationLabel(String notation) {
+        String normalized = AiLyricsSettings.normalizePronunciationNotation(notation);
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN.equals(normalized)) {
+            return ui("pronunciation.notation.latin");
+        }
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(normalized)) {
+            return ui("pronunciation.notation.ipa");
+        }
+        return ui("pronunciation.notation.translation");
     }
 
     private List<LanguageChoice> outputLanguageChoices() {

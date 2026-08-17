@@ -109,6 +109,7 @@ final class AppI18n {
         addLandscapeNoLyricsStrings(languages);
         addUpdateStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
+        addPronunciationNotationStrings(languages);
         addFuriganaStrings(languages);
         addTypographyStrings(languages);
         addSpeakerColorStrings(languages);
@@ -142,6 +143,42 @@ final class AppI18n {
         addSpotifyOpenFailureTranslations(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addPronunciationNotationStrings(Map<String, Map<String, String>> languages) {
+        String[][] translations = {
+                {"ko", "발음 표기 방식", "생성된 발음의 표기 방식을 선택합니다. 현재 가사에 적용하려면 발음을 재생성하세요.", "현재 번역 언어(기본)", "라틴 문자(로마자)", "국제 음성 기호(IPA)"},
+                {"en", "Pronunciation notation", "Choose how generated pronunciation is written. Regenerate pronunciation to update the current lyrics.", "Current translation language (Default)", "Latin (Romanization)", "International Phonetic Alphabet (IPA)"},
+                {"zh-CN", "发音标注方式", "选择生成发音所使用的标注方式。重新生成发音后会应用到当前歌词。", "当前翻译语言（默认）", "拉丁字母（罗马化）", "国际音标（IPA）"},
+                {"zh-TW", "發音標記方式", "選擇產生發音時使用的標記方式。重新產生發音後會套用至目前歌詞。", "目前翻譯語言（預設）", "拉丁字母（羅馬化）", "國際音標（IPA）"},
+                {"ja", "発音の表記方式", "生成する発音の表記方式を選択します。現在の歌詞に反映するには発音を再生成してください。", "現在の翻訳言語（デフォルト）", "ラテン文字（ローマ字）", "国際音声記号（IPA）"},
+                {"hi", "उच्चारण लिपि", "जनरेट किए गए उच्चारण की लिपि चुनें। मौजूदा गीत को अपडेट करने के लिए उच्चारण दोबारा जनरेट करें।", "मौजूदा अनुवाद भाषा (डिफ़ॉल्ट)", "लैटिन लिपि (रोमनकरण)", "अंतर्राष्ट्रीय ध्वन्यात्मक वर्णमाला (IPA)"},
+                {"es", "Notación de pronunciación", "Elige cómo se escribe la pronunciación generada. Regenera la pronunciación para actualizar la letra actual.", "Idioma de traducción actual (predeterminado)", "Alfabeto latino (romanización)", "Alfabeto fonético internacional (AFI/IPA)"},
+                {"fr", "Notation de la prononciation", "Choisissez la notation utilisée pour la prononciation générée. Régénérez la prononciation pour mettre à jour les paroles actuelles.", "Langue de traduction actuelle (par défaut)", "Alphabet latin (romanisation)", "Alphabet phonétique international (API/IPA)"},
+                {"ar", "طريقة كتابة النطق", "اختر طريقة كتابة النطق المُنشأ. أعد إنشاء النطق لتحديث كلمات الأغنية الحالية.", "لغة الترجمة الحالية (افتراضي)", "الأحرف اللاتينية (الكتابة الرومانية)", "الأبجدية الصوتية الدولية (IPA)"},
+                {"fa", "شیوهٔ نمایش تلفظ", "نحوهٔ نوشتن تلفظ تولیدشده را انتخاب کنید. برای به‌روزرسانی ترانهٔ فعلی، تلفظ را دوباره تولید کنید.", "زبان فعلی ترجمه (پیش‌فرض)", "خط لاتین (آوانویسی لاتین)", "الفبای آوانگاری بین‌المللی (IPA)"},
+                {"de", "Darstellung der Aussprache", "Wähle, wie die erzeugte Aussprache geschrieben wird. Erzeuge die Aussprache neu, um den aktuellen Songtext zu aktualisieren.", "Aktuelle Übersetzungssprache (Standard)", "Lateinische Schrift (Romanisierung)", "Internationales Phonetisches Alphabet (IPA)"},
+                {"ru", "Запись произношения", "Выберите способ записи созданного произношения. Пересоздайте произношение, чтобы обновить текущий текст.", "Текущий язык перевода (по умолчанию)", "Латиница (романизация)", "Международный фонетический алфавит (IPA)"},
+                {"sv", "Uttalsnotation", "Välj hur det genererade uttalet ska skrivas. Generera uttalet igen för att uppdatera den aktuella texten.", "Aktuellt översättningsspråk (standard)", "Latinska bokstäver (romanisering)", "Internationella fonetiska alfabetet (IPA)"},
+                {"pt", "Notação da pronúncia", "Escolha como a pronúncia gerada será escrita. Gere novamente a pronúncia para atualizar a letra atual.", "Idioma de tradução atual (padrão)", "Alfabeto latino (romanização)", "Alfabeto Fonético Internacional (AFI/IPA)"},
+                {"bn", "উচ্চারণের লিখনপদ্ধতি", "তৈরি করা উচ্চারণ কীভাবে লেখা হবে তা বেছে নিন। বর্তমান গানে প্রয়োগ করতে উচ্চারণ পুনরায় তৈরি করুন।", "বর্তমান অনুবাদের ভাষা (ডিফল্ট)", "ল্যাটিন অক্ষর (রোমানাইজেশন)", "আন্তর্জাতিক ধ্বনিমূলক বর্ণমালা (IPA)"},
+                {"cs", "Zápis výslovnosti", "Zvolte způsob zápisu generované výslovnosti. Pro aktualizaci aktuálního textu výslovnost znovu vygenerujte.", "Aktuální jazyk překladu (výchozí)", "Latinka (romanizace)", "Mezinárodní fonetická abeceda (IPA)"},
+                {"it", "Notazione della pronuncia", "Scegli come scrivere la pronuncia generata. Rigenera la pronuncia per aggiornare il testo corrente.", "Lingua di traduzione attuale (predefinita)", "Alfabeto latino (romanizzazione)", "Alfabeto fonetico internazionale (IPA)"},
+                {"th", "รูปแบบการเขียนคำอ่าน", "เลือกวิธีเขียนคำอ่านที่สร้างขึ้น สร้างคำอ่านใหม่เพื่ออัปเดตเนื้อเพลงปัจจุบัน", "ภาษาคำแปลปัจจุบัน (ค่าเริ่มต้น)", "อักษรละติน (การถอดเป็นอักษรโรมัน)", "สัทอักษรสากล (IPA)"},
+                {"vi", "Ký hiệu phát âm", "Chọn cách viết phần phát âm được tạo. Tạo lại phát âm để cập nhật lời hiện tại.", "Ngôn ngữ dịch hiện tại (mặc định)", "Chữ Latinh (La-tinh hóa)", "Bảng mẫu tự ngữ âm quốc tế (IPA)"},
+                {"id", "Notasi pelafalan", "Pilih cara penulisan pelafalan yang dihasilkan. Buat ulang pelafalan untuk memperbarui lirik saat ini.", "Bahasa terjemahan saat ini (bawaan)", "Aksara Latin (romanisasi)", "Alfabet Fonetik Internasional (IPA)"},
+                {"ms", "Notasi sebutan", "Pilih cara sebutan yang dijana ditulis. Jana semula sebutan untuk mengemas kini lirik semasa.", "Bahasa terjemahan semasa (lalai)", "Tulisan Latin (perumian)", "Abjad Fonetik Antarabangsa (IPA)"},
+                {"tr", "Telaffuz gösterimi", "Oluşturulan telaffuzun nasıl yazılacağını seçin. Geçerli sözleri güncellemek için telaffuzu yeniden oluşturun.", "Geçerli çeviri dili (varsayılan)", "Latin alfabesi (romanizasyon)", "Uluslararası Fonetik Alfabe (IPA)"}
+        };
+        for (String[] translation : translations) {
+            applyTranslationOverrides(languages, translation[0], new String[]{
+                    "setting.pronunciation_notation", translation[1],
+                    "setting.pronunciation_notation_desc", translation[2],
+                    "pronunciation.notation.translation", translation[3],
+                    "pronunciation.notation.latin", translation[4],
+                    "pronunciation.notation.ipa", translation[5]
+            });
+        }
     }
 
     private static void addSpotifyOpenFailureTranslations(

@@ -37,7 +37,7 @@ final class AiLyricsRepository {
     private static final int CONNECT_TIMEOUT_MS = 12_000;
     private static final int READ_TIMEOUT_MS = 70_000;
     private static final long STREAM_PARTIAL_DISPATCH_INTERVAL_MS = 600L;
-    private static final String SUPPLEMENT_PROMPT_VERSION = "v4-id-aligned-ai-only";
+    private static final String SUPPLEMENT_PROMPT_VERSION = "v5-pronunciation-notation";
     private static final String TMI_PROMPT_VERSION = ResearchDocument.OUTPUT_VERSION;
     private static final String CULTURAL_ANNOTATION_PROMPT_VERSION = "cultural-v4";
     private static final int MAX_LYRICS_MEMORY_ENTRIES = 250;
@@ -1656,8 +1656,15 @@ final class AiLyricsRepository {
             List<String> values;
             String prompt;
             if (pronunciation) {
-                prompt = buildPhoneticPrompt(requests, pronunciationLang);
-                log.write("ai pronunciation stream request: lines=" + expectedLineCount + " / pronunciation=" + pronunciationLang);
+                prompt = buildPhoneticPrompt(
+                        requests,
+                        pronunciationLang,
+                        sourceLang,
+                        settings.pronunciationNotation
+                );
+                log.write("ai pronunciation stream request: lines=" + expectedLineCount
+                        + " / pronunciation=" + pronunciationLang
+                        + " / notation=" + settings.pronunciationNotation);
                 values = null;
                 Exception lastError = null;
                 for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
@@ -3401,21 +3408,38 @@ final class AiLyricsRepository {
         return cleaned.trim();
     }
 
-    private String buildPhoneticPrompt(List<SupplementRequest> requests, String lang) {
+    private String buildPhoneticPrompt(
+            List<SupplementRequest> requests,
+            String lang,
+            String sourceLang,
+            String pronunciationNotation
+    ) {
         AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(lang);
         String normalizedLang = AiLyricsSettings.normalizeLanguageCode(lang);
+        String notation = AiLyricsSettings.normalizePronunciationNotation(pronunciationNotation);
         int lineCount = requests == null ? 0 : requests.size();
-        String scriptInstruction = phoneticScriptInstruction(normalizedLang, langInfo);
-        String outputScript = pronunciationOutputScript(normalizedLang, langInfo);
+        String scriptInstruction = phoneticScriptInstruction(normalizedLang, langInfo, notation, sourceLang);
+        String outputScript = pronunciationOutputScript(normalizedLang, langInfo, notation);
+        String audience = AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)
+                ? "the original sung language"
+                : langInfo.name + " speakers";
+        String sourceScriptPolicy = AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)
+                ? "- Never copy source orthography for pronounceable words; transcribe every sung sound into IPA\n"
+                : "- Never use the input language's original script unless it is also " + outputScript + "\n";
+        String alignmentExample = AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)
+                ? "Correct IPA output:\nL0001\tiki te iɾɯ koto to wa\nL0002\tkaɰaɾi tsɯzɯkeɾɯ koto da\n\n"
+                : (AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN.equals(notation)
+                ? "Correct Latin output:\nL0001\tikite iru koto to wa\nL0002\tkawari tsuzukeru koto da\n\n"
+                : "Correct output for Korean pronunciation:\nL0001\t이키테이루 코토토와\nL0002\t카와리 츠즈케루 코토다\n\n");
 
         return "You are a pronunciation converter. Convert these " + lineCount
                 + " indexed rows of lyrics into how they SOUND (pronunciation) for "
-                + langInfo.name + " speakers.\n"
+                + audience + ".\n"
                 + scriptInstruction + "\n\n"
                 + "CRITICAL RULES:\n"
                 + "- This is a PRONUNCIATION task, NOT a translation task\n"
                 + "- Output how each line SOUNDS when spoken aloud, written ONLY in " + outputScript + "\n"
-                + "- Never use the input language's original script unless it is also " + outputScript + "\n"
+                + sourceScriptPolicy
                 + "- Do NOT translate the meaning of the lyrics\n"
                 + "- Do NOT output the original lyrics unchanged\n"
                 + "- Input rows are ID-tagged as L0001, L0002, etc. Treat each ID as an immutable timing anchor\n"
@@ -3436,12 +3460,27 @@ final class AiLyricsRepository {
                 + "INPUT_ROWS (tab-separated ID and source text):\n" + buildTaggedPayload(requests) + "\n\n"
                 + "ID alignment example (format only; use the requested pronunciation script above for the real output):\n"
                 + "Input:\nL0001\t生きていることとは\nL0002\t変わり続けることだ\n\n"
-                + "Correct output for Korean pronunciation:\nL0001\t이키테이루 코토토와\nL0002\t카와리 츠즈케루 코토다\n\n"
+                + alignmentExample
                 + "Wrong output:\nL0001\t이키테이루 코토토와 카와리 츠즈케루 코토다\nL0002\t\n\n"
                 + "OUTPUT_ROWS (" + lineCount + " rows, same IDs, tab-separated pronunciation only):";
     }
 
-    private String phoneticScriptInstruction(String lang, AiLyricsSettings.Language langInfo) {
+    private String phoneticScriptInstruction(
+            String lang,
+            AiLyricsSettings.Language langInfo,
+            String notation,
+            String sourceLang
+    ) {
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN.equals(notation)) {
+            return "Use only Latin letters, including language-appropriate Latin diacritics, spaces, apostrophes, and hyphens. "
+                    + "Write a readable romanization of the sung sounds. Never output Han characters, kana, Hangul, Cyrillic, Arabic, Devanagari, Bengali, Thai, or any other non-Latin script.";
+        }
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)) {
+            String sourceHint = sourceLang == null || sourceLang.trim().isEmpty() ? "auto" : sourceLang.trim();
+            return "Use broad, readable Unicode IPA for the sung sounds. Source-language hint: " + sourceHint + ". "
+                    + "Infer the language from the full lyrics when the hint is auto or uncertain. Use IPA stress, length, tone, and combining marks only when they materially affect pronunciation. "
+                    + "Do not use ordinary romanization or source orthography, and do not wrap output rows in slashes or square brackets.";
+        }
         switch (AiLyricsSettings.normalizeLanguageCode(lang)) {
             case "ko":
                 return "Use Korean Hangul syllables only. Example: こんにちは -> 콘니치와, ありがとう -> 아리가토, hello -> 헬로. "
@@ -3508,7 +3547,17 @@ final class AiLyricsRepository {
         }
     }
 
-    private String pronunciationOutputScript(String lang, AiLyricsSettings.Language langInfo) {
+    private String pronunciationOutputScript(
+            String lang,
+            AiLyricsSettings.Language langInfo,
+            String notation
+    ) {
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN.equals(notation)) {
+            return "the Latin alphabet (romanization)";
+        }
+        if (AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)) {
+            return "Unicode International Phonetic Alphabet (IPA)";
+        }
         switch (AiLyricsSettings.normalizeLanguageCode(lang)) {
             case "ko":
                 return "Korean Hangul";
