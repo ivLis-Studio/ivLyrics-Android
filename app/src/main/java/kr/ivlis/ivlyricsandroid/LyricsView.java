@@ -1526,7 +1526,7 @@ public final class LyricsView extends View {
         if (part == null) {
             return;
         }
-        String pronunciation = part.pronunciationText == null ? "" : part.pronunciationText.trim();
+        String pronunciation = distinctPronunciation(part.pronunciationText, part.text);
         String translation = part.translationText == null ? "" : part.translationText.trim();
         int activePronunciationColor = withAlpha(
                 colorForSpeaker(part.speaker, part.speakerColor, part.speakerFallback, part.role, normalActiveColor()),
@@ -1595,7 +1595,7 @@ public final class LyricsView extends View {
             if (part == null) {
                 continue;
             }
-            String pronunciation = part.pronunciationText == null ? "" : part.pronunciationText.trim();
+            String pronunciation = distinctPronunciation(part.pronunciationText, part.text);
             String translation = part.translationText == null ? "" : part.translationText.trim();
             if (!pronunciation.isEmpty() || !translation.isEmpty()) {
                 return true;
@@ -1621,7 +1621,7 @@ public final class LyricsView extends View {
         if (line == null) {
             return;
         }
-        String pronunciation = line.pronunciationText == null ? "" : line.pronunciationText.trim();
+        String pronunciation = distinctPronunciation(line.pronunciationText, line.text);
         String translation = line.translationText == null ? "" : line.translationText.trim();
         int activePronunciationColor = withAlpha(
                 colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor()),
@@ -2020,11 +2020,11 @@ public final class LyricsView extends View {
         LinkedHashSet<String> pronunciations = new LinkedHashSet<>();
         LinkedHashSet<String> translations = new LinkedHashSet<>();
         addAccessibilityText(originals, line.text);
-        addAccessibilityText(pronunciations, line.pronunciationText);
+        addAccessibilityText(pronunciations, distinctPronunciation(line.pronunciationText, line.text));
         addAccessibilityText(translations, line.translationText);
         for (LyricsLine.VocalPart part : line.vocalParts) {
             addAccessibilityText(originals, part.text);
-            addAccessibilityText(pronunciations, part.pronunciationText);
+            addAccessibilityText(pronunciations, distinctPronunciation(part.pronunciationText, part.text));
             addAccessibilityText(translations, part.translationText);
         }
         List<String> ordered = new ArrayList<>(originals);
@@ -2036,6 +2036,14 @@ public final class LyricsView extends View {
     private void addAccessibilityText(Set<String> values, String text) {
         String normalized = text == null ? "" : text.trim();
         if (!normalized.isEmpty()) values.add(normalized);
+    }
+
+    private String distinctPronunciation(String pronunciationText, String originalText) {
+        String pronunciation = pronunciationText == null ? "" : pronunciationText.trim();
+        if (pronunciation.isEmpty() || LyricsTextComparison.areEquivalent(pronunciation, originalText)) {
+            return "";
+        }
+        return pronunciation;
     }
 
     private void beginHitTargetFrame() {
