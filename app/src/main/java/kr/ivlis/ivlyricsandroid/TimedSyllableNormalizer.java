@@ -99,8 +99,104 @@ final class TimedSyllableNormalizer {
             List<LyricsLine.Syllable> syllables,
             boolean preserveJoining
     ) {
-        List<LyricsLine.Syllable> compensated = compensatePreWhitespaceTimings(syllables);
+        List<LyricsLine.Syllable> graphemes = coalesceGraphemeBoundaries(syllables);
+        List<LyricsLine.Syllable> compensated = compensatePreWhitespaceTimings(graphemes);
         return preserveJoining ? mergeWordRuns(compensated) : compensated;
+    }
+
+    /**
+     * A provider may time a base letter and its combining mark as separate source
+     * units. Segmenting each unit independently cannot repair that boundary, so
+     * rebuild grapheme clusters from the complete logical run and retain the full
+     * time span of every source unit that contributed to the cluster.
+     */
+    private static List<LyricsLine.Syllable> coalesceGraphemeBoundaries(
+            List<LyricsLine.Syllable> syllables
+    ) {
+        if (syllables == null || syllables.isEmpty()) {
+            return syllables == null ? Collections.emptyList() : syllables;
+        }
+
+        List<LyricsLine.Syllable> result = new ArrayList<>(syllables.size());
+        List<LyricsLine.Syllable> run = new ArrayList<>();
+        boolean changed = false;
+        for (LyricsLine.Syllable syllable : syllables) {
+            String text = syllable == null || syllable.text == null ? "" : syllable.text;
+            if (text.isEmpty()) {
+                List<LyricsLine.Syllable> mergedRun = coalesceNonEmptyGraphemeRun(run);
+                changed |= mergedRun.size() != run.size();
+                result.addAll(mergedRun);
+                run.clear();
+                if (syllable != null) {
+                    result.add(syllable);
+                }
+            } else {
+                run.add(syllable);
+            }
+        }
+        List<LyricsLine.Syllable> mergedRun = coalesceNonEmptyGraphemeRun(run);
+        changed |= mergedRun.size() != run.size();
+        result.addAll(mergedRun);
+        return changed ? result : syllables;
+    }
+
+    private static List<LyricsLine.Syllable> coalesceNonEmptyGraphemeRun(
+            List<LyricsLine.Syllable> syllables
+    ) {
+        if (syllables == null || syllables.size() < 2) {
+            return syllables == null ? Collections.emptyList() : new ArrayList<>(syllables);
+        }
+
+        StringBuilder textBuilder = new StringBuilder();
+        List<Integer> starts = new ArrayList<>(syllables.size());
+        List<Integer> ends = new ArrayList<>(syllables.size());
+        for (LyricsLine.Syllable syllable : syllables) {
+            starts.add(textBuilder.length());
+            textBuilder.append(syllable.text);
+            ends.add(textBuilder.length());
+        }
+
+        String text = textBuilder.toString();
+        BreakIterator iterator = BreakIterator.getCharacterInstance(Locale.ROOT);
+        iterator.setText(text);
+        List<LyricsLine.Syllable> result = new ArrayList<>(syllables.size());
+        int sourceIndex = 0;
+        int graphemeStart = iterator.first();
+        for (int graphemeEnd = iterator.next(); graphemeEnd != BreakIterator.DONE;
+             graphemeStart = graphemeEnd, graphemeEnd = iterator.next()) {
+            while (sourceIndex < syllables.size() && ends.get(sourceIndex) <= graphemeStart) {
+                sourceIndex++;
+            }
+            int firstIndex = sourceIndex;
+            int lastIndex = firstIndex;
+            while (lastIndex + 1 < syllables.size() && starts.get(lastIndex + 1) < graphemeEnd) {
+                lastIndex++;
+            }
+
+            LyricsLine.Syllable first = syllables.get(firstIndex);
+            String grapheme = text.substring(graphemeStart, graphemeEnd);
+            if (firstIndex == lastIndex && grapheme.equals(first.text)) {
+                result.add(first);
+                continue;
+            }
+
+            long startTimeMs = first.startTimeMs;
+            long endTimeMs = first.endTimeMs;
+            boolean sourceWordUnit = first.sourceWordUnit;
+            for (int index = firstIndex + 1; index <= lastIndex; index++) {
+                LyricsLine.Syllable contributor = syllables.get(index);
+                startTimeMs = Math.min(startTimeMs, contributor.startTimeMs);
+                endTimeMs = Math.max(endTimeMs, contributor.endTimeMs);
+                sourceWordUnit |= contributor.sourceWordUnit;
+            }
+            result.add(first.copy(
+                    grapheme,
+                    startTimeMs,
+                    Math.max(startTimeMs, endTimeMs),
+                    sourceWordUnit
+            ));
+        }
+        return result;
     }
 
     private static List<LyricsLine.Syllable> compensatePreWhitespaceTimings(
@@ -272,7 +368,7 @@ final class TimedSyllableNormalizer {
             return Collections.emptyList();
         }
         if (shouldPreserveSourceWordUnits(syllables)) {
-            return groupPreservedSourceWordUnits(syllables);
+            return groupPreservedSourceWordUnits(coalesceGraphemeBoundaries(syllables));
         }
         List<LyricsLine.Syllable> normalized = normalize(syllables);
         StringBuilder textBuilder = new StringBuilder();
