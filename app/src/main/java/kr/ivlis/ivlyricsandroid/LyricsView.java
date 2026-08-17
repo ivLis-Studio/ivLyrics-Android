@@ -32,7 +32,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -59,8 +58,10 @@ public final class LyricsView extends View {
     private static final int KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
     private static final float WAVE_PERIOD_MS = 980f;
     private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
-    private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
-    private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
+    private static final long KARAOKE_BOUNCE_MIN_RISE_MS = 60L;
+    private static final long KARAOKE_BOUNCE_MAX_RISE_MS = 180L;
+    private static final long KARAOKE_BOUNCE_MIN_RELEASE_MS = 180L;
+    private static final long KARAOKE_BOUNCE_MAX_RELEASE_MS = 280L;
     private static final float[] EFFECT_TRANSLATE_X = {0f, -0.5f, 0.45f, -0.25f};
     private static final float[] EFFECT_TRANSLATE_Y = {0f, 0.25f, -0.25f, -0.35f};
     private static final long INTERLUDE_MIN_DURATION_MS = 500L;
@@ -99,10 +100,8 @@ public final class LyricsView extends View {
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final LineHitTarget pressedTargetSnapshot = new LineHitTarget();
     private final KaraokeBounce karaokeBounceResult = new KaraokeBounce(0f, 1f, false);
-    private final Map<String, BounceState> bounceStates = new HashMap<>();
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
-    private final Set<String> completedBounceKeys = new HashSet<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
     private LinearGradient bottomEdgeFadeShader;
     private float bottomEdgeFadeShaderTop = Float.NaN;
@@ -223,9 +222,7 @@ public final class LyricsView extends View {
         retainedVocalAnchorOffsetPx = Float.NaN;
         retainedVocalAnchorPositionMs = Long.MIN_VALUE;
         releaseHitTargets();
-        bounceStates.clear();
         rowLayoutCache.clear();
-        completedBounceKeys.clear();
         rowPrewarmIndex = 0;
         currentDisplayLineCount = Math.max(0, lines.size());
         manualScrollActive = false;
@@ -415,8 +412,6 @@ public final class LyricsView extends View {
         syncedLyricsKaraokeAnimationEnabled = enabled;
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -425,8 +420,6 @@ public final class LyricsView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -438,8 +431,6 @@ public final class LyricsView extends View {
         karaokeDisplayGranularity = normalized;
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -451,8 +442,6 @@ public final class LyricsView extends View {
         lyricsSegmentationLocale = normalized;
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -564,8 +553,6 @@ public final class LyricsView extends View {
         boolean smoothSeekCenter = smoothNextSeekCenter && centerInitialized;
         smoothNextSeekCenter = false;
         if (nextPositionMs + 120L < this.positionMs || Math.abs(nextPositionMs - this.positionMs) > 1600L) {
-            bounceStates.clear();
-            completedBounceKeys.clear();
             smoothSeekCenterActive = smoothSeekCenter;
             centerInitialized = smoothSeekCenter;
             manualScrollActive = false;
@@ -1722,6 +1709,7 @@ public final class LyricsView extends View {
                     color,
                     "vocal",
                     false,
+                    false,
                     groups.size(),
                     "line:" + lineIndex + ":cultural:" + index,
                     -1,
@@ -1866,6 +1854,7 @@ public final class LyricsView extends View {
                 group.activeColor,
                 group.kind,
                 group.active,
+                group.timingStarted,
                 group.rowSeed,
                 group.bounceKeyPrefix,
                 group.activeSegmentIndex,
@@ -1906,9 +1895,14 @@ public final class LyricsView extends View {
                 activeColor,
                 normalizeKind(kind),
                 active,
+                endTimeMs > startTimeMs && positionMs >= startTimeMs,
                 rowSeed,
                 bounceKeyPrefix,
-                active ? findActiveSegmentIndex(rows) : -1,
+                (active || (endTimeMs > startTimeMs
+                        && positionMs >= startTimeMs
+                        && positionMs < endTimeMs + KARAOKE_BOUNCE_MAX_RELEASE_MS))
+                        ? findActiveSegmentIndex(rows)
+                        : -1,
                 typographyTypeface(slotId),
                 isSupplementTypographySlot(slotId)
         );
@@ -2262,7 +2256,7 @@ public final class LyricsView extends View {
             return;
         }
 
-        if (!group.active && !row.hasRuby() && !row.hasInlineStyles) {
+        if (!group.rendersTimedFill() && !row.hasRuby() && !row.hasInlineStyles) {
             configurePaint(scaleAlpha(group.inactiveColor, fadeAlpha), group.kind, false, group.textSize, false, group.typeface);
             canvas.drawText(row.text, left, baseline, textPaint);
             canvas.restoreToCount(canvasSave);
@@ -2286,7 +2280,7 @@ public final class LyricsView extends View {
             int segmentInactiveColor = segment.inlineStyle && !segment.styleSpeaker.isEmpty()
                     ? withAlpha(segmentActiveColor, Color.alpha(group.inactiveColor))
                     : group.inactiveColor;
-            float offsetY = "wave".equals(segmentKind)
+            float offsetY = group.active && "wave".equals(segmentKind)
                     ? baseWaveOffset(segmentKind, group.rowSeed + rowIndex, index, group.textSize)
                     : 0f;
             KaraokeBounce bounce = karaokeBounce(segment, group);
@@ -2309,7 +2303,7 @@ public final class LyricsView extends View {
                 canvas.scale(bounce.scale, bounce.scale, pivotX, pivotY);
             }
 
-            float fill = group.active ? segmentFillFraction(segment) : 0f;
+            float fill = group.rendersTimedFill() ? segmentFillFraction(segment) : 0f;
             drawRubyText(
                     canvas, segment, cursor, baseline + offsetY, group, fill, fadeAlpha,
                     segmentKind, segmentInactiveColor, segmentActiveColor
@@ -2342,7 +2336,7 @@ public final class LyricsView extends View {
             int rowIndex,
             float fadeAlpha
     ) {
-        float offsetY = "wave".equals(group.kind)
+        float offsetY = group.active && "wave".equals(group.kind)
                 ? baseWaveOffset(group.kind, group.rowSeed + rowIndex, 0, group.textSize)
                 : 0f;
         configurePaint(
@@ -2355,7 +2349,7 @@ public final class LyricsView extends View {
         );
         canvas.drawText(row.text, left, baseline + offsetY, textPaint);
 
-        if (!group.active) {
+        if (!group.rendersTimedFill()) {
             return;
         }
         float fill = continuousRowFillFraction(row);
@@ -2406,7 +2400,7 @@ public final class LyricsView extends View {
         boolean rightToLeft = isRightToLeftText(row.text);
 
         int clipSave = canvas.save();
-        configurePaint(activeColor, group.kind, true, group.textSize, true, group.typeface);
+        configurePaint(activeColor, group.kind, group.active, group.textSize, true, group.typeface);
         if (rightToLeft) {
             float fillLeft = right - fillWidth;
             float clipLeft = safeFill >= 0.995f
@@ -4101,52 +4095,49 @@ public final class LyricsView extends View {
         if (!MotionPreferences.animationsEnabled(getContext())) {
             return karaokeBounceResult.set(0f, 1f, false);
         }
-        if (isLineDisplayGranularity() || !karaokeBounceEffectEnabled || !group.active || group.activeSegmentIndex < 0) {
+        if (isLineDisplayGranularity() || !karaokeBounceEffectEnabled || group.activeSegmentIndex < 0) {
             return KaraokeBounce.IDLE;
         }
 
         float centerIndex = segment.sourceIndex + Math.max(0, segment.sourceLength - 1) * 0.5f;
-        float distance = Math.abs(centerIndex - group.activeSegmentIndex);
-        String bounceKey = segment.bounceKey(group.bounceKeyPrefix);
-        BounceState state = bounceStates.get(bounceKey);
-        if (state == null && distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
+        float distance = isWordDisplayGranularity()
+                ? 0f
+                : Math.abs(centerIndex - group.activeSegmentIndex);
+        if (distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
             return KaraokeBounce.IDLE;
         }
 
-        long now = SystemClock.uptimeMillis();
-        if (state == null) {
-            if (completedBounceKeys.contains(bounceKey)
-                    || positionMs < segment.fillStartTimeMs
-                    || positionMs > segment.fillStartTimeMs + KARAOKE_BOUNCE_RISE_MS) {
-                return KaraokeBounce.IDLE;
-            }
-            long offsetFromStart = Math.max(0L, positionMs - segment.fillStartTimeMs);
-            float attenuation = Math.max(0.22f, 1f - distance * 0.23f);
-            state = new BounceState(now - offsetFromStart, attenuation);
-            bounceStates.put(bounceKey, state);
-        }
-
-        float totalWindow = KARAOKE_BOUNCE_RISE_MS + KARAOKE_BOUNCE_RELEASE_MS;
-        float elapsed = now - state.startUptimeMs;
-        if (elapsed < 0f) {
-            return KaraokeBounce.IDLE;
-        }
-        if (elapsed > totalWindow) {
-            bounceStates.remove(bounceKey);
-            completedBounceKeys.add(bounceKey);
+        long durationMs = Math.max(1L, segment.fillEndTimeMs - segment.fillStartTimeMs);
+        long riseDurationMs = Math.min(
+                KARAOKE_BOUNCE_MAX_RISE_MS,
+                Math.max(KARAOKE_BOUNCE_MIN_RISE_MS, Math.round(durationMs * 0.38f))
+        );
+        long releaseDurationMs = Math.min(
+                KARAOKE_BOUNCE_MAX_RELEASE_MS,
+                Math.max(KARAOKE_BOUNCE_MIN_RELEASE_MS, Math.round(durationMs * 0.45f))
+        );
+        long peakTimeMs = Math.min(segment.fillEndTimeMs, segment.fillStartTimeMs + riseDurationMs);
+        long releaseEndTimeMs = segment.fillEndTimeMs + releaseDurationMs;
+        if (positionMs < segment.fillStartTimeMs || positionMs >= releaseEndTimeMs) {
             return KaraokeBounce.IDLE;
         }
 
         float waveStrength;
-        if (elapsed <= KARAOKE_BOUNCE_RISE_MS) {
-            float riseProgress = elapsed / (float) KARAOKE_BOUNCE_RISE_MS;
+        if (positionMs <= peakTimeMs) {
+            float riseProgress = (positionMs - segment.fillStartTimeMs)
+                    / (float) Math.max(1L, peakTimeMs - segment.fillStartTimeMs);
             waveStrength = easeOutCubic(riseProgress);
+        } else if (positionMs <= segment.fillEndTimeMs) {
+            waveStrength = 1f;
         } else {
-            float fallProgress = Math.min(1f, (elapsed - KARAOKE_BOUNCE_RISE_MS) / (float) KARAOKE_BOUNCE_RELEASE_MS);
-            waveStrength = (float) Math.pow(1f - fallProgress, 1.38f);
+            float fallProgress = Math.min(
+                    1f,
+                    (positionMs - segment.fillEndTimeMs) / (float) Math.max(1L, releaseDurationMs)
+            );
+            waveStrength = (float) Math.pow(1f - fallProgress, 1.25f);
         }
 
-        waveStrength *= state.attenuation;
+        waveStrength *= Math.max(0.22f, 1f - distance * 0.23f);
         if (waveStrength < 0.025f) {
             return KaraokeBounce.IDLE;
         }
@@ -4567,6 +4558,7 @@ public final class LyricsView extends View {
         final int activeColor;
         final String kind;
         final boolean active;
+        final boolean timingStarted;
         final int rowSeed;
         final String bounceKeyPrefix;
         final int activeSegmentIndex;
@@ -4581,6 +4573,7 @@ public final class LyricsView extends View {
                 int activeColor,
                 String kind,
                 boolean active,
+                boolean timingStarted,
                 int rowSeed,
                 String bounceKeyPrefix,
                 int activeSegmentIndex,
@@ -4593,6 +4586,7 @@ public final class LyricsView extends View {
             this.activeColor = activeColor;
             this.kind = kind;
             this.active = active;
+            this.timingStarted = timingStarted;
             this.rowSeed = rowSeed;
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
             this.activeSegmentIndex = activeSegmentIndex;
@@ -4609,6 +4603,7 @@ public final class LyricsView extends View {
                     activeColor,
                     "vocal",
                     active,
+                    false,
                     0,
                     "",
                     -1,
@@ -4625,6 +4620,7 @@ public final class LyricsView extends View {
                 int activeColor,
                 String kind,
                 boolean active,
+                boolean timingStarted,
                 int rowSeed,
                 String bounceKeyPrefix,
                 int activeSegmentIndex,
@@ -4638,12 +4634,17 @@ public final class LyricsView extends View {
             this.activeColor = activeColor;
             this.kind = kind;
             this.active = active;
+            this.timingStarted = timingStarted;
             this.rowSeed = rowSeed;
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
             this.activeSegmentIndex = activeSegmentIndex;
             this.interludeInfo = interludeInfo == null ? InterludeInfo.none() : interludeInfo;
             this.typeface = typeface;
             this.supplement = supplement;
+        }
+
+        boolean rendersTimedFill() {
+            return active || timingStarted;
         }
 
         float rowHeight(TextRow row) {
@@ -5064,16 +5065,6 @@ public final class LyricsView extends View {
             this.scale = scale;
             this.active = active;
             return this;
-        }
-    }
-
-    private static final class BounceState {
-        final long startUptimeMs;
-        final float attenuation;
-
-        BounceState(long startUptimeMs, float attenuation) {
-            this.startUptimeMs = startUptimeMs;
-            this.attenuation = Math.max(0f, attenuation);
         }
     }
 
