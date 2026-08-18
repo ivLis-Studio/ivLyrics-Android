@@ -16,7 +16,7 @@ import java.util.Locale;
 
 final class LyricsDiskCache {
     private static final int VERSION = 1;
-    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 11;
+    private static final int BASE_CONTRIBUTOR_SCHEMA_VERSION = 12;
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
     private final File directory;
@@ -149,6 +149,8 @@ final class LyricsDiskCache {
         object.put("spotifyTrackId", result.spotifyTrackId);
         object.put("providerId", result.providerId);
         object.put("selectionPolicyKey", result.selectionPolicyKey);
+        object.put("syncType", result.syncType);
+        object.put("syncPoints", result.syncPoints);
         JSONArray contributors = new JSONArray();
         for (LyricsResult.SyncContributor contributor : result.contributors) {
             contributors.put(contributorToJson(contributor));
@@ -182,7 +184,9 @@ final class LyricsDiskCache {
                 object.optString("spotifyTrackId", ""),
                 contributorsFromJson(object.optJSONArray("contributors")),
                 object.optString("providerId", ""),
-                object.optString("selectionPolicyKey", "")
+                object.optString("selectionPolicyKey", ""),
+                object.optString("syncType", "unknown"),
+                object.optInt("syncPoints", 0)
         );
     }
 
@@ -197,6 +201,8 @@ final class LyricsDiskCache {
         object.put("anonymous", true);
         object.put("isPrivate", contributor.isPrivate);
         object.put("identityRedacted", true);
+		object.put("syncType", contributor.syncType);
+		object.put("syncPoints", contributor.syncPoints);
         return object;
     }
 
@@ -215,7 +221,10 @@ final class LyricsDiskCache {
                     object.optString("userHash", ""),
                     object.optBoolean("profileAvailable", false),
                     object.optBoolean("anonymous", false),
-                    object.optBoolean("isPrivate", false)
+					object.optBoolean("isPrivate", false),
+					null,
+					object.optString("syncType", "unknown"),
+					object.optInt("syncPoints", 0)
             ));
         }
         return contributors;

@@ -13025,34 +13025,35 @@ public final class MainActivity extends Activity implements
 
     private void updateLyricsProviderAttributionView(
             ProviderAttributionView attribution,
-            String provider,
+            CharSequence provider,
             CharSequence contributorCredit
     ) {
         if (attribution == null) {
             return;
         }
-        String value = provider == null ? "" : provider.trim();
+        CharSequence value = provider == null ? "" : provider;
+        String valueDescription = value.toString().trim();
         CharSequence credit = contributorCredit == null ? "" : contributorCredit;
-        if (value.isEmpty()) {
+        if (valueDescription.isEmpty()) {
             credit = "";
         }
         String creditDescription = credit.toString().trim();
         attribution.value.setText(value);
-        attribution.label.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
-        attribution.value.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+        attribution.label.setVisibility(valueDescription.isEmpty() ? View.GONE : View.VISIBLE);
+        attribution.value.setVisibility(valueDescription.isEmpty() ? View.GONE : View.VISIBLE);
         if (attribution.contributor != null) {
             attribution.contributor.setText(credit);
             attribution.contributor.setVisibility(creditDescription.isEmpty() ? View.GONE : View.VISIBLE);
         }
         if (attribution.separator != null) {
             attribution.separator.setVisibility(
-                    !value.isEmpty() && !creditDescription.isEmpty() ? View.VISIBLE : View.GONE
+                    !valueDescription.isEmpty() && !creditDescription.isEmpty() ? View.VISIBLE : View.GONE
             );
         }
 
-        String providerDescription = value.isEmpty()
+        String providerDescription = valueDescription.isEmpty()
                 ? ""
-                : ui("lyrics.provider_attribution_label") + " " + value;
+                : ui("lyrics.provider_attribution_label") + " " + valueDescription;
         String description = creditDescription.isEmpty()
                 ? providerDescription
                 : providerDescription + ", " + creditDescription;
@@ -13218,7 +13219,7 @@ public final class MainActivity extends Activity implements
             if (builder.length() > 0) {
                 builder.append(", ");
             }
-            builder.append(contributorDisplayName(contributor));
+			builder.append(contributorDisplayName(contributor));
         }
         if (contributors.size() > count) {
             builder.append(" +").append(contributors.size() - count);

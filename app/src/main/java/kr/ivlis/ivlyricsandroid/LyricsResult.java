@@ -15,6 +15,8 @@ final class LyricsResult {
     final List<SyncContributor> contributors;
     final String providerId;
     final String selectionPolicyKey;
+    final String syncType;
+    final int syncPoints;
 
     LyricsResult(List<LyricsLine> lines, String providerLabel, String detail, boolean karaoke) {
         this(lines, providerLabel, detail, karaoke, "", "");
@@ -51,8 +53,62 @@ final class LyricsResult {
             String isrc,
             String spotifyTrackId,
             List<SyncContributor> contributors,
+            String syncType,
+            int syncPoints
+    ) {
+        this(
+                lines,
+                providerLabel,
+                detail,
+                karaoke,
+                isrc,
+                spotifyTrackId,
+                contributors,
+                "",
+                "",
+                syncType,
+                syncPoints
+        );
+    }
+
+    LyricsResult(
+            List<LyricsLine> lines,
+            String providerLabel,
+            String detail,
+            boolean karaoke,
+            String isrc,
+            String spotifyTrackId,
+            List<SyncContributor> contributors,
             String providerId,
             String selectionPolicyKey
+    ) {
+        this(
+                lines,
+                providerLabel,
+                detail,
+                karaoke,
+                isrc,
+                spotifyTrackId,
+                contributors,
+                providerId,
+                selectionPolicyKey,
+                "unknown",
+                0
+        );
+    }
+
+    LyricsResult(
+            List<LyricsLine> lines,
+            String providerLabel,
+            String detail,
+            boolean karaoke,
+            String isrc,
+            String spotifyTrackId,
+            List<SyncContributor> contributors,
+            String providerId,
+            String selectionPolicyKey,
+            String syncType,
+            int syncPoints
     ) {
         this.lines = lines == null
                 ? Collections.emptyList()
@@ -67,6 +123,8 @@ final class LyricsResult {
                 : Collections.unmodifiableList(new ArrayList<>(contributors));
         this.providerId = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
         this.selectionPolicyKey = selectionPolicyKey == null ? "" : selectionPolicyKey;
+        this.syncType = normalizeSyncType(syncType);
+        this.syncPoints = Math.max(0, syncPoints);
     }
 
     LyricsResult withSelection(String providerId, String selectionPolicyKey) {
@@ -79,7 +137,9 @@ final class LyricsResult {
                 spotifyTrackId,
                 contributors,
                 providerId,
-                selectionPolicyKey
+                selectionPolicyKey,
+                syncType,
+                syncPoints
         );
     }
 
@@ -116,6 +176,8 @@ final class LyricsResult {
         final boolean anonymous;
         final boolean isPrivate;
         final CreatorDecoration decoration;
+        final String syncType;
+        final int syncPoints;
 
         SyncContributor(String name, String userHash, boolean profileAvailable) {
             this(name, userHash, profileAvailable, false, false);
@@ -128,7 +190,7 @@ final class LyricsResult {
                 boolean anonymous,
                 boolean isPrivate
         ) {
-            this(name, userHash, profileAvailable, anonymous, isPrivate, null);
+			this(name, userHash, profileAvailable, anonymous, isPrivate, null, "unknown", 0);
         }
 
         SyncContributor(
@@ -139,6 +201,19 @@ final class LyricsResult {
                 boolean isPrivate,
                 CreatorDecoration decoration
         ) {
+			this(name, userHash, profileAvailable, anonymous, isPrivate, decoration, "unknown", 0);
+		}
+
+		SyncContributor(
+				String name,
+				String userHash,
+				boolean profileAvailable,
+				boolean anonymous,
+				boolean isPrivate,
+				CreatorDecoration decoration,
+				String syncType,
+				int syncPoints
+		) {
             String safeName = name == null ? "" : name.trim();
             String safeHash = userHash == null ? "" : userHash.trim();
             boolean hidesIdentity = anonymous || isPrivate;
@@ -148,6 +223,18 @@ final class LyricsResult {
             this.anonymous = hidesIdentity || ("Anonymous".equalsIgnoreCase(this.name) && this.userHash.isEmpty());
             this.isPrivate = isPrivate;
             this.decoration = hidesIdentity ? null : decoration;
+            this.syncType = normalizeSyncType(syncType);
+            this.syncPoints = Math.max(0, syncPoints);
         }
+    }
+
+    private static String normalizeSyncType(String syncType) {
+        String normalizedType = syncType == null ? "" : syncType.trim().toLowerCase(Locale.ROOT);
+        return "line".equals(normalizedType)
+                || "word".equals(normalizedType)
+                || "character".equals(normalizedType)
+                || "mixed".equals(normalizedType)
+                ? normalizedType
+                : "unknown";
     }
 }

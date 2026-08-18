@@ -5728,7 +5728,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API 정보가 등록되어 있지 않습니다.",
                 "spotify.error.no_access_token", "Spotify 토큰 응답에 access_token이 없습니다.",
                 "spotify.error.repository_unavailable", "가사 저장소를 사용할 수 없습니다.",
-                "lyrics.credit_sync_by_format", "sync by %s"
+                "lyrics.credit_sync_by_format", "sync by %s",
+                "sync.type_line", "라인",
+                "sync.type_word", "단어",
+                "sync.type_character", "글자",
+                "sync.type_mixed", "혼합",
+                "sync.type_unknown", "이전 형식 싱크"
         );
     }
 
@@ -5964,7 +5969,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API credentials are not configured.",
                 "spotify.error.no_access_token", "Spotify token response did not contain access_token.",
                 "spotify.error.repository_unavailable", "Lyrics repository is unavailable.",
-                "lyrics.credit_sync_by_format", "sync by %s"
+                "lyrics.credit_sync_by_format", "sync by %s",
+                "sync.type_line", "Line",
+                "sync.type_word", "Word",
+                "sync.type_character", "Character",
+                "sync.type_mixed", "Mixed",
+                "sync.type_unknown", "Legacy sync"
         );
     }
 
@@ -6198,7 +6208,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "尚未配置 Spotify API 凭据。",
                 "spotify.error.no_access_token", "Spotify 令牌响应中没有 access_token。",
                 "spotify.error.repository_unavailable", "歌词存储库不可用。",
-                "lyrics.credit_sync_by_format", "同步制作：%s"
+                "lyrics.credit_sync_by_format", "同步制作：%s",
+                "sync.type_line", "行",
+                "sync.type_word", "词",
+                "sync.type_character", "字符",
+                "sync.type_mixed", "混合",
+                "sync.type_unknown", "旧版同步"
         );
     }
 
@@ -6432,7 +6447,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "尚未設定 Spotify API 憑證。",
                 "spotify.error.no_access_token", "Spotify 權杖回應中沒有 access_token。",
                 "spotify.error.repository_unavailable", "歌詞儲存庫無法使用。",
-                "lyrics.credit_sync_by_format", "同步製作：%s"
+                "lyrics.credit_sync_by_format", "同步製作：%s",
+                "sync.type_line", "行",
+                "sync.type_word", "詞",
+                "sync.type_character", "字元",
+                "sync.type_mixed", "混合",
+                "sync.type_unknown", "舊版同步"
         );
     }
 
@@ -6666,7 +6686,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API情報が設定されていません。",
                 "spotify.error.no_access_token", "Spotifyトークン応答にaccess_tokenが含まれていません。",
                 "spotify.error.repository_unavailable", "歌詞リポジトリを使用できません。",
-                "lyrics.credit_sync_by_format", "sync by %s"
+                "lyrics.credit_sync_by_format", "sync by %s",
+                "sync.type_line", "行",
+                "sync.type_word", "単語",
+                "sync.type_character", "文字",
+                "sync.type_mixed", "混合",
+                "sync.type_unknown", "旧形式同期"
         );
     }
 
@@ -6900,7 +6925,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API credentials सेट नहीं हैं।",
                 "spotify.error.no_access_token", "Spotify token response में access_token नहीं था।",
                 "spotify.error.repository_unavailable", "गीत repository उपलब्ध नहीं है।",
-                "lyrics.credit_sync_by_format", "sync by %s"
+                "lyrics.credit_sync_by_format", "sync by %s",
+                "sync.type_line", "पंक्ति",
+                "sync.type_word", "शब्द",
+                "sync.type_character", "अक्षर",
+                "sync.type_mixed", "मिश्रित",
+                "sync.type_unknown", "पुराना सिंक"
         );
     }
 
@@ -7134,7 +7164,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Las credenciales de Spotify API no están configuradas.",
                 "spotify.error.no_access_token", "La respuesta del token Spotify no contenía access_token.",
                 "spotify.error.repository_unavailable", "El repositorio de letras no está disponible.",
-                "lyrics.credit_sync_by_format", "sync por %s"
+                "lyrics.credit_sync_by_format", "sync por %s",
+                "sync.type_line", "Línea",
+                "sync.type_word", "Palabra",
+                "sync.type_character", "Carácter",
+                "sync.type_mixed", "Mixto",
+                "sync.type_unknown", "Sync anterior"
         );
     }
 
@@ -7368,7 +7403,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Les identifiants Spotify API ne sont pas configurés.",
                 "spotify.error.no_access_token", "La réponse du jeton Spotify ne contenait pas access_token.",
                 "spotify.error.repository_unavailable", "Le dépôt de paroles est indisponible.",
-                "lyrics.credit_sync_by_format", "sync par %s"
+                "lyrics.credit_sync_by_format", "sync par %s",
+                "sync.type_line", "Ligne",
+                "sync.type_word", "Mot",
+                "sync.type_character", "Caractère",
+                "sync.type_mixed", "Mixte",
+                "sync.type_unknown", "Ancien sync"
         );
     }
 
@@ -7602,7 +7642,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "لم يتم إعداد بيانات Spotify API.",
                 "spotify.error.no_access_token", "استجابة رمز Spotify لا تحتوي على access_token.",
                 "spotify.error.repository_unavailable", "مستودع الكلمات غير متاح.",
-                "lyrics.credit_sync_by_format", "sync بواسطة %s"
+                "lyrics.credit_sync_by_format", "sync بواسطة %s",
+                "sync.type_line", "سطر",
+                "sync.type_word", "كلمة",
+                "sync.type_character", "حرف",
+                "sync.type_mixed", "مختلط",
+                "sync.type_unknown", "مزامنة قديمة"
         );
     }
 
@@ -7836,7 +7881,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "اطلاعات Spotify API تنظیم نشده است.",
                 "spotify.error.no_access_token", "پاسخ توکن Spotify شامل access_token نبود.",
                 "spotify.error.repository_unavailable", "مخزن متن آهنگ در دسترس نیست.",
-                "lyrics.credit_sync_by_format", "sync توسط %s"
+                "lyrics.credit_sync_by_format", "sync توسط %s",
+                "sync.type_line", "خط",
+                "sync.type_word", "واژه",
+                "sync.type_character", "نویسه",
+                "sync.type_mixed", "ترکیبی",
+                "sync.type_unknown", "همگام‌سازی قدیمی"
         );
     }
 
@@ -8070,7 +8120,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API-Zugangsdaten sind nicht konfiguriert.",
                 "spotify.error.no_access_token", "Die Spotify-Token-Antwort enthielt kein access_token.",
                 "spotify.error.repository_unavailable", "Das Lyrics-Repository ist nicht verfügbar.",
-                "lyrics.credit_sync_by_format", "sync von %s"
+                "lyrics.credit_sync_by_format", "sync von %s",
+                "sync.type_line", "Zeile",
+                "sync.type_word", "Wort",
+                "sync.type_character", "Zeichen",
+                "sync.type_mixed", "Gemischt",
+                "sync.type_unknown", "Legacy-Sync"
         );
     }
 
@@ -8304,7 +8359,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Учетные данные Spotify API не настроены.",
                 "spotify.error.no_access_token", "Ответ токена Spotify не содержал access_token.",
                 "spotify.error.repository_unavailable", "Репозиторий текстов недоступен.",
-                "lyrics.credit_sync_by_format", "sync от %s"
+                "lyrics.credit_sync_by_format", "sync от %s",
+                "sync.type_line", "Строка",
+                "sync.type_word", "Слово",
+                "sync.type_character", "Символ",
+                "sync.type_mixed", "Смешанный",
+                "sync.type_unknown", "Старая синхронизация"
         );
     }
 
@@ -8538,7 +8598,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API-uppgifter är inte konfigurerade.",
                 "spotify.error.no_access_token", "Spotify-tokenresponsen innehöll inte access_token.",
                 "spotify.error.repository_unavailable", "Lyrics-repositoryt är inte tillgängligt.",
-                "lyrics.credit_sync_by_format", "sync av %s"
+                "lyrics.credit_sync_by_format", "sync av %s",
+                "sync.type_line", "Rad",
+                "sync.type_word", "Ord",
+                "sync.type_character", "Tecken",
+                "sync.type_mixed", "Blandad",
+                "sync.type_unknown", "Äldre synk"
         );
     }
 
@@ -8772,7 +8837,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "As credenciais da Spotify API não estão configuradas.",
                 "spotify.error.no_access_token", "A resposta do token Spotify não continha access_token.",
                 "spotify.error.repository_unavailable", "O repositório de letras está indisponível.",
-                "lyrics.credit_sync_by_format", "sync por %s"
+                "lyrics.credit_sync_by_format", "sync por %s",
+                "sync.type_line", "Linha",
+                "sync.type_word", "Palavra",
+                "sync.type_character", "Caractere",
+                "sync.type_mixed", "Misto",
+                "sync.type_unknown", "Sync antigo"
         );
     }
 
@@ -9006,7 +9076,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API credentials সেট করা নেই।",
                 "spotify.error.no_access_token", "Spotify token response-এ access_token ছিল না।",
                 "spotify.error.repository_unavailable", "লিরিক্স repository উপলভ্য নয়।",
-                "lyrics.credit_sync_by_format", "sync by %s"
+                "lyrics.credit_sync_by_format", "sync by %s",
+                "sync.type_line", "লাইন",
+                "sync.type_word", "শব্দ",
+                "sync.type_character", "অক্ষর",
+                "sync.type_mixed", "মিশ্র",
+                "sync.type_unknown", "পুরোনো সিঙ্ক"
         );
     }
 
@@ -9240,7 +9315,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Le credenziali Spotify API non sono configurate.",
                 "spotify.error.no_access_token", "La risposta del token Spotify non conteneva access_token.",
                 "spotify.error.repository_unavailable", "Il repository dei testi non è disponibile.",
-                "lyrics.credit_sync_by_format", "sync di %s"
+                "lyrics.credit_sync_by_format", "sync di %s",
+                "sync.type_line", "Riga",
+                "sync.type_word", "Parola",
+                "sync.type_character", "Carattere",
+                "sync.type_mixed", "Misto",
+                "sync.type_unknown", "Sync precedente"
         );
     }
 
@@ -9474,7 +9554,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "ยังไม่ได้ตั้งค่า Spotify API credentials",
                 "spotify.error.no_access_token", "การตอบกลับ token ของ Spotify ไม่มี access_token",
                 "spotify.error.repository_unavailable", "ไม่สามารถใช้คลังเนื้อเพลงได้",
-                "lyrics.credit_sync_by_format", "sync โดย %s"
+                "lyrics.credit_sync_by_format", "sync โดย %s",
+                "sync.type_line", "บรรทัด",
+                "sync.type_word", "คำ",
+                "sync.type_character", "อักขระ",
+                "sync.type_mixed", "ผสม",
+                "sync.type_unknown", "ซิงก์รูปแบบเดิม"
         );
     }
 
@@ -9708,7 +9793,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Chưa cấu hình thông tin Spotify API.",
                 "spotify.error.no_access_token", "Phản hồi token Spotify không chứa access_token.",
                 "spotify.error.repository_unavailable", "Kho lời bài hát không khả dụng.",
-                "lyrics.credit_sync_by_format", "sync bởi %s"
+                "lyrics.credit_sync_by_format", "sync bởi %s",
+                "sync.type_line", "Dòng",
+                "sync.type_word", "Từ",
+                "sync.type_character", "Ký tự",
+                "sync.type_mixed", "Hỗn hợp",
+                "sync.type_unknown", "Đồng bộ kiểu cũ"
         );
     }
 
@@ -9942,7 +10032,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Credential Spotify API belum dikonfigurasi.",
                 "spotify.error.no_access_token", "Respons token Spotify tidak berisi access_token.",
                 "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia.",
-                "lyrics.credit_sync_by_format", "sync oleh %s"
+                "lyrics.credit_sync_by_format", "sync oleh %s",
+                "sync.type_line", "Baris",
+                "sync.type_word", "Kata",
+                "sync.type_character", "Karakter",
+                "sync.type_mixed", "Campuran",
+                "sync.type_unknown", "Sinkron lama"
         );
     }
 
@@ -10176,7 +10271,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Kelayakan Spotify API belum dikonfigurasi.",
                 "spotify.error.no_access_token", "Respons token Spotify tidak mengandungi access_token.",
                 "spotify.error.repository_unavailable", "Repositori lirik tidak tersedia.",
-                "lyrics.credit_sync_by_format", "sync oleh %s"
+                "lyrics.credit_sync_by_format", "sync oleh %s",
+                "sync.type_line", "Baris",
+                "sync.type_word", "Perkataan",
+                "sync.type_character", "Aksara",
+                "sync.type_mixed", "Campuran",
+                "sync.type_unknown", "Segerak lama"
         );
     }
 
@@ -10413,6 +10513,11 @@ final class AppI18n {
                 "spotify.error.no_access_token", "Odpověď tokenu Spotify neobsahovala access_token.",
                 "spotify.error.repository_unavailable", "Úložiště textů není k dispozici.",
                 "lyrics.credit_sync_by_format", "synchronizace pomocí %s",
+                "sync.type_line", "Řádek",
+                "sync.type_word", "Slovo",
+                "sync.type_character", "Znak",
+                "sync.type_mixed", "Smíšené",
+                "sync.type_unknown", "Starší synchronizace",
                 "lyrics.lrclib_search.title", "Manuální vyhledávání LRCLIB",
                 "lyrics.lrclib_search.desc", "Vyhledejte přímo LRCLIB a použijte výsledek, když načtený text neodpovídá této písni.",
                 "lyrics.lrclib_search.title_hint", "Název písně",
@@ -10843,7 +10948,12 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API bilgileri yapılandırılmamış.",
                 "spotify.error.no_access_token", "Spotify token yanıtında access_token yok.",
                 "spotify.error.repository_unavailable", "Söz deposu kullanılamıyor.",
-                "lyrics.credit_sync_by_format", "sync: %s"
+                "lyrics.credit_sync_by_format", "sync: %s",
+                "sync.type_line", "Satır",
+                "sync.type_word", "Kelime",
+                "sync.type_character", "Karakter",
+                "sync.type_mixed", "Karma",
+                "sync.type_unknown", "Eski senkron"
         );
     }
 

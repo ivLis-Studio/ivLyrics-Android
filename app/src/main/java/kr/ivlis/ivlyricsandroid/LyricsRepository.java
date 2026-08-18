@@ -49,7 +49,7 @@ final class LyricsRepository {
     private static final String OPENDB_MANIFEST_URL = OPENDB_ROOT + "/data/manifest.json";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
-    private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v1";
+    private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v2";
     private static final String OPENDB_PREFS = "sync_data_opendb";
     private static final String KEY_OPENDB_PROVIDER_MAP = "provider_map";
     private static final String KEY_OPENDB_FETCHED_AT_MS = "fetched_at_ms";
@@ -284,7 +284,10 @@ final class LyricsRepository {
                     "",
                     false,
                     true,
-                    contributor.isPrivate
+                    contributor.isPrivate,
+                    null,
+                    contributor.syncType,
+                    contributor.syncPoints
             ));
         }
         return withContributors(result, anonymous);
@@ -785,7 +788,12 @@ final class LyricsRepository {
                 if (currentSyncData != null) {
                     log.write("sync-data contributors refreshed for cached lyrics: count="
                             + currentSyncData.contributors.size());
-                    return withContributors(cachedBase, currentSyncData.contributors)
+                    return withContributors(
+                            cachedBase,
+                            currentSyncData.contributors,
+                            currentSyncData.syncType,
+                            currentSyncData.syncPoints
+                    )
                             .withSelection(
                                     cachedBase.providerId,
                                     providerSettings.cacheKeyForProvider(cachedBase.providerId)
@@ -1134,7 +1142,9 @@ final class LyricsRepository {
                         true,
                         isrc,
                         spotifyTrackId,
-                        syncData.contributors
+                        syncData.contributors,
+                        syncData.syncType,
+                        syncData.syncPoints
                 );
             }
             log.write("sync-data apply failed: falling back to LRCLIB line lyrics");
@@ -1185,7 +1195,9 @@ final class LyricsRepository {
                         true,
                         isrc,
                         spotifyTrackId,
-                        syncData.contributors
+                        syncData.contributors,
+                        syncData.syncType,
+                        syncData.syncPoints
                 );
             }
             log.write("sync-data apply failed for cached lyrics: keeping provider line lyrics");
@@ -1215,12 +1227,23 @@ final class LyricsRepository {
                 && !refreshed.lines.isEmpty()
                 && ((refreshed.karaoke && !cached.karaoke)
                 || !refreshed.providerId.equals(cached.providerId)
+                || !refreshed.syncType.equals(cached.syncType)
+                || refreshed.syncPoints != cached.syncPoints
                 || !sameContributors(refreshed.contributors, cached.contributors));
     }
 
     private static LyricsResult withContributors(
             LyricsResult result,
             List<LyricsResult.SyncContributor> contributors
+    ) {
+        return withContributors(result, contributors, result.syncType, result.syncPoints);
+    }
+
+    private static LyricsResult withContributors(
+            LyricsResult result,
+            List<LyricsResult.SyncContributor> contributors,
+            String syncType,
+            int syncPoints
     ) {
         return new LyricsResult(
                 result.lines,
@@ -1231,7 +1254,9 @@ final class LyricsRepository {
                 result.spotifyTrackId,
                 contributors,
                 result.providerId,
-                result.selectionPolicyKey
+                result.selectionPolicyKey,
+                syncType,
+                syncPoints
         );
     }
 
@@ -1250,7 +1275,9 @@ final class LyricsRepository {
                     || !a.userHash.equals(b.userHash)
                     || a.profileAvailable != b.profileAvailable
                     || a.anonymous != b.anonymous
-                    || a.isPrivate != b.isPrivate) {
+                    || a.isPrivate != b.isPrivate
+                    || !a.syncType.equals(b.syncType)
+                    || a.syncPoints != b.syncPoints) {
                 return false;
             }
         }
@@ -2343,7 +2370,9 @@ final class LyricsRepository {
             SyncDataResult result = new SyncDataResult(
                     syncBodyWithDurationFallback(syncData, data),
                     responseProvider,
-                    parseSyncContributors(data, syncData)
+                    parseSyncContributors(data, syncData),
+                    data.optString("syncType", "unknown"),
+                    data.optInt("syncPoints", 0)
             );
             log.write(prefix + ": provider=" + result.provider
                     + " / lines=" + result.lineCharCounts().size()
@@ -2356,7 +2385,9 @@ final class LyricsRepository {
             SyncDataResult result = new SyncDataResult(
                     syncBodyWithDurationFallback(data, data),
                     responseProvider,
-                    parseSyncContributors(data, data)
+                    parseSyncContributors(data, data),
+                    data.optString("syncType", "unknown"),
+                    data.optInt("syncPoints", 0)
             );
             log.write(prefix + ": legacy body / provider=" + result.provider
                     + " / lines=" + result.lineCharCounts().size()
@@ -3698,11 +3729,12 @@ final class LyricsRepository {
     }
 
     private static JSONObject redactedContributorForCache(Object raw) throws Exception {
-        boolean isPrivate = raw instanceof JSONObject && (
-                ((JSONObject) raw).optBoolean("isPrivate", false)
-                        || ((JSONObject) raw).optBoolean("private", false)
-                        || (((JSONObject) raw).has("profilePublic")
-                        && !((JSONObject) raw).optBoolean("profilePublic", true))
+		JSONObject source = raw instanceof JSONObject ? (JSONObject) raw : null;
+		boolean isPrivate = source != null && (
+				source.optBoolean("isPrivate", false)
+						|| source.optBoolean("private", false)
+						|| (source.has("profilePublic")
+						&& !source.optBoolean("profilePublic", true))
         );
         return new JSONObject()
                 .put("name", "Anonymous")
@@ -3718,7 +3750,9 @@ final class LyricsRepository {
                 .put("identifier", JSONObject.NULL)
                 .put("anonymous", true)
                 .put("isPrivate", isPrivate)
-                .put("identityRedacted", true);
+				.put("identityRedacted", true)
+				.put("syncType", source == null ? "unknown" : source.optString("syncType", "unknown"))
+				.put("syncPoints", source == null ? 0 : source.optInt("syncPoints", 0));
     }
 
     private static void appendContributorEntries(JSONArray target, JSONObject object, String key) {
@@ -3756,6 +3790,8 @@ final class LyricsRepository {
             boolean profileAvailable = false;
             boolean anonymous = false;
             boolean isPrivate = false;
+			String syncType = "unknown";
+			int syncPoints = 0;
             LyricsResult.SyncContributor.CreatorDecoration decoration = null;
             boolean explicitAnonymousIdentity = false;
             if (raw instanceof String) {
@@ -3782,6 +3818,8 @@ final class LyricsRepository {
                 profileAvailable = object.has("profileAvailable")
                         ? object.optBoolean("profileAvailable", false)
                         : !userHash.isEmpty();
+				syncType = object.optString("syncType", "unknown");
+				syncPoints = Math.max(0, object.optInt("syncPoints", 0));
                 if (object.has("linked") && !object.optBoolean("linked", false)) {
                     profileAvailable = false;
                 }
@@ -3828,7 +3866,9 @@ final class LyricsRepository {
                     profileAvailable,
                     anonymousIdentity,
                     isPrivate,
-                    decoration
+					decoration,
+					syncType,
+					syncPoints
             ));
         }
         return result.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(result);
@@ -4019,17 +4059,37 @@ final class LyricsRepository {
         final JSONObject syncBody;
         final String provider;
         final List<LyricsResult.SyncContributor> contributors;
+        final String syncType;
+        final int syncPoints;
 
         SyncDataResult(JSONObject syncBody, String provider) {
-            this(syncBody, provider, Collections.emptyList());
+            this(syncBody, provider, Collections.emptyList(), "unknown", 0);
         }
 
         SyncDataResult(JSONObject syncBody, String provider, List<LyricsResult.SyncContributor> contributors) {
+            this(syncBody, provider, contributors, "unknown", 0);
+        }
+
+        SyncDataResult(
+                JSONObject syncBody,
+                String provider,
+                List<LyricsResult.SyncContributor> contributors,
+                String syncType,
+                int syncPoints
+        ) {
             this.syncBody = syncBody;
             this.provider = provider == null ? "" : provider;
             this.contributors = contributors == null
                     ? Collections.emptyList()
                     : Collections.unmodifiableList(new ArrayList<>(contributors));
+            String normalizedType = syncType == null ? "" : syncType.trim().toLowerCase(Locale.ROOT);
+            this.syncType = "line".equals(normalizedType)
+                    || "word".equals(normalizedType)
+                    || "character".equals(normalizedType)
+                    || "mixed".equals(normalizedType)
+                    ? normalizedType
+                    : "unknown";
+            this.syncPoints = Math.max(0, syncPoints);
         }
 
         JSONObject source() {
