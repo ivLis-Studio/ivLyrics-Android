@@ -103,6 +103,7 @@ final class AppI18n {
         languages.put("id", idStrings());
         languages.put("ms", msStrings());
         languages.put("tr", trStrings());
+        languages.put("cs", csStrings());
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
         addDisplayPowerStrings(languages);
@@ -122,7 +123,6 @@ final class AppI18n {
         addBluetoothSyncOffsetStrings(languages);
         addPollinationsAuthStrings(languages);
         addTmiStrings(languages);
-        languages.put("cs", csStrings());
         addKaraokeLineModeStrings(languages);
         addGlobalSyncOffsetStrings(languages);
         addVinylStrings(languages);
