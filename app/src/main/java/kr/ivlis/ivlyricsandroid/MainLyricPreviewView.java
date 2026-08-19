@@ -17,13 +17,10 @@ import android.view.View;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 final class MainLyricPreviewView extends View {
@@ -37,9 +34,14 @@ final class MainLyricPreviewView extends View {
     private static final int RESERVED_TEXT_ROWS = 3;
     private static final float WAVE_PERIOD_MS = 980f;
     private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
-    private static final long KARAOKE_BOUNCE_PRELEAD_MS = 70L;
-    private static final long KARAOKE_BOUNCE_RISE_MS = 220L;
-    private static final long KARAOKE_BOUNCE_RELEASE_MS = 640L;
+    private static final long KARAOKE_WORD_BOUNCE_MIN_RISE_MS = 60L;
+    private static final long KARAOKE_WORD_BOUNCE_MAX_RISE_MS = 180L;
+    private static final long KARAOKE_WORD_BOUNCE_MIN_RELEASE_MS = 180L;
+    private static final long KARAOKE_WORD_BOUNCE_MAX_RELEASE_MS = 280L;
+    private static final long KARAOKE_CHARACTER_BOUNCE_MIN_RISE_MS = 180L;
+    private static final long KARAOKE_CHARACTER_BOUNCE_MAX_RISE_MS = 280L;
+    private static final long KARAOKE_CHARACTER_BOUNCE_MIN_RELEASE_MS = 420L;
+    private static final long KARAOKE_CHARACTER_BOUNCE_MAX_RELEASE_MS = 820L;
     private static final int PREVIEW_LAYOUT_MATCH = 1;
     private static final int PREVIEW_INSTANCES_MATCH = 1 << 1;
     private static final int PREVIEW_WIDTH_INPUTS_MATCH = 1 << 2;
@@ -78,8 +80,6 @@ final class MainLyricPreviewView extends View {
     private final Matrix karaokeFillShaderMatrix = new Matrix();
     private final List<PreviewLine> lines = new ArrayList<>();
     private final Map<PreviewLine, List<TextSegment>> textSegmentCache = new IdentityHashMap<>();
-    private final Map<String, BounceState> bounceStates = new HashMap<>();
-    private final Set<String> completedBounceKeys = new HashSet<>();
     private float[] measuredLineWidths = new float[0];
     private boolean measuredLineWidthsValid;
     private float measuredLineWidthsScaledDensity = Float.NaN;
@@ -134,8 +134,6 @@ final class MainLyricPreviewView extends View {
             measuredLineWidthsValid = false;
         }
         if (layoutChanged) {
-            bounceStates.clear();
-            completedBounceKeys.clear();
             requestLayout();
         }
         postInvalidateOnAnimation();
@@ -162,8 +160,6 @@ final class MainLyricPreviewView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -174,8 +170,6 @@ final class MainLyricPreviewView extends View {
         }
         karaokeDisplayGranularity = normalized;
         textSegmentCache.clear();
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -186,8 +180,6 @@ final class MainLyricPreviewView extends View {
         }
         lyricsSegmentationLocale = normalized;
         textSegmentCache.clear();
-        bounceStates.clear();
-        completedBounceKeys.clear();
         postInvalidateOnAnimation();
     }
 
@@ -1171,56 +1163,65 @@ final class MainLyricPreviewView extends View {
         }
 
         float centerIndex = segment.sourceIndex + Math.max(0, segment.sourceLength - 1) * 0.5f;
-        float distance = Math.abs(centerIndex - activeSegmentIndex);
-        String bounceKey = segment.bounceKey(line.bounceKeyPrefix());
-        BounceState state = bounceStates.get(bounceKey);
-        if (state == null && distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
+        float distance = isWordDisplayGranularity()
+                ? 0f
+                : Math.abs(centerIndex - activeSegmentIndex);
+        if (distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
             return KaraokeBounce.IDLE;
         }
 
-        long now = SystemClock.uptimeMillis();
-        if (state == null) {
-            if (completedBounceKeys.contains(bounceKey)
-                    || positionMs < segment.startTimeMs - KARAOKE_BOUNCE_PRELEAD_MS
-                    || positionMs > segment.startTimeMs + KARAOKE_BOUNCE_RISE_MS) {
+        long durationMs = Math.max(1L, segment.endTimeMs - segment.startTimeMs);
+        float waveStrength;
+        if (isWordDisplayGranularity()) {
+            long riseDurationMs = Math.min(
+                    KARAOKE_WORD_BOUNCE_MAX_RISE_MS,
+                    Math.max(KARAOKE_WORD_BOUNCE_MIN_RISE_MS, Math.round(durationMs * 0.38f))
+            );
+            long releaseDurationMs = Math.min(
+                    KARAOKE_WORD_BOUNCE_MAX_RELEASE_MS,
+                    Math.max(KARAOKE_WORD_BOUNCE_MIN_RELEASE_MS, Math.round(durationMs * 0.45f))
+            );
+            long peakTimeMs = Math.min(segment.endTimeMs, segment.startTimeMs + riseDurationMs);
+            if (positionMs < segment.startTimeMs || positionMs >= segment.endTimeMs + releaseDurationMs) {
                 return KaraokeBounce.IDLE;
             }
-            long offsetFromStart = Math.max(-KARAOKE_BOUNCE_PRELEAD_MS, positionMs - segment.startTimeMs);
-            float attenuation = Math.max(0.22f, 1f - distance * 0.23f);
-            state = new BounceState(now - offsetFromStart, attenuation);
-            bounceStates.put(bounceKey, state);
-        }
-
-        float totalWindow = KARAOKE_BOUNCE_RISE_MS + KARAOKE_BOUNCE_RELEASE_MS;
-        float elapsed = now - state.startUptimeMs;
-        if (elapsed < -KARAOKE_BOUNCE_PRELEAD_MS) {
-            return KaraokeBounce.IDLE;
-        }
-        if (elapsed > totalWindow) {
-            bounceStates.remove(bounceKey);
-            completedBounceKeys.add(bounceKey);
-            return KaraokeBounce.IDLE;
-        }
-
-        float waveStrength;
-        if (elapsed < 0f) {
-            float preProgress = (elapsed + KARAOKE_BOUNCE_PRELEAD_MS) / (float) KARAOKE_BOUNCE_PRELEAD_MS;
-            waveStrength = easeOutCubic(preProgress) * 0.22f;
-        } else if (elapsed <= KARAOKE_BOUNCE_RISE_MS) {
-            float riseProgress = elapsed / (float) KARAOKE_BOUNCE_RISE_MS;
-            waveStrength = 0.22f + easeOutCubic(riseProgress) * 0.78f;
+            if (positionMs <= peakTimeMs) {
+                waveStrength = easeOutSine(
+                        (positionMs - segment.startTimeMs)
+                                / (float) Math.max(1L, peakTimeMs - segment.startTimeMs)
+                );
+            } else if (positionMs <= segment.endTimeMs) {
+                waveStrength = 1f;
+            } else {
+                waveStrength = easeSoftRelease(
+                        (positionMs - segment.endTimeMs) / (float) releaseDurationMs
+                );
+            }
         } else {
-            float fallProgress = Math.min(1f, (elapsed - KARAOKE_BOUNCE_RISE_MS) / (float) KARAOKE_BOUNCE_RELEASE_MS);
-            waveStrength = (float) Math.pow(1f - fallProgress, 1.38f);
+            long riseDurationMs = Math.min(
+                    KARAOKE_CHARACTER_BOUNCE_MAX_RISE_MS,
+                    Math.max(KARAOKE_CHARACTER_BOUNCE_MIN_RISE_MS, Math.round(durationMs * 0.9f))
+            );
+            long releaseDurationMs = Math.min(
+                    KARAOKE_CHARACTER_BOUNCE_MAX_RELEASE_MS,
+                    Math.max(KARAOKE_CHARACTER_BOUNCE_MIN_RELEASE_MS, Math.round(durationMs * 2.4f))
+            );
+            long elapsedMs = positionMs - segment.startTimeMs;
+            if (elapsedMs < 0L || elapsedMs > riseDurationMs + releaseDurationMs) {
+                return KaraokeBounce.IDLE;
+            }
+            waveStrength = elapsedMs <= riseDurationMs
+                    ? easeOutSine(elapsedMs / (float) riseDurationMs)
+                    : easeSoftRelease((elapsedMs - riseDurationMs) / (float) releaseDurationMs);
         }
 
-        waveStrength *= state.attenuation;
+        waveStrength *= Math.max(0.22f, 1f - distance * 0.23f);
         if (waveStrength < 0.025f) {
             return KaraokeBounce.IDLE;
         }
 
-        float offsetY = Math.round((-textSize * 0.23f * waveStrength) * 2f) / 2f;
-        float scale = Math.round((1f + 0.055f * waveStrength) * 100f) / 100f;
+        float offsetY = Math.round((-sp(6f) * waveStrength) * 4f) / 4f;
+        float scale = Math.round((1f + 0.055f * waveStrength) * 200f) / 200f;
         return karaokeBounceResult.set(offsetY, scale, offsetY != 0f || scale != 1f);
     }
 
@@ -1347,9 +1348,12 @@ final class MainLyricPreviewView extends View {
         return (float) Math.sin((now % periodMs) / (double) periodMs * Math.PI * 2.0);
     }
 
-    private float easeOutCubic(float value) {
-        float t = clamp(value);
-        return 1f - (float) Math.pow(1f - t, 3.0);
+    private float easeOutSine(float value) {
+        return (float) Math.sin(clamp(value) * Math.PI * 0.5);
+    }
+
+    private float easeSoftRelease(float value) {
+        return 0.5f + 0.5f * (float) Math.cos(clamp(value) * Math.PI);
     }
 
     private float sp(float value) {
@@ -1683,13 +1687,4 @@ final class MainLyricPreviewView extends View {
         }
     }
 
-    private static final class BounceState {
-        final long startUptimeMs;
-        final float attenuation;
-
-        BounceState(long startUptimeMs, float attenuation) {
-            this.startUptimeMs = startUptimeMs;
-            this.attenuation = Math.max(0f, attenuation);
-        }
-    }
 }

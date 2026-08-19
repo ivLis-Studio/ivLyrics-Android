@@ -149,7 +149,10 @@ public final class MainActivity extends Activity implements
     private static final String KEY_RESEARCH_TOKEN_CONSENT_V1 = "token_consent_v1";
     private static final String KEY_LAST_AUTO_UPDATE_CHECK_MS = "last_auto_update_check_ms";
     private static final long AUTO_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L;
-    private static final long PLAYBACK_CLOCK_INTERVAL_MS = 33L;
+    // Keep karaoke fill/bounce updates on the display cadence. The previous
+    // 30 Hz clock made otherwise smooth Canvas animation visibly step between
+    // syllables, especially while a line transition was running.
+    private static final long PLAYBACK_CLOCK_INTERVAL_MS = 16L;
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
