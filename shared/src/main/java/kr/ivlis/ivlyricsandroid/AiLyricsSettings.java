@@ -414,7 +414,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                         : previewItemsForMode(prefs.getString(KEY_PREVIEW_MODE, PREVIEW_MODE_ORIGINAL))),
                 prefs.getBoolean(KEY_AUTO_INSTRUMENTAL_BREAK, true),
                 prefs.getBoolean(KEY_INTERLUDE_LABELS_ENABLED, true),
-                prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, true),
+                prefs.getBoolean(KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, false),
                 prefs.getBoolean(KEY_KARAOKE_BOUNCE_EFFECT, true),
                 normalizeKaraokeDisplayGranularity(prefs.contains(KEY_KARAOKE_DISPLAY_GRANULARITY)
                         ? prefs.getString(KEY_KARAOKE_DISPLAY_GRANULARITY, KARAOKE_DISPLAY_CHARACTER)
@@ -429,7 +429,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 normalizePipOrientation(prefs.getString(KEY_PIP_ORIENTATION, DEFAULT_PIP_ORIENTATION)),
                 normalizeLyricsTextAlignment(prefs.getString(KEY_PIP_LYRICS_TEXT_ALIGNMENT, DEFAULT_PIP_LYRICS_TEXT_ALIGNMENT)),
                 normalizePipLyricsSizePercent(prefs.getInt(KEY_PIP_LYRICS_SIZE_PERCENT, DEFAULT_PIP_LYRICS_SIZE_PERCENT)),
-                prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, true),
+                prefs.getBoolean(KEY_METADATA_TRANSLATION_ENABLED, false),
                 prefs.getBoolean(KEY_JAPANESE_FURIGANA_ENABLED, false),
                 Boolean.TRUE.equals(providerEnabled.get(KeylessTranslationProviders.BING_ID)),
                 Boolean.TRUE.equals(providerEnabled.get(KeylessTranslationProviders.GOOGLE_ID)),

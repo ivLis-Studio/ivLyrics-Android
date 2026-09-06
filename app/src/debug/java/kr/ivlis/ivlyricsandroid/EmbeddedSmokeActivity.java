@@ -74,6 +74,17 @@ public final class EmbeddedSmokeActivity extends Activity {
         setContentView(root);
 
         try {
+            require(!fixtureSettings.snapshot().metadataTranslationEnabled, "new title translation defaults off");
+            require(!fixtureSettings.snapshot().syncedLyricsKaraokeAnimationEnabled, "new virtual karaoke defaults off");
+            fixtureSettings.setMetadataTranslationEnabled(true);
+            fixtureSettings.setSyncedLyricsKaraokeAnimationEnabled(true);
+            require(fixtureSettings.snapshot().metadataTranslationEnabled, "explicit title translation on is preserved");
+            require(fixtureSettings.snapshot().syncedLyricsKaraokeAnimationEnabled, "explicit virtual karaoke on is preserved");
+            fixtureApplication.getSharedPreferences(AiLyricsSettings.PREFS_NAME, MODE_PRIVATE).edit()
+                    .remove(AiLyricsSettings.KEY_METADATA_TRANSLATION_ENABLED)
+                    .remove(AiLyricsSettings.KEY_SYNCED_LYRICS_KARAOKE_ANIMATION).commit();
+            require(!fixtureSettings.snapshot().metadataTranslationEnabled, "reset title translation defaults off");
+            require(!fixtureSettings.snapshot().syncedLyricsKaraokeAnimationEnabled, "reset virtual karaoke defaults off");
             // A repeated launch gets a fresh owner and fresh transport assertions.
             // The session remains active while the full page is open above this Activity.
             if (session != null) session.release();

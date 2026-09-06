@@ -38,6 +38,10 @@ adb -s DEVICE_SERIAL shell am start -W -n kr.ivlis.ivlyricsandroid.qa/kr.ivlis.i
 
 Existing `card-click`, `full`, and `settings` actions remain available. Opening a page
 is a manual visual/navigation check, separate from the automated fixture assertions.
+The launched full-page Activity uses the QA application's normal settings and storage;
+the fixture's isolated alignment/preview preferences are not passed to that Activity.
+Use the `.qa` variant for this manual check so the installed release application's
+settings remain separate.
 
 Synthetic rows are published before each track reaches the engine, so the fixture
 uses the shared in-memory result path without provider requests. A manual cache is

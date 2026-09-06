@@ -141,7 +141,7 @@ public final class LyricsView extends View {
     private boolean karaoke;
     private boolean autoInstrumentalBreakEnabled = true;
     private boolean interludeLabelsEnabled = true;
-    private boolean syncedLyricsKaraokeAnimationEnabled = true;
+    private boolean syncedLyricsKaraokeAnimationEnabled = false;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
     private String lyricsSegmentationLocale = "auto";
