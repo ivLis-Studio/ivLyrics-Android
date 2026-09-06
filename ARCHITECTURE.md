@@ -53,21 +53,42 @@ JDK/SDK locations when environment variables are absent; Linux/CI should provide
 # Requires the existing IVLYRICS_RELEASE_* configuration for a signed release.
 # Without it, app-release-unsigned.apk is produced.
 
+./build.sh :app:assembleRelease :spotify-module:assembleRelease -PivLyricsRequireReleaseSigning=true
+# Build both release APKs and fail if release signing is not configured.
+
 ./build.sh :app:assembleQa
 # app/build/outputs/apk/qa/app-qa.apk, installed as kr.ivlis.ivlyricsandroid.qa
 # Coexists with the production app and keeps separate data.
 ```
 
-App release IDs and signing configuration are unchanged. The module retains the
-existing local development signing key configuration; updates must use the same
-key. The QA variant is debug signed and includes `EmbeddedSmokeActivity` for
+App release IDs and signing configuration names are unchanged. Both release
+variants read the shared `gradle/release-signing.gradle` configuration:
+`IVLYRICS_RELEASE_STORE_FILE`, `IVLYRICS_RELEASE_STORE_PASSWORD`,
+`IVLYRICS_RELEASE_KEY_ALIAS`, and `IVLYRICS_RELEASE_KEY_PASSWORD`. The tag/manual
+release workflow restores the existing repository signing key and requires this
+configuration with `-PivLyricsRequireReleaseSigning=true`.
+
+Without release signing configuration, a local module release build continues to
+use the existing Android debug key; a standalone release remains unsigned.
+Keep the same signing key when installing updates. A published module signed with
+the release key may not update an earlier locally debug-signed installation.
+The QA variant is debug signed and includes `EmbeddedSmokeActivity` for
 synthetic metadata/pause/seek/track-switch and shared-result checks. It does not
 replace the user's production app or its data.
 
 See [tests/README.md](tests/README.md) for common unit tests, portable regression
-fixtures and merged-manifest checks. PR/branch CI builds both products. The
-existing tag release workflow continues to sign and publish only the standalone
-app; Spotify module publishing remains separate.
+fixtures and merged-manifest checks. PR/branch CI builds both products. Tag/manual
+releases sign and publish both APKs:
+
+- `ivLyrics-Android-${tag}-release.apk`: standalone Android app.
+- `ivLyrics-LSPatch-${tag}.apk`: Spotify module for LSPosed/LSPatch.
+
+The module filename deliberately has no `-release` suffix. Hyphens within its tag
+are replaced with underscores so older standalone updaters continue selecting
+the Android APK. The single `ivLyrics-Android-${tag}-version.json` retains the
+standalone app's top-level version. Each `apks` entry includes its product label,
+package and individual version alongside the existing name, size and SHA-256.
+No Spotify APK is included or repackaged by this release workflow.
 
 ## Editing policy
 

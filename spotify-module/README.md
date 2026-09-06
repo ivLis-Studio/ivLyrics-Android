@@ -6,8 +6,16 @@ APK, login and package are not changed by this module.
 
 Build from the repository root with `./build.sh :spotify-module:assembleRelease`.
 Output: `spotify-module/build/outputs/apk/release/spotify-module-release.apk`.
-The development module currently uses the local Android debug signing key; keep
-the same key when installing updates.
+GitHub [Releases](https://github.com/ivLis-Studio/ivLyrics-Android/releases) also
+attach this module as `ivLyrics-LSPatch-${tag}.apk`, alongside the separate
+standalone Android app. This APK contains the ivLyrics module, not Spotify or a
+prepatched Spotify APK.
+
+Release builds use the existing `IVLYRICS_RELEASE_*` signing configuration when
+provided. The publishing workflow requires it; a local build without it keeps
+using the Android debug signing key. Keep the same key when installing updates.
+A published module signed with the release key may not update an earlier locally
+debug-signed installation. See [build and signing configuration](../ARCHITECTURE.md#build-and-verify).
 
 Install the module, enable **ivLyrics for Spotify** in LSPosed and select Spotify
 (`com.spotify.music`) as the scope. Force-stop Spotify before updating the module

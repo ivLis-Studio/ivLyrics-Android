@@ -56,6 +56,27 @@ jobs:
           python3 tests/run_metadata_regression.py
           python3 tests/run_provider_attribution_regression.py
           python3 tests/check_module_boundaries.py --built
+          python3 tests/run_release_asset_regression.py
+          python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
+      - name: Verify both signed release APKs with a temporary CI key
+        shell: bash
+        run: |
+          set -euo pipefail
+          ivlyrics_test_key_dir="$(mktemp -d)"
+          trap 'rm -rf "${ivlyrics_test_key_dir}"' EXIT
+          keytool -genkeypair -noprompt -keystore "${ivlyrics_test_key_dir}/test.jks" \
+            -storepass ci-test-only -keypass ci-test-only -alias ci-fixture \
+            -dname "CN=ivLyrics CI fixture" -keyalg RSA -keysize 2048 -validity 2
+          export IVLYRICS_RELEASE_STORE_FILE="${ivlyrics_test_key_dir}/test.jks"
+          export IVLYRICS_RELEASE_STORE_PASSWORD=ci-test-only
+          export IVLYRICS_RELEASE_KEY_ALIAS=ci-fixture
+          export IVLYRICS_RELEASE_KEY_PASSWORD=ci-test-only
+          ./gradlew :app:assembleRelease :spotify-module:assembleRelease \
+            -PivLyricsRequireReleaseSigning=true --console=plain
+          python3 .github/scripts/collect_release_apks.py --tag v0.0.0-ci \
+            --output build/reports/release-packaging
+          python3 tests/check_module_boundaries.py --built --variant release
 
       - name: Upload verification reports and debug/QA APKs
         if: always()
@@ -65,6 +86,7 @@ jobs:
           if-no-files-found: warn
           path: |
             build/reports/regressions/**/result.txt
+            build/reports/release-packaging/packaging-report.json
             shared/build/reports/tests/**
             shared/build/test-results/**
             shared/build/reports/lint-results-debug.*

@@ -41,13 +41,22 @@ ivLyrics Android detects the song currently playing in Spotify and displays kara
 
 ## Installation
 
+GitHub Releases include two APKs. Choose the file for the product you want to install.
+
+| File | Product |
+| --- | --- |
+| `ivLyrics-Android-version-release.apk` | Standalone ivLyrics Android app |
+| `ivLyrics-LSPatch-version.apk` | LSPosed/LSPatch module that replaces lyrics inside Spotify |
+
+See the [Spotify module instructions](spotify-module/README.md) to install and enable the module. The steps below are for the standalone Android app.
+
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/ivLis-Studio/ivLyrics-Android">
   <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="60">
 </a>
 
 Use the button above to add ivLyrics Android to Obtainium and track new versions from GitHub Releases.
 
-1. Download the latest APK from GitHub Releases.
+1. Download the latest `ivLyrics-Android-version-release.apk` from GitHub Releases.
 2. Install the APK on your Android device.
 3. If Android shows a security prompt, allow "Install unknown apps" for the app you used to download the APK.
 4. Open ivLyrics Android and complete the first-run setup.

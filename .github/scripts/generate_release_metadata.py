@@ -157,8 +157,8 @@ def commit_evidence(commits):
     return "\n\n".join(blocks)
 
 
-def read_gradle_version():
-    gradle = Path("app/build.gradle")
+def read_gradle_version(gradle_path="app/build.gradle"):
+    gradle = Path(gradle_path)
     text = gradle.read_text(encoding="utf-8") if gradle.exists() else ""
     code_match = re.search(r"versionCode\s+([0-9]+)", text)
     name_match = re.search(r'versionName\s+"([^"]+)"', text)
@@ -166,6 +166,28 @@ def read_gradle_version():
         "versionCode": int(code_match.group(1)) if code_match else None,
         "versionName": name_match.group(1) if name_match else "",
     }
+
+
+def apk_product(name):
+    normalized = name.lower()
+    if normalized.startswith("ivlyrics-lspatch-"):
+        return "spotify-module", "ivLyrics for Spotify (LSPosed/LSPatch)", "spotify-module/build.gradle"
+    if normalized.startswith("ivlyrics-android-"):
+        return "standalone", "ivLyrics Android", "app/build.gradle"
+    return "unknown", "Android APK", None
+
+
+def apk_identity(name):
+    product, label, gradle_path = apk_product(name)
+    identity = {"product": product, "label": label, "packageName": "",
+                "versionName": "", "versionCode": None}
+    if gradle_path is not None:
+        gradle = Path(gradle_path)
+        text = gradle.read_text(encoding="utf-8") if gradle.exists() else ""
+        package_match = re.search(r'applicationId\s+"([^"]+)"', text)
+        identity["packageName"] = package_match.group(1) if package_match else ""
+        identity.update(read_gradle_version(gradle_path))
+    return identity
 
 
 def apk_assets(apk_dir):
@@ -177,6 +199,7 @@ def apk_assets(apk_dir):
             "path": str(path),
             "size": path.stat().st_size,
             "sha256": digest,
+            **apk_identity(path.name),
         })
     return assets
 
@@ -200,6 +223,24 @@ def asset_downloads(assets, lang):
     lines = []
     for asset in assets:
         name = asset["name"]
+        product = asset.get("product") or apk_product(name)[0]
+        if product == "spotify-module":
+            description = (
+                "Spotify용 LSPosed/LSPatch 모듈입니다. 모듈 로더에서 활성화해야 합니다."
+                if lang == "ko" else
+                "Spotify module for LSPosed/LSPatch. Enable it in your module loader."
+            )
+        elif product == "standalone":
+            description = "독립 Android 앱입니다." if lang == "ko" else "Standalone Android app."
+        else:
+            description = "Android APK입니다." if lang == "ko" else "Android APK."
+        version_name = asset.get("versionName")
+        version_code = asset.get("versionCode")
+        if version_name:
+            description += f" v{version_name}"
+            if version_code is not None:
+                description += f" ({version_code})"
+            description += "."
         if lang == "ko":
             if "unsigned" in name:
                 note = "서명되지 않은 릴리즈 APK입니다."
@@ -207,7 +248,7 @@ def asset_downloads(assets, lang):
                 note = "설치 테스트용 디버그 APK입니다."
             else:
                 note = "서명된 릴리즈 APK입니다."
-            lines.append(f"`{name}`: {note}")
+            lines.append(f"`{name}`: {description} {note}")
         else:
             if "unsigned" in name:
                 note = "Unsigned release APK."
@@ -215,7 +256,7 @@ def asset_downloads(assets, lang):
                 note = "Debug APK for install testing."
             else:
                 note = "Signed release APK."
-            lines.append(f"`{name}`: {note}")
+            lines.append(f"`{name}`: {description} {note}")
     return lines
 
 

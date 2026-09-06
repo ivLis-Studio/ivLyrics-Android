@@ -9,7 +9,6 @@ on:
       tag:
         description: "Release tag to create or update"
         required: true
-        default: "v1.0.9"
       prerelease:
         description: "Mark release as prerelease"
         required: true
@@ -37,13 +36,23 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Android lint
-        run: ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug
+      - name: Install Android SDK platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36.1" "build-tools;36.0.0"
+
+      - name: Run Android lint and release packaging tests
+        run: |
+          ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug :spotify-module:lintDebug
+          python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+          python3 tests/run_release_asset_regression.py
 
       - name: Restore release signing key
         shell: bash
@@ -74,67 +83,25 @@ jobs:
             echo "IVLYRICS_RELEASE_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
           } >> "${GITHUB_ENV}"
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease
+      - name: Build both signed release APKs
+        run: ./gradlew :app:assembleRelease :spotify-module:assembleRelease -PivLyricsRequireReleaseSigning=true
 
-      - name: Verify release permission profile
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
+      - name: Verify module boundaries
+        run: python3 tests/check_module_boundaries.py --built --variant release
 
-          aapt_candidates=("${ANDROID_SDK_ROOT}"/build-tools/*/aapt)
-          if [[ "${#aapt_candidates[@]}" -eq 0 ]]; then
-            echo "::error::Android Asset Packaging Tool was not found"
-            exit 1
-          fi
-          aapt="$(printf '%s\n' "${aapt_candidates[@]}" | sort -V | tail -n 1)"
-
-          expected_permissions=$'android.permission.INTERNET\nandroid.permission.REQUEST_INSTALL_PACKAGES\nandroid.permission.SYSTEM_ALERT_WINDOW'
-          release_apks=(app/build/outputs/apk/release/*.apk)
-          if [[ "${#release_apks[@]}" -eq 0 ]]; then
-            echo "::error::No release APK was found for permission verification"
-            exit 1
-          fi
-
-          for apk in "${release_apks[@]}"; do
-            actual_permissions="$(
-              "${aapt}" dump permissions "${apk}" \
-                | sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" \
-                | sort -u
-            )"
-            if [[ "${actual_permissions}" != "${expected_permissions}" ]]; then
-              echo "::error file=${apk}::Unexpected release permission profile"
-              diff -u \
-                <(printf '%s\n' "${expected_permissions}") \
-                <(printf '%s\n' "${actual_permissions}") || true
-              exit 1
-            fi
-          done
-
-      - name: Collect APKs
+      - name: Verify and collect both release APKs
         id: collect
         shell: bash
+        env:
+          REQUESTED_RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           release_tag="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            release_tag="${{ inputs.tag }}"
+            release_tag="${REQUESTED_RELEASE_TAG}"
           fi
+          python3 .github/scripts/collect_release_apks.py --tag "${release_tag}" --output release-apks
           release_target="$(git rev-parse --verify "${release_tag}^{commit}" 2>/dev/null || git rev-parse HEAD)"
-          mkdir -p release-apks
-          while IFS= read -r apk; do
-            if [[ "${apk}" == *"/release/"* && "${apk}" == *"unsigned"* ]]; then
-              echo "::error::Release APK is unsigned: ${apk}"
-              exit 1
-            fi
-            variant="$(basename "$(dirname "${apk}")")"
-            name="ivLyrics-Android-${release_tag}-${variant}.apk"
-            if [[ "${apk}" == *"unsigned"* ]]; then
-              name="ivLyrics-Android-${release_tag}-${variant}-unsigned.apk"
-            fi
-            cp "${apk}" "release-apks/${name}"
-          done < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" | sort)
           {
             echo "release_tag=${release_tag}"
             echo "release_target=${release_target}"
@@ -160,6 +127,7 @@ jobs:
           name: ivLyrics-Android-${{ steps.collect.outputs.release_tag }}-apks
           path: |
             release-apks/*.apk
+            release-apks/packaging-report.json
             release-metadata/*
           if-no-files-found: error
 

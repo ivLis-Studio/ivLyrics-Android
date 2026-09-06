@@ -1,5 +1,7 @@
 plugins { id "com.android.application" }
 
+apply from: rootProject.file("gradle/release-signing.gradle")
+
 // Only third-party bytecode is relocated. All ivLyrics sources compile directly
 // from :shared and this module, with no generated application source tree.
 def privateWebKit = layout.buildDirectory.dir("generated/private-webkit")
@@ -23,8 +25,8 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            // Keep compatibility with the installed development module.
-            signingConfig signingConfigs.debug
+            // Published APKs use the stable release key; local development keeps its existing key.
+            signingConfig ivLyricsReleaseSigningConfigured ? signingConfigs.release : signingConfigs.debug
         }
     }
     compileOptions {

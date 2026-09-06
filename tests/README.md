@@ -8,6 +8,7 @@ python3 tests/run_lyrics_center_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/check_module_boundaries.py --built
+python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
 
 `shared/src/test` contains the common JUnit checks, including initialization of
@@ -20,6 +21,12 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The release metadata tests use synthetic APK bytes and the real metadata
+generator. They verify independent product/package/version fields, existing
+checksums and compatibility fields, bilingual download descriptions, and one
+standalone version manifest containing both products. They require only Python;
+no GitHub, AI, webhook, Android SDK, or signing key is accessed.
 
 Reports are written under `build/reports/regressions`; normal Gradle test reports
 remain in `shared/build/reports/tests`. No test depends on another workspace checkout,
@@ -44,9 +51,11 @@ public JSON fixtures; the default run uses only synthetic data.
 GitHub Actions runs common tests, lint for all three modules, both debug APK
 builds, the standalone QA variant and all host regressions for pull requests and
 branch pushes. Debug and QA APKs are uploaded with the test/lint reports.
-The existing tag/manual release workflow
-continues to sign and publish the standalone app; it does not publish module APKs
-or require release secrets for pull-request checks.
+The tag/manual release workflow signs and publishes the standalone app and
+Spotify module using the existing release key. Its module asset name excludes
+`-release`, preserving older standalone updater selection. Pull-request checks
+continue to run without release secrets and produce debug-signed verification
+APKs rather than APKs signed with the release key.
 
 Detailed scopes:
 
