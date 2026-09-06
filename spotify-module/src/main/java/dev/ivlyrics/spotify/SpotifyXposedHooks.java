@@ -52,6 +52,8 @@ public final class SpotifyXposedHooks implements IXposedHookLoadPackage, IXposed
                             return;
                         }
                         ContextBridge.initialize(modulePath);
+                        SpotifyKaraokeTransport.install(loader);
+                        SpotifyKaraokePlayback.install(loader, oldVersion);
                         SpotifyLyricsHost.install();
                         SpotifyWebViewSupport.install();
                         IvLyricsBridge.initialize(context);
@@ -101,6 +103,7 @@ public final class SpotifyXposedHooks implements IXposedHookLoadPackage, IXposed
         }
         installedHooks.add(XposedBridge.hookMethod(availability, new XC_MethodHook() {
             @Override protected void beforeHookedMethod(MethodHookParam param) {
+                SpotifyKaraokeEligibility.onCardProvider(param.thisObject, param.args[0]);
                 SpotifyMetadataBridge.onContextTrack(param.args[0]);
                 Object replacement = ComposeAdapter.cardAvailability(param.thisObject, param.args[0]);
                 if (replacement != null) param.setResult(replacement);
@@ -174,6 +177,14 @@ public final class SpotifyXposedHooks implements IXposedHookLoadPackage, IXposed
                 }));
         }
         installedHooks.add(SpotifyLyricsCardPresence.install(loader, oldVersion));
+        if (!oldVersion) {
+            // The native server can omit the card entirely; capture its repository independently.
+            installedHooks.addAll(XposedBridge.hookAllConstructors(availabilityOwner, new XC_MethodHook() {
+                @Override protected void afterHookedMethod(MethodHookParam param) {
+                    if (!param.hasThrowable()) SpotifyKaraokeEligibility.onCardProvider(param.thisObject, null);
+                }
+            }));
+        }
         if (!oldVersion) installedHooks.add(SpotifyLyricsOrder.install(loader));
         committed = true;
         } finally {

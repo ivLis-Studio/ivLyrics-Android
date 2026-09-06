@@ -1,0 +1,19 @@
+<resources>
+    <string name="spotify_karaoke_start">노래방 꺼짐. 눌러서 보컬 작게</string>
+    <string name="spotify_karaoke_low">노래방 보컬 작게. 눌러서 보컬 크게</string>
+    <string name="spotify_karaoke_high">노래방 보컬 크게. 눌러서 끄기</string>
+    <string name="spotify_karaoke_stopping">노래방 끄는 중</string>
+    <string name="spotify_karaoke_cancel">따라 부르기 준비 취소</string>
+    <string name="spotify_karaoke_no_track">Spotify에서 노래를 먼저 재생해주세요.</string>
+    <string name="spotify_karaoke_remote">이 기기에서 재생하면 따라 부르기를 사용할 수 있습니다.</string>
+    <string name="spotify_karaoke_offline">Spotify의 오프라인 모드를 꺼주세요.</string>
+    <string name="spotify_karaoke_quality">Spotify의 재생 음질을 낮음보다 높게 설정해주세요.</string>
+    <string name="spotify_karaoke_version">이 Spotify 버전에서는 따라 부르기를 사용할 수 없습니다.</string>
+    <string name="spotify_karaoke_unsupported">Spotify에서 이 곡의 따라 부르기를 제공하지 않습니다.</string>
+    <string name="spotify_karaoke_account">이 계정에는 Spotify 따라 부르기가 활성화되어 있지 않습니다.</string>
+    <string name="spotify_karaoke_mask">이 곡의 보컬 감소를 준비하지 못했습니다.</string>
+    <string name="spotify_karaoke_timeout">따라 부르기 준비가 지연되었습니다. 다시 시도해주세요.</string>
+    <string name="spotify_karaoke_reset">따라 부르기를 끄지 못했습니다. 다시 눌러 해제해주세요.</string>
+    <string name="spotify_karaoke_error">따라 부르기를 시작하지 못했습니다. 다시 시도해주세요.</string>
+    <string name="spotify_karaoke_waiting">Spotify 따라 부르기 지원 여부를 확인하고 있습니다.</string>
+</resources>

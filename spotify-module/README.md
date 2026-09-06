@@ -32,6 +32,16 @@ The version guard recognizes Spotify **9.1.80.2221** and **9.1.42.2058**. Other
 versions are left untouched and logged as unsupported. Recognition alone does
 not establish playback validation on every Android version or loader.
 
+On Spotify **9.1.80.2221**, the module also connects to Spotify's native SingAlong
+service. A single microphone button at the lower right of the full lyrics page,
+beside the provider credits, cycles **OFF → LOW → HIGH → OFF**. It appears on page
+entry or any screen touch and hides after three seconds without interaction.
+It stays hidden while track support is being checked and for tracks without native
+vocal-removal support. Activation retains Spotify's support, online-mode,
+local-playback and audio-quality requirements; LOW-quality playback is excluded. The module does
+not change Spotify's feature flags or make unsupported tracks available. This
+control belongs only to the Spotify module, not the standalone app.
+
 See [architecture](../ARCHITECTURE.md) for the host interfaces, resource context,
 WebKit isolation, build outputs and editing boundaries. No source-copy or
 source-replacement build step is used.

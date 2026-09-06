@@ -1,0 +1,19 @@
+<resources>
+    <string name="spotify_karaoke_start">Sing along off. Tap for low vocals</string>
+    <string name="spotify_karaoke_low">Sing along with low vocals. Tap for high vocals</string>
+    <string name="spotify_karaoke_high">Sing along with high vocals. Tap to turn off</string>
+    <string name="spotify_karaoke_stopping">Turning sing along off</string>
+    <string name="spotify_karaoke_cancel">Cancel sing-along preparation</string>
+    <string name="spotify_karaoke_no_track">Play a song in Spotify first.</string>
+    <string name="spotify_karaoke_remote">Play on this device to sing along.</string>
+    <string name="spotify_karaoke_offline">Turn off Spotify offline mode to sing along.</string>
+    <string name="spotify_karaoke_quality">Choose a playback quality higher than Low in Spotify.</string>
+    <string name="spotify_karaoke_version">Sing along is unavailable with this Spotify version.</string>
+    <string name="spotify_karaoke_unsupported">Spotify does not currently offer sing along for this song.</string>
+    <string name="spotify_karaoke_account">Spotify has not enabled sing along for this account.</string>
+    <string name="spotify_karaoke_mask">Spotify could not prepare vocal reduction for this song.</string>
+    <string name="spotify_karaoke_timeout">Sing along took too long to prepare. Please try again.</string>
+    <string name="spotify_karaoke_reset">Could not turn off sing along. Tap again to retry.</string>
+    <string name="spotify_karaoke_error">Could not start sing along. Please try again.</string>
+    <string name="spotify_karaoke_waiting">Checking Spotify sing-along availability.</string>
+</resources>

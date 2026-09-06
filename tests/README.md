@@ -8,6 +8,7 @@ python3 tests/run_lyrics_center_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/run_card_presence_regression.py
+python3 tests/run_karaoke_controller_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
@@ -32,6 +33,13 @@ checks song eligibility with synthetic reflection bindings: Spotify's `has_lyric
 flag does not affect song cards, and episode-backed tracks and other non-song URIs
 remain excluded. It requires only a JDK and does not simulate Android hooks or
 claim that device rendering passed.
+
+The karaoke-controller regression runs the production module controller with
+deterministic scheduling and synthetic Spotify collaborators. It checks native
+preparation and acknowledgement ordering, volume changes, stale track events,
+playback/support gates, timeouts and cleanup on page or track changes. It requires
+only a JDK and Python. Real native routing, track support, button placement and
+audible vocal reduction require separate physical-device checks.
 
 The release metadata tests use synthetic APK bytes and the real metadata
 generator. They verify independent product/package/version fields, existing

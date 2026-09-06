@@ -575,6 +575,14 @@ public class BaseLyricsActivity extends Activity implements
         return null;
     }
 
+    /** Optional host-owned control beside the lyrics attribution. */
+    protected View createLyricsFooterAccessory() {
+        return null;
+    }
+
+    /** Pass only the public track identity across the host boundary. */
+    protected void onLyricsHostTrackChanged(String trackUri) {}
+
     @Override
     public void finish() {
         if (lyricsActivityHost != null && !isFinishing()) {
@@ -1305,6 +1313,8 @@ public class BaseLyricsActivity extends Activity implements
                 && currentTrack.stableKey().equals(snapshot.stableKey()) && !snapshot.isrc.isEmpty()
                 && !snapshot.isrc.equals(currentTrack.isrc);
         currentTrack = snapshot;
+        onLyricsHostTrackChanged(snapshot == null || snapshot.trackId.isEmpty()
+                ? "" : "spotify:track:" + snapshot.trackId);
         updatePictureInPictureActionsIfNeeded(snapshot != null && snapshot.playing);
         updatePermissionState();
         if (!isSpotifyApiConfigured()) {
@@ -3558,7 +3568,23 @@ public class BaseLyricsActivity extends Activity implements
         );
         attributionParams.gravity = Gravity.CENTER_HORIZONTAL;
         attributionParams.topMargin = dp(4);
-        content.addView(lyricsProviderAttributionView.container, attributionParams);
+        View footerAccessory = IvLyricsBridge.isEmbedded(this) ? createLyricsFooterAccessory() : null;
+        if (footerAccessory == null) {
+            content.addView(lyricsProviderAttributionView.container, attributionParams);
+        } else {
+            FrameLayout footer = new FrameLayout(this);
+            LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            footerParams.topMargin = dp(4);
+            content.addView(footer, footerParams);
+            FrameLayout.LayoutParams creditParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+            creditParams.leftMargin = dp(52);
+            creditParams.rightMargin = dp(52);
+            footer.addView(lyricsProviderAttributionView.container, creditParams);
+            footer.addView(footerAccessory, new FrameLayout.LayoutParams(
+                    dp(44), dp(44), Gravity.RIGHT | Gravity.CENTER_VERTICAL));
+        }
         updateLyricsProviderAttribution(currentLyricsResult);
 
         attachPageSwipe(header, false, false);

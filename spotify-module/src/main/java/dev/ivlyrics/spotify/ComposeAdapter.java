@@ -33,6 +33,7 @@ public final class ComposeAdapter {
         if (session == null || !"spotify-media-session".equals(sessionTag)) return;
         IvLyricsBridge.onMediaSession(session);
         SpotifyMetadataBridge.onMediaSession(session);
+        SpotifyKaraokePlayback.onMediaSession(session);
         Log.i(TAG, "Captured in-process MediaSession");
     }
 
