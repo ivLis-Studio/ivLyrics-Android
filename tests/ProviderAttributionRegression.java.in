@@ -93,6 +93,17 @@ public final class ProviderAttributionRegression {
                 "translation status uses actual translation provider");
         check(!aiProviderLoadingText("translation-format", "loading.translation").contains("OpenAI"),
                 "pronunciation provider cannot mislabel translation status");
+        translationLoadingProviderName = "Microsoft Bing";
+        check(aiProviderLoadingText("translation-format", "loading.translation").endsWith("Microsoft Bing"),
+                "fallback changes the displayed provider during the same track");
+        check(aiProviderLoadingText("both-format", "status.ai_generating").endsWith("Microsoft Bing / OpenAI ChatGPT"),
+                "parallel tasks retain their separate actual providers");
+        translationLoadingProviderName = "OpenAI ChatGPT";
+        check(aiProviderLoadingText("both-format", "status.ai_generating").endsWith(":OpenAI ChatGPT"),
+                "one provider used by both tasks is displayed once");
+        translationLoadingProviderName = "";
+        check(aiProviderLoadingText("translation-format", "loading.translation").equals("loading.translation"),
+                "a reset translation task cannot reuse pronunciation attribution");
         check(aiProviderLoadingText("tmi-format", "tmi.loading").equals("tmi.loading"),
                 "untracked TMI loading never borrows supplement provider");
         GenerationGate callback = new GenerationGate(10L, currentLyricsKey, currentBaseLyricsResult);

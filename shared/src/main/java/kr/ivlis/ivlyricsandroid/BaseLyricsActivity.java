@@ -52,6 +52,7 @@ import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.text.style.ReplacementSpan;
 import android.util.Rational;
+import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.DragEvent;
 import android.view.HapticFeedbackConstants;
@@ -150,10 +151,6 @@ public class BaseLyricsActivity extends Activity implements
     private static final String KEY_RESEARCH_TOKEN_CONSENT_V1 = "token_consent_v1";
     private static final String KEY_LAST_AUTO_UPDATE_CHECK_MS = "last_auto_update_check_ms";
     private static final long AUTO_UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L;
-    // Keep karaoke fill/bounce updates on the display cadence. The previous
-    // 30 Hz clock made otherwise smooth Canvas animation visibly step between
-    // syllables, especially while a line transition was running.
-    private static final long PLAYBACK_CLOCK_INTERVAL_MS = 16L;
     private static final int ONBOARDING_STEP_COUNT = 3;
     private static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
     private static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
@@ -559,13 +556,26 @@ public class BaseLyricsActivity extends Activity implements
     private UpdateChecker.UpdateInfo pendingUpdateInfo;
     private final Runnable landscapeControlsAutoHideRunnable = () -> setLandscapeControlsVisible(false, true);
 
-    private final Runnable ticker = new Runnable() {
+    private boolean playbackClockActive;
+    private final Choreographer.FrameCallback ticker = new Choreographer.FrameCallback() {
         @Override
-        public void run() {
+        public void doFrame(long frameTimeNanos) {
+            if (!playbackClockActive) return;
             updatePlaybackUi();
-            handler.postDelayed(this, PLAYBACK_CLOCK_INTERVAL_MS);
+            if (playbackClockActive) Choreographer.getInstance().postFrameCallback(this);
         }
     };
+
+    private void startPlaybackClock() {
+        stopPlaybackClock();
+        playbackClockActive = true;
+        Choreographer.getInstance().postFrameCallback(ticker);
+    }
+
+    private void stopPlaybackClock() {
+        playbackClockActive = false;
+        Choreographer.getInstance().removeFrameCallback(ticker);
+    }
 
     private LyricsActivityHost lyricsActivityHost;
     private boolean hostLyricsDragging;
@@ -667,8 +677,7 @@ public class BaseLyricsActivity extends Activity implements
         applySystemBarsForOrientation();
         applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
         applyLandscapeControlsAutoHideSetting();
-        handler.removeCallbacks(ticker);
-        handler.post(ticker);
+        startPlaybackClock();
         consumeOpenLyricsPageRequest();
         if (!isPictureInPictureUiActive()) {
             setPictureInPictureUiVisible(false);
@@ -945,7 +954,7 @@ public class BaseLyricsActivity extends Activity implements
         NowPlayingService.requestRefresh(this);
         if (!keepActiveForPictureInPicture) {
             NowPlayingService.unregister(this);
-            handler.removeCallbacks(ticker);
+            stopPlaybackClock();
             handler.removeCallbacks(landscapeControlsAutoHideRunnable);
             cancelLyricsMetaLongPress();
             cancelArtworkLongPress();
@@ -966,8 +975,7 @@ public class BaseLyricsActivity extends Activity implements
             NowPlayingService.register(this);
             NowPlayingService.requestRefresh(this);
             updatePictureInPictureActionsIfNeeded(currentTrack != null && currentTrack.playing);
-            handler.removeCallbacks(ticker);
-            handler.post(ticker);
+            startPlaybackClock();
             return;
         }
         pictureInPictureActionsInitialized = false;
@@ -982,6 +990,7 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onDestroy() {
+        stopPlaybackClock();
         if (lyricsActivityHost != null) lyricsActivityHost.destroy();
         pictureInPictureUiActive = false;
         pictureInPictureActionsInitialized = false;
@@ -1933,6 +1942,8 @@ public class BaseLyricsActivity extends Activity implements
         String label = providerLabel == null ? "" : providerLabel.trim();
         if (pronunciation) pronunciationLoadingProviderName = label;
         else translationLoadingProviderName = label;
+        // A fallback can change providers while the same lyric row is displayed.
+        clearPreviewRowsCache();
         updateLyricsSupplementLoadingText();
         updateVinylLoadingIndicator(true);
         if (aiSettingsStatusView != null && aiLyricsGenerating) {
@@ -2480,6 +2491,7 @@ public class BaseLyricsActivity extends Activity implements
         lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
         lyricPreviewView.setKaraokeDisplayGranularity(aiLyricsSettings.snapshot().karaokeDisplayGranularity);
         lyricPreviewView.setTypographySettings(aiLyricsSettings.snapshot().typography);
+        lyricPreviewView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
         lyricPreviewContainer.addView(lyricPreviewView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -8923,6 +8935,9 @@ public class BaseLyricsActivity extends Activity implements
         if (snapshot == null) {
             return;
         }
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
+        }
         if (lyricsView != null) {
             lyricsView.setLyricTextAlignment(snapshot.lyricsTextAlignment);
         }
@@ -12527,6 +12542,7 @@ public class BaseLyricsActivity extends Activity implements
         long generation = ++aiSupplementGeneration;
         pronunciationLoadingProviderName = "";
         translationLoadingProviderName = "";
+        clearPreviewRowsCache();
         if (currentTrack == null || currentBaseLyricsResult == null || currentBaseLyricsResult.lines.isEmpty()) {
             aiLyricsGenerating = false;
             setLyricsSupplementLoading(false, false, false);
@@ -12917,6 +12933,11 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void setLyricsSupplementLoading(boolean pronunciation, boolean translation, boolean furigana) {
+        if (lyricsSupplementPronunciationLoading != pronunciation
+                || lyricsSupplementTranslationLoading != translation
+                || lyricsSupplementFuriganaLoading != furigana) {
+            clearPreviewRowsCache();
+        }
         if (!pronunciation) pronunciationLoadingProviderName = "";
         if (!translation) translationLoadingProviderName = "";
         lyricsSupplementPronunciationLoading = pronunciation;

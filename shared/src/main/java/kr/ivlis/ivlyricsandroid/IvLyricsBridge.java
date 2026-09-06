@@ -44,7 +44,7 @@ public final class IvLyricsBridge {
     private static LyricsResult sharedResult;
     private static String sharedSourceLanguage = "auto";
     private static WeakReference<BaseLyricsActivity> foregroundPage = new WeakReference<>(null);
-    private static final List<WeakReference<NativeCard>> CARDS = new ArrayList<>();
+    private static final List<WeakReference<NativeSurface>> CARDS = new ArrayList<>();
     private static final Runnable RELEASE = IvLyricsBridge::releaseIdleEngine;
 
     private static void releaseIdleEngine() {
@@ -104,6 +104,12 @@ public final class IvLyricsBridge {
     public static View createPreview(Context context) {
         initialize(context);
         return new NativeCard(hostContext(context));
+    }
+
+    /** Spotify's inline lyrics slot, sharing the same engine and player preview renderer. */
+    public static View createInlinePreview(Context context) {
+        initialize(context);
+        return new NativeInline(hostContext(context));
     }
 
     public static void openLyrics(Context context) {
@@ -198,7 +204,7 @@ public final class IvLyricsBridge {
         CARDS.removeIf(reference -> reference.get() == null || !reference.get().isAttachedToWindow());
     }
 
-    private static void attach(NativeCard card) {
+    private static void attach(NativeSurface card) {
         MAIN.removeCallbacks(RELEASE);
         pruneCards();
         CARDS.add(new WeakReference<>(card));
@@ -206,28 +212,47 @@ public final class IvLyricsBridge {
         engine.renderCards();
     }
 
-    private static void detach(NativeCard card) {
+    private static void detach(NativeSurface card) {
         CARDS.removeIf(reference -> reference.get() == null || reference.get() == card);
         MAIN.removeCallbacks(RELEASE);
         MAIN.postDelayed(RELEASE, 5000L);
     }
 
+    private abstract static class NativeSurface extends FrameLayout {
+        NativeSurface(Context context) { super(context); }
+        abstract void render(Engine state);
+        abstract void updatePosition(Engine state);
+        private final Runnable tick = new Runnable() {
+            @Override public void run() {
+                if (!isAttachedToWindow()) return;
+                if (isShown() && getWindowVisibility() == View.VISIBLE && engine != null) {
+                    updatePosition(engine);
+                }
+                if (isShown() && getWindowVisibility() == View.VISIBLE) postOnAnimation(this);
+                else postDelayed(this, 250L);
+            }
+        };
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            attach(this);
+            removeCallbacks(tick);
+            post(tick);
+        }
+        @Override protected void onDetachedFromWindow() {
+            removeCallbacks(tick);
+            detach(this);
+            super.onDetachedFromWindow();
+        }
+    }
+
     /** The card uses the same original Canvas renderer as the full lyrics page. */
-    private static final class NativeCard extends FrameLayout {
+    private static final class NativeCard extends NativeSurface {
         final PlayerBackgroundView background;
         final LyricsView lyrics;
         final TextView title;
         AiLyricsSettings.Snapshot appliedSettings;
         LyricsResult appliedResult;
-        private final Runnable tick = new Runnable() {
-            @Override public void run() {
-                if (!isAttachedToWindow()) return;
-                if (isShown() && getWindowVisibility() == View.VISIBLE && engine != null) {
-                    lyrics.setPlaybackPosition(engine.position());
-                }
-                postDelayed(this, isShown() ? 32L : 250L);
-            }
-        };
 
         NativeCard(Context context) {
             super(context);
@@ -261,17 +286,6 @@ public final class IvLyricsBridge {
         }
 
         @Override public boolean onInterceptTouchEvent(MotionEvent event) { return true; }
-        @Override protected void onAttachedToWindow() {
-            super.onAttachedToWindow();
-            attach(this);
-            removeCallbacks(tick);
-            post(tick);
-        }
-        @Override protected void onDetachedFromWindow() {
-            removeCallbacks(tick);
-            detach(this);
-            super.onDetachedFromWindow();
-        }
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
             // Spotify supplies the available card width; keep the preview square at every density.
             int width = MeasureSpec.getMode(widthSpec) == MeasureSpec.UNSPECIFIED
@@ -281,7 +295,10 @@ public final class IvLyricsBridge {
             super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
-        void render(Engine state) {
+        @Override void updatePosition(Engine state) {
+            lyrics.setPlaybackPosition(state.position());
+        }
+        @Override void render(Engine state) {
             AiLyricsSettings.Snapshot settings = state.settings.snapshot();
             if (appliedSettings != settings) {
                 appliedSettings = settings;
@@ -323,6 +340,111 @@ public final class IvLyricsBridge {
             return view;
         }
         int dp(int value) { return Math.round(getResources().getDisplayMetrics().density * value); }
+    }
+
+    /** The native inline slot has no card chrome; all text behavior belongs to the shared preview. */
+    private static final class NativeInline extends NativeSurface {
+        final MainLyricPreviewView preview;
+        AiLyricsSettings.Snapshot appliedSettings;
+        LyricsResult appliedResult;
+        long appliedDuration;
+        boolean appliedPronunciationLoading;
+        boolean appliedTranslationLoading;
+        String appliedSourceLanguage;
+        InlineLyricPreviewModel model;
+        InlineLyricPreviewModel.PreviewEntry appliedEntry;
+        boolean entryApplied;
+        String emptyKey = "";
+        long emptySince;
+
+        NativeInline(Context context) {
+            super(context);
+            setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            setPadding(0, 0, 0, Math.round(12f * getResources().getDisplayMetrics().density));
+            setMinimumHeight(Math.round(32f * getResources().getDisplayMetrics().density));
+            setClickable(true);
+            setFocusable(true);
+            preview = new MainLyricPreviewView(context);
+            preview.setCompactLayout(true);
+            preview.setExternallyDriven(true);
+            addView(preview, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER_VERTICAL));
+            setOnClickListener(view -> openLyrics(getContext()));
+        }
+
+        @Override public boolean onInterceptTouchEvent(MotionEvent event) { return true; }
+
+        @Override void render(Engine state) {
+            AiLyricsSettings.Snapshot settings = state.settings.snapshot();
+            long duration = state.track == null ? 0L : state.track.durationMs;
+            boolean changed = appliedSettings != settings || appliedResult != state.result
+                    || appliedDuration != duration
+                    || appliedPronunciationLoading != state.pronunciationLoading
+                    || appliedTranslationLoading != state.translationLoading
+                    || !state.sourceLanguage.equals(appliedSourceLanguage);
+            if (appliedSettings != settings) {
+                preview.setTypographySettings(settings.typography);
+                preview.setKaraokeDisplayGranularity(settings.karaokeDisplayGranularity);
+                preview.setKaraokeBounceEffectEnabled(settings.karaokeBounceEffectEnabled);
+                preview.setLyricTextAlignment(settings.lyricsTextAlignment);
+                setContentDescription("ivLyrics, " + ("ko".equals(settings.uiLang) ? "전체 가사 열기" : "Open lyrics"));
+            }
+            appliedSettings = settings;
+            appliedResult = state.result;
+            appliedDuration = duration;
+            appliedPronunciationLoading = state.pronunciationLoading;
+            appliedTranslationLoading = state.translationLoading;
+            appliedSourceLanguage = state.sourceLanguage;
+            preview.setLyricsSegmentationLocale(state.sourceLanguage);
+            if (changed) {
+                model = state.result == null || state.result.lines.isEmpty() ? null
+                        : new InlineLyricPreviewModel(state.result, settings, duration,
+                                state.pronunciationLoading, state.translationLoading, state.sourceLanguage);
+                entryApplied = false;
+                emptyKey = "";
+            }
+            updatePosition(state);
+        }
+
+        @Override void updatePosition(Engine state) {
+            if (appliedSettings == null) return;
+            boolean song = state.track != null && state.track.mediaId.startsWith("spotify:track:")
+                    && !state.track.trackId.isEmpty() && state.track.hasUsableMetadata();
+            if (!song || appliedSettings.previewItems == AiLyricsSettings.PREVIEW_ITEM_NONE) {
+                if (getVisibility() != View.GONE) { preview.clear(); setVisibility(View.GONE); }
+                return;
+            }
+            long position = state.position();
+            boolean playing = state.track != null && state.track.playing;
+            if (model == null) {
+                String detail = state.result == null ? state.ui("status.lyrics_waiting") : state.result.detail;
+                String key = state.key + '\n' + state.loading + '\n' + detail;
+                if (!emptyKey.equals(key)) {
+                    emptyKey = key;
+                    emptySince = SystemClock.uptimeMillis();
+                    MainLyricPreviewView.PreviewLine row = state.loading
+                            ? MainLyricPreviewView.PreviewLine.loading(state.ui("status.lyrics_loading"))
+                            : new MainLyricPreviewView.PreviewLine(detail == null || detail.isEmpty()
+                                    ? state.ui("status.lyrics_waiting") : detail, true);
+                    preview.setPreview(Collections.singletonList(row), position, 0L, 0L, state.loading);
+                }
+                setVisibility(!state.loading && SystemClock.uptimeMillis() - emptySince >= 3000L
+                        ? View.GONE : View.VISIBLE);
+                if (getVisibility() == View.VISIBLE) preview.setPlaybackPosition(position, state.loading);
+                return;
+            }
+            setVisibility(View.VISIBLE);
+            InlineLyricPreviewModel.PreviewEntry entry = model.at(position);
+            if (!entryApplied || entry != appliedEntry) {
+                appliedEntry = entry;
+                entryApplied = true;
+                preview.setPreview(model.rows(entry), position, entry == null ? 0L : entry.startTimeMs,
+                        entry == null ? 0L : entry.endTimeMs, playing);
+            } else {
+                preview.setPlaybackPosition(position, playing);
+            }
+        }
     }
 
     private static final class Engine implements NowPlayingService.Listener, SharedPreferences.OnSharedPreferenceChangeListener {
@@ -567,8 +689,8 @@ public final class IvLyricsBridge {
                 sharedSourceLanguage = sourceLanguage;
             }
             pruneCards();
-            for (WeakReference<NativeCard> reference : CARDS) {
-                NativeCard card = reference.get();
+            for (WeakReference<NativeSurface> reference : CARDS) {
+                NativeSurface card = reference.get();
                 if (card != null) card.render(this);
             }
         }

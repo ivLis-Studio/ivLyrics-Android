@@ -55,16 +55,6 @@ public final class LyricsView extends View {
     private static final float BLOCK_GAP_SP = 32f;
     private static final float BOTTOM_EDGE_FADE_DP = 34f;
     private static final int KARAOKE_VOCAL_STACK_CENTER_THRESHOLD = 4;
-    private static final float WAVE_PERIOD_MS = 980f;
-    private static final int KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE = 3;
-    private static final long KARAOKE_WORD_BOUNCE_MIN_RISE_MS = 60L;
-    private static final long KARAOKE_WORD_BOUNCE_MAX_RISE_MS = 180L;
-    private static final long KARAOKE_WORD_BOUNCE_MIN_RELEASE_MS = 180L;
-    private static final long KARAOKE_WORD_BOUNCE_MAX_RELEASE_MS = 280L;
-    private static final long KARAOKE_CHARACTER_BOUNCE_MIN_RISE_MS = 180L;
-    private static final long KARAOKE_CHARACTER_BOUNCE_MAX_RISE_MS = 280L;
-    private static final long KARAOKE_CHARACTER_BOUNCE_MIN_RELEASE_MS = 420L;
-    private static final long KARAOKE_CHARACTER_BOUNCE_MAX_RELEASE_MS = 820L;
     private static final long KARAOKE_RELEASE_WINDOW_MS = 820L;
     private static final long KARAOKE_COMPLETED_COLOR_FADE_MS = 520L;
     private static final long LYRICS_CENTERING_DURATION_MS = 300L;
@@ -109,7 +99,10 @@ public final class LyricsView extends View {
     private final RectF emptyIconOval = new RectF();
     private final List<LineHitTarget> hitTargets = new ArrayList<>();
     private final LineHitTarget pressedTargetSnapshot = new LineHitTarget();
-    private final KaraokeBounce karaokeBounceResult = new KaraokeBounce(0f, 1f, false);
+    private final KaraokeMotion.Values karaokeBounceResult = new KaraokeMotion.Values();
+    private long frameEffectTimeMs;
+    private boolean frameAnimationsEnabled;
+    private boolean frameHasLiveEffects;
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
@@ -793,6 +786,11 @@ public final class LyricsView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        // Every glyph and its fill pass share one monotonic clock and preference
+        // snapshot. Settings.Global must not be queried several times per glyph.
+        frameEffectTimeMs = SystemClock.uptimeMillis();
+        frameAnimationsEnabled = MotionPreferences.animationsEnabled(getContext());
+        frameHasLiveEffects = false;
         drawBackground(canvas);
 
         if (lines.isEmpty()) {
@@ -903,8 +901,10 @@ public final class LyricsView extends View {
                 && activeIndex < displayLines.size()
                 && displayLines.get(activeIndex).isInterlude();
         boolean vocalAnchorMoving = Math.abs(targetVocalAnchorOffset - animatedVocalAnchorOffsetPx) > 0.5f;
-        if (MotionPreferences.animationsEnabled(getContext())
-                && (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f)) {
+        // Playback-driven fill/motion is invalidated by the host's frame clock.
+        // Continue locally only for wall-clock effects, interludes and layout settling.
+        if (frameAnimationsEnabled
+                && (frameHasLiveEffects || activeInterlude || Math.abs(visualCenterIndex - animatedCenterIndex) > 0.002f)) {
             postInvalidateOnAnimation();
         } else if (vocalAnchorMoving || rowReflowActive) {
             postInvalidateOnAnimation();
@@ -1847,7 +1847,6 @@ public final class LyricsView extends View {
                 false,
                     groups.size(),
                     "line:" + lineIndex + ":cultural:" + index,
-                    -1,
                     AppFonts.cultural(getContext(), culturalAnnotationFontFamily, culturalAnnotationFontWeight),
                     true
             ));
@@ -1995,7 +1994,6 @@ public final class LyricsView extends View {
                 group.timingStarted,
                 group.rowSeed,
                 group.bounceKeyPrefix,
-                group.activeSegmentIndex,
                 group.typeface,
                 group.supplement
         );
@@ -2038,11 +2036,6 @@ public final class LyricsView extends View {
                 endTimeMs > startTimeMs && positionMs >= startTimeMs,
                 rowSeed,
                 bounceKeyPrefix,
-                (active || (endTimeMs > startTimeMs
-                        && positionMs >= startTimeMs
-                        && positionMs < endTimeMs + KARAOKE_RELEASE_WINDOW_MS))
-                        ? findActiveSegmentIndex(rows)
-                        : -1,
                 typographyTypeface(slotId),
                 isSupplementTypographySlot(slotId)
         );
@@ -2423,7 +2416,7 @@ public final class LyricsView extends View {
             float offsetY = group.active && "wave".equals(segmentKind)
                     ? baseWaveOffset(segmentKind, group.rowSeed + rowIndex, index, group.textSize)
                     : 0f;
-            KaraokeBounce bounce = karaokeBounce(segment, group);
+            KaraokeMotion.Values bounce = karaokeBounce(segment, group);
             int segmentSave = canvas.save();
             if (segment.inlineStyle) {
                 applyCanvasEffect(
@@ -2438,7 +2431,7 @@ public final class LyricsView extends View {
             }
             if (bounce.active) {
                 float pivotX = cursor + segment.width * 0.5f;
-                float pivotY = baseline - group.textSize * 0.45f;
+                float pivotY = baseline + group.textSize * (LINE_HEIGHT_MULTIPLIER - 1f);
                 canvas.translate(0f, bounce.offsetY);
                 canvas.scale(bounce.scale, bounce.scale, pivotX, pivotY);
             }
@@ -2733,6 +2726,7 @@ public final class LyricsView extends View {
             )));
         }
 
+        KaraokeMotion.Plan motionPlan = isLineDisplayGranularity() ? null : prepareMotionPlan(segments, syllables);
         float maxWidth = contentWidth();
         List<TextRow> rows = shouldWrapByWords(segments)
                 ? wrapWordUnits(buildWordWrapUnits(segments), maxWidth)
@@ -2741,11 +2735,26 @@ public final class LyricsView extends View {
             rows = Collections.singletonList(new TextRow(segments));
         }
         for (TextRow row : rows) {
+            if (motionPlan != null) {
+                for (TextSegment segment : row.segments) {
+                    segment.motionProfile = motionPlan.profile(segment.sourceIndex, segment.sourceLength,
+                            segment.fillStartTimeMs, segment.fillEndTimeMs);
+                }
+            }
             if (row.continuousShaping) {
                 row.width = Math.max(0f, textPaint.measureText(row.text));
             }
         }
         return rows;
+    }
+
+    private KaraokeMotion.Plan prepareMotionPlan(List<TextSegment> segments, List<LyricsLine.Syllable> syllables) {
+        if (syllables != null && !syllables.isEmpty()) return KaraokeMotion.prepare(syllables);
+        List<LyricsLine.Syllable> synthetic = new ArrayList<>(segments.size());
+        for (TextSegment segment : segments) {
+            synthetic.add(new LyricsLine.Syllable(segment.text, segment.startTimeMs, segment.endTimeMs));
+        }
+        return KaraokeMotion.prepare(synthetic);
     }
 
     private List<TextRow> wrapIndividualSegments(List<TextSegment> segments, float maxWidth) {
@@ -2969,7 +2978,7 @@ public final class LyricsView extends View {
                 builder.toString(),
                 start,
                 Math.max(start, end),
-                source.sourceIndex,
+                source.sourceIndex + safeOffset,
                 length,
                 rubyForSplitSegment(source, safeOffset, length),
                 source.styleSyllable()
@@ -3668,13 +3677,9 @@ public final class LyricsView extends View {
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
-        if (!MotionPreferences.animationsEnabled(getContext())) return 0f;
-        long now = System.currentTimeMillis();
-        float phase = ((now + rowIndex * 95L + segmentIndex * 62L) % (long) WAVE_PERIOD_MS) / WAVE_PERIOD_MS;
-        float wave = (float) Math.sin(phase * Math.PI * 2.0);
-        float amplitude = "wave".equals(kind) ? 0.145f : 0.085f;
-        float bounce = positiveSin(now + segmentIndex * 42L, 760L) * textSize * 0.018f;
-        return wave * textSize * amplitude - bounce;
+        if (!frameAnimationsEnabled) return 0f;
+        frameHasLiveEffects = true;
+        return KaraokeMotion.waveOffset(frameEffectTimeMs + rowIndex * 95L, segmentIndex, textSize);
     }
 
     private void applyCanvasEffect(
@@ -3686,42 +3691,44 @@ public final class LyricsView extends View {
             float textSize,
             int rowIndex
     ) {
-        if (!animate || !MotionPreferences.animationsEnabled(getContext())) {
+        if (!animate || !frameAnimationsEnabled) {
             return;
         }
 
-        long now = System.currentTimeMillis() + rowIndex * 73L;
+        frameHasLiveEffects |= isInlineEffectKind(kind);
+        long now = frameEffectTimeMs + rowIndex * 73L;
         switch (kind) {
             case "effect": {
                 int step = (int) ((now / 45L) % 4L);
-                float density = getResources().getDisplayMetrics().density;
-                float dx = EFFECT_TRANSLATE_X[step] * density;
-                float dy = EFFECT_TRANSLATE_Y[step] * density;
+                float relativePixel = textSize / KaraokeMotion.DESKTOP_TEXT_SIZE;
+                float dx = EFFECT_TRANSLATE_X[step] * relativePixel;
+                float dy = EFFECT_TRANSLATE_Y[step] * relativePixel;
                 canvas.translate(dx, dy);
                 break;
             }
             case "adlib":
-                canvas.translate(0f, sin(now, 1050L) * -sp(1.5f));
+                canvas.translate(0f, KaraokeMotion.adlibOffset(now, textSize));
                 break;
             case "pulse": {
-                float scale = 1f + positiveSin(now, 940L) * 0.025f;
+                float scale = KaraokeMotion.pulseScale(now);
                 canvas.scale(scale, scale, centerX, y - textSize * 0.45f);
                 break;
             }
             case "bounce":
-                canvas.translate(0f, -positiveSin(now, 780L) * textSize * 0.12f);
+                canvas.translate(0f, KaraokeMotion.bounceOffset(now, textSize));
                 break;
             case "sway":
-                canvas.rotate(sin(now, 1350L) * 0.84f, centerX, y);
-                canvas.translate(sin(now, 1350L) * textSize * 0.0245f, 0f);
+                float sway = KaraokeMotion.swayStrength(now);
+                canvas.rotate(sway * 0.84f, centerX, y);
+                canvas.translate(sway * textSize * 0.0245f, 0f);
                 break;
             case "float":
-                canvas.rotate(sin(now, 1650L) * 0.45f, centerX, y);
-                canvas.translate(0f, -positiveSin(now, 1650L) * textSize * 0.09f);
+                float floating = KaraokeMotion.floatStrength(now);
+                canvas.rotate(floating * 0.45f, centerX, y);
+                canvas.translate(0f, -floating * textSize * 0.09f);
                 break;
             case "pop": {
-                float phase = (now % 1080L) / 1080f;
-                float scale = phase < 0.18f ? 1.035f : (phase < 0.34f ? 0.996f : 1f);
+                float scale = KaraokeMotion.popScale(now);
                 canvas.scale(scale, scale, centerX, y - textSize * 0.45f);
                 break;
             }
@@ -3749,11 +3756,12 @@ public final class LyricsView extends View {
         textPaint.setTextSize(textSize);
         textPaint.setColor(color);
         textPaint.setAlpha(Color.alpha(color));
-        if (!animate || !MotionPreferences.animationsEnabled(getContext())) {
+        if (!animate || !frameAnimationsEnabled) {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        frameHasLiveEffects |= isInlineEffectKind(kind);
+        long now = frameEffectTimeMs;
         int alpha = Color.alpha(color);
         switch (kind) {
             case "sparkle": {
@@ -4516,119 +4524,13 @@ public final class LyricsView extends View {
         return value;
     }
 
-    private int findActiveSegmentIndex(List<TextRow> rows) {
-        int fallbackIndex = -1;
-        long fallbackEnd = Long.MIN_VALUE;
-        int nextIndex = -1;
-        long nextStart = Long.MAX_VALUE;
-        for (TextRow row : rows) {
-            for (TextSegment segment : row.segments) {
-                if (segment.width <= 0f || isWhitespace(segment.text)) {
-                    continue;
-                }
-                if (positionMs >= segment.fillStartTimeMs && positionMs < segment.fillEndTimeMs) {
-                    return segment.centerSourceIndex();
-                }
-                if (positionMs >= segment.fillEndTimeMs && segment.fillEndTimeMs >= fallbackEnd) {
-                    fallbackEnd = segment.fillEndTimeMs;
-                    fallbackIndex = segment.centerSourceIndex();
-                }
-                if (positionMs < segment.fillStartTimeMs && segment.fillStartTimeMs < nextStart) {
-                    nextStart = segment.fillStartTimeMs;
-                    nextIndex = segment.centerSourceIndex();
-                }
-            }
+    private KaraokeMotion.Values karaokeBounce(TextSegment segment, DrawGroup group) {
+        if (!frameAnimationsEnabled || isLineDisplayGranularity() || !karaokeBounceEffectEnabled) {
+            return karaokeBounceResult.idle();
         }
-        if (fallbackIndex >= 0 && positionMs - fallbackEnd < 2000L) {
-            return nextIndex >= 0 ? nextIndex : fallbackIndex;
-        }
-        return nextIndex >= 0 ? nextIndex : fallbackIndex;
-    }
-
-    private KaraokeBounce karaokeBounce(TextSegment segment, DrawGroup group) {
-        if (!MotionPreferences.animationsEnabled(getContext())) {
-            return karaokeBounceResult.set(0f, 1f, false);
-        }
-        if (isLineDisplayGranularity() || !karaokeBounceEffectEnabled || group.activeSegmentIndex < 0) {
-            return KaraokeBounce.IDLE;
-        }
-
-        float centerIndex = segment.sourceIndex + Math.max(0, segment.sourceLength - 1) * 0.5f;
-        float distance = isWordDisplayGranularity()
-                ? 0f
-                : Math.abs(centerIndex - group.activeSegmentIndex);
-        if (distance > KARAOKE_BOUNCE_MAX_SEGMENT_DISTANCE) {
-            return KaraokeBounce.IDLE;
-        }
-
-        long durationMs = Math.max(1L, segment.fillEndTimeMs - segment.fillStartTimeMs);
-        float waveStrength;
-        if (isWordDisplayGranularity()) {
-            long riseDurationMs = Math.min(
-                    KARAOKE_WORD_BOUNCE_MAX_RISE_MS,
-                    Math.max(KARAOKE_WORD_BOUNCE_MIN_RISE_MS, Math.round(durationMs * 0.38f))
-            );
-            long releaseDurationMs = Math.min(
-                    KARAOKE_WORD_BOUNCE_MAX_RELEASE_MS,
-                    Math.max(KARAOKE_WORD_BOUNCE_MIN_RELEASE_MS, Math.round(durationMs * 0.45f))
-            );
-            long peakTimeMs = Math.min(segment.fillEndTimeMs, segment.fillStartTimeMs + riseDurationMs);
-            long releaseEndTimeMs = segment.fillEndTimeMs + releaseDurationMs;
-            if (positionMs < segment.fillStartTimeMs || positionMs >= releaseEndTimeMs) {
-                return KaraokeBounce.IDLE;
-            }
-            if (positionMs <= peakTimeMs) {
-                float riseProgress = (positionMs - segment.fillStartTimeMs)
-                        / (float) Math.max(1L, peakTimeMs - segment.fillStartTimeMs);
-                waveStrength = easeOutSine(riseProgress);
-            } else if (positionMs <= segment.fillEndTimeMs) {
-                // Keep the word lifted for its complete playback window. The
-                // following word is allowed to rise before this one settles.
-                waveStrength = 1f;
-            } else {
-                float fallProgress = (positionMs - segment.fillEndTimeMs)
-                        / (float) Math.max(1L, releaseDurationMs);
-                waveStrength = easeSoftRelease(fallProgress);
-            }
-        } else {
-            long riseDurationMs = Math.min(
-                    KARAOKE_CHARACTER_BOUNCE_MAX_RISE_MS,
-                    Math.max(KARAOKE_CHARACTER_BOUNCE_MIN_RISE_MS, Math.round(durationMs * 0.9f))
-            );
-            long releaseDurationMs = Math.min(
-                    KARAOKE_CHARACTER_BOUNCE_MAX_RELEASE_MS,
-                    Math.max(KARAOKE_CHARACTER_BOUNCE_MIN_RELEASE_MS, Math.round(durationMs * 2.4f))
-            );
-            long elapsedMs = positionMs - segment.fillStartTimeMs;
-            long totalWindowMs = riseDurationMs + releaseDurationMs;
-            if (elapsedMs < 0L || elapsedMs > totalWindowMs) {
-                return KaraokeBounce.IDLE;
-            }
-            if (elapsedMs <= riseDurationMs) {
-                waveStrength = easeOutSine(elapsedMs / (float) Math.max(1L, riseDurationMs));
-            } else {
-                waveStrength = easeSoftRelease(
-                        (elapsedMs - riseDurationMs) / (float) Math.max(1L, releaseDurationMs)
-                );
-            }
-        }
-
-        waveStrength *= Math.max(0.22f, 1f - distance * 0.23f);
-        if (waveStrength < 0.025f) {
-            return KaraokeBounce.IDLE;
-        }
-
-        float offsetY = Math.round((-sp(6f) * waveStrength) * 4f) / 4f;
-        float scale = Math.round((1f + 0.055f * waveStrength) * 200f) / 200f;
-        return karaokeBounceResult.set(offsetY, scale, offsetY != 0f || scale != 1f);
-    }
-
-    private float easeOutSine(float value) {
-        return (float) Math.sin(clamp(value) * Math.PI * 0.5);
-    }
-
-    private float easeSoftRelease(float value) {
-        return 0.5f + 0.5f * (float) Math.cos(clamp(value) * Math.PI);
+        // Each source unit owns its hold/release window. A subsequent character,
+        // row, or simultaneous vocal must not abruptly cut off that movement.
+        return KaraokeMotion.evaluate(segment.motionProfile, positionMs, group.textSize, karaokeBounceResult);
     }
 
     private int inactiveColor(float distance) {
@@ -5150,7 +5052,6 @@ public final class LyricsView extends View {
         final boolean timingStarted;
         final int rowSeed;
         final String bounceKeyPrefix;
-        final int activeSegmentIndex;
         final InterludeInfo interludeInfo;
         final Typeface typeface;
         final boolean supplement;
@@ -5166,7 +5067,6 @@ public final class LyricsView extends View {
                 boolean timingStarted,
                 int rowSeed,
                 String bounceKeyPrefix,
-                int activeSegmentIndex,
                 Typeface typeface,
                 boolean supplement
         ) {
@@ -5180,7 +5080,6 @@ public final class LyricsView extends View {
             this.timingStarted = timingStarted;
             this.rowSeed = rowSeed;
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
-            this.activeSegmentIndex = activeSegmentIndex;
             this.interludeInfo = InterludeInfo.none();
             this.typeface = typeface;
             this.supplement = supplement;
@@ -5198,7 +5097,6 @@ public final class LyricsView extends View {
                     false,
                     0,
                     "",
-                    -1,
                     info == null ? InterludeInfo.none() : info,
                     typeface,
                     false
@@ -5216,7 +5114,6 @@ public final class LyricsView extends View {
                 boolean timingStarted,
                 int rowSeed,
                 String bounceKeyPrefix,
-                int activeSegmentIndex,
                 InterludeInfo interludeInfo,
                 Typeface typeface,
                 boolean supplement
@@ -5231,7 +5128,6 @@ public final class LyricsView extends View {
             this.timingStarted = timingStarted;
             this.rowSeed = rowSeed;
             this.bounceKeyPrefix = bounceKeyPrefix == null ? "" : bounceKeyPrefix;
-            this.activeSegmentIndex = activeSegmentIndex;
             this.interludeInfo = interludeInfo == null ? InterludeInfo.none() : interludeInfo;
             this.typeface = typeface;
             this.supplement = supplement;
@@ -5465,6 +5361,7 @@ public final class LyricsView extends View {
         final String styleSpeaker;
         final String styleSpeakerColor;
         final String styleSpeakerFallback;
+        KaraokeMotion.Profile motionProfile;
         float cachedRubyWidth = Float.NaN;
         String cachedBounceKeyPrefix;
         String cachedBounceKey;
@@ -5647,24 +5544,6 @@ public final class LyricsView extends View {
                 }
             }
             return builder.toString();
-        }
-    }
-
-    private static final class KaraokeBounce {
-        static final KaraokeBounce IDLE = new KaraokeBounce(0f, 1f, false);
-        float offsetY;
-        float scale;
-        boolean active;
-
-        KaraokeBounce(float offsetY, float scale, boolean active) {
-            set(offsetY, scale, active);
-        }
-
-        KaraokeBounce set(float offsetY, float scale, boolean active) {
-            this.offsetY = offsetY;
-            this.scale = scale;
-            this.active = active;
-            return this;
         }
     }
 

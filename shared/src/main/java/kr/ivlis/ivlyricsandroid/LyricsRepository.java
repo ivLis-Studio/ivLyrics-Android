@@ -72,7 +72,7 @@ final class LyricsRepository {
     private static final long SPOTIFY_TOKEN_REFRESH_GRACE_MS = 30_000L;
     private static final long SYNC_DATA_SERVER_CACHE_BYPASS_MS = 30L * 1_000L;
     private static final long LYRICS_CACHE_MAX_AGE_MS = DiskCachePolicy.MAX_AGE_MS;
-    private static final long OPENDB_FRESH_MS = 60L * 1_000L;
+    private static final long OPENDB_FRESH_MS = 6L * 60L * 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final int SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES = 8;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
@@ -2152,7 +2152,8 @@ final class LyricsRepository {
 
         String cached = openDbPrefs.getString(KEY_OPENDB_PROVIDER_MAP, "");
         long fetchedAt = openDbPrefs.getLong(KEY_OPENDB_FETCHED_AT_MS, 0L);
-        if (cached != null && !cached.isEmpty() && now - fetchedAt < OPENDB_FRESH_MS) {
+        if (cached != null && !cached.isEmpty() && fetchedAt > 0L
+                && now >= fetchedAt && now - fetchedAt < OPENDB_FRESH_MS) {
             return new JSONObject(cached);
         }
 

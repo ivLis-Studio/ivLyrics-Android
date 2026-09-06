@@ -42,6 +42,14 @@ local-playback and audio-quality requirements; LOW-quality playback is excluded.
 not change Spotify's feature flags or make unsupported tracks available. This
 control belongs only to the Spotify module, not the standalone app.
 
+On **9.1.80.2221**, the Now Playing lyric line above the song title also uses
+ivLyrics. Spotify's existing **Lyrics • On/Off** option controls its visibility.
+It shares the card's lyrics and translations, merges simultaneous vocals into
+one row, follows the ivLyrics alignment setting, and scrolls long rows using
+their playback timing. Tap the line to open the full lyrics page. Native Canvas,
+video-player and mixing restrictions still apply; Spotify-hosted lyric availability
+does not control this preview. The Now Playing audio/video switch is hidden.
+
 See [architecture](../ARCHITECTURE.md) for the host interfaces, resource context,
 WebKit isolation, build outputs and editing boundaries. No source-copy or
 source-replacement build step is used.

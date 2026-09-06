@@ -18,6 +18,7 @@ import kr.ivlis.ivlyricsandroid.SpotifyMetadataBridge;
 public final class ComposeAdapter {
     private static final String TAG = "ivLyricsPatch";
     private static volatile Interop interop;
+    private static volatile InlineInterop inlineInterop;
     private static volatile Availability availability;
 
     private ComposeAdapter() {}
@@ -44,19 +45,45 @@ public final class ComposeAdapter {
 
     public static void renderCard(Object composer) {
         try {
-            Interop current = interop;
-            if (current == null) {
-                synchronized (ComposeAdapter.class) {
-                    current = interop;
-                    if (current == null) interop = current = new Interop(composer);
-                }
-            }
+            Interop current = interopFor(composer);
             // Give Compose the ratio too, including its intrinsic measurement of AndroidView.
             current.render.invoke(null, current.factory, current.squareModifier, null, composer, 0, 4);
         } catch (ReflectiveOperationException error) {
             // Failing visibly is preferable to rendering the obsolete native lyric source.
             throw new IllegalStateException("ivLyrics could not mount Spotify's Compose AndroidView", error);
         }
+    }
+
+    /** Resolve optional mappings before entering any Compose groups. */
+    static void prepareInline(Object composer) throws ReflectiveOperationException {
+        inlineInteropFor(composer);
+    }
+
+    public static void renderInline(Object composer) throws ReflectiveOperationException {
+        InlineInterop current = inlineInteropFor(composer);
+        current.render.invoke(null, current.factory, current.modifier, null, composer, 0, 4);
+    }
+
+    private static InlineInterop inlineInteropFor(Object composer) throws ReflectiveOperationException {
+        InlineInterop current = inlineInterop;
+        if (current == null) {
+            synchronized (ComposeAdapter.class) {
+                current = inlineInterop;
+                if (current == null) inlineInterop = current = new InlineInterop(composer);
+            }
+        }
+        return current;
+    }
+
+    private static Interop interopFor(Object composer) throws ReflectiveOperationException {
+        Interop current = interop;
+        if (current == null) {
+            synchronized (ComposeAdapter.class) {
+                current = interop;
+                if (current == null) interop = current = new Interop(composer);
+            }
+        }
+        return current;
     }
 
     /** Returns null only for an unrelated branch of an R8-merged provider, or on a mapping error. */
@@ -130,6 +157,39 @@ public final class ComposeAdapter {
             if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
             if (method.getName().equals("equals")) return proxy == args[0];
             if (method.getName().equals("toString")) return "ivLyrics native card factory";
+            throw new UnsupportedOperationException(method.toString());
+        }
+    }
+
+    /** Optional inline mappings cannot prevent the existing card interop from initializing. */
+    private static final class InlineInterop implements InvocationHandler {
+        final Method render;
+        final Object factory;
+        final Object modifier;
+
+        InlineInterop(Object composer) throws ReflectiveOperationException {
+            ClassLoader loader = composer.getClass().getClassLoader();
+            Class<?> function = Class.forName("kotlin.jvm.functions.Function1", false, loader);
+            Class<?> modifierType = Class.forName("p.wmg0", false, loader);
+            Class<?> owner = Class.forName("p.jy81", false, loader);
+            render = owner.getDeclaredMethod("b", function, modifierType, function,
+                    composer.getClass(), int.class, int.class);
+            render.setAccessible(true);
+            Object empty = Class.forName("p.tmg0", true, loader).getField("a").get(null);
+            Object fullWidth = Class.forName("p.bo01", false, loader)
+                    .getMethod("f", float.class, modifierType).invoke(null, 1f, empty);
+            modifier = Class.forName("p.tld1", false, loader)
+                    .getMethod("y", float.class, float.class, int.class, modifierType)
+                    .invoke(null, 8f, 0f, 2, fullWidth);
+            if (!modifierType.isInstance(modifier)) throw new IllegalStateException("Invalid inline modifier");
+            factory = Proxy.newProxyInstance(loader, new Class<?>[]{function}, this);
+        }
+
+        @Override public Object invoke(Object proxy, Method method, Object[] args) {
+            if (method.getName().equals("invoke")) return SpotifyInlineLyrics.createView((Context) args[0]);
+            if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
+            if (method.getName().equals("equals")) return proxy == args[0];
+            if (method.getName().equals("toString")) return "ivLyrics inline lyrics factory";
             throw new UnsupportedOperationException(method.toString());
         }
     }

@@ -58,8 +58,10 @@ jobs:
           ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug :spotify-module:lintDebug
           python3 -m unittest discover -s .github/scripts -p 'test_*.py'
           python3 tests/run_release_asset_regression.py
+          python3 tests/run_karaoke_motion_regression.py
           python3 tests/run_card_presence_regression.py
           python3 tests/run_karaoke_controller_regression.py
+          python3 tests/run_inline_gate_regression.py
 
       - name: Restore release signing key
         shell: bash

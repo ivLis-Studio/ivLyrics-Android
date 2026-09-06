@@ -186,6 +186,8 @@ public final class SpotifyXposedHooks implements IXposedHookLoadPackage, IXposed
             }));
         }
         if (!oldVersion) installedHooks.add(SpotifyLyricsOrder.install(loader));
+        if (!oldVersion) installedHooks.addAll(SpotifyInlineLyrics.install(loader));
+        if (!oldVersion) installedHooks.addAll(SpotifyVideoButton.install(loader));
         committed = true;
         } finally {
             if (!committed) {
