@@ -3,11 +3,22 @@ package kr.ivlis.ivlyricsandroid;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 /** Public track identity extraction shared by direct, nested and TrackV4 metadata paths. */
 final class NativeTrackIdentity {
     private static final String BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    private static final Pattern TRACK_ID = Pattern.compile("[0-9a-zA-Z]{22}");
+    private static final Pattern ISRC_SEPARATORS = Pattern.compile("[\\s-]");
+    private static final Pattern ISRC_VALUE = Pattern.compile("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}");
+    // Bound retained host classes as well as per-class members. Cache bindings, never
+    // protobuf instances, so newer metadata for the same recording is still decoded.
+    private static final Map<Class<?>, Members> MEMBERS = new LinkedHashMap<Class<?>, Members>(16, .75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<Class<?>, Members> entry) { return size() > 32; }
+    };
     final String uri;
     final String isrc;
 
@@ -17,14 +28,8 @@ final class NativeTrackIdentity {
         String isrc = externalIsrc((Iterable<?>) field(track, "externalId_"), "type_", "id_");
         if (isrc.isEmpty()) return null;
         Object gid = field(track, "gid_");
-        byte[] bytes = null;
-        for (Method method : gid.getClass().getMethods()) {
-            if (method.getParameterTypes().length == 0 && method.getReturnType() == byte[].class) {
-                method.setAccessible(true);
-                bytes = (byte[]) method.invoke(gid);
-                break;
-            }
-        }
+        Method bytesMethod = members(gid.getClass()).bytesMethod(gid.getClass());
+        byte[] bytes = bytesMethod == null ? null : (byte[]) bytesMethod.invoke(gid);
         if (bytes == null || bytes.length != 16) return null;
         return new NativeTrackIdentity("spotify:track:" + base62(bytes), isrc);
     }
@@ -38,13 +43,13 @@ final class NativeTrackIdentity {
     static String canonicalUri(String value) {
         if (value == null) return "";
         String id = value.startsWith("spotify:track:") ? value.substring(14) : value;
-        return id.matches("[0-9a-zA-Z]{22}") ? "spotify:track:" + id : "";
+        return TRACK_ID.matcher(id).matches() ? "spotify:track:" + id : "";
     }
 
     static String normalizedIsrc(String value) {
         if (value == null) return "";
-        String normalized = value.replaceAll("[\\s-]", "").toUpperCase(Locale.ROOT);
-        return normalized.matches("[A-Z]{2}[A-Z0-9]{3}[0-9]{7}") ? normalized : "";
+        String normalized = ISRC_SEPARATORS.matcher(value).replaceAll("").toUpperCase(Locale.ROOT);
+        return ISRC_VALUE.matcher(normalized).matches() ? normalized : "";
     }
 
     private static String externalIsrc(Iterable<?> ids, String typeField, String idField) throws ReflectiveOperationException {
@@ -58,9 +63,50 @@ final class NativeTrackIdentity {
     }
 
     static Object field(Object value, String name) throws ReflectiveOperationException {
-        Field field = value.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(value);
+        return members(value.getClass()).field(value.getClass(), name).get(value);
+    }
+
+    private static Members members(Class<?> type) {
+        synchronized (MEMBERS) {
+            Members cached = MEMBERS.get(type);
+            if (cached == null) {
+                cached = new Members();
+                MEMBERS.put(type, cached);
+            }
+            return cached;
+        }
+    }
+
+    private static final class Members {
+        final Map<String, Field> fields = new LinkedHashMap<String, Field>(8, .75f, true) {
+            @Override protected boolean removeEldestEntry(Map.Entry<String, Field> entry) { return size() > 16; }
+        };
+        Method bytesMethod;
+        boolean bytesResolved;
+
+        synchronized Field field(Class<?> type, String name) throws ReflectiveOperationException {
+            Field cached = fields.get(name);
+            if (cached == null) {
+                cached = type.getDeclaredField(name);
+                cached.setAccessible(true);
+                fields.put(name, cached);
+            }
+            return cached;
+        }
+
+        synchronized Method bytesMethod(Class<?> type) {
+            if (!bytesResolved) {
+                for (Method method : type.getMethods()) {
+                    if (method.getParameterTypes().length == 0 && method.getReturnType() == byte[].class) {
+                        method.setAccessible(true);
+                        bytesMethod = method;
+                        break;
+                    }
+                }
+                bytesResolved = true;
+            }
+            return bytesMethod;
+        }
     }
 
     static String base62(byte[] bytes) {

@@ -6,17 +6,17 @@ import android.media.session.MediaSession;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Observes already-decoded native track metadata; never requests or reads credentials. */
 public final class SpotifyMetadataBridge {
     private static final String TAG = "ivLyricsMetadata";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final AtomicBoolean MERGE_PENDING = new AtomicBoolean();
     private static final Map<String, String> ISRC = new LinkedHashMap<String, String>(32, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, String> entry) { return size() > 256; }
     };
@@ -34,7 +34,7 @@ public final class SpotifyMetadataBridge {
         MAIN.post(() -> {
             if (observingPlayer) return;
             observingPlayer = true;
-            NowPlayingService.register(snapshot -> mergeCurrent());
+            NowPlayingService.register(snapshot -> scheduleMerge());
         });
     }
 
@@ -47,20 +47,20 @@ public final class SpotifyMetadataBridge {
             synchronized (CONTROLLERS) {
                 if (CONTROLLERS.containsKey(controller)) return;
                 MediaController.Callback callback = new MediaController.Callback() {
-                    @Override public void onMetadataChanged(MediaMetadata metadata) { MAIN.post(() -> MAIN.post(SpotifyMetadataBridge::mergeCurrent)); }
+                    @Override public void onMetadataChanged(MediaMetadata metadata) { MAIN.post(SpotifyMetadataBridge::scheduleMerge); }
                     @Override public void onSessionDestroyed() { CONTROLLERS.remove(controller); }
                 };
                 CONTROLLERS.put(controller, callback);
                 controller.registerCallback(callback, MAIN);
             }
-            MAIN.post(() -> MAIN.post(SpotifyMetadataBridge::mergeCurrent));
+            MAIN.post(SpotifyMetadataBridge::scheduleMerge);
         });
     }
 
     public static void onTrackMetadata(Object track) {
         if (track == null) return;
         try {
-            cache(NativeTrackIdentity.fromProto(track), "");
+            if (cache(NativeTrackIdentity.fromProto(track), "")) scheduleMerge();
         } catch (ReflectiveOperationException | RuntimeException error) {
             Log.w(TAG, "Public track identifier parse failed: " + error.getClass().getSimpleName());
         }
@@ -68,14 +68,24 @@ public final class SpotifyMetadataBridge {
 
     /** Nested protobuf messages are decoded without invoking Metadata.Track's static parser. */
     public static void onMetadataBatch(Object response) {
+        boolean changed = false;
         try {
             for (Object item : (Iterable<?>) NativeTrackIdentity.field(response, "items_")) {
                 if (((Integer) NativeTrackIdentity.field(item, "itemCase_")) == 4) {
-                    onTrackMetadata(NativeTrackIdentity.field(item, "item_"));
+                    try {
+                        Object track = NativeTrackIdentity.field(item, "item_");
+                        if (track != null) changed |= cache(NativeTrackIdentity.fromProto(track), "");
+                    } catch (ReflectiveOperationException | RuntimeException error) {
+                        Log.w(TAG, "Public track identifier parse failed: " + error.getClass().getSimpleName());
+                    }
                 }
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             Log.w(TAG, "Public metadata batch parse failed: " + error.getClass().getSimpleName());
+        } finally {
+            // A native response may contain hundreds of unrelated tracks. Commit its
+            // cache updates before scheduling one lookup against the latest player.
+            if (changed) scheduleMerge();
         }
     }
 
@@ -83,18 +93,26 @@ public final class SpotifyMetadataBridge {
         NativeTrackIdentity identity = NativeTrackIdentity.fromTrackV4(track);
         if (identity == null) return false;
         // The native response envelope was matched to requestUri before accepting a relinked GID.
-        cache(identity, requestUri);
+        if (cache(identity, requestUri)) scheduleMerge();
         return true;
     }
 
-    private static void cache(NativeTrackIdentity identity, String requestedUri) {
-        if (identity == null) return;
+    private static boolean cache(NativeTrackIdentity identity, String requestedUri) {
+        if (identity == null) return false;
         synchronized (ISRC) {
-            ISRC.put(identity.uri, identity.isrc);
-            if (!NativeTrackIdentity.canonicalUri(requestedUri).isEmpty()) ISRC.put(requestedUri, identity.isrc);
+            boolean changed = !identity.isrc.equals(ISRC.put(identity.uri, identity.isrc));
+            String alias = NativeTrackIdentity.canonicalUri(requestedUri);
+            if (!alias.isEmpty()) changed |= !identity.isrc.equals(ISRC.put(alias, identity.isrc));
+            return changed;
         }
-        Log.i(TAG, "Native public ISRC cached for a track");
-        MAIN.post(SpotifyMetadataBridge::mergeCurrent);
+    }
+
+    private static void scheduleMerge() {
+        if (!MERGE_PENDING.compareAndSet(false, true)) return;
+        MAIN.post(() -> {
+            MERGE_PENDING.set(false);
+            mergeCurrent();
+        });
     }
 
     public static void onContextTrack(Object track) {
