@@ -7,6 +7,7 @@ Run these commands from the repository root:
 python3 tests/run_lyrics_center_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
+python3 tests/run_card_presence_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
@@ -21,6 +22,16 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The card-presence regression runs the production Spotify module list helper with
+synthetic cards. It checks insertion when Spotify supplies no lyrics card, placing
+ivLyrics before live events while preserving other cards and their order. Existing
+lyrics cards (including subtypes and duplicates), empty and immutable lists, absent
+candidates, and repeated mapping are covered. The production adapter method also
+checks song eligibility with synthetic reflection bindings: Spotify's `has_lyrics`
+flag does not affect song cards, and episode-backed tracks and other non-song URIs
+remain excluded. It requires only a JDK and does not simulate Android hooks or
+claim that device rendering passed.
 
 The release metadata tests use synthetic APK bytes and the real metadata
 generator. They verify independent product/package/version fields, existing

@@ -63,26 +63,38 @@ public final class ComposeAdapter {
         try {
             boolean oldVersion = provider.getClass().getName().equals("p.pf30");
             if (oldVersion && provider.getClass().getField("a").getInt(provider) != 0) return null;
-            Availability current = availability;
-            if (current == null) {
-                synchronized (ComposeAdapter.class) {
-                    current = availability;
-                    if (current == null) availability = current = new Availability(oldVersion, track.getClass().getClassLoader());
-                }
-            }
-            String uri = (String) current.uri.invoke(track);
-            @SuppressWarnings("unchecked") Map<String, String> metadata = (Map<String, String>) current.metadata.invoke(track);
-            // Keep non-song content outside the lyrics card; ivLyrics handles unavailable song lyrics itself.
-            if (uri == null || !uri.startsWith("spotify:track:") || !value(metadata, "parent_episode_uri").isEmpty()) {
-                return current.empty;
-            }
-            Object model = current.model.newInstance(current.emptyLyrics, uri, "absent", value(metadata, "title"), value(metadata, "artist_name"), value(metadata, "image_url"));
-            Object card = current.card.newInstance(model);
-            return current.maybeJust.newInstance(card);
+            Availability current = availabilityFor(oldVersion, track);
+            Object card = createSongCard(oldVersion, track);
+            return card == null ? current.empty : current.maybeJust.newInstance(card);
         } catch (ReflectiveOperationException | RuntimeException error) {
             Log.e(TAG, "Could not supply ivLyrics card availability", error);
             return null;
         }
+    }
+
+    /** Creates a song card without consulting Spotify's lyrics or server-selected card list. */
+    static Object createSongCard(boolean oldVersion, Object track) throws ReflectiveOperationException {
+        Availability current = availabilityFor(oldVersion, track);
+        String uri = (String) current.uri.invoke(track);
+        @SuppressWarnings("unchecked") Map<String, String> metadata = (Map<String, String>) current.metadata.invoke(track);
+        // Keep non-song content outside the lyrics card; ivLyrics resolves song lyrics independently.
+        if (uri == null || !uri.startsWith("spotify:track:") || !value(metadata, "parent_episode_uri").isEmpty()) {
+            return null;
+        }
+        Object model = current.model.newInstance(current.emptyLyrics, uri, "absent",
+                value(metadata, "title"), value(metadata, "artist_name"), value(metadata, "image_url"));
+        return current.card.newInstance(model);
+    }
+
+    private static Availability availabilityFor(boolean oldVersion, Object track) throws ReflectiveOperationException {
+        Availability current = availability;
+        if (current == null) {
+            synchronized (ComposeAdapter.class) {
+                current = availability;
+                if (current == null) availability = current = new Availability(oldVersion, track.getClass().getClassLoader());
+            }
+        }
+        return current;
     }
 
     private static String value(Map<String, String> metadata, String key) {

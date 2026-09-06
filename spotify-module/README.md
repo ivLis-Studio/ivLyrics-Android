@@ -4,6 +4,11 @@ This module replaces Spotify's player lyrics card and full lyrics page using
 the same `:shared` library as the standalone Android app. The original Spotify
 APK, login and package are not changed by this module.
 
+For music tracks the ivLyrics card is included even when Spotify reports no lyrics
+or omits the lyrics section from its server-selected Now Playing cards. Lyrics are
+resolved by ivLyrics independently; episodes and podcast-embedded tracks remain
+excluded, and an existing lyrics card is never duplicated.
+
 Build from the repository root with `./build.sh :spotify-module:assembleRelease`.
 Output: `spotify-module/build/outputs/apk/release/spotify-module-release.apk`.
 GitHub [Releases](https://github.com/ivLis-Studio/ivLyrics-Android/releases) also

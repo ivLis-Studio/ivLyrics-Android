@@ -173,6 +173,7 @@ public final class SpotifyXposedHooks implements IXposedHookLoadPackage, IXposed
                     }
                 }));
         }
+        installedHooks.add(SpotifyLyricsCardPresence.install(loader, oldVersion));
         if (!oldVersion) installedHooks.add(SpotifyLyricsOrder.install(loader));
         committed = true;
         } finally {
