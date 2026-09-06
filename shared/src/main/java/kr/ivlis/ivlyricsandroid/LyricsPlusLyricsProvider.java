@@ -249,17 +249,20 @@ final class LyricsPlusLyricsProvider {
     }
 
     private static HttpResult get(String requestUrl) throws Exception {
+        RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) new URL(requestUrl).openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(REQUEST_TIMEOUT_MS);
-        connection.setReadTimeout(REQUEST_TIMEOUT_MS);
-        connection.setRequestProperty("Accept", "application/json");
-        int status = connection.getResponseCode();
-        InputStream stream = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
-        try {
-            return new HttpResult(status, readUtf8(stream));
-        } finally {
-            connection.disconnect();
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(REQUEST_TIMEOUT_MS);
+            connection.setReadTimeout(REQUEST_TIMEOUT_MS);
+            connection.setRequestProperty("Accept", "application/json");
+            int status = connection.getResponseCode();
+            InputStream stream = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
+            try {
+                return new HttpResult(status, readUtf8(stream));
+            } finally {
+                RequestCancellation.check();
+            }
         }
     }
 

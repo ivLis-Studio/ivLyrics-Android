@@ -187,20 +187,23 @@ final class UnisonLyricsProvider {
 
     private static HttpResult get(String endpoint) throws Exception {
         URL url = URI.create(endpoint).toURL();
+        RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setConnectTimeout(REQUEST_TIMEOUT_MS);
-        connection.setReadTimeout(REQUEST_TIMEOUT_MS);
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
-        try {
-            int status = connection.getResponseCode();
-            InputStream stream = status >= 200 && status < 300
-                    ? connection.getInputStream()
-                    : connection.getErrorStream();
-            return new HttpResult(status, stream == null ? "" : readBody(stream));
-        } finally {
-            connection.disconnect();
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+            connection.setConnectTimeout(REQUEST_TIMEOUT_MS);
+            connection.setReadTimeout(REQUEST_TIMEOUT_MS);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
+            try {
+                int status = connection.getResponseCode();
+                InputStream stream = status >= 200 && status < 300
+                        ? connection.getInputStream()
+                        : connection.getErrorStream();
+                return new HttpResult(status, stream == null ? "" : readBody(stream));
+            } finally {
+                RequestCancellation.check();
+            }
         }
     }
 

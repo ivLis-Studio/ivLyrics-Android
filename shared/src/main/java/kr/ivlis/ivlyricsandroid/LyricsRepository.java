@@ -34,7 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
@@ -90,7 +90,8 @@ final class LyricsRepository {
     private static final Pattern COMPARABLE_BRACKET_PATTERN = Pattern.compile("[()\\[\\]{}]");
     private static final Pattern COMPARABLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
+    private final LatestLyricsRequest latestLyricsRequest = new LatestLyricsRequest(executor);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
     private final Map<String, Bitmap> spotifyArtworkCache = new LinkedHashMap<String, Bitmap>(
@@ -328,13 +329,14 @@ final class LyricsRepository {
     }
 
     void loadLyrics(TrackSnapshot track, Callback callback) {
+        long requestGeneration = providerPolicyGeneration.incrementAndGet();
+        RequestCancellation request = latestLyricsRequest.begin();
         if (track == null || !track.hasUsableMetadata()) {
             callback.onLyricsLoaded("", LyricsResult.empty(ui("repo.metadata_waiting")));
             return;
         }
 
         String key = track.stableKey();
-        long requestGeneration = providerPolicyGeneration.get();
         LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
         LyricsResult cached = getMemoryCachedLyrics(key);
         if (!isCachedResultReusable(cached, providerSettings)) {
@@ -342,26 +344,27 @@ final class LyricsRepository {
             removeMemoryCachedLyrics(key);
         }
         if (cached != null && !shouldRevalidateCachedResult(cached, providerSettings, track)) {
-            emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist);
+            emitLog(key, callback, "cache hit: " + track.title + " / " + track.artist, request);
             callback.onLyricsLoaded(key, privacySafeContributorFallback(cached));
-            requestSpotifyArtwork(track, cached, key, callback);
+            requestSpotifyArtwork(track, cached, key, callback, request);
             return;
         }
         if (cached != null) {
-            emitLog(key, callback, "cache hit: base lyrics served immediately; rechecking OpenDB sync-data in background");
+            emitLog(key, callback, "cache hit: base lyrics served immediately; rechecking OpenDB sync-data in background", request);
             callback.onLyricsLoaded(key, withoutCachedContributorIdentities(cached));
         }
 
         emitLog(key, callback, "track: \"" + track.title + "\" / \"" + track.artist + "\""
                 + (track.album.isEmpty() ? "" : " / album=\"" + track.album + "\"")
                 + " / duration=" + track.durationMs + "ms"
-                + (track.isrc.isEmpty() ? "" : " / player ISRC=" + track.isrc));
+                + (track.isrc.isEmpty() ? "" : " / player ISRC=" + track.isrc), request);
 
         LyricsResult memoryCached = cached;
-        executor.execute(() -> {
-            LogSink log = message -> emitLog(key, callback, message);
+        latestLyricsRequest.submit(request, () -> {
+            LogSink log = message -> { request.throwIfCancelled(); emitLog(key, callback, message); };
             LyricsResult reusableCached = memoryCached;
             try {
+                request.throwIfCancelled();
                 if (reusableCached == null) {
                     reusableCached = diskCache == null ? null : diskCache.get(key);
                 }
@@ -377,7 +380,7 @@ final class LyricsRepository {
                             + " / contributors=" + reusableCached.contributors.size());
                     LyricsResult finalCached = safeCached;
                     postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
-                    requestSpotifyArtwork(track, safeCached, key, callback);
+                    requestSpotifyArtwork(track, safeCached, key, callback, request);
                     return;
                 }
                 if (reusableCached != null) {
@@ -396,6 +399,7 @@ final class LyricsRepository {
                         log,
                         reusableCached
                 );
+                request.throwIfCancelled();
                 if (requestGeneration != providerPolicyGeneration.get()) {
                     log.write("stale provider request discarded after settings change");
                     return;
@@ -415,6 +419,7 @@ final class LyricsRepository {
                     log.write("background sync-data recheck complete: cached lyrics kept");
                 }
             } catch (Exception error) {
+                if (request.isCancelled()) return;
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
                 if (reusableCached != null) {
                     LyricsResult safeFallback = privacySafeContributorFallback(reusableCached);
@@ -449,9 +454,11 @@ final class LyricsRepository {
 
     void invalidateProviderSelection() {
         providerPolicyGeneration.incrementAndGet();
+        latestLyricsRequest.cancel();
     }
 
     void shutdown() {
+        latestLyricsRequest.cancel();
         executor.shutdownNow();
     }
 
@@ -1355,7 +1362,7 @@ final class LyricsRepository {
             String artworkKey = "spotify:" + match.spotifyId + ":artwork:" + match.artworkUrl;
             log.write("spotify artwork: memory cache hit "
                     + cachedArtwork.getWidth() + "x" + cachedArtwork.getHeight());
-            mainHandler.post(() -> callback.onLyricsArtworkLoaded(trackKey, cachedArtwork, artworkKey));
+            mainHandler.post(RequestCancellation.guard(() -> callback.onLyricsArtworkLoaded(trackKey, cachedArtwork, artworkKey)));
             return;
         }
         try {
@@ -1376,7 +1383,7 @@ final class LyricsRepository {
                     + match.artworkWidth
                     + "x"
                     + match.artworkHeight);
-            mainHandler.post(() -> callback.onLyricsArtworkLoaded(trackKey, artwork, artworkKey));
+            mainHandler.post(RequestCancellation.guard(() -> callback.onLyricsArtworkLoaded(trackKey, artwork, artworkKey)));
         } catch (Exception error) {
             log.write("spotify artwork error: " + error.getMessage());
         }
@@ -1386,15 +1393,19 @@ final class LyricsRepository {
             TrackSnapshot track,
             LyricsResult cachedBase,
             String trackKey,
-            Callback callback
+            Callback callback,
+            RequestCancellation request
     ) {
         if (track == null || callback == null || executor.isShutdown()) {
             return;
         }
         try {
             executor.execute(() -> {
-                LogSink log = message -> emitLog(trackKey, callback, message);
-                resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
+                if (request == null || request.isCancelled()) return;
+                request.run(() -> {
+                    LogSink log = message -> { request.throwIfCancelled(); emitLog(trackKey, callback, message); };
+                    resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
+                });
             });
         } catch (RuntimeException ignored) {
             // The activity may close while a cache-hit artwork refresh is being queued.
@@ -1494,7 +1505,7 @@ final class LyricsRepository {
         if (normalizedIsrc.isEmpty() && safeSpotifyTrackId.isEmpty()) {
             return;
         }
-        mainHandler.post(() -> callback.onLyricsMetadataResolved(trackKey, normalizedIsrc, safeSpotifyTrackId));
+        mainHandler.post(RequestCancellation.guard(() -> callback.onLyricsMetadataResolved(trackKey, normalizedIsrc, safeSpotifyTrackId)));
     }
 
     private int countVocalParts(List<LyricsLine> lines) {
@@ -3336,9 +3347,13 @@ final class LyricsRepository {
     }
 
     private void emitLog(String trackKey, Callback callback, String message) {
+        emitLog(trackKey, callback, message, RequestCancellation.current());
+    }
+
+    private void emitLog(String trackKey, Callback callback, String message, RequestCancellation request) {
         String safeMessage = message == null ? "" : message;
         Log.d(TAG, safeMessage);
-        mainHandler.post(() -> callback.onLyricsLog(trackKey, safeMessage));
+        mainHandler.post(RequestCancellation.guard(request, () -> callback.onLyricsLog(trackKey, safeMessage)));
     }
 
     private void emitManualLog(String trackKey, ManualLrclibCallback callback, String message) {
@@ -3500,65 +3515,71 @@ final class LyricsRepository {
 
     private String get(String url, Map<String, String> headers) throws IOException {
         URL parsedUrl = URI.create(url).toURL();
+        RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) parsedUrl.openConnection();
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
-        if (headers != null) {
-            for (Map.Entry<String, String> header : headers.entrySet()) {
-                if (header.getKey() != null && header.getValue() != null) {
-                    connection.setRequestProperty(header.getKey(), header.getValue());
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
+            if (headers != null) {
+                for (Map.Entry<String, String> header : headers.entrySet()) {
+                    if (header.getKey() != null && header.getValue() != null) {
+                        connection.setRequestProperty(header.getKey(), header.getValue());
+                    }
                 }
             }
-        }
 
-        int status = connection.getResponseCode();
-        if (status < 200 || status >= 300) {
-            throw new HttpStatusException(status, httpErrorMessage(status, connection));
-        }
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new HttpStatusException(status, httpErrorMessage(status, connection));
+            }
 
-        try {
-            return readBody(connection.getInputStream());
-        } finally {
-            connection.disconnect();
+            try {
+                return readBody(connection.getInputStream());
+            } finally {
+                RequestCancellation.check();
+            }
         }
     }
 
     private String postForm(String url, Map<String, String> params, Map<String, String> headers) throws IOException {
         byte[] body = encodeParams(params).getBytes(StandardCharsets.UTF_8);
         URL parsedUrl = URI.create(url).toURL();
+        RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) parsedUrl.openConnection();
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-        connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
-        connection.setRequestProperty("Content-Length", String.valueOf(body.length));
-        if (headers != null) {
-            for (Map.Entry<String, String> header : headers.entrySet()) {
-                if (header.getKey() != null && header.getValue() != null) {
-                    connection.setRequestProperty(header.getKey(), header.getValue());
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+            connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
+            connection.setRequestProperty("Content-Length", String.valueOf(body.length));
+            if (headers != null) {
+                for (Map.Entry<String, String> header : headers.entrySet()) {
+                    if (header.getKey() != null && header.getValue() != null) {
+                        connection.setRequestProperty(header.getKey(), header.getValue());
+                    }
                 }
             }
-        }
 
-        try (OutputStream output = connection.getOutputStream()) {
-            output.write(body);
-        }
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(body);
+            }
 
-        int status = connection.getResponseCode();
-        if (status < 200 || status >= 300) {
-            throw new HttpStatusException(status, httpErrorMessage(status, connection));
-        }
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new HttpStatusException(status, httpErrorMessage(status, connection));
+            }
 
-        try {
-            return readBody(connection.getInputStream());
-        } finally {
-            connection.disconnect();
+            try {
+                return readBody(connection.getInputStream());
+            } finally {
+                RequestCancellation.check();
+            }
         }
     }
 
@@ -3568,22 +3589,25 @@ final class LyricsRepository {
         }
 
         URL parsedUrl = URI.create(url).toURL();
+        RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) parsedUrl.openConnection();
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty("Accept", "image/*");
-        connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "image/*");
+            connection.setRequestProperty("User-Agent", "ivLyrics-Android/0.1");
 
-        int status = connection.getResponseCode();
-        if (status < 200 || status >= 300) {
-            throw new HttpStatusException(status, httpErrorMessage(status, connection));
-        }
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new HttpStatusException(status, httpErrorMessage(status, connection));
+            }
 
-        try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream())) {
-            return BitmapFactory.decodeStream(input);
-        } finally {
-            connection.disconnect();
+            try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream())) {
+                return BitmapFactory.decodeStream(input);
+            } finally {
+                RequestCancellation.check();
+            }
         }
     }
 
