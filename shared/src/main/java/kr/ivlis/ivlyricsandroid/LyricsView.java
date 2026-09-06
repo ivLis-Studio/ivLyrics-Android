@@ -130,6 +130,10 @@ public final class LyricsView extends View {
     private long activeDisplayIndexCacheStartMs = Long.MIN_VALUE;
     private long activeDisplayIndexCacheEndMs = Long.MAX_VALUE;
     private int activeDisplayIndexCacheValue;
+    private List<DisplayLine> visualCenterIndexCacheLines;
+    private long visualCenterIndexCacheStartMs = Long.MIN_VALUE;
+    private long visualCenterIndexCacheEndMs = Long.MAX_VALUE;
+    private int visualCenterIndexCacheValue;
     private long positionMs;
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
@@ -4068,6 +4072,10 @@ public final class LyricsView extends View {
         activeDisplayIndexCacheStartMs = Long.MIN_VALUE;
         activeDisplayIndexCacheEndMs = Long.MAX_VALUE;
         activeDisplayIndexCacheValue = 0;
+        visualCenterIndexCacheLines = null;
+        visualCenterIndexCacheStartMs = Long.MIN_VALUE;
+        visualCenterIndexCacheEndMs = Long.MAX_VALUE;
+        visualCenterIndexCacheValue = 0;
     }
 
     private void invalidateFrameGroupCache() {
@@ -4112,6 +4120,14 @@ public final class LyricsView extends View {
                 && targetPositionMs < activeDisplayIndexCacheEndMs) {
             return activeDisplayIndexCacheValue;
         }
+        // The 300 ms look-ahead crosses boundaries before playback does. Keep its
+        // interval separate so the two per-frame queries cannot evict each other.
+        if (!useCache
+                && visualCenterIndexCacheLines == displayLines
+                && targetPositionMs >= visualCenterIndexCacheStartMs
+                && targetPositionMs < visualCenterIndexCacheEndMs) {
+            return visualCenterIndexCacheValue;
+        }
 
         int activeIndex = 0;
         long cacheStartMs = Long.MIN_VALUE;
@@ -4146,6 +4162,11 @@ public final class LyricsView extends View {
             activeDisplayIndexCacheStartMs = cacheStartMs;
             activeDisplayIndexCacheEndMs = cacheEndMs;
             activeDisplayIndexCacheValue = activeIndex;
+        } else {
+            visualCenterIndexCacheLines = displayLines;
+            visualCenterIndexCacheStartMs = cacheStartMs;
+            visualCenterIndexCacheEndMs = cacheEndMs;
+            visualCenterIndexCacheValue = activeIndex;
         }
         return activeIndex;
     }

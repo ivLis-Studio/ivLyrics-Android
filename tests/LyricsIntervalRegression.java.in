@@ -1,0 +1,66 @@
+import java.util.*;
+
+public class LyricsIntervalRegression {
+    List<DisplayLine> cachedDisplayLines = Collections.emptyList();
+    boolean displayLineCacheValid;
+    long displayLineCacheStartMs, displayLineCacheEndMs;
+    List<DisplayLine> activeDisplayIndexCacheLines, visualCenterIndexCacheLines;
+    long activeDisplayIndexCacheStartMs, activeDisplayIndexCacheEndMs;
+    long visualCenterIndexCacheStartMs, visualCenterIndexCacheEndMs;
+    int activeDisplayIndexCacheValue, visualCenterIndexCacheValue;
+    boolean karaoke = true, syncedLyricsKaraokeAnimationEnabled = true;
+    static final long LYRICS_CENTERING_LEAD_MS = 300L;
+    long positionMs;
+    Object getContext() { return this; }
+    static class MotionPreferences { static boolean enabled = true; static boolean animationsEnabled(Object context) { return enabled; } }
+    static int reads, assertions;
+    record DisplayLine(long start, long end, boolean timed) {
+        boolean isTimed() { reads++; return timed; }
+        long startTimeMs() { return start; }
+        long endTimeMs() { return end; }
+    }
+    // INSERT_PRODUCTION_DECLARATIONS
+    static int oracle(List<DisplayLine> lines, long position) {
+        int index = 0;
+        for (int i = 0; i < lines.size(); i++) if (lines.get(i).timed && lines.get(i).start <= position) index = i;
+        return index;
+    }
+    static void equal(int expected, int actual) { assertions++; if (expected != actual) throw new AssertionError(expected + " != " + actual); }
+    void verify(List<DisplayLine> lines, long position) {
+        positionMs = position;
+        int active = findActiveDisplayIndexAt(lines, position, true);
+        equal(oracle(lines, position), active);
+        equal(oracle(lines, position + 300), findActiveDisplayIndexAt(lines, position + 300, false));
+        int advanced = oracle(lines, position + 300);
+        equal(Math.min(lines.size() - 1, Math.min(active + 1, Math.max(active, advanced))), findVisualCenterDisplayIndex(lines, active));
+    }
+    public static void main(String[] args) {
+        LyricsIntervalRegression view = new LyricsIntervalRegression();
+        // Overlapping duet, equal starts, untimed rows, short sequential starts and backward seeks.
+        List<DisplayLine> fixture = List.of(new DisplayLine(0, 0, false), new DisplayLine(1000, 6000, true),
+                new DisplayLine(2000, 5000, true), new DisplayLine(2000, 3000, true),
+                new DisplayLine(2100, 2200, true), new DisplayLine(6000, 6000, true));
+        for (long position : new long[]{0, 699, 700, 999, 1000, 1699, 1700, 1799, 1800, 2000, 2099, 2100, 2200, 5999, 6000, 2000, 500, 1000}) view.verify(fixture, position);
+        view.invalidateDisplayLineCache(); reads = 0;
+        view.verify(fixture, 1100); int firstFrameReads = reads;
+        for (int i = 0; i < 100; i++) view.verify(fixture, 1100 + i);
+        equal(firstFrameReads, reads); // Playback and look-ahead reuse their separate stable intervals.
+        equal(fixture.size() * 2, firstFrameReads);
+        view.invalidateDisplayLineCache(); view.verify(fixture, 1100);
+        equal(firstFrameReads * 2, reads);
+        view.verify(new ArrayList<>(fixture), 1100); equal(firstFrameReads * 3, reads);
+        Random random = new Random(0x1a71c);
+        for (int fixtureIndex = 0; fixtureIndex < 100; fixtureIndex++) {
+            List<DisplayLine> lines = new ArrayList<>();
+            for (int i = 0; i < 50; i++) { long start = random.nextInt(10000); lines.add(new DisplayLine(start, start + random.nextInt(3000), random.nextInt(8) != 0)); }
+            // Keep source order: provider overlaps need not be start-sorted.
+            for (int frame = 0; frame < 300; frame++) view.verify(lines, random.nextInt(15000) - 1000);
+        }
+        view.positionMs = 1700;
+        view.karaoke = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
+        view.karaoke = true; view.syncedLyricsKaraokeAnimationEnabled = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
+        view.syncedLyricsKaraokeAnimationEnabled = true; MotionPreferences.enabled = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
+        equal(0, view.findActiveDisplayIndexAt(Collections.emptyList(), 1000, false));
+        System.out.println("Lyrics interval regression: " + assertions + " assertions passed; 100 stable frames perform no repeated timeline scans.");
+    }
+}
