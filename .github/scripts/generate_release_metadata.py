@@ -183,6 +183,10 @@ def read_gradle_version(gradle_path="app/build.gradle"):
             r"\s*\.\s*get\s*\(\s*\)", expression)
         if reference:
             key = reference.group(2)
+            suffix = expression[reference.end():]
+            conversion = r"\s*\.\s*toInteger\s*\(\s*\)" if field == "versionCode" else ""
+            if not re.fullmatch(conversion + r"\s*;?\s*(?://.*)?", suffix):
+                raise ValueError(f"Unsupported {field} property expression in {gradle}")
             if not properties.get(key):
                 raise ValueError(f"Missing {field} property {key} in {properties_path}")
             return properties[key]

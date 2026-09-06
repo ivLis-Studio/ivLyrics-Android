@@ -141,6 +141,19 @@ class ReleaseMetadataTest(unittest.TestCase):
                          {asset["packageName"] for asset in assets.values()})
         self.assertEqual({expected}, {(asset["versionName"], asset["versionCode"]) for asset in assets.values()})
 
+    def test_unsupported_property_arithmetic_fails_instead_of_misreporting_version(self):
+        self.use_shared_versions()
+        path = Path("app/build.gradle")
+        original = path.read_text(encoding="utf-8")
+        for expression, replacement in (
+            ('gradleProperty("ivLyricsVersionName").get()', 'gradleProperty("ivLyricsVersionName").get() + "-beta"'),
+            ('gradleProperty("ivLyricsVersionCode").get().toInteger()', 'gradleProperty("ivLyricsVersionCode").get().toInteger() + 1'),
+        ):
+            with self.subTest(expression=expression):
+                path.write_text(original.replace(expression, replacement), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Unsupported"):
+                    release.read_gradle_version()
+
     def test_unknown_asset_does_not_inherit_either_product_identity(self):
         Path("release-apks/other.apk").write_bytes(b"other")
         asset = self.assets_by_product()["unknown"]
@@ -172,13 +185,21 @@ class ReleaseMetadataTest(unittest.TestCase):
         self.assertIn("Unsigned release APK", lines[1])
 
     def test_main_writes_one_android_version_manifest_with_both_products(self):
+        self.check_main_manifest("1.3.6", 66, "1.0.5", 6)
+
+    def test_main_writes_shared_version_for_both_products_and_download_notes(self):
+        self.use_shared_versions()
+        self.check_main_manifest("1.3.8", 68, "1.3.8", 68)
+
+    def check_main_manifest(self, version_name, version_code, module_version_name, module_version_code):
+        tag = f"v{version_name}"
         commits = [{"hash": "abc1234", "subject": "build: include Spotify module APK",
                     "body": "", "files": []}]
-        with mock.patch.dict(os.environ, {"RELEASE_TAG": "v1.3.6"}, clear=True), \
+        with mock.patch.dict(os.environ, {"RELEASE_TAG": tag}, clear=True), \
                 mock.patch.multiple(release,
                     resolve_commit=mock.Mock(return_value="a" * 40),
                     previous_tag=mock.Mock(return_value="v1.3.5"),
-                    resolve_range_ref=mock.Mock(return_value="v1.3.6"),
+                    resolve_range_ref=mock.Mock(return_value=tag),
                     git_diff_stat=mock.Mock(return_value=""),
                     release_commits=mock.Mock(return_value=commits),
                     run_git=mock.Mock(side_effect=AssertionError("unexpected git invocation"))), \
@@ -188,14 +209,21 @@ class ReleaseMetadataTest(unittest.TestCase):
             release.main()
 
         manifests = list(Path("release-metadata").glob("*version.json"))
-        self.assertEqual(["ivLyrics-Android-v1.3.6-version.json"], [path.name for path in manifests])
+        self.assertEqual([f"ivLyrics-Android-{tag}-version.json"], [path.name for path in manifests])
         metadata = json.loads(manifests[0].read_text(encoding="utf-8"))
-        self.assertEqual(("1.3.6", 66), (metadata["versionName"], metadata["versionCode"]))
+        self.assertEqual((version_name, version_code), (metadata["versionName"], metadata["versionCode"]))
         self.assertEqual(set(self.payloads), {asset["name"] for asset in metadata["apks"]})
         self.assertEqual({"standalone", "spotify-module"}, {asset["product"] for asset in metadata["apks"]})
+        products = {asset["product"]: asset for asset in metadata["apks"]}
+        self.assertEqual((module_version_name, module_version_code),
+                         (products["spotify-module"]["versionName"], products["spotify-module"]["versionCode"]))
+        self.assertEqual("kr.ivlis.ivlyricsandroid", products["standalone"]["packageName"])
+        self.assertEqual("dev.ivlyrics.spotify.module", products["spotify-module"]["packageName"])
         notes = Path("release-metadata/release-notes.md").read_text(encoding="utf-8")
         self.assertIn("Spotify용 LSPosed/LSPatch 모듈", notes)
         self.assertIn("Spotify module for LSPosed/LSPatch", notes)
+        self.assertIn(f"v{version_name} ({version_code})", notes)
+        self.assertIn(f"v{module_version_name} ({module_version_code})", notes)
         for payload in self.payloads.values():
             self.assertIn(hashlib.sha256(payload).hexdigest(), notes)
 
