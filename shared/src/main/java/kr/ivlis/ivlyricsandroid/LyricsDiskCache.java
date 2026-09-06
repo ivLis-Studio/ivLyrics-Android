@@ -88,7 +88,7 @@ final class LyricsDiskCache {
                 writeUtf8(file, object.toString());
                 temp.delete();
             }
-            DiskCachePolicy.pruneToSize(cacheRoot);
+            DiskCachePolicy.schedulePrune(cacheRoot);
         } catch (Exception ignored) {
         }
     }

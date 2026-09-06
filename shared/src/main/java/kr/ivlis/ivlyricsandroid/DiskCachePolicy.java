@@ -4,12 +4,26 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 final class DiskCachePolicy {
     static final long MAX_AGE_MS = 365L * 24L * 60L * 60L * 1_000L;
     static final long MAX_TOTAL_BYTES = 10L * 1024L * 1024L * 1024L;
+    private static final ScheduledExecutorService MAINTENANCE = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "ivlyrics-cache-prune");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final CachePruneScheduler PRUNER = new CachePruneScheduler(
+            work -> MAINTENANCE.schedule(work, 1L, TimeUnit.SECONDS), DiskCachePolicy::pruneToSize);
 
     private DiskCachePolicy() {
+    }
+
+    static void schedulePrune(File root) {
+        PRUNER.request(root);
     }
 
     static void pruneToSize(File root) {
