@@ -14,6 +14,11 @@ on:
         required: true
         type: boolean
         default: false
+      notify_discord:
+        description: "Send release notes to Discord"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -166,6 +171,7 @@ jobs:
           fi
 
       - name: Send Android release notes to Discord
+        if: github.event_name != 'workflow_dispatch' || inputs.notify_discord
         env:
           RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_NOTES_WEBHOOK_URL }}
           RELEASE_PLATFORM: android

@@ -246,12 +246,14 @@ public final class IvLyricsBridge {
             addView(background, new FrameLayout.LayoutParams(-1, -1));
             LinearLayout content = new LinearLayout(context);
             content.setOrientation(LinearLayout.VERTICAL);
-            content.setPadding(dp(16), dp(14), dp(16), dp(14));
+            content.setPadding(dp(8), dp(14), dp(8), dp(14));
             addView(content, new FrameLayout.LayoutParams(-1, -1));
             title = text("ivLyrics", 13.5f);
             title.setTypeface(AppFonts.bold(context));
+            title.setPadding(dp(8), 0, dp(8), 0);
             content.addView(title, new LinearLayout.LayoutParams(-1, dp(24)));
             lyrics = new LyricsView(context);
+            lyrics.setSidePaddingSp(9f);
             lyrics.setTypographySizeMultiplier(0.78f);
             lyrics.setVerticalCenterBias(0.42f);
             content.addView(lyrics, new LinearLayout.LayoutParams(-1, 0, 1f));

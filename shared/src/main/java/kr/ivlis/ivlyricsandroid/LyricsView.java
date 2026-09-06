@@ -42,7 +42,6 @@ import java.util.regex.Pattern;
 
 public final class LyricsView extends View {
     private static final int VISIBLE_RADIUS = 2;
-    private static final float SIDE_PADDING_SP = 18f;
     private static final float MAIN_TEXT_SP = 25f;
     private static final float SUPPLEMENT_TEXT_SP = 14f;
     private static final int SUPPLEMENT_PLACEHOLDER_COLOR = Color.TRANSPARENT;
@@ -125,6 +124,7 @@ public final class LyricsView extends View {
     private boolean useCreatorSpeakerColors = true;
     private String lyricsTextAlignment = AiLyricsSettings.LYRICS_ALIGN_LEFT;
     private float typographySizeMultiplier = 1f;
+    private float sidePaddingSp = 18f;
 
     private List<LyricsLine> lines = Collections.emptyList();
     private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
@@ -502,6 +502,19 @@ public final class LyricsView extends View {
         rowLayoutCache.clear();
         invalidateFrameGroupCache();
         requestLayout();
+        postInvalidateOnAnimation();
+    }
+
+    void setSidePaddingSp(float paddingSp) {
+        float safePaddingSp = Math.max(0f, paddingSp);
+        if (sidePaddingSp == safePaddingSp) return;
+        sidePaddingSp = safePaddingSp;
+        clearRowReflow();
+        rowLayoutCache.clear();
+        invalidateFrameGroupCache();
+        releaseHitTargets();
+        rowPrewarmIndex = 0;
+        scheduleRowPrewarm();
         postInvalidateOnAnimation();
     }
 
@@ -4879,11 +4892,11 @@ public final class LyricsView extends View {
     }
 
     private float contentLeft() {
-        return sp(SIDE_PADDING_SP);
+        return sp(sidePaddingSp);
     }
 
     private float contentWidth() {
-        return Math.max(sp(80f), getWidth() - sp(SIDE_PADDING_SP * 2f));
+        return Math.max(sp(80f), getWidth() - sp(sidePaddingSp * 2f));
     }
 
     private float sp(float value) {
