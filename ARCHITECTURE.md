@@ -86,8 +86,11 @@ releases sign and publish both APKs:
 The module filename deliberately has no `-release` suffix. Hyphens within its tag
 are replaced with underscores so older standalone updaters continue selecting
 the Android APK. The single `ivLyrics-Android-${tag}-version.json` retains the
-standalone app's top-level version. Each `apks` entry includes its product label,
-package and individual version alongside the existing name, size and SHA-256.
+standalone app's top-level version. Both products take their version name and
+code from `ivLyricsVersionName` and `ivLyricsVersionCode` in `gradle.properties`.
+Each `apks` entry includes its product label, package and version alongside the
+existing name, size and SHA-256. A manual release run with `publish=false` builds
+and uploads signed verification artifacts without changing a GitHub Release.
 No Spotify APK is included or repackaged by this release workflow.
 
 ## Editing policy

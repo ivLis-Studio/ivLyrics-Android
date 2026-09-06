@@ -51,6 +51,20 @@ class ReleaseMetadataTest(unittest.TestCase):
     def assets_by_product(self):
         return {asset["product"]: asset for asset in release.apk_assets("release-apks")}
 
+    def use_shared_versions(self):
+        Path("gradle.properties").write_text(
+            "# Release identity shared by both APKs\n"
+            "ivLyricsVersionName=1.3.8\n"
+            "ivLyricsVersionCode=68\n", encoding="utf-8")
+        for project in ("app", "spotify-module"):
+            path = Path(project, "build.gradle")
+            text = path.read_text(encoding="utf-8")
+            text = release.re.sub(r'versionName "[^"]+"',
+                'versionName providers.gradleProperty("ivLyricsVersionName").get()', text)
+            text = release.re.sub(r"versionCode [0-9]+",
+                'versionCode providers.gradleProperty("ivLyricsVersionCode").get().toInteger()', text)
+            path.write_text(text, encoding="utf-8")
+
     def test_products_keep_independent_package_and_version(self):
         assets = self.assets_by_product()
         self.assertEqual({"standalone", "spotify-module"}, set(assets))
@@ -74,6 +88,58 @@ class ReleaseMetadataTest(unittest.TestCase):
         self.assertEqual({"versionName": "1.3.6", "versionCode": 66}, release.read_gradle_version())
         self.assertEqual({"versionName": "1.0.5", "versionCode": 6},
                          release.read_gradle_version("spotify-module/build.gradle"))
+
+    def test_shared_release_version_preserves_both_package_identities(self):
+        self.use_shared_versions()
+        assets = self.assets_by_product()
+        for product, package in (("standalone", "kr.ivlis.ivlyricsandroid"),
+                                 ("spotify-module", "dev.ivlyrics.spotify.module")):
+            with self.subTest(product=product):
+                self.assertEqual(package, assets[product]["packageName"])
+                self.assertEqual(("1.3.8", 68),
+                                 (assets[product]["versionName"], assets[product]["versionCode"]))
+        # Changing the one shared source changes both products in the next metadata run.
+        Path("gradle.properties").write_text(
+            "ivLyricsVersionName = 1.3.9\nivLyricsVersionCode : 69\n", encoding="utf-8")
+        for asset in self.assets_by_product().values():
+            self.assertEqual(("1.3.9", 69), (asset["versionName"], asset["versionCode"]))
+
+    def test_shared_properties_do_not_override_historical_product_literals(self):
+        Path("gradle.properties").write_text(
+            "ivLyricsVersionName=99.9.9\nivLyricsVersionCode=999\n", encoding="utf-8")
+        self.test_products_keep_independent_package_and_version()
+
+    def test_absolute_gradle_path_uses_its_project_properties_not_working_directory(self):
+        self.use_shared_versions()
+        path = Path("spotify-module/build.gradle").resolve()
+        Path("unrelated").mkdir()
+        os.chdir("unrelated")
+        Path("gradle.properties").write_text(
+            "ivLyricsVersionName=99.9.9\nivLyricsVersionCode=999\n", encoding="utf-8")
+        self.assertEqual({"versionName": "1.3.8", "versionCode": 68}, release.read_gradle_version(path))
+
+    def test_missing_or_invalid_shared_version_fails_instead_of_publishing_unknown(self):
+        self.use_shared_versions()
+        for properties in ("ivLyricsVersionName=1.3.8\n", "ivLyricsVersionCode=68\n",
+                           "ivLyricsVersionName=1.3.8\nivLyricsVersionCode=invalid\n"):
+            with self.subTest(properties=properties):
+                Path("gradle.properties").write_text(properties, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    release.read_gradle_version()
+        Path("gradle.properties").unlink()
+        with self.assertRaises(ValueError):
+            release.read_gradle_version()
+
+    def test_current_checked_in_products_use_the_same_release_version(self):
+        for relative in ("gradle.properties", "app/build.gradle", "spotify-module/build.gradle"):
+            Path(relative).write_text((REPOSITORY / relative).read_text(encoding="utf-8"), encoding="utf-8")
+        properties = dict(line.split("=", 1) for line in Path("gradle.properties").read_text().splitlines()
+                          if line.startswith(("ivLyricsVersionName=", "ivLyricsVersionCode=")))
+        expected = (properties["ivLyricsVersionName"], int(properties["ivLyricsVersionCode"]))
+        assets = self.assets_by_product()
+        self.assertEqual({"kr.ivlis.ivlyricsandroid", "dev.ivlyrics.spotify.module"},
+                         {asset["packageName"] for asset in assets.values()})
+        self.assertEqual({expected}, {(asset["versionName"], asset["versionCode"]) for asset in assets.values()})
 
     def test_unknown_asset_does_not_inherit_either_product_identity(self):
         Path("release-apks/other.apk").write_bytes(b"other")

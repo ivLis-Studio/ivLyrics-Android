@@ -19,6 +19,11 @@ on:
         required: true
         type: boolean
         default: false
+      publish:
+        description: "Publish the built APKs to GitHub Releases"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -120,6 +125,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Generate release notes and version file
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
         env:
           RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
           APK_DIR: release-apks
@@ -141,6 +147,7 @@ jobs:
           if-no-files-found: error
 
       - name: Create or update GitHub Release
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.collect.outputs.release_tag }}
@@ -175,7 +182,7 @@ jobs:
           fi
 
       - name: Send Android release notes to Discord
-        if: github.event_name != 'workflow_dispatch' || inputs.notify_discord
+        if: github.event_name != 'workflow_dispatch' || (inputs.publish && inputs.notify_discord)
         env:
           RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_NOTES_WEBHOOK_URL }}
           RELEASE_PLATFORM: android

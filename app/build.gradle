@@ -16,8 +16,8 @@ android {
         applicationId "kr.ivlis.ivlyricsandroid"
         minSdk 26
         targetSdk 35
-        versionCode 68
-        versionName "1.3.8"
+        versionCode providers.gradleProperty("ivLyricsVersionCode").get().toInteger()
+        versionName providers.gradleProperty("ivLyricsVersionName").get()
     }
 
     buildTypes {

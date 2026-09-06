@@ -10,6 +10,8 @@ resolved by ivLyrics independently; episodes and podcast-embedded tracks remain
 excluded, and an existing lyrics card is never duplicated.
 
 Build from the repository root with `./build.sh :spotify-module:assembleRelease`.
+The app and module share `ivLyricsVersionName` and `ivLyricsVersionCode` in the
+root `gradle.properties`; bump both products together there for each release.
 Output: `spotify-module/build/outputs/apk/release/spotify-module-release.apk`.
 GitHub [Releases](https://github.com/ivLis-Studio/ivLyrics-Android/releases) also
 attach this module as `ivLyrics-LSPatch-${tag}.apk`, alongside the separate

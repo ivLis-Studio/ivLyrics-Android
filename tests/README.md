@@ -42,7 +42,7 @@ only a JDK and Python. Real native routing, track support, button placement and
 audible vocal reduction require separate physical-device checks.
 
 The release metadata tests use synthetic APK bytes and the real metadata
-generator. They verify independent product/package/version fields, existing
+generator. They verify shared release versions and independent product/package fields, existing
 checksums and compatibility fields, bilingual download descriptions, and one
 standalone version manifest containing both products. They require only Python;
 no GitHub, AI, webhook, Android SDK, or signing key is accessed.

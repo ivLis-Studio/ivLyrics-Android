@@ -19,8 +19,8 @@ android {
         applicationId "dev.ivlyrics.spotify.module"
         minSdk 26
         targetSdk 35
-        versionCode 10
-        versionName "1.0.9"
+        versionCode providers.gradleProperty("ivLyricsVersionCode").get().toInteger()
+        versionName providers.gradleProperty("ivLyricsVersionName").get()
     }
     buildTypes {
         release {

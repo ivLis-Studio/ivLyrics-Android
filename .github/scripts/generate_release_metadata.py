@@ -160,11 +160,45 @@ def commit_evidence(commits):
 def read_gradle_version(gradle_path="app/build.gradle"):
     gradle = Path(gradle_path)
     text = gradle.read_text(encoding="utf-8") if gradle.exists() else ""
-    code_match = re.search(r"versionCode\s+([0-9]+)", text)
-    name_match = re.search(r'versionName\s+"([^"]+)"', text)
+    # Both Android products read the checked-in root properties. Resolve relative
+    # to the supplied module, so absolute paths also work outside the checkout.
+    properties_path = gradle.parent.parent / "gradle.properties"
+    properties = {}
+    if properties_path.exists():
+        for line in properties_path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\s*([^#!\s:=]+)\s*[:=]\s*(.*?)\s*$", line)
+            if match:
+                properties[match.group(1)] = match.group(2)
+
+    def value(field):
+        # Keep historical literal build.gradle releases readable. Only resolve
+        # explicitly referenced properties; their presence must not override a
+        # product that still declares its own literal version.
+        declaration = re.search(rf"^\s*{field}\s+(?:=\s*)?([^\r\n]+)", text, re.MULTILINE)
+        if not declaration:
+            return None
+        expression = declaration.group(1).strip()
+        reference = re.match(
+            r'''providers\s*\.\s*gradleProperty\s*\(\s*(["'])([^"']+)\1\s*\)'''
+            r"\s*\.\s*get\s*\(\s*\)", expression)
+        if reference:
+            key = reference.group(2)
+            if not properties.get(key):
+                raise ValueError(f"Missing {field} property {key} in {properties_path}")
+            return properties[key]
+        if field == "versionCode":
+            literal = re.match(r"([0-9]+)\b", expression)
+        else:
+            literal = re.match(r'''(["'])([^"']+)\1''', expression)
+        return literal.group(1 if field == "versionCode" else 2) if literal else None
+
+    code = value("versionCode")
+    name = value("versionName")
+    if code is not None and not re.fullmatch(r"[0-9]+", code):
+        raise ValueError(f"Invalid versionCode in {gradle}")
     return {
-        "versionCode": int(code_match.group(1)) if code_match else None,
-        "versionName": name_match.group(1) if name_match else "",
+        "versionCode": int(code) if code is not None else None,
+        "versionName": name or "",
     }
 
 
