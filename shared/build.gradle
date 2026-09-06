@@ -3,7 +3,10 @@ plugins { id "com.android.library" }
 android {
     namespace "kr.ivlis.ivlyricsandroid"
     compileSdk { version = release(36) { it.minorApiLevel = 1 } }
-    defaultConfig { minSdk 26 }
+    defaultConfig {
+        minSdk 26
+        testInstrumentationRunner "kr.ivlis.ivlyricsandroid.BackgroundArtworkInstrumentation"
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

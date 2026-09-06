@@ -16,6 +16,7 @@ import android.util.AttributeSet;
 import android.view.View;
 
 import java.util.Random;
+import java.lang.ref.WeakReference;
 
 public final class PlayerBackgroundView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -23,6 +24,8 @@ public final class PlayerBackgroundView extends View {
     private final RectF dst = new RectF();
     private final Runnable animationTick = this::postInvalidateOnAnimation;
 
+    private long artworkGeneration;
+    private Runnable cancelArtworkPreparation;
     private Bitmap sourceArtwork;
     private Bitmap blurredArtwork;
     private Bitmap noiseBitmap;
@@ -72,7 +75,8 @@ public final class PlayerBackgroundView extends View {
         }
         sourceArtworkKey = safeArtworkKey;
         sourceArtwork = artwork;
-        blurredArtwork = artwork == null ? null : createBlurredArtwork(artwork);
+        if (artwork == null) blurredArtwork = null;
+        requestBlurredArtwork();
         extractPalette(artwork);
 
         Random random = new Random(SystemClock.uptimeMillis());
@@ -94,13 +98,34 @@ public final class PlayerBackgroundView extends View {
         boolean blurChanged = backgroundSettings.blur != safeSettings.blur;
         backgroundSettings = safeSettings;
         if (blurChanged && sourceArtwork != null && !sourceArtwork.isRecycled()) {
-            blurredArtwork = createBlurredArtwork(sourceArtwork);
+            requestBlurredArtwork();
         }
         postInvalidateOnAnimation();
     }
 
+    private void requestBlurredArtwork() {
+        if (cancelArtworkPreparation != null) cancelArtworkPreparation.run();
+        long generation = ++artworkGeneration;
+        WeakReference<PlayerBackgroundView> reference = new WeakReference<>(this);
+        cancelArtworkPreparation = BackgroundArtworkCache.request(sourceArtwork, sourceArtworkKey, backgroundSettings.blur, bitmap -> {
+            PlayerBackgroundView view = reference.get();
+            if (view == null || view.artworkGeneration != generation || bitmap == null) return;
+            view.blurredArtwork = bitmap;
+            view.postInvalidateOnAnimation();
+        });
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        requestBlurredArtwork();
+    }
+
     @Override
     protected void onDetachedFromWindow() {
+        artworkGeneration++;
+        if (cancelArtworkPreparation != null) cancelArtworkPreparation.run();
+        cancelArtworkPreparation = null;
         removeCallbacks(animationTick);
         super.onDetachedFromWindow();
     }
@@ -340,22 +365,6 @@ public final class PlayerBackgroundView extends View {
         noisePaint.setShader(null);
     }
 
-    private Bitmap createBlurredArtwork(Bitmap source) {
-        int width = Math.max(1, source.getWidth());
-        int height = Math.max(1, source.getHeight());
-        float scale = 220f / Math.max(width, height);
-        int targetWidth = Math.max(48, Math.round(width * scale));
-        int targetHeight = Math.max(48, Math.round(height * scale));
-        Bitmap small = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
-                .copy(Bitmap.Config.ARGB_8888, true);
-        int radius = Math.max(4, Math.round(5f + backgroundSettings.blur * 0.12f));
-        int passes = Math.max(2, Math.min(9, 2 + backgroundSettings.blur / 10));
-        for (int pass = 0; pass < passes; pass++) {
-            boxBlur(small, radius);
-        }
-        return small;
-    }
-
     private Bitmap createNoiseBitmap() {
         Bitmap bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
         int[] pixels = new int[96 * 96];
@@ -413,56 +422,6 @@ public final class PlayerBackgroundView extends View {
         palettePrimary = saturate(lighten(avg, 0.28f), 1.55f);
         paletteSecondary = saturate(bright, 1.35f);
         paletteAccent = rotateChannels(saturate(lighten(avg, 0.18f), 1.75f));
-    }
-
-    private void boxBlur(Bitmap bitmap, int radius) {
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int[] src = new int[width * height];
-        int[] tmp = new int[width * height];
-        bitmap.getPixels(src, 0, width, 0, 0, width, height);
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int a = 0;
-                int r = 0;
-                int g = 0;
-                int b = 0;
-                int count = 0;
-                for (int dx = -radius; dx <= radius; dx++) {
-                    int px = Math.max(0, Math.min(width - 1, x + dx));
-                    int color = src[y * width + px];
-                    a += Color.alpha(color);
-                    r += Color.red(color);
-                    g += Color.green(color);
-                    b += Color.blue(color);
-                    count++;
-                }
-                tmp[y * width + x] = Color.argb(a / count, r / count, g / count, b / count);
-            }
-        }
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int a = 0;
-                int r = 0;
-                int g = 0;
-                int b = 0;
-                int count = 0;
-                for (int dy = -radius; dy <= radius; dy++) {
-                    int py = Math.max(0, Math.min(height - 1, y + dy));
-                    int color = tmp[py * width + x];
-                    a += Color.alpha(color);
-                    r += Color.red(color);
-                    g += Color.green(color);
-                    b += Color.blue(color);
-                    count++;
-                }
-                src[y * width + x] = Color.argb(a / count, r / count, g / count, b / count);
-            }
-        }
-
-        bitmap.setPixels(src, 0, width, 0, 0, width, height);
     }
 
     private float sin(double value) {
