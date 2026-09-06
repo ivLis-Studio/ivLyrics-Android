@@ -8,6 +8,7 @@ public class LyricsIntervalRegression {
     long activeDisplayIndexCacheStartMs, activeDisplayIndexCacheEndMs;
     long visualCenterIndexCacheStartMs, visualCenterIndexCacheEndMs;
     int activeDisplayIndexCacheValue, visualCenterIndexCacheValue;
+    int activeDisplayFirstSingingCacheValue;
     boolean karaoke = true, syncedLyricsKaraokeAnimationEnabled = true;
     static final long LYRICS_CENTERING_LEAD_MS = 300L;
     long positionMs;
@@ -30,6 +31,12 @@ public class LyricsIntervalRegression {
         positionMs = position;
         int active = findActiveDisplayIndexAt(lines, position, true);
         equal(oracle(lines, position), active);
+        int firstSinging = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            DisplayLine line = lines.get(i);
+            if (line.timed && line.start <= position && position < line.end) { firstSinging = i; break; }
+        }
+        equal(firstSinging, activeDisplayFirstSingingCacheValue);
         equal(oracle(lines, position + 300), findActiveDisplayIndexAt(lines, position + 300, false));
         int advanced = oracle(lines, position + 300);
         equal(Math.min(lines.size() - 1, Math.min(active + 1, Math.max(active, advanced))), findVisualCenterDisplayIndex(lines, active));

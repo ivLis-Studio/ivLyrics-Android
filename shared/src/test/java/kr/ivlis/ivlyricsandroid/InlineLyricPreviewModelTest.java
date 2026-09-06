@@ -11,6 +11,76 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 public final class InlineLyricPreviewModelTest {
+    @Test public void equalLineOnlyTextUsesIndependentProgressWindowsAndIdentityCaches() throws Exception {
+        LyricsLine first = new LyricsLine(1000, 3000, "repeated", Collections.emptyList());
+        LyricsLine second = new LyricsLine(2000, 6000, "repeated", Collections.emptyList());
+        InlineLyricPreviewModel model = model(Arrays.asList(first, second), AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
+        MainLyricPreviewView.PreviewLine firstRow = model.rows(model.at(1500)).get(0);
+        InlineLyricPreviewModel.PreviewEntry overlap = model.at(2500);
+        List<MainLyricPreviewView.PreviewLine> rows = model.rows(overlap);
+        assertEquals(2, rows.size());
+        assertSame(firstRow, rows.get(0));
+        assertNotSame(rows.get(0), rows.get(1));
+        assertFalse(rows.get(0).hasKaraoke()); // Line-only stays plain; its overflow movement is timed.
+        assertFalse(rows.get(1).hasKaraoke());
+        assertEquals(0.75f, rows.get(0).progress(2500, overlap.startTimeMs, overlap.endTimeMs), 0.0001f);
+        assertEquals(0.125f, rows.get(1).progress(2500, overlap.startTimeMs, overlap.endTimeMs), 0.0001f);
+        assertSame(rows.get(1), model.rows(model.at(3500)).get(0));
+        assertSame(firstRow, model.rows(model.at(1500)).get(0));
+        MainLyricPreviewView.PreviewLine annotation = MainLyricPreviewView.PreviewLine.annotatedCopy(
+                rows.get(1), "repeated [1]", Collections.emptyList());
+        assertEquals(0.125f, annotation.progress(2500, 0, 30000), 0.0001f);
+    }
+
+    @Test public void overlappingSourceRowsStaySeparateUntilEachVoiceFinishes() throws Exception {
+        LyricsLine first = new LyricsLine(1000, 3000, "first",
+                Collections.singletonList(new LyricsLine.Syllable("first", 1000, 3000)))
+                .withSupplements("", "first meaning");
+        LyricsLine second = new LyricsLine(2000, 6000, "second",
+                Collections.singletonList(new LyricsLine.Syllable("second", 2000, 6000)))
+                .withSupplements("", "second meaning");
+        InlineLyricPreviewModel model = model(Arrays.asList(first, second), AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
+        assertEquals(Collections.singletonList(first), model.at(1500).lines);
+        InlineLyricPreviewModel.PreviewEntry overlap = model.at(2500);
+        assertEquals(Arrays.asList(first, second), overlap.lines);
+        List<MainLyricPreviewView.PreviewLine> rows = model.rows(overlap);
+        assertEquals(4, rows.size());
+        assertEquals("first", rows.get(0).text);
+        assertEquals("first meaning", rows.get(1).text);
+        assertEquals("second", rows.get(2).text);
+        assertEquals("second meaning", rows.get(3).text);
+        assertTrue(rows.get(0).primary);
+        assertTrue(rows.get(2).primary);
+        assertEquals(1000, rows.get(0).syllables.get(0).startTimeMs);
+        assertEquals(2000, rows.get(2).syllables.get(0).startTimeMs);
+        assertSame(rows, model.rows(model.at(2900)));
+        assertEquals(Collections.singletonList(second), model.at(3000).lines);
+        assertEquals(Arrays.asList(first, second), model.at(2000).lines); // Backward seek.
+    }
+
+    @Test public void simultaneousAndChainedRowsAreNotCollapsedOrRetainedPastTheirEnd() throws Exception {
+        LyricsLine first = new LyricsLine(1000, 3000, "first", Collections.emptyList());
+        LyricsLine equal = new LyricsLine(1000, 2500, "equal", Collections.emptyList());
+        LyricsLine next = new LyricsLine(2400, 4000, "next", Collections.emptyList());
+        LyricsLine last = new LyricsLine(3900, 5000, "last", Collections.emptyList());
+        InlineLyricPreviewModel model = model(Arrays.asList(first, equal, next, last), AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
+        assertEquals(Arrays.asList(first, equal, next), model.at(2450).lines);
+        assertEquals(Arrays.asList(next, last), model.at(3950).lines);
+        assertEquals(Collections.singletonList(last), model.at(4000).lines);
+    }
+
+    @Test public void shorterOverlappingRowAndMarkersCannotStartABreakDuringSustainedVocals() throws Exception {
+        LyricsLine sustained = new LyricsLine(1000, 7000, "sustained", Collections.emptyList());
+        LyricsLine shortLine = new LyricsLine(2000, 3000, "short", Collections.emptyList());
+        LyricsLine marker = new LyricsLine(3000, 4000, "♪", Collections.emptyList());
+        InlineLyricPreviewModel withMarker = model(Arrays.asList(sustained, shortLine, marker), AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
+        assertEquals(Collections.singletonList(sustained), withMarker.at(3500).lines);
+        InlineLyricPreviewModel model = model(Arrays.asList(sustained, shortLine), AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
+        assertSame(sustained, model.at(6999).line);
+        assertFalse(model.at(8000).isInterlude());
+        assertEquals("postlude", model.at(10500).interludeKind); // Last sounding end + 3500ms.
+    }
+
     @Test public void mergedVocalsKeepBothTimelinesAndReusePreparedRows() throws Exception {
         LyricsLine.VocalPart lead = new LyricsLine.VocalPart("lead", "lead", "", "vocal", "hello",
                 Collections.singletonList(new LyricsLine.Syllable("hello", 1000, 2500)));

@@ -14,11 +14,9 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -35,8 +33,6 @@ final class LyricsPlusLyricsProvider {
     private static final String ATTRIBUTION = "Lyrics from LyricsPlus · " + PROJECT_URL;
     private static final int REQUEST_TIMEOUT_MS = 10_000;
     private static final int SYLLABLE_TIMING_TOLERANCE_MS = 1_500;
-    private static final int MAX_PARALLEL_SOURCE_LINES = 4;
-    private static final long MAX_PARALLEL_SEGMENT_DELAY_MS = 16L;
     private static final double LONG_LINE_TRIGGER_WIDTH = 22.0;
     private static final double LONG_LINE_HARD_WIDTH = 26.0;
     private static final double LONG_LINE_MIN_WIDTH = 6.0;
@@ -154,9 +150,13 @@ final class LyricsPlusLyricsProvider {
             }
         }
 
-        List<LyricsLine> karaokeLines = completeWordTiming
-                ? splitLongSoloLines(groupParallelLines(timed))
-                : Collections.emptyList();
+        List<LyricsLine> karaokeLines = new ArrayList<>();
+        if (completeWordTiming) {
+            // A timing overlap does not imply background vocals or a shared sentence.
+            // Keep each provider row and the explicit background syllables parsed inside it.
+            for (ParsedLine line : timed) karaokeLines.add(line.toKaraokeLine());
+            karaokeLines = splitLongSoloLines(karaokeLines);
+        }
         List<LyricsLine> syncedLines = new ArrayList<>();
         if (completeTiming && !plainType) {
             for (ParsedLine line : timed) syncedLines.add(line.toSyncedLine());
@@ -362,366 +362,6 @@ final class LyricsPlusLyricsProvider {
         return new ParsedLine(sourceIndex, lineKey, singer, Math.max(-1L, start), Math.max(-1L, end), text,
                 leadSyllables.isEmpty() ? toSyllables(rawSyllables) : leadSyllables,
                 inlineParts, presentation, !rawSyllables.isEmpty());
-    }
-
-    private static List<LyricsLine> groupParallelLines(List<ParsedLine> lines) {
-        int count = lines.size();
-        int[] parents = new int[count];
-        boolean[] parallelSeed = new boolean[count];
-        for (int index = 0; index < count; index++) parents[index] = index;
-        for (int leftIndex = 0; leftIndex < count; leftIndex++) {
-            ParsedLine left = lines.get(leftIndex);
-            for (int rightIndex = leftIndex + 1; rightIndex < count; rightIndex++) {
-                ParsedLine right = lines.get(rightIndex);
-                if (right.startTimeMs >= left.endTimeMs) break;
-                long overlap = ParallelVocalLineMerger.overlapMs(
-                        parallelSource(left),
-                        parallelSource(right)
-                );
-                if (overlap < ParallelVocalLineMerger.MIN_COMPONENT_OVERLAP_MS) continue;
-                union(parents, leftIndex, rightIndex);
-                parallelSeed[leftIndex] = true;
-                parallelSeed[rightIndex] = true;
-            }
-        }
-
-        Set<Integer> parallelRoots = new LinkedHashSet<>();
-        for (int index = 0; index < count; index++) {
-            if (parallelSeed[index]) parallelRoots.add(find(parents, index));
-        }
-        Map<Integer, List<ParsedLine>> components = new LinkedHashMap<>();
-        for (int index = 0; index < count; index++) {
-            int root = find(parents, index);
-            components.computeIfAbsent(root, ignored -> new ArrayList<>()).add(lines.get(index));
-        }
-
-        List<LyricsLine> result = new ArrayList<>();
-        Set<Integer> emitted = new LinkedHashSet<>();
-        for (int index = 0; index < count; index++) {
-            int root = find(parents, index);
-            if (!parallelRoots.contains(root)) {
-                result.add(lines.get(index).toKaraokeLine());
-                continue;
-            }
-            if (!emitted.add(root)) continue;
-            List<ParsedLine> component = components.get(root);
-            component.sort((left, right) -> {
-                int byTime = Long.compare(left.startTimeMs, right.startTimeMs);
-                return byTime != 0 ? byTime : Integer.compare(left.sourceIndex, right.sourceIndex);
-            });
-            result.addAll(createParallelSegments(component));
-        }
-        result.sort((left, right) -> Long.compare(left.startTimeMs, right.startTimeMs));
-        return result;
-    }
-
-    private static List<LyricsLine> createParallelSegments(List<ParsedLine> sourceLines) {
-        List<ParsedLine> remaining = new ArrayList<>(sourceLines);
-        List<LyricsLine> result = new ArrayList<>();
-        String preferredSinger = preferredLeadSinger(sourceLines);
-        long forcedStart = -1L;
-        int guard = 0;
-        while (sourceLineCount(remaining) > MAX_PARALLEL_SOURCE_LINES && guard++ < sourceLines.size() * 2) {
-            ParallelSplit split = findParallelSplit(remaining, forcedStart);
-            if (split == null) {
-                // Keeping every timed syllable is safer than cutting a vocal at an unsafe boundary.
-                return Collections.singletonList(createParallelLine(sourceLines, preferredSinger, -1L, -1L));
-            }
-            result.add(createParallelLine(split.left, preferredSinger, forcedStart, split.leftEndTime));
-            remaining = split.right;
-            forcedStart = split.nextStartTime;
-        }
-        if (!remaining.isEmpty()) {
-            result.add(createParallelLine(remaining, preferredSinger, forcedStart, -1L));
-        }
-        return result;
-    }
-
-    private static ParallelSplit findParallelSplit(List<ParsedLine> lines, long forcedStart) {
-        List<ParsedLine> ordered = new ArrayList<>(lines);
-        ordered.sort((left, right) -> {
-            int byTime = Long.compare(left.startTimeMs, right.startTimeMs);
-            return byTime != 0 ? byTime : Integer.compare(left.sourceIndex, right.sourceIndex);
-        });
-        List<String> sourceKeys = new ArrayList<>();
-        long nominalBoundary = -1L;
-        for (ParsedLine line : ordered) {
-            if (!sourceKeys.contains(line.lineKey)) {
-                sourceKeys.add(line.lineKey);
-                if (sourceKeys.size() == MAX_PARALLEL_SOURCE_LINES + 1) {
-                    nominalBoundary = line.startTimeMs;
-                    break;
-                }
-            }
-        }
-        if (nominalBoundary < 0L) return null;
-
-        Set<Long> candidateSet = new LinkedHashSet<>();
-        candidateSet.add(nominalBoundary);
-        Set<String> firstSourceKeys = new LinkedHashSet<>(sourceKeys.subList(0, MAX_PARALLEL_SOURCE_LINES));
-        for (ParsedLine line : ordered) {
-            if (!firstSourceKeys.contains(line.lineKey)) continue;
-            for (LyricsLine.Syllable syllable : lineSyllables(line)) {
-                if (syllable.startTimeMs > forcedStart && syllable.startTimeMs <= nominalBoundary) {
-                    candidateSet.add(syllable.startTimeMs);
-                }
-                if (syllable.endTimeMs > forcedStart && syllable.endTimeMs <= nominalBoundary) {
-                    candidateSet.add(syllable.endTimeMs);
-                }
-            }
-        }
-        List<Long> candidates = new ArrayList<>(candidateSet);
-        final long targetBoundary = nominalBoundary;
-        candidates.sort((left, right) -> {
-            int byDistance = Long.compare(Math.abs(left - targetBoundary), Math.abs(right - targetBoundary));
-            return byDistance != 0 ? byDistance : Long.compare(right, left);
-        });
-
-        ParallelSplit best = null;
-        for (long candidate : candidates) {
-            if (candidate <= forcedStart) continue;
-            List<ParsedLine> left = new ArrayList<>();
-            List<ParsedLine> right = new ArrayList<>();
-            for (ParsedLine line : ordered) {
-                ParsedLine leftFragment = sliceParsedLine(line, candidate, true);
-                ParsedLine rightFragment = sliceParsedLine(line, candidate, false);
-                if (leftFragment != null) left.add(leftFragment);
-                if (rightFragment != null) right.add(rightFragment);
-            }
-            int leftSourceCount = sourceLineCount(left);
-            if (leftSourceCount < 2
-                    || leftSourceCount > MAX_PARALLEL_SOURCE_LINES
-                    || right.isEmpty()
-                    || singerCount(left) < 2) {
-                continue;
-            }
-            long leftEnd = maximumEndTime(left);
-            long rightStart = minimumStartTime(right);
-            long nextStart = Math.max(leftEnd, rightStart);
-            long maximumDelay = 0L;
-            boolean losesSyllable = false;
-            for (ParsedLine line : right) {
-                for (LyricsLine.Syllable syllable : lineSyllables(line)) {
-                    if (syllable.startTimeMs < nextStart) {
-                        if (syllable.endTimeMs <= nextStart) {
-                            losesSyllable = true;
-                            break;
-                        }
-                        maximumDelay = Math.max(maximumDelay, nextStart - syllable.startTimeMs);
-                    }
-                }
-                if (losesSyllable) break;
-            }
-            if (losesSyllable || maximumDelay > MAX_PARALLEL_SEGMENT_DELAY_MS) continue;
-
-            ParallelSplit split = new ParallelSplit(
-                    left,
-                    right,
-                    leftEnd,
-                    nextStart,
-                    leftSourceCount,
-                    maximumDelay,
-                    Math.abs(candidate - nominalBoundary)
-            );
-            if (best == null || split.betterThan(best)) best = split;
-        }
-        return best;
-    }
-
-    private static ParsedLine sliceParsedLine(ParsedLine source, long boundary, boolean takeLeft) {
-        List<LyricsLine.Syllable> slicedLead = sliceSyllables(source.syllables, boundary, takeLeft);
-        List<LyricsLine.VocalPart> slicedParts = new ArrayList<>();
-        for (LyricsLine.VocalPart part : source.inlineVocalParts) {
-            LyricsLine.VocalPart sliced = sliceVocalPart(part, boundary, takeLeft);
-            if (sliced != null) slicedParts.add(sliced);
-        }
-        if (slicedParts.isEmpty() && slicedLead.isEmpty()) return null;
-
-        if (!slicedParts.isEmpty()) {
-            int leadIndex = -1;
-            for (int index = 0; index < slicedParts.size(); index++) {
-                if ("lead".equals(slicedParts.get(index).role)) {
-                    leadIndex = index;
-                    break;
-                }
-            }
-            if (leadIndex < 0) {
-                slicedParts.set(0, withVocalRole(slicedParts.get(0), "lead"));
-                leadIndex = 0;
-            }
-            slicedLead = new ArrayList<>(slicedParts.get(leadIndex).syllables);
-            if (slicedParts.size() == 1) slicedParts.clear();
-        }
-        if (slicedLead.isEmpty()) return null;
-
-        List<LyricsLine.Syllable> all = slicedParts.isEmpty() ? slicedLead : partSyllables(slicedParts);
-        long start = minimumSyllableStart(all);
-        long end = maximumSyllableEnd(all);
-        String text;
-        if (slicedParts.isEmpty()) {
-            text = joinSyllables(slicedLead);
-        } else {
-            StringBuilder joined = new StringBuilder();
-            for (LyricsLine.VocalPart part : slicedParts) {
-                if (joined.length() > 0) joined.append(' ');
-                joined.append(part.text);
-            }
-            text = normalizeDisplayText(joined.toString());
-        }
-        return new ParsedLine(
-                source.sourceIndex,
-                source.lineKey,
-                source.singer,
-                start,
-                end,
-                text,
-                slicedLead,
-                slicedParts,
-                source.presentation,
-                source.hasWordTiming
-        );
-    }
-
-    private static List<LyricsLine.Syllable> sliceSyllables(
-            List<LyricsLine.Syllable> syllables,
-            long boundary,
-            boolean takeLeft
-    ) {
-        List<LyricsLine.Syllable> result = new ArrayList<>();
-        for (LyricsLine.Syllable syllable : syllables) {
-            long midpoint = syllable.startTimeMs + ((syllable.endTimeMs - syllable.startTimeMs) / 2L);
-            if ((midpoint <= boundary) == takeLeft) result.add(syllable);
-        }
-        return result;
-    }
-
-    private static LyricsLine.VocalPart sliceVocalPart(
-            LyricsLine.VocalPart source,
-            long boundary,
-            boolean takeLeft
-    ) {
-        List<LyricsLine.Syllable> syllables = sliceSyllables(source.syllables, boundary, takeLeft);
-        if (syllables.isEmpty()) return null;
-        return new LyricsLine.VocalPart(
-                source.id,
-                source.role,
-                source.speaker,
-                source.speakerColor,
-                source.speakerFallback,
-                source.kind,
-                joinSyllables(syllables),
-                syllables
-        );
-    }
-
-    private static LyricsLine createParallelLine(
-            List<ParsedLine> sourceLines,
-            String preferredSinger,
-            long forcedStart,
-            long forcedEnd
-    ) {
-        List<ParallelVocalLineMerger.SourceLine> sources = new ArrayList<>();
-        for (ParsedLine line : sourceLines) {
-            sources.add(parallelSource(line));
-        }
-        return ParallelVocalLineMerger.mergeComponent(
-                sources,
-                preferredSinger,
-                forcedStart,
-                forcedEnd
-        );
-    }
-
-    private static ParallelVocalLineMerger.SourceLine parallelSource(ParsedLine line) {
-        return ParallelVocalLineMerger.source(
-                line.sourceIndex,
-                line.lineKey,
-                line.singer,
-                line.toKaraokeLine()
-        );
-    }
-
-    private static LyricsLine.VocalPart withVocalRole(LyricsLine.VocalPart source, String role) {
-        List<LyricsLine.Syllable> syllables = source.syllables;
-        String text = source.text;
-        if ("background".equals(role)) {
-            syllables = stripBackgroundSyllableParentheses(syllables);
-            text = stripBackgroundParentheses(text);
-        }
-        return new LyricsLine.VocalPart(
-                source.id,
-                role,
-                source.speaker,
-                source.speakerColor,
-                source.speakerFallback,
-                source.kind,
-                text,
-                syllables
-        );
-    }
-
-    private static String preferredLeadSinger(List<ParsedLine> lines) {
-        Map<String, Long> durations = new LinkedHashMap<>();
-        for (ParsedLine line : lines) {
-            if (line.singer.isEmpty()) continue;
-            long duration = Math.max(0L, line.endTimeMs - line.startTimeMs);
-            durations.put(line.singer, durations.getOrDefault(line.singer, 0L) + duration);
-        }
-        String best = "";
-        long bestDuration = -1L;
-        for (Map.Entry<String, Long> entry : durations.entrySet()) {
-            if (entry.getValue() > bestDuration) {
-                best = entry.getKey();
-                bestDuration = entry.getValue();
-            }
-        }
-        return best;
-    }
-
-    private static int sourceLineCount(List<ParsedLine> lines) {
-        Set<String> keys = new LinkedHashSet<>();
-        for (ParsedLine line : lines) keys.add(line.lineKey);
-        return keys.size();
-    }
-
-    private static int singerCount(List<ParsedLine> lines) {
-        Set<String> singers = new LinkedHashSet<>();
-        for (ParsedLine line : lines) if (!line.singer.isEmpty()) singers.add(line.singer);
-        return singers.size();
-    }
-
-    private static List<LyricsLine.Syllable> lineSyllables(ParsedLine line) {
-        return line.inlineVocalParts.isEmpty() ? line.syllables : partSyllables(line.inlineVocalParts);
-    }
-
-    private static List<LyricsLine.Syllable> partSyllables(List<LyricsLine.VocalPart> parts) {
-        List<LyricsLine.Syllable> result = new ArrayList<>();
-        for (LyricsLine.VocalPart part : parts) result.addAll(part.syllables);
-        return result;
-    }
-
-    private static long minimumStartTime(List<ParsedLine> lines) {
-        long result = Long.MAX_VALUE;
-        for (ParsedLine line : lines) result = Math.min(result, line.startTimeMs);
-        return result;
-    }
-
-    private static long maximumEndTime(List<ParsedLine> lines) {
-        long result = 0L;
-        for (ParsedLine line : lines) result = Math.max(result, line.endTimeMs);
-        return result;
-    }
-
-    private static long minimumSyllableStart(List<LyricsLine.Syllable> syllables) {
-        long result = Long.MAX_VALUE;
-        for (LyricsLine.Syllable syllable : syllables) result = Math.min(result, syllable.startTimeMs);
-        return result;
-    }
-
-    private static long maximumSyllableEnd(List<LyricsLine.Syllable> syllables) {
-        long result = 0L;
-        for (LyricsLine.Syllable syllable : syllables) result = Math.max(result, syllable.endTimeMs);
-        return result;
     }
 
     private static List<LyricsLine> splitLongSoloLines(List<LyricsLine> lines) {
@@ -1018,20 +658,6 @@ final class LyricsPlusLyricsProvider {
         return result;
     }
 
-    private static int find(int[] parents, int index) {
-        while (parents[index] != index) {
-            parents[index] = parents[parents[index]];
-            index = parents[index];
-        }
-        return index;
-    }
-
-    private static void union(int[] parents, int left, int right) {
-        int leftRoot = find(parents, left);
-        int rightRoot = find(parents, right);
-        if (leftRoot != rightRoot) parents[rightRoot] = leftRoot;
-    }
-
     private static Long finiteMs(Object value) {
         if (value == null || value == JSONObject.NULL) return null;
         try {
@@ -1192,41 +818,6 @@ final class LyricsPlusLyricsProvider {
         SplitPlan(double cost, List<Integer> cuts) {
             this.cost = cost;
             this.cuts = Collections.unmodifiableList(new ArrayList<>(cuts));
-        }
-    }
-
-    private static final class ParallelSplit {
-        final List<ParsedLine> left;
-        final List<ParsedLine> right;
-        final long leftEndTime;
-        final long nextStartTime;
-        final int leftSourceCount;
-        final long maximumDelay;
-        final long distance;
-
-        ParallelSplit(
-                List<ParsedLine> left,
-                List<ParsedLine> right,
-                long leftEndTime,
-                long nextStartTime,
-                int leftSourceCount,
-                long maximumDelay,
-                long distance
-        ) {
-            this.left = left;
-            this.right = right;
-            this.leftEndTime = leftEndTime;
-            this.nextStartTime = nextStartTime;
-            this.leftSourceCount = leftSourceCount;
-            this.maximumDelay = maximumDelay;
-            this.distance = distance;
-        }
-
-        boolean betterThan(ParallelSplit other) {
-            if (leftSourceCount != other.leftSourceCount) return leftSourceCount > other.leftSourceCount;
-            if (maximumDelay != other.maximumDelay) return maximumDelay < other.maximumDelay;
-            if (distance != other.distance) return distance < other.distance;
-            return leftEndTime > other.leftEndTime;
         }
     }
 

@@ -1,0 +1,81 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.util.*;
+
+/** Production display-set and highlighting methods; Android drawing and scrolling are not simulated. */
+public final class RendererOverlapRegression {
+    private List<LyricsLine> lines;
+    private long positionMs, trackDurationMs = 30000;
+    private boolean autoInstrumentalBreakEnabled = true, displayLineCacheValid;
+    private long displayLineCacheStartMs, displayLineCacheEndMs;
+    private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
+    private static final long KARAOKE_RELEASE_WINDOW_MS = 820;
+    private static final long KARAOKE_COMPLETED_COLOR_FADE_MS = 520;
+    private static final long INTERLUDE_MIN_DURATION_MS = 500;
+    private static final long KARAOKE_TRAILING_INTERLUDE_DELAY_MS = 3500;
+    private static int assertions;
+
+    // INSERT_PRODUCTION_DECLARATIONS
+
+    private static final class DisplayLine {
+        final LyricsLine line;
+        final InterludeInfo interludeInfo;
+        DisplayLine(LyricsLine line, InterludeInfo info) { this.line = line; interludeInfo = info; }
+        static DisplayLine real(LyricsLine line, int source, int index, InterludeInfo info) {
+            return new DisplayLine(line, info);
+        }
+        static DisplayLine virtual(int source, int index, InterludeInfo info) { return new DisplayLine(null, info); }
+        boolean isInterlude() { return interludeInfo.isInterlude; }
+        boolean isTimed() { return isInterlude() || line.isTimed(); }
+        long startTimeMs() { return isInterlude() ? interludeInfo.startTimeMs : line.startTimeMs; }
+        long endTimeMs() { return isInterlude() ? interludeInfo.endTimeMs : line.endTimeMs; }
+    }
+
+    private static float clamp(float value) { return Math.max(0, Math.min(1, value)); }
+    private void remapDisplayCenter(List<DisplayLine> previous, List<DisplayLine> next) {}
+    private String interludeCandidateText(LyricsLine line) { return line == null ? "" : line.text; }
+    private boolean isInterludeMarkerText(String text) { return text.isBlank() || "♪".equals(text); }
+    private boolean isMusicNoteInterludeMarkerText(String text) { return "♪".equals(text); }
+    private int findActiveDisplayIndex(List<DisplayLine> display) {
+        int active = 0;
+        for (int i = 0; i < display.size(); i++) if (display.get(i).startTimeMs() <= positionMs) active = i;
+        return active;
+    }
+
+    private static LyricsLine line(long start, long end, String text) {
+        return new LyricsLine(start, end, text, Collections.singletonList(new LyricsLine.Syllable(text, start, end)));
+    }
+    private static void check(boolean condition, String message) {
+        assertions++;
+        if (!condition) throw new AssertionError(message);
+    }
+    private List<DisplayLine> at(long position) { positionMs = position; return buildDisplayLines(); }
+    private void setLines(LyricsLine... next) { lines = Arrays.asList(next); displayLineCacheValid = false; }
+    private void noBreak(long position) {
+        for (DisplayLine line : at(position)) check(!line.isInterlude(), "Unexpected break at " + position);
+    }
+
+    public static void main(String[] args) {
+        RendererOverlapRegression subject = new RendererOverlapRegression();
+        subject.setLines(line(1000, 3000, "first"), line(2000, 6000, "second"));
+        List<DisplayLine> display = subject.at(2500);
+        check(subject.lineVisualState(display, 0).highlighted, "Earlier voice must stay active");
+        check(subject.lineVisualState(display, 1).highlighted, "Later voice must also be active");
+        display = subject.at(3000);
+        check(!subject.lineVisualState(display, 0).highlighted, "Earlier voice finishes independently");
+        check(subject.lineVisualState(display, 1).highlighted, "Later voice continues independently");
+        subject.setLines(line(1000, 12000, "sustained"), line(2000, 3000, "short"), line(20000, 22000, "next"));
+        for (long position : new long[]{2999, 3000, 6500, 7000, 11999, 12000, 15499}) subject.noBreak(position);
+        display = subject.at(15500);
+        long breaks = display.stream().filter(DisplayLine::isInterlude).count();
+        check(breaks == 1, "One break after all overlapping voices plus trailing delay");
+        DisplayLine gap = display.stream().filter(DisplayLine::isInterlude).findFirst().orElseThrow();
+        check(gap.startTimeMs() == 15500 && gap.endTimeMs() == 20000, "Gap must start at last sounding end + delay");
+        subject.noBreak(20000);
+        subject.noBreak(7000); // Backward seek must invalidate the cached gap.
+        subject.setLines(line(1000, 12000, "sustained"), line(3000, 4000, "♪"), line(5000, 6000, "next"));
+        subject.noBreak(3500);
+        check(subject.lineVisualState(subject.at(3500), 0).highlighted, "Marker cannot replace sustained vocals");
+        System.out.println("Renderer overlap regression: " + assertions + " assertions passed.");
+    }
+}

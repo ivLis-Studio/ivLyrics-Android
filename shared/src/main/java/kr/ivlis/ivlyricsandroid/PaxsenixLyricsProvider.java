@@ -335,7 +335,6 @@ final class PaxsenixLyricsProvider {
             }
             if (end < 0L) end = nextStart > start ? nextStart : start + 3_000L;
             if (durationMs > 0L) end = Math.min(end, durationMs);
-            if (nextStart >= 0L && end > nextStart + 15_000L) end = nextStart;
             end = Math.max(start + 1L, end);
 
             SpeakerPresentation presentation = speakerPresentation(source, agentOrder);
@@ -415,17 +414,12 @@ final class PaxsenixLyricsProvider {
 
         List<LyricsLine> karaoke = new ArrayList<>();
         if (syllableSync) {
-            List<ParallelVocalLineMerger.SourceLine> sources = new ArrayList<>();
+            // Concurrent provider rows are independent leads. Preserve explicit backgroundText
+            // within its source row without merging it with the next row's vocals.
             for (ParsedRow row : displayRows) {
                 if (row.line.syllables.isEmpty() && row.line.vocalParts.isEmpty()) continue;
-                sources.add(ParallelVocalLineMerger.source(
-                        row.sourceIndex,
-                        row.key,
-                        row.agent,
-                        row.line
-                ));
+                karaoke.add(row.line);
             }
-            karaoke = ParallelVocalLineMerger.mergeOverlaps(sources);
         }
 
         List<LyricsLine> synced = new ArrayList<>();

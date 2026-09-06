@@ -393,7 +393,6 @@ final class UnisonLyricsProvider {
             karaoke = karaoke || line.hasWordTiming;
         }
         List<LyricsLine> lines = new ArrayList<>();
-        List<ParallelVocalLineMerger.SourceLine> overlapSources = new ArrayList<>();
         for (ParsedLine line : parsedLines) {
             List<LyricsLine.Syllable> syllables = line.syllables;
             if (karaoke && syllables.isEmpty() && line.vocalParts.isEmpty()) {
@@ -413,16 +412,8 @@ final class UnisonLyricsProvider {
                     karaoke ? line.vocalParts : Collections.emptyList()
             );
             lines.add(outputLine);
-            if (karaoke) {
-                overlapSources.add(ParallelVocalLineMerger.source(
-                        line.sourceIndex,
-                        line.lineKey,
-                        line.laneKey,
-                        outputLine
-                ));
-            }
         }
-        if (karaoke) lines = ParallelVocalLineMerger.mergeOverlaps(overlapSources);
+        // Each TTML paragraph remains a source row; only its explicit x-bg parts are grouped.
         return new ParsedLyrics(lines, karaoke, !lines.isEmpty());
     }
 

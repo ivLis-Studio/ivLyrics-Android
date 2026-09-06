@@ -448,7 +448,7 @@ public class BaseLyricsActivity extends Activity implements
     private long aiMetadataGeneration;
     private String currentTmiRequestKey = "";
     private String emptyLyricsPreviewKey = "";
-    private LyricsLine cachedPreviewRowsLine;
+    private List<LyricsLine> cachedPreviewRowsLines = Collections.emptyList();
     private AiLyricsSettings.Snapshot cachedPreviewRowsSettings;
     private String cachedPreviewRowsSourceLang = "";
     private int cachedPreviewRowsItems = -1;
@@ -13982,12 +13982,12 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         LyricsLine line = entry.line;
-        List<MainLyricPreviewView.PreviewLine> rows = previewLines(line, previewItems);
+        List<MainLyricPreviewView.PreviewLine> rows = previewLines(entry.lines, previewItems);
         setLyricPreviewOnViews(
                 rows,
                 positionMs,
-                line.startTimeMs,
-                line.endTimeMs,
+                entry.startTimeMs,
+                entry.endTimeMs,
                 currentTrack != null && currentTrack.playing,
                 line
         );
@@ -14159,7 +14159,8 @@ public class BaseLyricsActivity extends Activity implements
         List<LyricsLine> lines = currentLyricsResult.lines;
         int lineCount = lines.size();
         LyricsLine firstUntimedLine = null;
-        LyricsLine matchingTimedLine = null;
+        List<LyricsLine> matchingTimedLines = new ArrayList<>();
+        PreviewEntry matchingMarker = null;
         LyricsLine fallbackLine = null;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
@@ -14180,15 +14181,13 @@ public class BaseLyricsActivity extends Activity implements
             if (interludeMarker) {
                 PreviewEntry markerEntry = markerInterludeEntry(line, index, lineCount);
                 if (markerEntry != null && markerEntry.contains(positionMs)) {
-                    return markerEntry;
+                    matchingMarker = markerEntry;
                 }
                 continue;
             }
 
-            if (matchingTimedLine == null
-                    && positionMs >= line.startTimeMs
-                    && positionMs < line.endTimeMs) {
-                matchingTimedLine = line;
+            if (positionMs >= line.startTimeMs && positionMs < line.endTimeMs) {
+                matchingTimedLines.add(line);
             }
             if (positionMs >= line.startTimeMs) {
                 fallbackLine = line;
@@ -14199,9 +14198,11 @@ public class BaseLyricsActivity extends Activity implements
             return PreviewEntry.line(firstUntimedLine);
         }
 
-        if (matchingTimedLine != null) {
-            return PreviewEntry.line(matchingTimedLine);
+        if (!matchingTimedLines.isEmpty()) {
+            return PreviewEntry.lines(matchingTimedLines);
         }
+        // A marker in another stream must not hide vocals that are still singing.
+        if (matchingMarker != null) return matchingMarker;
 
         PreviewEntry prelude = preludeEntry(positionMs);
         if (prelude != null) {
@@ -14251,12 +14252,14 @@ public class BaseLyricsActivity extends Activity implements
         }
         List<LyricsLine> lines = currentLyricsResult.lines;
         int lineCount = lines.size();
+        long latestLyricEnd = -1L;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
             if (line == null || !line.isTimed() || isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
                 continue;
             }
-            long lyricEndTime = previewLastLyricEndTime(line);
+            latestLyricEnd = Math.max(latestLyricEnd, previewLastLyricEndTime(line));
+            long lyricEndTime = latestLyricEnd;
             if (lyricEndTime < 0L) {
                 continue;
             }
@@ -14474,10 +14477,10 @@ public class BaseLyricsActivity extends Activity implements
         return currentTrack == null ? 0L : currentTrack.durationMs;
     }
 
-    private List<MainLyricPreviewView.PreviewLine> previewLines(LyricsLine line, int previewItems) {
+    private List<MainLyricPreviewView.PreviewLine> previewLines(List<LyricsLine> activeLines, int previewItems) {
         AiLyricsSettings.Snapshot settings = aiLyricsSettings == null ? null : aiLyricsSettings.snapshot();
         String sourceLang = effectiveSelectedSourceLang();
-        if (cachedPreviewRowsLine == line
+        if (cachedPreviewRowsLines.equals(activeLines)
                 && cachedPreviewRowsSettings == settings
                 && cachedPreviewRowsItems == previewItems
                 && cachedPreviewRowsGenerating == aiLyricsGenerating
@@ -14485,6 +14488,18 @@ public class BaseLyricsActivity extends Activity implements
             return cachedPreviewRows;
         }
 
+        List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
+        for (LyricsLine line : activeLines) rows.addAll(buildPreviewLines(line, previewItems));
+        cachedPreviewRowsLines = new ArrayList<>(activeLines);
+        cachedPreviewRowsSettings = settings;
+        cachedPreviewRowsSourceLang = sourceLang;
+        cachedPreviewRowsItems = previewItems;
+        cachedPreviewRowsGenerating = aiLyricsGenerating;
+        cachedPreviewRows = rows;
+        return rows;
+    }
+
+    private List<MainLyricPreviewView.PreviewLine> buildPreviewLines(LyricsLine line, int previewItems) {
         List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
         PreviewText original = originalPreviewText(line);
         if (AiLyricsSettings.previewItemEnabled(previewItems, AiLyricsSettings.PREVIEW_ITEM_ORIGINAL)) {
@@ -14525,17 +14540,14 @@ public class BaseLyricsActivity extends Activity implements
         if (rows.isEmpty()) {
             addPreviewRow(rows, original.text, original.rubyText, original.syllables, original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
         }
-        cachedPreviewRowsLine = line;
-        cachedPreviewRowsSettings = settings;
-        cachedPreviewRowsSourceLang = sourceLang;
-        cachedPreviewRowsItems = previewItems;
-        cachedPreviewRowsGenerating = aiLyricsGenerating;
-        cachedPreviewRows = rows;
+        for (int index = 0; index < rows.size(); index++) {
+            rows.set(index, rows.get(index).withPlaybackWindow(line.startTimeMs, line.endTimeMs));
+        }
         return rows;
     }
 
     private void clearPreviewRowsCache() {
-        cachedPreviewRowsLine = null;
+        cachedPreviewRowsLines = Collections.emptyList();
         cachedPreviewRowsSettings = null;
         cachedPreviewRowsSourceLang = "";
         cachedPreviewRowsItems = -1;
@@ -16527,23 +16539,35 @@ public class BaseLyricsActivity extends Activity implements
 
     private static final class PreviewEntry {
         final LyricsLine line;
+        final List<LyricsLine> lines;
         final long startTimeMs;
         final long endTimeMs;
         final String interludeKind;
 
-        private PreviewEntry(LyricsLine line, long startTimeMs, long endTimeMs, String interludeKind) {
-            this.line = line;
+        private PreviewEntry(List<LyricsLine> lines, long startTimeMs, long endTimeMs, String interludeKind) {
+            this.lines = Collections.unmodifiableList(new ArrayList<>(lines));
+            this.line = lines.isEmpty() ? null : lines.get(0);
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
             this.interludeKind = interludeKind == null ? "" : interludeKind;
         }
 
         static PreviewEntry line(LyricsLine line) {
-            return new PreviewEntry(line, line == null ? 0L : line.startTimeMs, line == null ? 0L : line.endTimeMs, "");
+            return lines(line == null ? Collections.emptyList() : Collections.singletonList(line));
+        }
+
+        static PreviewEntry lines(List<LyricsLine> lines) {
+            long start = Long.MAX_VALUE;
+            long end = 0L;
+            for (LyricsLine line : lines) {
+                start = Math.min(start, line.startTimeMs);
+                end = Math.max(end, line.endTimeMs);
+            }
+            return new PreviewEntry(lines, start == Long.MAX_VALUE ? 0L : start, end, "");
         }
 
         static PreviewEntry interlude(long startTimeMs, long endTimeMs, String kind) {
-            return new PreviewEntry(null, startTimeMs, endTimeMs, kind);
+            return new PreviewEntry(Collections.emptyList(), startTimeMs, endTimeMs, kind);
         }
 
         boolean isInterlude() {

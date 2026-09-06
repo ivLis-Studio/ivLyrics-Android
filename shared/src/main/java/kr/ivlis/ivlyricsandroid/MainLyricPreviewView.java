@@ -254,10 +254,7 @@ final class MainLyricPreviewView extends View {
         float totalHeight = desiredContentHeight();
         float top = Math.max(0f, (getHeight() - totalHeight) * 0.5f);
         long position = estimatedPositionMs();
-        float progress = lineProgress(position);
-        if (!MotionPreferences.animationsEnabled(getContext())) {
-            progress = 0f;
-        }
+        boolean animationsEnabled = MotionPreferences.animationsEnabled(getContext());
         float left = getPaddingLeft();
         float width = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
         boolean overflow = measureLineWidths(width);
@@ -268,6 +265,7 @@ final class MainLyricPreviewView extends View {
         canvas.clipRect(left, 0f, left + width, getHeight());
         for (int index = 0; index < lines.size(); index++) {
             PreviewLine line = lines.get(index);
+            float progress = animationsEnabled ? line.progress(position, lineStartMs, lineEndMs) : 0f;
             float textSize = sp(textSizeSp(line));
             textPaint.setTypeface(typefaceForLine(line));
             textPaint.setTextSize(textSize);
@@ -501,13 +499,6 @@ final class MainLyricPreviewView extends View {
             return basePositionMs;
         }
         return basePositionMs + Math.max(0L, SystemClock.uptimeMillis() - baseUptimeMs);
-    }
-
-    private float lineProgress(long positionMs) {
-        if (lineEndMs <= lineStartMs) {
-            return 0f;
-        }
-        return clamp((positionMs - lineStartMs) / (float) (lineEndMs - lineStartMs));
     }
 
     private boolean measureLineWidths(float width) {
@@ -1370,6 +1361,8 @@ final class MainLyricPreviewView extends View {
         final String text;
         final String rubyText;
         final boolean primary;
+        final long sourceStartTimeMs;
+        final long sourceEndTimeMs;
         final List<LyricsLine.Syllable> syllables;
         final String kind;
         final int type;
@@ -1412,9 +1405,16 @@ final class MainLyricPreviewView extends View {
         }
 
         private PreviewLine(String text, String rubyText, boolean primary, List<LyricsLine.Syllable> syllables, String kind, int type, String slotId) {
+            this(text, rubyText, primary, syllables, kind, type, slotId, -1L, -1L);
+        }
+
+        private PreviewLine(String text, String rubyText, boolean primary, List<LyricsLine.Syllable> syllables,
+                String kind, int type, String slotId, long sourceStartTimeMs, long sourceEndTimeMs) {
             this.text = text == null ? "" : text;
             this.rubyText = rubyText == null ? "" : rubyText;
             this.primary = primary;
+            this.sourceStartTimeMs = sourceStartTimeMs;
+            this.sourceEndTimeMs = sourceEndTimeMs;
             this.syllables = syllables == null ? Collections.emptyList() : new ArrayList<>(syllables);
             this.kind = normalizeKind(kind);
             this.type = type;
@@ -1427,6 +1427,18 @@ final class MainLyricPreviewView extends View {
             seed = seed * 31 + this.rubyText.hashCode();
             seed = seed * 31 + this.kind.hashCode();
             this.stableRowSeed = Math.abs(seed);
+        }
+
+        PreviewLine withPlaybackWindow(long startTimeMs, long endTimeMs) {
+            return new PreviewLine(text, rubyText, primary, syllables, kind, type, slotId,
+                    Math.max(0L, startTimeMs), Math.max(startTimeMs, endTimeMs));
+        }
+
+        float progress(long positionMs, long fallbackStartMs, long fallbackEndMs) {
+            long start = sourceStartTimeMs >= 0L ? sourceStartTimeMs : fallbackStartMs;
+            long end = sourceEndTimeMs >= 0L ? sourceEndTimeMs : fallbackEndMs;
+            if (end <= start) return 0f;
+            return Math.max(0f, Math.min(1f, (positionMs - start) / (float) (end - start)));
         }
 
         static PreviewLine interlude(String text) {
@@ -1456,7 +1468,9 @@ final class MainLyricPreviewView extends View {
                     syllables,
                     source.kind,
                     TYPE_TEXT,
-                    source.slotId
+                    source.slotId,
+                    source.sourceStartTimeMs,
+                    source.sourceEndTimeMs
             );
         }
 

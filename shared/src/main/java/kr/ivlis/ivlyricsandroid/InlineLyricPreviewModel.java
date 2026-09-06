@@ -22,6 +22,8 @@ final class InlineLyricPreviewModel {
     private final Map<LyricsLine, List<MainLyricPreviewView.PreviewLine>> rowCache = new IdentityHashMap<>();
     private int cachedBucket = Integer.MIN_VALUE;
     private PreviewEntry cachedEntry;
+    private PreviewEntry cachedRowsEntry;
+    private List<MainLyricPreviewView.PreviewLine> cachedRows;
 
     InlineLyricPreviewModel(LyricsResult result, AiLyricsSettings.Snapshot settings, long durationMs,
             boolean pronunciationLoading, boolean translationLoading, String sourceLanguage) {
@@ -63,10 +65,18 @@ final class InlineLyricPreviewModel {
                 new MainLyricPreviewView.PreviewLine(ui("status.lyrics_waiting"), true));
         if (entry.isInterlude()) return Collections.singletonList(
                 MainLyricPreviewView.PreviewLine.interlude(interludePreviewLabel(entry.interludeKind)));
-        List<MainLyricPreviewView.PreviewLine> cached = rowCache.get(entry.line);
+        if (cachedRowsEntry == entry) return cachedRows;
+        List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
+        for (LyricsLine line : entry.lines) rows.addAll(rowsForLine(line));
+        cachedRowsEntry = entry;
+        cachedRows = rows;
+        return rows;
+    }
+
+    private List<MainLyricPreviewView.PreviewLine> rowsForLine(LyricsLine line) {
+        List<MainLyricPreviewView.PreviewLine> cached = rowCache.get(line);
         if (cached != null) return cached;
         List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
-        LyricsLine line = entry.line;
         PreviewText original = originalPreviewText(line);
         int items = settings.previewItems;
         // Inline lyrics always retain the sung words. Supplement selection never
@@ -86,6 +96,9 @@ final class InlineLyricPreviewModel {
         }
         if (rows.isEmpty()) addPreviewRow(rows, original.text, original.rubyText, original.syllables,
                 original.kind, AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
+        for (int index = 0; index < rows.size(); index++) {
+            rows.set(index, rows.get(index).withPlaybackWindow(line.startTimeMs, line.endTimeMs));
+        }
         rowCache.put(line, rows);
         return rows;
     }
@@ -96,7 +109,8 @@ final class InlineLyricPreviewModel {
         List<LyricsLine> lines = currentLyricsResult.lines;
         int lineCount = lines.size();
         LyricsLine firstUntimedLine = null;
-        LyricsLine matchingTimedLine = null;
+        List<LyricsLine> matchingTimedLines = new ArrayList<>();
+        PreviewEntry matchingMarker = null;
         LyricsLine fallbackLine = null;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
@@ -117,15 +131,13 @@ final class InlineLyricPreviewModel {
             if (interludeMarker) {
                 PreviewEntry markerEntry = markerInterludeEntry(line, index, lineCount);
                 if (markerEntry != null && markerEntry.contains(positionMs)) {
-                    return markerEntry;
+                    matchingMarker = markerEntry;
                 }
                 continue;
             }
 
-            if (matchingTimedLine == null
-                    && positionMs >= line.startTimeMs
-                    && positionMs < line.endTimeMs) {
-                matchingTimedLine = line;
+            if (positionMs >= line.startTimeMs && positionMs < line.endTimeMs) {
+                matchingTimedLines.add(line);
             }
             if (positionMs >= line.startTimeMs) {
                 fallbackLine = line;
@@ -136,9 +148,11 @@ final class InlineLyricPreviewModel {
             return PreviewEntry.line(firstUntimedLine);
         }
 
-        if (matchingTimedLine != null) {
-            return PreviewEntry.line(matchingTimedLine);
+        if (!matchingTimedLines.isEmpty()) {
+            return PreviewEntry.lines(matchingTimedLines);
         }
+        // A marker in another stream must not hide vocals that are still singing.
+        if (matchingMarker != null) return matchingMarker;
 
         PreviewEntry prelude = preludeEntry(positionMs);
         if (prelude != null) {
@@ -188,12 +202,14 @@ final class InlineLyricPreviewModel {
         }
         List<LyricsLine> lines = currentLyricsResult.lines;
         int lineCount = lines.size();
+        long latestLyricEnd = -1L;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
             if (line == null || !line.isTimed() || isPreviewInterludeMarkerText(previewInterludeCandidateText(line))) {
                 continue;
             }
-            long lyricEndTime = previewLastLyricEndTime(line);
+            latestLyricEnd = Math.max(latestLyricEnd, previewLastLyricEndTime(line));
+            long lyricEndTime = latestLyricEnd;
             if (lyricEndTime < 0L) {
                 continue;
             }
@@ -650,23 +666,35 @@ final class InlineLyricPreviewModel {
 
     static final class PreviewEntry {
         final LyricsLine line;
+        final List<LyricsLine> lines;
         final long startTimeMs;
         final long endTimeMs;
         final String interludeKind;
 
-        private PreviewEntry(LyricsLine line, long startTimeMs, long endTimeMs, String interludeKind) {
-            this.line = line;
+        private PreviewEntry(List<LyricsLine> lines, long startTimeMs, long endTimeMs, String interludeKind) {
+            this.lines = Collections.unmodifiableList(new ArrayList<>(lines));
+            this.line = lines.isEmpty() ? null : lines.get(0);
             this.startTimeMs = Math.max(0L, startTimeMs);
             this.endTimeMs = Math.max(this.startTimeMs, endTimeMs);
             this.interludeKind = interludeKind == null ? "" : interludeKind;
         }
 
         static PreviewEntry line(LyricsLine line) {
-            return new PreviewEntry(line, line == null ? 0L : line.startTimeMs, line == null ? 0L : line.endTimeMs, "");
+            return lines(line == null ? Collections.emptyList() : Collections.singletonList(line));
+        }
+
+        static PreviewEntry lines(List<LyricsLine> lines) {
+            long start = Long.MAX_VALUE;
+            long end = 0L;
+            for (LyricsLine line : lines) {
+                start = Math.min(start, line.startTimeMs);
+                end = Math.max(end, line.endTimeMs);
+            }
+            return new PreviewEntry(lines, start == Long.MAX_VALUE ? 0L : start, end, "");
         }
 
         static PreviewEntry interlude(long startTimeMs, long endTimeMs, String kind) {
-            return new PreviewEntry(null, startTimeMs, endTimeMs, kind);
+            return new PreviewEntry(Collections.emptyList(), startTimeMs, endTimeMs, kind);
         }
 
         boolean isInterlude() {

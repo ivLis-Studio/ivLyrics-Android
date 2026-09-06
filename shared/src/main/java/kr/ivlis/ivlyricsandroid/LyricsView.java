@@ -130,6 +130,7 @@ public final class LyricsView extends View {
     private long activeDisplayIndexCacheStartMs = Long.MIN_VALUE;
     private long activeDisplayIndexCacheEndMs = Long.MAX_VALUE;
     private int activeDisplayIndexCacheValue;
+    private int activeDisplayFirstSingingCacheValue = -1;
     private List<DisplayLine> visualCenterIndexCacheLines;
     private long visualCenterIndexCacheStartMs = Long.MIN_VALUE;
     private long visualCenterIndexCacheEndMs = Long.MAX_VALUE;
@@ -819,6 +820,9 @@ public final class LyricsView extends View {
 
         int anchorIndex = Math.max(0, Math.min(displayLines.size() - 1, (int) Math.floor(animatedCenterIndex)));
         int firstIndex = Math.max(0, anchorIndex - VISIBLE_RADIUS - 2);
+        if (!manualScrollActive && activeDisplayFirstSingingCacheValue >= 0) {
+            firstIndex = Math.min(firstIndex, activeDisplayFirstSingingCacheValue);
+        }
         int lastIndex = Math.min(displayLines.size() - 1, anchorIndex + VISIBLE_RADIUS + 3);
         FrameLineLayouts layouts = nextFrameLayouts;
         layouts.beginFrame();
@@ -3827,20 +3831,36 @@ public final class LyricsView extends View {
         long cacheStartMs = Long.MIN_VALUE;
         long cacheEndMs = Long.MAX_VALUE;
         int lineCount = lines.size();
+        boolean singing = false;
+        // Explicit/interpolated breaks in one stream must not replace an overlapping voice.
+        // Cache changes at lyric boundaries so this scan runs only when the visible set changes.
+        for (LyricsLine line : lines) {
+            if (line == null || !line.isTimed() || isInterludeMarkerText(interludeCandidateText(line))) continue;
+            long end = Math.max(line.endTimeMs, lastLyricEndTime(line));
+            singing |= positionMs >= line.startTimeMs && positionMs < end;
+            if (line.startTimeMs <= positionMs) cacheStartMs = Math.max(cacheStartMs, line.startTimeMs);
+            else cacheEndMs = Math.min(cacheEndMs, line.startTimeMs);
+            if (end <= positionMs) cacheStartMs = Math.max(cacheStartMs, end);
+            else cacheEndMs = Math.min(cacheEndMs, end);
+        }
+        long latestLyricEnd = -1L;
         for (int index = 0; index < lineCount; index++) {
             LyricsLine line = lines.get(index);
             InterludeInfo lineInterlude = interludeInfoForLine(line, index, lineCount);
             cacheStartMs = cacheIntervalStart(lineInterlude, cacheStartMs);
             cacheEndMs = cacheIntervalEnd(lineInterlude, cacheEndMs);
             boolean markerInterlude = lineInterlude.isInterlude;
-            if (!markerInterlude || (isPositionInside(lineInterlude) && !hasVisibleInterludeOverlap(displayLines, lineInterlude))) {
+            if (!markerInterlude || (!singing && isPositionInside(lineInterlude) && !hasVisibleInterludeOverlap(displayLines, lineInterlude))) {
                 displayLines.add(DisplayLine.real(line, index, displayLines.size(), markerInterlude ? lineInterlude : InterludeInfo.none()));
             }
 
-            InterludeInfo trailingInterlude = trailingInterludeInfo(line, index, lineCount);
+            if (!isInterludeMarkerText(interludeCandidateText(line))) {
+                latestLyricEnd = Math.max(latestLyricEnd, lastLyricEndTime(line));
+            }
+            InterludeInfo trailingInterlude = trailingInterludeInfo(line, index, lineCount, latestLyricEnd);
             cacheStartMs = cacheIntervalStart(trailingInterlude, cacheStartMs);
             cacheEndMs = cacheIntervalEnd(trailingInterlude, cacheEndMs);
-            if (trailingInterlude.isInterlude
+            if (!singing && trailingInterlude.isInterlude
                     && isPositionInside(trailingInterlude)
                     && !hasVisibleInterludeOverlap(displayLines, trailingInterlude)) {
                 displayLines.add(DisplayLine.virtual(index, displayLines.size(), trailingInterlude));
@@ -4130,6 +4150,7 @@ public final class LyricsView extends View {
         }
 
         int activeIndex = 0;
+        int firstSingingIndex = -1;
         long cacheStartMs = Long.MIN_VALUE;
         long cacheEndMs = Long.MAX_VALUE;
         for (int index = 0; index < displayLines.size(); index++) {
@@ -4148,6 +4169,7 @@ public final class LyricsView extends View {
                 // line may keep singing past this point, but it must not prevent
                 // the next line from becoming the center anchor.
                 activeIndex = index;
+                if (firstSingingIndex < 0 && targetPositionMs < endTimeMs) firstSingingIndex = index;
             } else {
                 cacheEndMs = Math.min(cacheEndMs, startTimeMs);
             }
@@ -4162,6 +4184,7 @@ public final class LyricsView extends View {
             activeDisplayIndexCacheStartMs = cacheStartMs;
             activeDisplayIndexCacheEndMs = cacheEndMs;
             activeDisplayIndexCacheValue = activeIndex;
+            activeDisplayFirstSingingCacheValue = firstSingingIndex;
         } else {
             visualCenterIndexCacheLines = displayLines;
             visualCenterIndexCacheStartMs = cacheStartMs;
@@ -4312,12 +4335,12 @@ public final class LyricsView extends View {
         return new InterludeInfo(true, line.startTimeMs, endTimeMs, instrumentalKind(lineIndex, lineCount), false);
     }
 
-    private InterludeInfo trailingInterludeInfo(LyricsLine line, int lineIndex, int lineCount) {
+    private InterludeInfo trailingInterludeInfo(LyricsLine line, int lineIndex, int lineCount, long latestLyricEnd) {
         if (!autoInstrumentalBreakEnabled || line == null || !line.isTimed() || isInterludeMarkerText(interludeCandidateText(line))) {
             return InterludeInfo.none();
         }
 
-        long lyricEndTime = lastLyricEndTime(line);
+        long lyricEndTime = Math.max(lastLyricEndTime(line), latestLyricEnd);
         if (lyricEndTime < 0L) {
             return InterludeInfo.none();
         }

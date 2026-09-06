@@ -7,6 +7,8 @@ Run these commands from the repository root:
 python3 tests/run_lyrics_center_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
+python3 tests/run_provider_overlap_regression.py
+python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_card_presence_regression.py
 python3 tests/run_karaoke_controller_regression.py
 python3 tests/check_module_boundaries.py --built
