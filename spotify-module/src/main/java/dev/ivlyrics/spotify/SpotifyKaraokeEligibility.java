@@ -6,10 +6,12 @@ import android.os.SystemClock;
 import android.util.Log;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /** Reads native per-track eligibility without replacing Spotify's flags or lyrics responses. */
 public final class SpotifyKaraokeEligibility {
@@ -22,6 +24,9 @@ public final class SpotifyKaraokeEligibility {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final long CACHE_MS = 120_000L;
     private static final long TIMEOUT_MS = 12_000L;
+    private static final Pattern TRACK_URI = Pattern.compile("spotify:track:[A-Za-z0-9]{22}");
+    private static volatile ProviderBinding providerBinding;
+    private static volatile ProviderDependencies providerDependencies;
     private static final Map<String, Cached> CACHE = new LinkedHashMap<String, Cached>(16, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Cached> entry) {
             return size() > 128;
@@ -73,37 +78,25 @@ public final class SpotifyKaraokeEligibility {
     public static void onCardProvider(Object provider, Object track) {
         if (provider == null || !provider.getClass().getName().equals("p.yca0")) return;
         try {
-            ClassLoader loader = provider.getClass().getClassLoader();
+            ProviderBinding binding = providerBindingFor(provider.getClass());
             if (track != null) {
-                Class<?> contextTrack = Class.forName("com.spotify.player.model.ContextTrack", false, loader);
-                if (!contextTrack.isInstance(track)) return;
-                String uri = canonicalUri((String) contextTrack.getMethod("uri").invoke(track));
+                if (!binding.contextTrack.isInstance(track)) return;
+                String uri = canonicalUri((String) binding.trackUri.invoke(track));
                 if (uri.isEmpty()) return;
             }
-
-            // Spotify 9.1.80.2221: yca0.c -> yh(a == 26).c -> eda0.
-            Object mapper = field(provider, "c");
-            if (!mapper.getClass().getName().equals("p.yh") || ((Integer) field(mapper, "a")) != 26) return;
-            Object capturedRepository = field(mapper, "c");
-            if (!capturedRepository.getClass().getName().equals("p.eda0")) return;
-            Object service = field(capturedRepository, "d");
-            String serviceName = service.getClass().getName();
-            if (!serviceName.equals("p.gea0") && !serviceName.equals("p.vja0")) return;
-
-            Object source = null;
-            Object pool = field(provider, "a");
-            try {
-                if (pool == playerSourceOwner) {
-                    source = playerSource;
-                } else {
-                    Object state = Class.forName("p.fzi0", false, loader).getMethod("c").invoke(pool);
-                    source = Class.forName("p.o131", false, loader).getMethod("e").invoke(state);
-                }
-                if (!Class.forName("io.reactivex.rxjava3.core.Flowable", false, loader).isInstance(source)) source = null;
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Support data can still be read; the controller keeps unobserved playback gates closed.
+            ProviderDependencies captured = providerDependencies;
+            // The provider fields and branch are final, but R8's merged mapper.c is
+            // mutable. Recheck that identity before reusing its validated dependencies.
+            if (captured == null || captured.provider != provider
+                    || captured.repository != binding.mapperRepository.get(captured.mapper)) {
+                captured = binding.capture(provider);
+                if (captured == null) return;
             }
-            final Object capturedSource = source;
+            if (captured.source == null) captured = binding.withPlayerSource(captured);
+            providerDependencies = captured;
+            final Object capturedRepository = captured.repository;
+            final Object capturedSource = captured.source;
+            final Object pool = captured.pool;
             runOnMain(() -> {
                 boolean changed = playerSource != capturedSource;
                 if (repository != capturedRepository) {
@@ -259,7 +252,94 @@ public final class SpotifyKaraokeEligibility {
     }
 
     private static String canonicalUri(String value) {
-        return value != null && value.matches("spotify:track:[A-Za-z0-9]{22}") ? value : "";
+        return value != null && TRACK_URI.matcher(value).matches() ? value : "";
+    }
+
+    private static ProviderBinding providerBindingFor(Class<?> type) throws ReflectiveOperationException {
+        ProviderBinding cached = providerBinding;
+        if (cached == null || cached.providerType != type) {
+            synchronized (SpotifyKaraokeEligibility.class) {
+                cached = providerBinding;
+                if (cached == null || cached.providerType != type) {
+                    cached = new ProviderBinding(type);
+                    providerDependencies = null;
+                    providerBinding = cached;
+                }
+            }
+        }
+        return cached;
+    }
+
+    /** One validated provider is retained; no card, ContextTrack or Activity is cached. */
+    private static final class ProviderDependencies {
+        final Object provider, mapper, repository, pool, source;
+
+        ProviderDependencies(Object provider, Object mapper, Object repository, Object pool, Object source) {
+            this.provider = provider;
+            this.mapper = mapper;
+            this.repository = repository;
+            this.pool = pool;
+            this.source = source;
+        }
+    }
+
+    private static final class ProviderBinding {
+        final Class<?> providerType, contextTrack, mapperType, repositoryType, flowable;
+        final Field providerMapper, providerPool, mapperBranch, mapperRepository, repositoryService;
+        final Method trackUri;
+        Method poolState, stateFlow;
+
+        ProviderBinding(Class<?> type) throws ReflectiveOperationException {
+            providerType = type;
+            ClassLoader loader = type.getClassLoader();
+            contextTrack = Class.forName("com.spotify.player.model.ContextTrack", false, loader);
+            trackUri = contextTrack.getMethod("uri");
+            mapperType = Class.forName("p.yh", false, loader);
+            repositoryType = Class.forName("p.eda0", false, loader);
+            flowable = Class.forName("io.reactivex.rxjava3.core.Flowable", false, loader);
+            providerMapper = finalField(type, "c");
+            providerPool = finalField(type, "a");
+            mapperBranch = finalField(mapperType, "a");
+            mapperRepository = mapperType.getField("c");
+            repositoryService = finalField(repositoryType, "d");
+            try {
+                poolState = Class.forName("p.fzi0", false, loader).getMethod("c");
+                stateFlow = Class.forName("p.o131", false, loader).getMethod("e");
+            } catch (ReflectiveOperationException ignored) {
+                // Optional player-source compatibility cannot block support lookup.
+            }
+        }
+
+        ProviderDependencies capture(Object provider) throws ReflectiveOperationException {
+            Object mapper = providerMapper.get(provider);
+            if (!mapperType.isInstance(mapper) || mapperBranch.getInt(mapper) != 26) return null;
+            Object repository = mapperRepository.get(mapper);
+            if (!repositoryType.isInstance(repository)) return null;
+            Object service = repositoryService.get(repository);
+            if (service == null) return null;
+            String name = service.getClass().getName();
+            if (!name.equals("p.gea0") && !name.equals("p.vja0")) return null;
+            return new ProviderDependencies(provider, mapper, repository, providerPool.get(provider), null);
+        }
+
+        ProviderDependencies withPlayerSource(ProviderDependencies value) {
+            Object source = null;
+            try {
+                if (value.pool == playerSourceOwner) source = playerSource;
+                else if (poolState != null && stateFlow != null) source = stateFlow.invoke(poolState.invoke(value.pool));
+                if (!flowable.isInstance(source)) source = null;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Retry a not-yet-ready pool on the next provider event.
+            }
+            return source == null ? value : new ProviderDependencies(value.provider, value.mapper,
+                    value.repository, value.pool, source);
+        }
+
+        private static Field finalField(Class<?> type, String name) throws ReflectiveOperationException {
+            Field field = type.getField(name);
+            if (!Modifier.isFinal(field.getModifiers())) throw new NoSuchFieldException("Mutable provider dependency");
+            return field;
+        }
     }
 
     private static Object objectMethod(Object proxy, Method method, Object[] args) {

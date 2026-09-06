@@ -208,6 +208,10 @@ public final class SpotifyKaraokePlayback {
         final Method bitrateLevel;
         boolean settingsFailed;
         boolean qualityFailed;
+        Object decodedOptional;
+        boolean optionalDecoded;
+        boolean decodedKnown;
+        boolean decodedLow;
 
         Binding(ClassLoader loader) throws ReflectiveOperationException {
             settings = Class.forName("p.xky0", false, loader);
@@ -252,24 +256,31 @@ public final class SpotifyKaraokePlayback {
         void readQuality(Object state, Object observedOptional) {
             try {
                 long timestamp = timestampField.getLong(state);
-                Object optional = observedOptional == null ? qualityField.get(state) : observedOptional;
-                Object quality = optional != null && Boolean.TRUE.equals(optionalPresent.invoke(optional))
-                        ? optionalGet.invoke(optional) : null;
-                Object level = quality == null ? null : bitrateLevel.invoke(quality);
-                String name = level instanceof Enum<?> ? ((Enum<?>) level).name() : "UNKNOWN";
-                boolean known = !name.equals("UNKNOWN");
-                boolean low = name.equals("LOW");
                 synchronized (LOCK) {
-                    // Getter calls on an older immutable snapshot cannot replace a newer gate.
+                    // Ignore stale snapshots before decoding their quality. Both PlayerState
+                    // and its Optional are immutable; repeated getters can reuse this result.
                     if (timestamp < qualityTimestamp) return;
+                    Object optional = observedOptional == null ? qualityField.get(state) : observedOptional;
+                    if (!optionalDecoded || decodedOptional != optional) {
+                        Object quality = optional != null && Boolean.TRUE.equals(optionalPresent.invoke(optional))
+                                ? optionalGet.invoke(optional) : null;
+                        Object level = quality == null ? null : bitrateLevel.invoke(quality);
+                        String name = level instanceof Enum<?> ? ((Enum<?>) level).name() : "UNKNOWN";
+                        decodedKnown = !name.equals("UNKNOWN");
+                        decodedLow = name.equals("LOW");
+                        decodedOptional = optional;
+                        optionalDecoded = true;
+                    }
                     qualityTimestamp = timestamp;
-                    if (qualityKnown == known && lowQuality == low) return;
-                    qualityKnown = known;
-                    lowQuality = low;
+                    if (qualityKnown == decodedKnown && lowQuality == decodedLow) return;
+                    qualityKnown = decodedKnown;
+                    lowQuality = decodedLow;
                 }
                 scheduleDelivery();
             } catch (Throwable ignored) {
                 synchronized (LOCK) {
+                    optionalDecoded = false;
+                    decodedOptional = null;
                     qualityKnown = false;
                     if (!qualityFailed) {
                         qualityFailed = true;
