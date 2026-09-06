@@ -42,7 +42,7 @@ def releaseStoreFile = { String path ->
 }
 
 android {
-    namespace "kr.ivlis.ivlyricsandroid"
+    namespace "kr.ivlis.ivlyricsandroid.app"
     compileSdk {
         version = release(36) {
             it.minorApiLevel = 1
@@ -69,10 +69,23 @@ android {
     }
 
     buildTypes {
+        qa {
+            initWith debug
+            applicationIdSuffix ".qa"
+            versionNameSuffix "-qa"
+            matchingFallbacks = ["debug"]
+        }
         release {
             if (releaseSigningConfigured) {
                 signingConfig signingConfigs.release
             }
+        }
+    }
+
+    sourceSets {
+        qa {
+            java.srcDir "src/debug/java"
+            manifest.srcFile "src/debug/AndroidManifest.xml"
         }
     }
 
@@ -83,6 +96,6 @@ android {
 }
 
 dependencies {
+    implementation project(":shared")
     implementation "androidx.webkit:webkit:1.9.0"
-    testImplementation "junit:junit:4.13.2"
 }

@@ -120,6 +120,7 @@ final class LyricsRepository {
     private final LyricsDiskCache diskCache;
     private final RawResponseDiskCache syncDataResponseCache;
     private final SharedPreferences openDbPrefs;
+    private final boolean embeddedSpotify;
     private final Map<String, Long> syncDataServerCacheBypassUntil = new HashMap<>();
     private String spotifyAccessToken = "";
     private String spotifyTokenSourceKey = "";
@@ -129,7 +130,8 @@ final class LyricsRepository {
 
     LyricsRepository(Context context) {
         Context appContext = context == null ? null : context.getApplicationContext();
-        spotifyTokenPrefs = appContext == null
+        embeddedSpotify = IvLyricsBridge.isEmbedded(appContext);
+        spotifyTokenPrefs = appContext == null || embeddedSpotify
                 ? null
                 : appContext.getSharedPreferences(SPOTIFY_TOKEN_PREFS, Context.MODE_PRIVATE);
         aiLyricsSettings = appContext == null ? null : new AiLyricsSettings(appContext);
@@ -316,7 +318,7 @@ final class LyricsRepository {
             LyricsProviderSettings.Snapshot settings,
             TrackSnapshot track
     ) {
-        String isrc = firstNonEmpty(result == null ? "" : result.isrc, track == null ? "" : track.isrc);
+        String isrc = firstNonEmpty(track == null ? "" : track.isrc, result == null ? "" : result.isrc);
         if (result != null
                 && !result.contributors.isEmpty()
                 && !TrackSnapshot.normalizeIsrc(isrc).isEmpty()) {
@@ -630,6 +632,11 @@ final class LyricsRepository {
             String clientSecret,
             SpotifyTokenValidationCallback callback
     ) {
+        if (embeddedSpotify) {
+            if (callback != null) mainHandler.post(() -> callback.onSpotifyTokenValidationFailed(
+                    "Spotify metadata is supplied by the host app."));
+            return;
+        }
         SpotifyCredentials credentials = new SpotifyCredentials(clientId, clientSecret);
         executor.execute(() -> {
             LogSink log = message -> {
@@ -672,7 +679,9 @@ final class LyricsRepository {
             LyricsResult cachedBase
     ) throws Exception {
         boolean hasCachedIsrc = cachedBase != null && !cachedBase.isrc.isEmpty();
-        log.write(hasCachedIsrc
+        log.write(embeddedSpotify
+                ? "flow: native player ISRC -> sync-data -> configured lyrics providers"
+                : hasCachedIsrc
                 ? "flow: cached ISRC -> sync-data recheck -> cached LRCLIB lyrics"
                 : "flow: Spotify Web API search -> sync-data -> LRCLIB source/search -> Unison fallback");
         SpotifyTrackMatch spotifyMatch = null;
@@ -681,9 +690,10 @@ final class LyricsRepository {
                     + (cachedBase.spotifyTrackId.isEmpty()
                     ? ""
                     : " / trackId=" + cachedBase.spotifyTrackId));
-            publishResolvedMetadata(trackKey, cachedBase.isrc, cachedBase.spotifyTrackId, callback);
+            publishResolvedMetadata(trackKey, firstNonEmpty(track.isrc, cachedBase.isrc),
+                    firstNonEmpty(track.trackId, cachedBase.spotifyTrackId), callback);
             resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
-        } else {
+        } else if (!embeddedSpotify) {
             spotifyMatch = fetchSpotifyIsrc(
                     track,
                     log,
@@ -710,8 +720,9 @@ final class LyricsRepository {
                 ? ""
                 : (isrcFromSpotify ? "Spotify Web API" : (isrcFromCache ? "lyrics cache" : "player metadata"));
         log.write(isrc.isEmpty()
-                ? "isrc: unavailable after Spotify lookup"
+                ? (embeddedSpotify ? "isrc: awaiting native track metadata" : "isrc: unavailable after Spotify lookup")
                 : "isrc: " + isrc + " (" + isrcSource + ")");
+        if (embeddedSpotify) Log.i("ivLyricsSync", "Lookup: native ISRC " + (isrc.isEmpty() ? "pending" : "available"));
         if (!isrc.isEmpty()) {
             publishResolvedMetadata(trackKey, isrc, spotifyTrackId, callback);
         }
@@ -802,7 +813,7 @@ final class LyricsRepository {
                 log.write("sync-data contributor refresh failed; using anonymous contributor fallback");
             }
             log.write("OpenDB sync-data priority unchanged; cached provider kept: " + cachedBase.providerId);
-            return privacySafeContributorFallback(cachedBase);
+            return privacySafeContributorFallback(cachedBase).withMetadata(isrc, spotifyTrackId);
         }
 
         return selectLyricsProvider(
@@ -1130,6 +1141,8 @@ final class LyricsRepository {
                 log.write("sync-data apply: " + diagnostic);
             }
             List<LyricsLine> karaoke = applied.lines;
+            if (embeddedSpotify) Log.i("ivLyricsSync", "Applied timing: lines=" + karaoke.size()
+                    + " / points=" + syncData.syncPoints);
             if (!karaoke.isEmpty()) {
                 log.write("sync-data applied: karaoke lines=" + karaoke.size()
                         + " / vocalParts=" + countVocalParts(karaoke));
@@ -1182,6 +1195,8 @@ final class LyricsRepository {
         log.write("lyrics base: lines=" + baseLines.size() + " / source=cache");
         if (syncData != null) {
             SyncDataApplier.ApplyResult applied = SyncDataApplier.applyWithDiagnostics(baseLines, syncData.syncBody, track);
+            if (embeddedSpotify) Log.i("ivLyricsSync", "Applied cached timing: lines=" + applied.lines.size()
+                    + " / points=" + syncData.syncPoints);
             for (String diagnostic : applied.diagnostics) {
                 log.write("sync-data apply: " + diagnostic);
             }
@@ -1215,7 +1230,13 @@ final class LyricsRepository {
                 firstNonEmpty(spotifyTrackId, cachedBase.spotifyTrackId),
                 syncData == null
                         ? privacySafeContributorFallback(cachedBase).contributors
-                        : syncData.contributors
+                        : syncData.contributors,
+                cachedBase.providerId,
+                cachedBase.selectionPolicyKey,
+                cachedBase.syncType,
+                cachedBase.syncPoints,
+                cachedBase.pronunciationProviderLabel,
+                cachedBase.translationProviderLabel
         );
     }
 
@@ -1256,7 +1277,9 @@ final class LyricsRepository {
                 result.providerId,
                 result.selectionPolicyKey,
                 syncType,
-                syncPoints
+                syncPoints,
+                result.pronunciationProviderLabel,
+                result.translationProviderLabel
         );
     }
 
@@ -1385,7 +1408,7 @@ final class LyricsRepository {
             Callback callback,
             LogSink log
     ) {
-        if (track == null || callback == null) {
+        if (embeddedSpotify || track == null || callback == null) {
             return;
         }
         String spotifyTrackId = firstNonEmpty(
@@ -2063,6 +2086,8 @@ final class LyricsRepository {
             log.write("sync-data headers: Origin=" + headers.get("Origin"));
             String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers);
             SyncDataResult result = parseSyncDataResponse(response, normalizedProvider, log, false);
+            if (embeddedSpotify) Log.i("ivLyricsSync", "Sync response: provider=" + normalizedProvider
+                    + " / timing=" + (result != null) + " / points=" + (result == null ? 0 : result.syncPoints));
             if (syncDataResponseCache != null && !cacheKey.isEmpty()) {
                 String persistentResponse = redactSyncDataContributorIdentitiesForCache(response);
                 if (!persistentResponse.isEmpty()) {
@@ -2698,6 +2723,7 @@ final class LyricsRepository {
     }
 
     private synchronized String getSpotifyAccessToken(boolean forceRefresh, LogSink log) {
+        if (embeddedSpotify) return "";
         SpotifyCredentials credentials = readSpotifyCredentials();
         if (!credentials.configured()) {
             invalidateSpotifyToken();

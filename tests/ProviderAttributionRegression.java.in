@@ -1,0 +1,178 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.lang.reflect.*;
+import java.util.*;
+import org.json.JSONObject;
+import sun.misc.Unsafe;
+
+/** Uses actual repository/result/cache methods; only UI formatting and settings are synthetic. */
+public final class ProviderAttributionRegression {
+    private static int assertions;
+    private static final Unsafe unsafe;
+    static {
+        try {
+            Field field = Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            unsafe = (Unsafe) field.get(null);
+        } catch (Exception error) { throw new ExceptionInInitializerError(error); }
+    }
+    static void check(boolean condition, String message) {
+        assertions++;
+        if (!condition) throw new AssertionError(message);
+    }
+    static Object call(Object target, String name, Object... args) throws Exception {
+        Class<?> type = target instanceof Class<?> ? (Class<?>) target : target.getClass();
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == args.length) {
+                method.setAccessible(true);
+                try { return method.invoke(target instanceof Class<?> ? null : target, args); }
+                catch (InvocationTargetException error) { throw new RuntimeException(error.getCause()); }
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    static void put(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+    static LyricsResult base() {
+        return new LyricsResult(List.of(new LyricsLine(1000, 5000, "Original line", List.of())),
+                "LRCLIB", "Base lyric detail", true, "ZZAAA2600001", "fixture-track", List.of(),
+                "lrclib", "selection-fixture", "word", 42);
+    }
+    static AiLyricsSettings.Snapshot representativeGemini() throws Exception {
+        AiLyricsSettings.Snapshot settings = (AiLyricsSettings.Snapshot) unsafe.allocateInstance(AiLyricsSettings.Snapshot.class);
+        AiLyricsSettings.Provider provider = (AiLyricsSettings.Provider) unsafe.allocateInstance(AiLyricsSettings.Provider.class);
+        put(provider, "label", "Google Gemini");
+        put(settings, "provider", provider);
+        return settings;
+    }
+    static AiLyricsSettings.LanguageRule rule() throws Exception {
+        AiLyricsSettings.LanguageRule rule = (AiLyricsSettings.LanguageRule) unsafe.allocateInstance(AiLyricsSettings.LanguageRule.class);
+        put(rule, "translationEnabled", true);
+        put(rule, "pronunciationEnabled", true);
+        return rule;
+    }
+    static Object session(LyricsResult base, List<?> requests) throws Exception {
+        Class<?> type = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$SupplementSession");
+        Constructor<?> constructor = type.getDeclaredConstructors()[0];
+        constructor.setAccessible(true);
+        return constructor.newInstance(base, requests, true, true);
+    }
+    static LyricsResult merge(AiLyricsRepository repository, LyricsResult base, List<?> requests,
+            List<String> pronunciation, List<String> translation, String p, String t) throws Exception {
+        return (LyricsResult) call(repository, "buildMergedSupplementResult", base, requests,
+                pronunciation, translation, p, t, representativeGemini(), rule(), "en", "ko", "ko", false);
+    }
+    private String pronunciationLoadingProviderName = "";
+    private String translationLoadingProviderName = "";
+    private String ui(String key) { return key; }
+    private String uiFormat(String key, String label) { return key + ":" + label; }
+    // INSERT_LOADING_METHOD
+
+    private long aiSupplementGeneration = 10L;
+    private String currentLyricsKey = "fixture-a";
+    private LyricsResult currentBaseLyricsResult = base();
+    final class GenerationGate {
+        private final long generation;
+        private final String trackKey;
+        private final LyricsResult baseResult;
+        GenerationGate(long generation, String trackKey, LyricsResult baseResult) {
+            this.generation = generation; this.trackKey = trackKey; this.baseResult = baseResult;
+        }
+        // INSERT_GENERATION_GUARD
+    }
+
+    private void loadingAndGeneration() {
+        check(aiProviderLoadingText("translation-format", "loading.translation").equals("loading.translation"),
+                "before actual provider starts, loading stays generic");
+        translationLoadingProviderName = "Google Translate";
+        pronunciationLoadingProviderName = "OpenAI ChatGPT";
+        check(aiProviderLoadingText("translation-format", "loading.translation").endsWith("Google Translate"),
+                "translation status uses actual translation provider");
+        check(!aiProviderLoadingText("translation-format", "loading.translation").contains("OpenAI"),
+                "pronunciation provider cannot mislabel translation status");
+        check(aiProviderLoadingText("tmi-format", "tmi.loading").equals("tmi.loading"),
+                "untracked TMI loading never borrows supplement provider");
+        GenerationGate callback = new GenerationGate(10L, currentLyricsKey, currentBaseLyricsResult);
+        check(callback.current("fixture-a"), "current provider callback is accepted");
+        check(!callback.current("fixture-b"), "different callback track rejected");
+        currentLyricsKey = "fixture-b";
+        check(!callback.current("fixture-a"), "callback rejected after displayed track changed");
+        currentLyricsKey = "fixture-a";
+        aiSupplementGeneration++;
+        check(!callback.current("fixture-a"), "same-track canceled generation rejected");
+        aiSupplementGeneration = 10L;
+        currentBaseLyricsResult = base();
+        check(!callback.current("fixture-a"), "replaced base lyrics invalidate old callback");
+        System.out.println("PASS actual loading/generation guard: task-specific attribution, generic TMI, stale/canceled callbacks");
+    }
+
+    public static void main(String[] args) throws Exception {
+        AiLyricsRepository repository = new AiLyricsRepository();
+        try {
+            LyricsResult base = base();
+            List<?> requests = (List<?>) call(AiLyricsRepository.class, "buildSupplementRequests", base.lines);
+            Object session = session(base, requests);
+            call(session, "setProvider", false, "Google Translate");
+            call(session, "setTranslation", List.of("실제 번역"));
+            LyricsResult keyless = merge(repository, base, requests, List.of(), List.of("실제 번역"), "",
+                    (String) call(session, "translationProviderLabel"));
+            check(keyless.translationProviderLabel.equals("Google Translate"), "keyless success recorded despite representative Gemini");
+            check(keyless.detail.contains("Google Translate") && !keyless.detail.contains("Gemini"),
+                    "result detail uses successful keyless provider");
+            check(keyless.providerLabel.equals("LRCLIB") && keyless.providerId.equals("lrclib")
+                    && keyless.syncType.equals("word") && keyless.syncPoints == 42,
+                    "supplement attribution preserves native lyric provider and ivSync identity");
+            call(session, "setProvider", false, "Google Gemini");
+            call(session, "setTranslationValue", 0, "실패한 시도의 일부");
+            call(session, "resetTranslationValues");
+            check(((String) call(session, "translationProviderLabel")).isEmpty(), "fallback resets previous attempt provenance");
+            call(session, "setProvider", false, "OpenAI ChatGPT");
+            call(session, "setTranslation", List.of("다음 제공자의 번역"));
+            LyricsResult fallback = merge(repository, base, requests, List.of("발음"), List.of("다음 제공자의 번역"),
+                    "Anthropic Claude", (String) call(session, "translationProviderLabel"));
+            check(fallback.translationProviderLabel.equals("OpenAI ChatGPT")
+                    && fallback.pronunciationProviderLabel.equals("Anthropic Claude"), "fallback winner and pronunciation provider stored separately");
+            check(!fallback.detail.contains("Google Gemini") && fallback.detail.contains("OpenAI ChatGPT"),
+                    "fallback result never credits the failed representative provider");
+            LyricsResult blank = merge(repository, base, requests, List.of(""), List.of(""), "Google Gemini", "Google Gemini");
+            check(blank.translationProviderLabel.isEmpty() && blank.pronunciationProviderLabel.isEmpty(),
+                    "empty streaming placeholders never claim a completed provider");
+            JSONObject serialized = (JSONObject) call(LyricsDiskCache.class, "resultToJson", fallback);
+            LyricsResult restored = (LyricsResult) call(LyricsDiskCache.class, "resultFromJson", new JSONObject(serialized.toString()));
+            check(restored.translationProviderLabel.equals("OpenAI ChatGPT")
+                    && restored.pronunciationProviderLabel.equals("Anthropic Claude"), "disk cache roundtrip preserves both actual providers");
+            LyricsResult rebased = (LyricsResult) call(repository, "rebaseCachedSupplements", restored, base);
+            check(rebased.translationProviderLabel.equals(restored.translationProviderLabel), "combined cache rebase preserves success provenance");
+            LyricsResult task = (LyricsResult) call(repository, "buildTaskResult", base, requests,
+                    List.of("부분 작업 번역"), false, "Bing Translate");
+            check(task.translationProviderLabel.equals("Bing Translate"), "per-task cache carries actual translation provider");
+            serialized.remove("translationProviderLabel"); serialized.remove("pronunciationProviderLabel");
+            serialized.put("providerLabel", "Incorrect legacy Gemini label");
+            serialized.put("detail", "Old source AI Google Gemini translation applied.");
+            LyricsResult legacy = (LyricsResult) call(LyricsDiskCache.class, "resultFromJson", serialized);
+            check(legacy.translationProviderLabel.isEmpty() && legacy.pronunciationProviderLabel.isEmpty(),
+                    "legacy missing provider metadata remains unknown");
+            LyricsResult legacyRebased = (LyricsResult) call(repository, "rebaseCachedSupplements", legacy, base);
+            check(!legacyRebased.detail.contains("Gemini") && legacyRebased.providerLabel.equals("LRCLIB"),
+                    "legacy incorrect AI detail/providerLabel cannot reappear after cache rebase");
+            check(legacyRebased.hasSupplement(false), "legacy cached translation remains usable without paid regeneration");
+            check(fallback.withMetadata("ZZAAA2600002", "next").translationProviderLabel.equals("OpenAI ChatGPT")
+                    && fallback.withSelection("lrclib", "next-policy").pronunciationProviderLabel.equals("Anthropic Claude"),
+                    "identity copies preserve actual attribution");
+            List<String> attempted = new ArrayList<>();
+            AiLyricsRepository.Callback callback = (AiLyricsRepository.Callback) Proxy.newProxyInstance(
+                    AiLyricsRepository.Callback.class.getClassLoader(), new Class<?>[] {AiLyricsRepository.Callback.class},
+                    (proxy, method, values) -> { if (method.getName().equals("onAiLyricsProviderChanged")) attempted.add((String) values[2]); return null; });
+            call(repository, "reportSupplementProvider", "fixture-a", callback, false, "Google Translate");
+            call(repository, "reportSupplementProvider", "fixture-a", callback, false, "OpenAI ChatGPT");
+            android.os.Handler.drain();
+            check(attempted.equals(List.of("Google Translate", "OpenAI ChatGPT")), "typed provider callbacks preserve attempt order");
+            System.out.println("PASS actual repository/cache: keyless versus representative, fallback state, partials, task/combined cache, legacy unknown");
+            new ProviderAttributionRegression().loadingAndGeneration();
+            System.out.println("PROVIDER_ATTRIBUTION_REGRESSION_PASSED assertions=" + assertions);
+        } finally { repository.shutdown(); }
+    }
+}

@@ -1,0 +1,75 @@
+name: Android CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  verify:
+    name: Shared tests and both applications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36.1" "build-tools;36.0.0"
+
+      - name: Check source boundaries
+        run: python3 tests/check_module_boundaries.py
+
+      - name: Test, lint and assemble application variants
+        run: >-
+          ./gradlew :shared:testDebugUnitTest
+          :shared:lintDebug :app:lintDebug :spotify-module:lintDebug
+          :app:assembleDebug :app:assembleQa :spotify-module:assembleDebug
+          --console=plain
+
+      - name: Run renderer and metadata regressions
+        run: |
+          python3 tests/run_lyrics_center_regression.py
+          python3 tests/run_metadata_regression.py
+          python3 tests/run_provider_attribution_regression.py
+          python3 tests/check_module_boundaries.py --built
+
+      - name: Upload verification reports and debug/QA APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ci-results
+          if-no-files-found: warn
+          path: |
+            build/reports/regressions/**/result.txt
+            shared/build/reports/tests/**
+            shared/build/test-results/**
+            shared/build/reports/lint-results-debug.*
+            app/build/reports/lint-results-debug.*
+            spotify-module/build/reports/lint-results-debug.*
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/qa/*.apk
+            spotify-module/build/outputs/apk/debug/*.apk

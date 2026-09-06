@@ -1,0 +1,452 @@
+import java.util.*;
+
+/** Test fixtures surround verbatim production declarations extracted by the runner. */
+public final class LyricsCenterRegression extends TestView {
+    private boolean centerInitialized = true;
+    private boolean smoothSeekCenterActive;
+    private boolean manualScrollActive;
+    private float animatedCenterIndex;
+    private float centerTransitionStartIndex;
+    private int centerTransitionTargetIndex;
+    private long centerTransitionStartUptimeMs;
+    private long centerTransitionDurationMs = 300L;
+    private float manualCenterIndex;
+    private int currentDisplayLineCount;
+    private long lastFrameMs;
+    private TestScroller manualScroller;
+    private Object pressedTarget;
+    private final List<DisplayLine> rowReflowLines = new ArrayList<>();
+    private boolean rowReflowPending, rowReflowActive;
+    private long rowReflowStartUptimeMs, rowReflowDurationMs;
+    private float rowReflowInitialRemaining = 1f;
+    private int rowReflowCenterTargetIndex = Integer.MIN_VALUE;
+    private float rowReflowLastRemaining;
+    private final FrameLineLayouts previousFrameLayouts = new FrameLineLayouts();
+    private final FrameLineLayouts nextFrameLayouts = new FrameLineLayouts();
+    private static final long LYRICS_CENTERING_DURATION_MS = 300L;
+    private boolean smoothNextSeekCenter, draggingLyrics;
+    private long positionMs;
+    private List<Object> lines = Collections.emptyList();
+    private String emptyMessage, emptyFallbackMessage = "";
+    private boolean karaoke, testSoftUpdate;
+    private final Map<Object, Object> normalizedSpeakerKeys = new HashMap<>();
+    private final Map<Object, Object> rowLayoutCache = new HashMap<>();
+    private float animatedVocalAnchorOffsetPx, vocalAnchorTransitionStartPx, vocalAnchorTransitionTargetPx;
+    private long vocalAnchorTransitionStartUptimeMs, retainedVocalAnchorPositionMs;
+    private boolean vocalAnchorOffsetInitialized;
+    private int retainedVocalAnchorSourceIndex, rowPrewarmIndex;
+    private float retainedVocalAnchorOffsetPx;
+    private static int assertions;
+    private static final float GAP = 32f;
+    private static final float CENTER_Y = 960f;
+
+    static final class SystemClock {
+        static long now;
+        static long uptimeMillis() { return now; }
+    }
+    static final class MotionPreferences {
+        static boolean enabled = true;
+        static boolean animationsEnabled(Object context) { return enabled; }
+    }
+    static final class LyricsResult {
+        final List<Object> lines = List.of(new Object());
+        final String detail = "";
+        final boolean karaoke = false;
+    }
+    private Object getContext() { return this; }
+    private boolean canSoftUpdateResult(LyricsResult result) { return testSoftUpdate; }
+    private boolean hasTimedKaraokeData(List<Object> lines) { return false; }
+    private void invalidateDisplayLineCache() { }
+    private void releaseHitTargets() { }
+    private void scheduleRowPrewarm() { }
+    private void postInvalidateOnAnimation() { }
+    static final class TestScroller {
+        boolean finished;
+        boolean isFinished() { return finished; }
+        void abortAnimation() { finished = true; }
+    }
+    static final class InterludeInfo {
+        final long startTimeMs, endTimeMs;
+        final String kind;
+        InterludeInfo(long start, long end, String kind) {
+            startTimeMs = start; endTimeMs = end; this.kind = kind;
+        }
+    }
+    static final class DisplayLine {
+        final int sourceIndex;
+        final Object line;
+        final InterludeInfo interludeInfo;
+        RowReflow reflow;
+        DisplayLine(int source, boolean virtual, InterludeInfo interlude) {
+            sourceIndex = source; line = virtual ? null : new Object(); interludeInfo = interlude;
+        }
+        boolean isInterlude() { return interludeInfo != null; }
+    }
+    static final class LineLayout {
+        final int index;
+        final float height;
+        float baselineCenter = Float.NaN;
+        LineLayout(int index, float height) { this.index = index; this.height = height; }
+    }
+    static final class FrameLineLayouts extends ArrayList<LineLayout> {
+        void clearReferences() { clear(); }
+    }
+
+    // INSERT_PRODUCTION_DECLARATIONS
+
+    private static void equal(float expected, float actual, float tolerance, String name) {
+        assertions++;
+        if (!Float.isFinite(actual) || Math.abs(expected - actual) > tolerance)
+            throw new AssertionError(name + ": expected " + expected + ", got " + actual);
+    }
+    private static void require(boolean value, String name) {
+        assertions++;
+        if (!value) throw new AssertionError(name);
+    }
+    private static List<LineLayout> layouts(float... heights) {
+        List<LineLayout> result = new ArrayList<>();
+        for (int i = 0; i < heights.length; i++) result.add(new LineLayout(i, heights[i]));
+        return result;
+    }
+    /** The onDraw assembly uses the production offset/distance functions below. */
+    private float rowY(List<LineLayout> rows, int target, float center) {
+        int anchor = Math.max(0, Math.min(rows.size() - 1, (int) Math.floor(center)));
+        LineLayout current = layoutAt(rows, anchor), next = layoutAt(rows, anchor + 1);
+        float fraction = clamp(center - anchor);
+        float scroll = current != null && next != null ? fraction * distanceBetween(current, next, GAP) : 0f;
+        return CENTER_Y + offsetFromAnchor(rows, anchor, target, GAP) - scroll;
+    }
+    private static DisplayLine lyric(int source) { return new DisplayLine(source, false, null); }
+    private static DisplayLine interlude(int source, boolean virtual, long start, long end) {
+        return new DisplayLine(source, virtual, new InterludeInfo(start, end, "break"));
+    }
+    private void setCenter(float center, float start, int target) {
+        animatedCenterIndex = center;
+        centerTransitionStartIndex = start;
+        centerTransitionTargetIndex = target;
+        centerInitialized = true;
+        centerTransitionStartUptimeMs = 0L;
+        centerTransitionDurationMs = 300L;
+    }
+
+    private void mappingContract() {
+        DisplayIndexMapping unchanged = new DisplayIndexMapping(new int[] {0, 1, 2}, 3);
+        for (float x : new float[] {0f, .25f, .9f, 1f, 1.5f, 2f})
+            equal(x, unchanged.map(x), .00001f, "unchanged fractional coordinate");
+        DisplayIndexMapping prelude = new DisplayIndexMapping(new int[] {-1, 0, 1, 2}, 3);
+        equal(0f, prelude.map(1f), 0f, "deleted prelude maps first lyric 1 to 0");
+        equal(.5f, prelude.map(1.5f), .00001f, "deleted prelude preserves fractional center");
+        equal(0f, prelude.map(-10f), 0f, "lower clamp");
+        equal(2f, prelude.map(50f), 0f, "upper clamp");
+        require(prelude.mapTarget(0) == Integer.MIN_VALUE, "removed target starts a fresh transition");
+        require(prelude.mapTarget(1) == 0, "surviving target retains row identity");
+        require(prelude.mapTarget(Integer.MIN_VALUE) == Integer.MIN_VALUE, "sentinel remains invalid");
+        DisplayIndexMapping inserted = new DisplayIndexMapping(new int[] {0, 2, 3}, 4);
+        equal(1f, inserted.map(.5f), .00001f, "insertion interpolates through surviving rows");
+        equal(2.5f, inserted.map(1.5f), .00001f, "insertion shifts later fractional center");
+        float retimedStart = inserted.mapTransitionStart(0f, 2, 1f, .5f);
+        equal(2f, retimedStart + (3f - retimedStart) * .5f, .00001f,
+                "piecewise mapping preserves current position at unchanged easing progress");
+        DisplayIndexMapping removed = new DisplayIndexMapping(new int[] {0, -1, 1, 2}, 3);
+        equal(.5f, removed.map(1f), .00001f, "removed middle slot interpolates neighbors");
+        for (int[] mapping : new int[][] {{0,1,2}, {-1,0,1}, {0,2,3}, {0,-1,1,2}, {-1,-1}}) {
+            DisplayIndexMapping subject = new DisplayIndexMapping(mapping, 4);
+            float last = -1f;
+            for (int i = -10; i <= 500; i++) {
+                float value = subject.map(i / 100f);
+                require(value + .00001f >= last, "mapping never reverses forward coordinates");
+                last = value;
+            }
+        }
+        System.out.println("PASS mapping contract: deletion, insertion, fractions, clamping, targets, monotonicity");
+    }
+
+    private void preludeBoundary() {
+        List<LineLayout> before = layouts(72f, 120f, 200f, 88f);
+        List<LineLayout> after = layouts(120f, 200f, 88f);
+        List<DisplayLine> beforeLines = List.of(interlude(0, false, 0, 10000), lyric(1), lyric(2), lyric(3));
+        List<DisplayLine> afterLines = beforeLines.subList(1, beforeLines.size());
+        setCenter(1f, 0f, 1);
+        float originalY = rowY(before, 1, animatedCenterIndex);
+        float brokenY = rowY(after, 0, animatedCenterIndex);
+        require(originalY - brokenY > 150f, "negative control reproduces one-block legacy overshoot");
+        remapDisplayCenter(beforeLines, afterLines);
+        equal(originalY, rowY(after, 0, animatedCenterIndex), .0001f, "first lyric screen Y survives prelude deletion");
+        equal(0f, centerTransitionStartIndex, 0f, "old entrance start clamps to new first row");
+        require(centerTransitionTargetIndex == 0, "target remapped before next animation update");
+        SystemClock.now = 301L;
+        updateAnimatedCenter(0, 300L);
+        equal(originalY, rowY(after, 0, animatedCenterIndex), .0001f, "next frame does not overshoot and reverse");
+        float previousY = Float.POSITIVE_INFINITY;
+        for (int tick = 0; tick <= 300; tick += 5) {
+            float center = lyricsCenteringProgress(tick / 300f);
+            float y = rowY(before, 1, center);
+            require(y <= previousY + .0001f && y >= CENTER_Y - .0001f, "300ms prelude lookahead approaches without overshoot");
+            previousY = y;
+        }
+        float nearBoundaryY = rowY(before, 1, .999f);
+        float mappedY = rowY(after, 0, new DisplayIndexMapping(new int[] {-1, 0, 1, 2}, 3).map(.999f));
+        equal(nearBoundaryY, mappedY, .15f, "near-boundary residual stays below a fraction of a pixel");
+        System.out.printf(Locale.ROOT, "PASS prelude geometry: legacy jump %.1fpx, remapped jump %.4fpx, near-boundary %.4fpx%n",
+                originalY - brokenY, originalY - rowY(after, 0, animatedCenterIndex), nearBoundaryY - mappedY);
+    }
+
+    private void middleInsertionRemovalAndSeek() {
+        List<DisplayLine> lyrics = List.of(lyric(0), lyric(1), lyric(2));
+        List<DisplayLine> withBreak = List.of(lyrics.get(0), interlude(0, true, 4000, 10000), lyrics.get(1), lyrics.get(2));
+        List<LineLayout> plainGeometry = layouts(120f, 200f, 88f);
+        List<LineLayout> breakGeometry = layouts(120f, 72f, 200f, 88f);
+        setCenter(1f, 1f, 1);
+        manualCenterIndex = 1.4f;
+        manualScroller = new TestScroller();
+        pressedTarget = new Object();
+        float originalY = rowY(plainGeometry, 1, animatedCenterIndex);
+        remapDisplayCenter(lyrics, withBreak);
+        equal(originalY, rowY(breakGeometry, 2, animatedCenterIndex), .0001f, "inserting interlude preserves centered lyric screen Y");
+        equal(2.4f, manualCenterIndex, .0001f, "manual center shifts with inserted slot");
+        require(manualScroller.finished && pressedTarget == null, "stale fling and pressed row are canceled");
+        remapDisplayCenter(withBreak, lyrics);
+        equal(originalY, rowY(plainGeometry, 1, animatedCenterIndex), .0001f, "removing interlude preserves centered lyric screen Y");
+        equal(1.4f, manualCenterIndex, .0001f, "manual center returns after removal");
+        setCenter(2.35f, 2f, 3);
+        float fractionalY = rowY(breakGeometry, 2, animatedCenterIndex);
+        remapDisplayCenter(withBreak, lyrics);
+        equal(fractionalY, rowY(plainGeometry, 1, animatedCenterIndex), .0002f, "fractional center beyond interlude preserves screen Y");
+        // A user-selected smooth seek is allowed to move, but must move only toward its target.
+        setCenter(2f, 2f, 0);
+        smoothSeekCenterActive = true;
+        float previous = Float.POSITIVE_INFINITY;
+        for (int elapsed = 0; elapsed <= 300; elapsed += 5) {
+            SystemClock.now = elapsed;
+            updateAnimatedCenter(0, 300L);
+            require(animatedCenterIndex <= previous + .0001f && animatedCenterIndex >= 0f,
+                    "manual seek returns monotonically without crossing target");
+            previous = animatedCenterIndex;
+        }
+        equal(0f, animatedCenterIndex, .0001f, "manual seek reaches requested first row");
+        // New interlude identity at the same slot must not reuse the previous target's easing.
+        setCenter(1f, 1f, 1);
+        List<DisplayLine> changedBreak = List.of(lyric(0), interlude(0, true, 4100, 10000), lyric(1), lyric(2));
+        remapDisplayCenter(withBreak, changedBreak);
+        require(centerTransitionTargetIndex == Integer.MIN_VALUE, "changed interlude time invalidates old target identity");
+        System.out.println("PASS middle boundaries/manual seek: row continuity, fractional center, fling cancellation, stable identity");
+    }
+
+    private void seekAcrossInsertedSlot() {
+        List<DisplayLine> lyrics = List.of(lyric(0), lyric(1), lyric(2));
+        List<DisplayLine> withBreak = List.of(lyrics.get(0), interlude(0, true, 4000, 10000), lyrics.get(1), lyrics.get(2));
+        setCenter(1f, 0f, 2);
+        lastFrameMs = SystemClock.now = 150L;
+        smoothSeekCenterActive = true;
+        remapDisplayCenter(lyrics, withBreak);
+        float mappedAtBoundary = animatedCenterIndex;
+        updateAnimatedCenter(3, 300L);
+        equal(mappedAtBoundary, animatedCenterIndex, .0001f,
+                "seek insertion does not jump on next frame at same clock");
+        float previous = animatedCenterIndex;
+        for (int elapsed = 151; elapsed <= 300; elapsed++) {
+            SystemClock.now = elapsed;
+            updateAnimatedCenter(3, 300L);
+            require(animatedCenterIndex >= previous - .0001f && animatedCenterIndex <= 3f,
+                    "seek after insertion moves only toward target");
+            previous = animatedCenterIndex;
+        }
+        equal(3f, animatedCenterIndex, .0001f, "retained seek easing finishes at original deadline");
+        System.out.println("PASS cross-slot seek: next-frame continuity, monotonicity, original easing deadline");
+    }
+
+    private void observedVirtualInterludeEnd() {
+        // The physical reproduction has a virtual break from 12.200s to 18.494s.
+        // Its 300ms lookahead is already approaching row 2 when the slot disappears.
+        List<DisplayLine> beforeLines = List.of(lyric(0), interlude(0, true, 12200, 18494), lyric(1), lyric(2));
+        List<DisplayLine> afterLines = List.of(beforeLines.get(0), beforeLines.get(2), beforeLines.get(3));
+        List<LineLayout> before = layouts(120f, 72f, 200f, 88f);
+        List<LineLayout> after = layouts(120f, 200f, 88f);
+        float beforeCenter = 1f + lyricsCenteringProgress(296f / 300f);
+        setCenter(beforeCenter, 1f, 2);
+        smoothSeekCenterActive = false;
+        lastFrameMs = SystemClock.now = 296L;
+        float beforeY = rowY(before, 2, animatedCenterIndex);
+        float legacyY = rowY(after, 1, animatedCenterIndex);
+        require(beforeY - legacyY > 150f, "observed virtual-break legacy overshoot exceeds one lyric block");
+        remapDisplayCenter(beforeLines, afterLines);
+        float mappedY = rowY(after, 1, animatedCenterIndex);
+        equal(beforeY, mappedY, .3f, "18.494s virtual-break removal preserves near-centered next lyric");
+        require(centerTransitionTargetIndex == 1, "old virtual-break target 2 becomes lyric target 1");
+        float previousY = beforeY;
+        for (int elapsed = 296; elapsed <= 320; elapsed++) {
+            SystemClock.now = elapsed;
+            updateAnimatedCenter(1, 300L);
+            float y = rowY(after, 1, animatedCenterIndex);
+            require(y >= CENTER_Y - .0001f && y <= previousY + .0001f,
+                    "18.494s next lyric never passes center or reverses after slot removal");
+            previousY = y;
+        }
+        equal(CENTER_Y, previousY, .0001f, "virtual-break next lyric settles exactly at center");
+        System.out.printf(Locale.ROOT, "PASS observed 12.200–18.494s virtual break: legacy jump %.3fpx, corrected boundary %.3fpx, no reversal%n",
+                beforeY - legacyY, beforeY - mappedY);
+    }
+
+    private List<DisplayLine> beginReflowFixture(long duration, long alreadyElapsed) {
+        clearRowReflow();
+        previousFrameLayouts.clear();
+        List<DisplayLine> old = List.of(lyric(0), lyric(1), lyric(2));
+        List<LineLayout> geometry = layouts(120f, 200f, 88f);
+        for (LineLayout row : geometry) {
+            row.baselineCenter = rowY(geometry, row.index, 0f);
+            previousFrameLayouts.add(row);
+        }
+        List<DisplayLine> inserted = List.of(old.get(0), interlude(0, true, 12200, 18494), old.get(1), old.get(2));
+        setCenter(0f, 0f, 0);
+        lastFrameMs = SystemClock.now = 1000L;
+        remapDisplayCenter(old, inserted);
+        require(rowReflowPending && !rowReflowLines.isEmpty(), "insertion schedules pixel reflow");
+        require(inserted.get(1).reflow != null && inserted.get(2).reflow != null,
+                "new interlude and surviving next lyric receive reflow");
+        // onDraw chooses the newly active interlude before preparing the row reflow.
+        centerTransitionTargetIndex = 1;
+        centerTransitionStartIndex = 0f;
+        centerTransitionStartUptimeMs = 1000L;
+        centerTransitionDurationMs = duration;
+        smoothSeekCenterActive = false;
+        manualScrollActive = false;
+        SystemClock.now = 1000L + alreadyElapsed;
+        updateAnimatedCenter(1, duration);
+        prepareRowReflow();
+        return inserted;
+    }
+
+    private float correctedY(List<LineLayout> geometry, DisplayLine line, int target, float remaining) {
+        float baseline = rowY(geometry, target, animatedCenterIndex);
+        return line.reflow == null ? baseline : baseline + line.reflow.offset(baseline, remaining);
+    }
+
+    private void insertedRowMotion() {
+        for (long duration : new long[] {80L, 160L, 300L}) {
+            for (long elapsedAtInsertion : new long[] {0L, duration / 3}) {
+                List<DisplayLine> rows = beginReflowFixture(duration, elapsedAtInsertion);
+                List<LineLayout> geometry = layouts(120f, 72f, 200f, 88f);
+                float remaining = rowReflowRemaining();
+                equal(1f, remaining, .0001f, "first reflow frame starts with full compensation");
+                float first = correctedY(geometry, rows.get(2), 2, remaining);
+                equal(1152f, first, .0002f, "insertion preserves old next-row baseline on first frame");
+                equal(0f, rows.get(1).reflow.opacity(remaining), .0001f, "inserted marker starts transparent");
+                equal(1f, rows.get(2).reflow.opacity(remaining), 0f, "existing lyrics do not fade out");
+                require(rowReflowDurationMs == duration && rowReflowStartUptimeMs == 1000L,
+                        "reflow shares native centering duration and start time");
+                float previous = first;
+                float previousOpacity = 0f;
+                for (long elapsed = elapsedAtInsertion + 1; elapsed <= duration; elapsed++) {
+                    SystemClock.now = 1000L + elapsed;
+                    updateAnimatedCenter(1, duration);
+                    prepareRowReflow();
+                    float factor = rowReflowRemaining();
+                    float y = correctedY(geometry, rows.get(2), 2, factor);
+                    require(y <= previous + .0002f && y >= 1128f - .0002f,
+                            "combined centering/reflow never passes or reverses its destination"
+                                    + " duration=" + duration + " insertion=" + elapsedAtInsertion
+                                    + " elapsed=" + elapsed + " previousY=" + previous + " y=" + y
+                                    + " center=" + animatedCenterIndex + " remaining=" + factor);
+                    float opacity = rows.get(1).reflow == null ? 1f : rows.get(1).reflow.opacity(factor);
+                    require(opacity >= previousOpacity - .0001f && opacity <= 1f,
+                            "inserted marker opacity increases monotonically");
+                    previous = y;
+                    previousOpacity = opacity;
+                }
+                equal(1128f, previous, .0002f, "next lyric reaches final geometry at centering deadline");
+                require(!rowReflowActive && !rowReflowPending && rowReflowLines.isEmpty(),
+                        "completed reflow releases lifecycle state");
+                require(rows.stream().allMatch(row -> row.reflow == null),
+                        "completed reflow releases every per-row compensation");
+            }
+        }
+        System.out.println("PASS inserted row pixel reflow: first-frame continuity, combined monotonic motion, 80/160/300ms deadlines, fade");
+    }
+
+    private void reflowCleanup() {
+        List<DisplayLine> rows = beginReflowFixture(300L, 0L);
+        positionMs = 12200L;
+        setPlaybackPosition(18000L);
+        require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                "large forward seek clears all stale row compensation");
+        require(previousFrameLayouts.isEmpty(), "seek invalidates previous geometry before future scheduling");
+        rows = beginReflowFixture(300L, 0L);
+        positionMs = 12200L;
+        setPlaybackPosition(1000L);
+        require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                "backward seek clears reflow");
+        rows = beginReflowFixture(300L, 0L);
+        positionMs = 12200L;
+        smoothNextSeekCenter = true;
+        setPlaybackPosition(12250L);
+        require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                "explicit smooth seek clears reflow even below large-jump threshold");
+        for (boolean soft : new boolean[] {false, true}) {
+            rows = beginReflowFixture(300L, 0L);
+            testSoftUpdate = soft;
+            setResult(new LyricsResult());
+            require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                    "setResult clears previous-track row state before hard/soft update");
+            require(previousFrameLayouts.isEmpty(), "setResult invalidates stored baseline geometry");
+        }
+        rows = beginReflowFixture(300L, 0L);
+        onSizeChanged(1080, 2400, 2400, 1080);
+        require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                "size change clears stale coordinates");
+        rows = beginReflowFixture(300L, 0L);
+        MotionPreferences.enabled = false;
+        prepareRowReflow();
+        require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
+                "reduced motion discards all row compensation");
+        MotionPreferences.enabled = true;
+        System.out.println("PASS production cleanup paths: completion, forward/backward/smooth seek, hard/soft setResult, resize, reduced motion");
+    }
+
+    private void shortInterludeRetarget() {
+        List<DisplayLine> rows = beginReflowFixture(300L, 0L);
+        List<LineLayout> geometry = layouts(120f, 72f, 200f, 88f);
+        float previous = correctedY(geometry, rows.get(2), 2, rowReflowRemaining());
+        float lowest = previous;
+        float maxReverse = 0f;
+        int firstReverseAt = -1;
+        // 501ms is the shortest accepted duration (>500ms); lookahead retargets at 201ms.
+        // This deliberately retargets while the initial 300ms row reflow is active.
+        for (int elapsed = 1; elapsed <= 501; elapsed++) {
+            SystemClock.now = 1000L + elapsed;
+            updateAnimatedCenter(elapsed < 201 ? 1 : 2, 300L);
+            prepareRowReflow();
+            float remaining = rowReflowRemaining();
+            float y = correctedY(geometry, rows.get(2), 2, remaining);
+            if (y > previous + .0002f && firstReverseAt < 0) firstReverseAt = elapsed;
+            maxReverse = Math.max(maxReverse, y - lowest);
+            lowest = Math.min(lowest, y);
+            require(y >= CENTER_Y - .0002f && y <= 1152f + .0002f,
+                    "short interlude next row remains between initial and final baselines");
+            previous = y;
+        }
+        equal(CENTER_Y, previous, .0002f, "short interlude next row reaches final center");
+        System.out.printf(Locale.ROOT,
+                "Short 501ms interlude retarget: first reverse at %dms, max backward excursion %.4fpx%n",
+                firstReverseAt, maxReverse);
+        require(firstReverseAt < 0,
+                "short interlude 201ms lookahead retarget reverses surviving row: " + maxReverse + "px");
+        System.out.println("PASS short 501ms interlude: centering retarget preserves monotonic row motion");
+    }
+
+    public static void main(String[] args) {
+        LyricsCenterRegression subject = new LyricsCenterRegression();
+        subject.mappingContract();
+        subject.preludeBoundary();
+        subject.middleInsertionRemovalAndSeek();
+        subject.seekAcrossInsertedSlot();
+        subject.observedVirtualInterludeEnd();
+        subject.reflowCleanup();
+        subject.insertedRowMotion();
+        subject.shortInterludeRetarget();
+        System.out.println("LYRICS_CENTER_REGRESSION_PASSED assertions=" + assertions);
+    }
+}
+
+class TestView {
+    protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) { }
+}

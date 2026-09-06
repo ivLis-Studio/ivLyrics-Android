@@ -17,6 +17,8 @@ final class LyricsResult {
     final String selectionPolicyKey;
     final String syncType;
     final int syncPoints;
+    final String pronunciationProviderLabel;
+    final String translationProviderLabel;
 
     LyricsResult(List<LyricsLine> lines, String providerLabel, String detail, boolean karaoke) {
         this(lines, providerLabel, detail, karaoke, "", "");
@@ -56,19 +58,8 @@ final class LyricsResult {
             String syncType,
             int syncPoints
     ) {
-        this(
-                lines,
-                providerLabel,
-                detail,
-                karaoke,
-                isrc,
-                spotifyTrackId,
-                contributors,
-                "",
-                "",
-                syncType,
-                syncPoints
-        );
+        this(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId, contributors,
+                "", "", syncType, syncPoints);
     }
 
     LyricsResult(
@@ -110,6 +101,25 @@ final class LyricsResult {
             String syncType,
             int syncPoints
     ) {
+        this(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId, contributors,
+                providerId, selectionPolicyKey, syncType, syncPoints, "", "");
+    }
+
+    LyricsResult(
+            List<LyricsLine> lines,
+            String providerLabel,
+            String detail,
+            boolean karaoke,
+            String isrc,
+            String spotifyTrackId,
+            List<SyncContributor> contributors,
+            String providerId,
+            String selectionPolicyKey,
+            String syncType,
+            int syncPoints,
+            String pronunciationProviderLabel,
+            String translationProviderLabel
+    ) {
         this.lines = lines == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(lines));
@@ -125,6 +135,8 @@ final class LyricsResult {
         this.selectionPolicyKey = selectionPolicyKey == null ? "" : selectionPolicyKey;
         this.syncType = normalizeSyncType(syncType);
         this.syncPoints = Math.max(0, syncPoints);
+        this.pronunciationProviderLabel = pronunciationProviderLabel == null ? "" : pronunciationProviderLabel.trim();
+        this.translationProviderLabel = translationProviderLabel == null ? "" : translationProviderLabel.trim();
     }
 
     LyricsResult withSelection(String providerId, String selectionPolicyKey) {
@@ -139,8 +151,32 @@ final class LyricsResult {
                 providerId,
                 selectionPolicyKey,
                 syncType,
-                syncPoints
+                syncPoints,
+                pronunciationProviderLabel,
+                translationProviderLabel
         );
+    }
+
+    LyricsResult withMetadata(String isrc, String spotifyTrackId) {
+        return new LyricsResult(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId,
+                contributors, providerId, selectionPolicyKey, syncType, syncPoints,
+                pronunciationProviderLabel, translationProviderLabel);
+    }
+
+    LyricsResult withSupplementProviders(String pronunciationProviderLabel, String translationProviderLabel) {
+        return new LyricsResult(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId,
+                contributors, providerId, selectionPolicyKey, syncType, syncPoints,
+                pronunciationProviderLabel, translationProviderLabel);
+    }
+
+    boolean hasSupplement(boolean pronunciation) {
+        for (LyricsLine line : lines) {
+            if (!(pronunciation ? line.pronunciationText : line.translationText).trim().isEmpty()) return true;
+            for (LyricsLine.VocalPart part : line.vocalParts) {
+                if (!(pronunciation ? part.pronunciationText : part.translationText).trim().isEmpty()) return true;
+            }
+        }
+        return false;
     }
 
     static LyricsResult empty(String detail) {

@@ -80,6 +80,9 @@ final class LyricsProviderSelectionPlan {
         }
         if (canApplyIvLyricsSyncToCachedResult(result, settings)) return true;
         if (!settings.preferSyncDataProvider || TrackSnapshot.normalizeIsrc(resolvedIsrc).isEmpty()) return false;
+        // Native ISRC can arrive after a karaoke provider has already populated the cache.
+        // Check OpenDB once for that new identity before accepting the previous provider.
+        if (!TrackSnapshot.normalizeIsrc(resolvedIsrc).equals(result.isrc)) return true;
         LyricsProviderSettings.ProviderConfig current = settings.config(result.providerId);
         return current == null || !result.karaoke;
     }

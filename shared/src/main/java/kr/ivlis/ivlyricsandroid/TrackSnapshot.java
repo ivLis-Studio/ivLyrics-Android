@@ -119,6 +119,12 @@ final class TrackSnapshot {
         return clampPosition(positionMs + Math.round(elapsed * playbackSpeed));
     }
 
+    TrackSnapshot withIsrc(String value) {
+        return new TrackSnapshot(title, artist, album, packageName, mediaId, value, durationMs,
+                positionMs, lastPositionUpdateElapsedMs, playbackSpeed, playing, artwork, artworkUri,
+                spotifyAutomix, automixFadeInStartMs, automixFadeInCueMs, automixFadeOverlapMs);
+    }
+
     boolean hasUsableMetadata() {
         return !title.isEmpty() && !artist.isEmpty();
     }

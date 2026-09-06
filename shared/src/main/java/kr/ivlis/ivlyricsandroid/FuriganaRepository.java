@@ -482,7 +482,13 @@ final class FuriganaRepository {
                 baseResult.karaoke,
                 baseResult.isrc,
                 baseResult.spotifyTrackId,
-                baseResult.contributors
+                baseResult.contributors,
+                baseResult.providerId,
+                baseResult.selectionPolicyKey,
+                baseResult.syncType,
+                baseResult.syncPoints,
+                baseResult.pronunciationProviderLabel,
+                baseResult.translationProviderLabel
         );
     }
 

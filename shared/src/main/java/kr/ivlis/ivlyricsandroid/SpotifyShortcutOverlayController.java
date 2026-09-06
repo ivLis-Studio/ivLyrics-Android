@@ -284,8 +284,8 @@ final class SpotifyShortcutOverlayController {
     private void openLyricsPage() {
         hide();
         appForeground = true;
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.putExtra(MainActivity.EXTRA_OPEN_LYRICS_PAGE, true);
+        Intent intent = IvLyricsBridge.lyricsIntent(context);
+        intent.putExtra(BaseLyricsActivity.EXTRA_OPEN_LYRICS_PAGE, true);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP
                 | Intent.FLAG_ACTIVITY_SINGLE_TOP);

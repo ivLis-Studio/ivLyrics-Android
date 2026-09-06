@@ -4,6 +4,8 @@
 
 [한국어](README.md) | English
 
+This repository builds the standalone Android app (`app`) and Spotify's LSPosed/LSPatch module (`spotify-module`) from one `shared` lyrics, ivSync, translation and UI library. See [architecture and builds](ARCHITECTURE.md), [verification](tests/README.md), and the [Spotify module](spotify-module/README.md).
+
 ivLyrics Android detects the song currently playing in Spotify and displays karaoke-style lyrics on Android using ivLyrics community sync data and LRCLIB lyrics.
 
 ## Disclaimer

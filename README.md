@@ -4,6 +4,8 @@
 
 한국어 | [English](README_EN.md)
 
+이 저장소는 독립 Android 앱(`app`)과 Spotify용 LSPosed/LSPatch 모듈(`spotify-module`)을 함께 관리합니다. 가사·ivSync·번역·UI는 `shared`를 한 번 수정하면 두 APK에 반영됩니다. [개발 구조와 빌드 방법](ARCHITECTURE.md) · [공통 검증](tests/README.md) · [Spotify 모듈](spotify-module/README.md)
+
 Spotify에서 재생 중인 곡을 감지하고, ivLyrics 커뮤니티 싱크 데이터와 LRCLIB 가사를 이용해 Android에서 노래방 스타일 가사를 보여주는 앱입니다.
 
 ## 면책 조항

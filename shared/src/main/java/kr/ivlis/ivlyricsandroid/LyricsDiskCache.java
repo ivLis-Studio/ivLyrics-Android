@@ -151,6 +151,8 @@ final class LyricsDiskCache {
         object.put("selectionPolicyKey", result.selectionPolicyKey);
         object.put("syncType", result.syncType);
         object.put("syncPoints", result.syncPoints);
+        object.put("pronunciationProviderLabel", result.pronunciationProviderLabel);
+        object.put("translationProviderLabel", result.translationProviderLabel);
         JSONArray contributors = new JSONArray();
         for (LyricsResult.SyncContributor contributor : result.contributors) {
             contributors.put(contributorToJson(contributor));
@@ -186,7 +188,9 @@ final class LyricsDiskCache {
                 object.optString("providerId", ""),
                 object.optString("selectionPolicyKey", ""),
                 object.optString("syncType", "unknown"),
-                object.optInt("syncPoints", 0)
+                object.optInt("syncPoints", 0),
+                object.optString("pronunciationProviderLabel", ""),
+                object.optString("translationProviderLabel", "")
         );
     }
 

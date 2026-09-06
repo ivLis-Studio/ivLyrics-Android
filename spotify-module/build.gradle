@@ -1,0 +1,45 @@
+plugins { id "com.android.application" }
+
+// Only third-party bytecode is relocated. All ivLyrics sources compile directly
+// from :shared and this module, with no generated application source tree.
+def privateWebKit = layout.buildDirectory.dir("generated/private-webkit")
+def preparePrivateWebKit = tasks.register("preparePrivateWebKit", Exec) {
+    inputs.dir("tools")
+    outputs.file(privateWebKit.map { it.file("webkit-private.jar") })
+    commandLine "python3", file("tools/prepare_webkit.py"),
+            privateWebKit.get().asFile, rootProject.file(".gradle/ivlyrics-dependencies")
+}
+
+android {
+    namespace "dev.ivlyrics.spotify.module"
+    compileSdk { version = release(36) { it.minorApiLevel = 1 } }
+    defaultConfig {
+        applicationId "dev.ivlyrics.spotify.module"
+        minSdk 26
+        targetSdk 35
+        versionCode 6
+        versionName "1.0.5"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Keep compatibility with the installed development module.
+            signingConfig signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        resources.excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn preparePrivateWebKit }
+dependencies {
+    implementation project(":shared")
+    compileOnly "de.robv.android.xposed:api:82"
+    compileOnly "androidx.annotation:annotation:1.2.0"
+    implementation files(privateWebKit.map { it.file("webkit-private.jar") }).builtBy(preparePrivateWebKit)
+}

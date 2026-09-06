@@ -132,6 +132,8 @@ final class AiLyricsRepository {
 
         void onAiLyricsLog(String trackKey, String message);
 
+        default void onAiLyricsProviderChanged(String trackKey, boolean pronunciation, String providerLabel) { }
+
         void onAiMetadataTranslationLoaded(String trackKey, MetadataTranslation translation);
 
         void onAiMetadataTranslationError(String trackKey, String message);
@@ -480,6 +482,8 @@ final class AiLyricsRepository {
         final boolean needsTranslation;
         List<String> pronunciation = Collections.emptyList();
         List<String> translation = Collections.emptyList();
+        private String pronunciationProvider = "";
+        private String translationProvider = "";
         boolean pronunciationFinished;
         boolean translationFinished;
         boolean hadError;
@@ -518,11 +522,22 @@ final class AiLyricsRepository {
 
         synchronized void resetPronunciationValues() {
             pronunciation = Collections.emptyList();
+            pronunciationProvider = "";
         }
 
         synchronized void resetTranslationValues() {
             translation = Collections.emptyList();
+            translationProvider = "";
         }
+
+        synchronized void setProvider(boolean pronunciationTask, String label) {
+            String normalized = label == null ? "" : label.trim();
+            if (pronunciationTask) pronunciationProvider = normalized;
+            else translationProvider = normalized;
+        }
+
+        synchronized String pronunciationProviderLabel() { return pronunciationProvider; }
+        synchronized String translationProviderLabel() { return translationProvider; }
 
         synchronized void markPronunciationFailed() {
             pronunciationFinished = true;
@@ -674,6 +689,8 @@ final class AiLyricsRepository {
                     session.requests,
                     session.pronunciationSnapshot(),
                     session.translationSnapshot(),
+                    session.pronunciationProviderLabel(),
+                    session.translationProviderLabel(),
                     settings,
                     rule,
                     sourceLang,
@@ -844,7 +861,7 @@ final class AiLyricsRepository {
             if (cached != null) {
                 cached = rebaseCachedSupplements(cached, baseResult);
                 cache.put(cacheKey, cached);
-                emitLog(trackKey, callback, "ai lyrics cache hit: " + settings.provider.label);
+                emitLog(trackKey, callback, "ai lyrics cache hit: " + cachedSupplementProviders(cached));
                 callback.onAiLyricsLoaded(trackKey, cached);
                 return;
             }
@@ -852,7 +869,7 @@ final class AiLyricsRepository {
             if (diskCached != null) {
                 diskCached = rebaseCachedSupplements(diskCached, baseResult);
                 cache.put(cacheKey, diskCached);
-                emitLog(trackKey, callback, "ai lyrics disk cache hit: " + settings.provider.label);
+                emitLog(trackKey, callback, "ai lyrics disk cache hit: " + cachedSupplementProviders(diskCached));
                 callback.onAiLyricsLoaded(trackKey, diskCached);
                 return;
             }
@@ -913,14 +930,18 @@ final class AiLyricsRepository {
             LyricsResult pronunciationCached = cachedResult(pronunciationCacheKey);
             if (pronunciationCached != null) {
                 session.setPronunciation(extractSupplementValues(pronunciationCached, requests, true));
-                emitLog(trackKey, callback, "ai pronunciation cache hit: " + settings.provider.label);
+                session.setProvider(true, pronunciationCached.pronunciationProviderLabel);
+                reportSupplementProvider(trackKey, callback, true, pronunciationCached.pronunciationProviderLabel);
+                emitLog(trackKey, callback, "ai pronunciation cache hit: " + pronunciationCached.pronunciationProviderLabel);
             }
         }
         if (!bypassCache && needsTranslation) {
             LyricsResult translationCached = cachedResult(translationCacheKey);
             if (translationCached != null) {
                 session.setTranslation(extractSupplementValues(translationCached, requests, false));
-                emitLog(trackKey, callback, "ai translation cache hit: " + settings.provider.label);
+                session.setProvider(false, translationCached.translationProviderLabel);
+                reportSupplementProvider(trackKey, callback, false, translationCached.translationProviderLabel);
+                emitLog(trackKey, callback, "ai translation cache hit: " + translationCached.translationProviderLabel);
             }
         }
 
@@ -930,6 +951,8 @@ final class AiLyricsRepository {
                     requests,
                     session.pronunciationSnapshot(),
                     session.translationSnapshot(),
+                    session.pronunciationProviderLabel(),
+                    session.translationProviderLabel(),
                     settings,
                     rule,
                     sourceLang,
@@ -947,6 +970,8 @@ final class AiLyricsRepository {
                 requests,
                 session.pronunciationSnapshot(),
                 session.translationSnapshot(),
+                session.pronunciationProviderLabel(),
+                session.translationProviderLabel(),
                 settings,
                 rule,
                 sourceLang,
@@ -1030,13 +1055,15 @@ final class AiLyricsRepository {
         String detail = baseResult.detail;
         int aiSuffixStart = result.detail.indexOf(" AI ");
         if (aiSuffixStart >= 0) {
-            detail += result.detail.substring(aiSuffixStart);
+            detail += result.pronunciationProviderLabel.isEmpty() && result.translationProviderLabel.isEmpty()
+                    ? " AI supplements restored from cache."
+                    : result.detail.substring(aiSuffixStart);
         }
         return resultWithBaseIdentity(
                 baseResult,
                 rebasedLines,
                 detail
-        );
+        ).withSupplementProviders(result.pronunciationProviderLabel, result.translationProviderLabel);
     }
 
     private LyricsLine rebaseCachedSupplementLine(LyricsLine baseLine, LyricsLine cachedLine) {
@@ -1172,7 +1199,11 @@ final class AiLyricsRepository {
                 baseResult.spotifyTrackId,
                 baseResult.contributors,
                 baseResult.providerId,
-                baseResult.selectionPolicyKey
+                baseResult.selectionPolicyKey,
+                baseResult.syncType,
+                baseResult.syncPoints,
+                baseResult.pronunciationProviderLabel,
+                baseResult.translationProviderLabel
         );
     }
 
@@ -1669,6 +1700,8 @@ final class AiLyricsRepository {
                 Exception lastError = null;
                 for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
                     session.resetPronunciationValues();
+                    session.setProvider(true, providerSettings.provider.label);
+                    reportSupplementProvider(trackKey, callback, true, providerSettings.provider.label);
                     try {
                         log.write("ai pronunciation attempt: provider=" + providerSettings.provider.label
                                 + " / model=" + providerSettings.model);
@@ -1718,6 +1751,8 @@ final class AiLyricsRepository {
                     session.resetTranslationValues();
                     try {
                         if (provider.keyless) {
+                            session.setProvider(false, provider.label);
+                            reportSupplementProvider(trackKey, callback, false, provider.label);
                             log.write("translation attempt: provider=" + provider.label);
                             KeylessTranslationProviders.Result result = KeylessTranslationProviders.translateWithProvider(
                                     provider.id,
@@ -1725,6 +1760,8 @@ final class AiLyricsRepository {
                                     targetLang
                             );
                             values = result.values;
+                            session.setProvider(false, result.providerLabel);
+                            reportSupplementProvider(trackKey, callback, false, result.providerLabel);
                             log.write("translation response: provider=" + result.providerLabel + " / lines=" + values.size());
                         } else {
                             AiLyricsSettings.Snapshot providerSettings = settings.forProvider(provider.id);
@@ -1732,6 +1769,8 @@ final class AiLyricsRepository {
                                 log.write("ai translation skipped: provider=" + provider.label + " is not fully configured");
                                 continue;
                             }
+                            session.setProvider(false, provider.label);
+                            reportSupplementProvider(trackKey, callback, false, provider.label);
                             log.write("ai translation stream request: provider=" + provider.label
                                     + " / model=" + providerSettings.model + " / lines=" + expectedLineCount);
                             values = loadSupplementValuesStreamFirst(
@@ -1773,7 +1812,8 @@ final class AiLyricsRepository {
                     session.baseResult,
                     requests,
                     values,
-                    pronunciation
+                    pronunciation,
+                    pronunciation ? session.pronunciationProviderLabel() : session.translationProviderLabel()
             );
             cacheResult(taskCacheKey, taskResult);
 
@@ -1782,6 +1822,8 @@ final class AiLyricsRepository {
                     requests,
                     session.pronunciationSnapshot(),
                     session.translationSnapshot(),
+                    session.pronunciationProviderLabel(),
+                    session.translationProviderLabel(),
                     settings,
                     rule,
                     sourceLang,
@@ -1868,11 +1910,42 @@ final class AiLyricsRepository {
         }
     }
 
+    private void reportSupplementProvider(String trackKey, Callback callback, boolean pronunciation, String label) {
+        mainHandler.post(() -> callback.onAiLyricsProviderChanged(trackKey, pronunciation, label));
+    }
+
+    private static String supplementProviderDescription(String pronunciationProvider, String translationProvider,
+            boolean pronunciationApplied, boolean translationApplied) {
+        List<String> labels = new ArrayList<>();
+        if (translationApplied) labels.add("translation" + providerSuffix(translationProvider));
+        if (pronunciationApplied) labels.add("pronunciation" + providerSuffix(pronunciationProvider));
+        return String.join(" / ", labels);
+    }
+
+    private static String providerSuffix(String provider) {
+        return provider == null || provider.trim().isEmpty() ? "" : " (" + provider.trim() + ")";
+    }
+
+    private static String cachedSupplementProviders(LyricsResult result) {
+        String labels = supplementProviderDescription(result.pronunciationProviderLabel,
+                result.translationProviderLabel, !result.pronunciationProviderLabel.isEmpty(),
+                !result.translationProviderLabel.isEmpty());
+        return labels.isEmpty() ? "provider not recorded" : labels;
+    }
+
+    private static boolean hasSupplementValues(List<String> values) {
+        if (values == null) return false;
+        for (String value : values) if (value != null && !value.trim().isEmpty()) return true;
+        return false;
+    }
+
     private LyricsResult buildMergedSupplementResult(
             LyricsResult baseResult,
             List<SupplementRequest> requests,
             List<String> pronunciation,
             List<String> translation,
+            String pronunciationProvider,
+            String translationProvider,
             AiLyricsSettings.Snapshot settings,
             AiLyricsSettings.LanguageRule rule,
             String sourceLang,
@@ -1904,11 +1977,10 @@ final class AiLyricsRepository {
         String detail = baseResult.detail;
         String suffix = "";
         if (settings != null && rule != null) {
-            boolean pronunciationApplied = rule.pronunciationEnabled && pronunciation != null && !pronunciation.isEmpty();
+            boolean pronunciationApplied = rule.pronunciationEnabled && hasSupplementValues(pronunciation);
             boolean translationApplied = rule.translationEnabled
                     && !translationSkipped
-                    && translation != null
-                    && !translation.isEmpty();
+                    && hasSupplementValues(translation);
             String taskLabel = translationSkipped
                     ? (pronunciationApplied
                     ? "translation skipped, pronunciation"
@@ -1920,28 +1992,37 @@ final class AiLyricsRepository {
                     : pronunciationApplied
                     ? "pronunciation"
                     : "none";
-            suffix = " AI " + settings.provider.label + " "
-                    + taskLabel
+            String providers = supplementProviderDescription(pronunciationProvider, translationProvider,
+                    pronunciationApplied, translationApplied);
+            suffix = " AI " + (providers.isEmpty() ? taskLabel : providers)
                     + " applied. source=" + sourceLang + ", pronunciation=" + pronunciationLang + ", target=" + targetLang + ".";
         }
-        return resultWithBaseIdentity(
+        LyricsResult result = resultWithBaseIdentity(
                 baseResult,
                 merged,
                 detail + suffix
         );
+        return result.withSupplementProviders(
+                hasSupplementValues(pronunciation) && result.hasSupplement(true)
+                        ? pronunciationProvider : baseResult.pronunciationProviderLabel,
+                hasSupplementValues(translation) && result.hasSupplement(false)
+                        ? translationProvider : baseResult.translationProviderLabel);
     }
 
     private LyricsResult buildTaskResult(
             LyricsResult baseResult,
             List<SupplementRequest> requests,
             List<String> values,
-            boolean pronunciation
+            boolean pronunciation,
+            String providerLabel
     ) {
         return buildMergedSupplementResult(
                 baseResult,
                 requests,
                 pronunciation ? values : Collections.emptyList(),
                 pronunciation ? Collections.emptyList() : values,
+                pronunciation ? providerLabel : "",
+                pronunciation ? "" : providerLabel,
                 null,
                 null,
                 "",

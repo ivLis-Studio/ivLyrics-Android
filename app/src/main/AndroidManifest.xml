@@ -8,6 +8,7 @@
     </queries>
 
     <application
+        android:name="kr.ivlis.ivlyricsandroid.StandaloneApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="ivLyrics"
@@ -17,7 +18,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:name=".MainActivity"
+            android:name="kr.ivlis.ivlyricsandroid.MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTop"
@@ -32,15 +33,15 @@
         </activity>
 
         <receiver
-            android:name=".PictureInPictureActionReceiver"
+            android:name="kr.ivlis.ivlyricsandroid.PictureInPictureActionReceiver"
             android:exported="false" />
 
         <receiver
-            android:name=".UpdateInstallResultReceiver"
+            android:name="kr.ivlis.ivlyricsandroid.UpdateInstallResultReceiver"
             android:exported="false" />
 
         <service
-            android:name=".NowPlayingService"
+            android:name="kr.ivlis.ivlyricsandroid.NowPlayingService"
             android:exported="false"
             android:label="ivLyrics media listener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -50,7 +51,7 @@
         </service>
 
         <service
-            android:name=".SpotifyForegroundAccessibilityService"
+            android:name="kr.ivlis.ivlyricsandroid.SpotifyForegroundAccessibilityService"
             android:exported="true"
             android:label="ivLyrics Spotify detector"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

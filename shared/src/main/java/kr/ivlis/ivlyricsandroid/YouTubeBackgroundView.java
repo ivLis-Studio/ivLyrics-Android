@@ -21,9 +21,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
-
 import java.io.ByteArrayInputStream;
 import java.util.Collections;
 import java.util.Locale;
@@ -137,13 +134,11 @@ public final class YouTubeBackgroundView extends FrameLayout {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(
-                    webView,
-                    YOUTUBE_COMMAND_FEEDBACK_SCRIPT,
-                    Collections.singleton("https://www.youtube-nocookie.com")
-            );
-        }
+        WebViewSupport.addDocumentStartJavaScript(
+                webView,
+                YOUTUBE_COMMAND_FEEDBACK_SCRIPT,
+                Collections.singleton("https://www.youtube-nocookie.com")
+        );
         webView.addJavascriptInterface(new Bridge(), "AndroidYouTubeBackground");
         addView(webView, new LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

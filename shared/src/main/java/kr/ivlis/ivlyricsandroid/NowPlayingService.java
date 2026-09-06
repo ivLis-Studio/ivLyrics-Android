@@ -44,6 +44,7 @@ public final class NowPlayingService extends NotificationListenerService {
     private static volatile TrackSnapshot latestSnapshot;
     private static volatile MediaController activeController;
     private static volatile MediaController.Callback activeCallback;
+    private static volatile boolean embeddedPlayback;
 
     private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, Bitmap> artworkCache = new ConcurrentHashMap<>();
@@ -71,6 +72,10 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static void requestRefresh(Context context) {
+        if (embeddedPlayback) {
+            refreshEmbeddedController();
+            return;
+        }
         NowPlayingService service = instance.get();
         if (service != null) {
             service.refreshSessions();
@@ -78,6 +83,7 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean isNotificationAccessEnabled(Context context) {
+        if (IvLyricsBridge.isEmbedded(context)) return true;
         String enabled = Settings.Secure.getString(
                 context.getContentResolver(),
                 "enabled_notification_listeners"
@@ -138,6 +144,93 @@ public final class NowPlayingService extends NotificationListenerService {
         if (controller == null) return false;
         controller.getTransportControls().seekTo(Math.max(0L, positionMs));
         return true;
+    }
+
+    /** Uses Spotify's own media session; no notification-listener permission is needed. */
+    static void attachEmbeddedController(MediaController controller) {
+        MAIN.post(() -> {
+            embeddedPlayback = true;
+            if (controller == null || (activeController != null
+                    && activeController.getSessionToken().equals(controller.getSessionToken()))) {
+                refreshEmbeddedController();
+                return;
+            }
+            if (activeController != null && activeCallback != null) {
+                activeController.unregisterCallback(activeCallback);
+            }
+            activeController = controller;
+            activeCallback = new MediaController.Callback() {
+                @Override public void onMetadataChanged(MediaMetadata metadata) { refreshEmbeddedController(); }
+                @Override public void onPlaybackStateChanged(PlaybackState state) { refreshEmbeddedController(); }
+                @Override public void onExtrasChanged(Bundle extras) { refreshEmbeddedController(); }
+                @Override public void onQueueTitleChanged(CharSequence title) { refreshEmbeddedController(); }
+                @Override public void onSessionDestroyed() {
+                    if (activeController == controller) {
+                        activeController = null;
+                        activeCallback = null;
+                        publishEmbeddedSnapshot(null);
+                    }
+                }
+            };
+            controller.registerCallback(activeCallback, MAIN);
+            refreshEmbeddedController();
+        });
+    }
+
+    static void publishEmbeddedSnapshot(TrackSnapshot snapshot) {
+        embeddedPlayback = true;
+        MAIN.post(() -> {
+            TrackSnapshot published = snapshot;
+            TrackSnapshot current = latestSnapshot;
+            // Session callbacks may have queued snapshots before native metadata resolved.
+            // Preserve only that identity's ISRC, while keeping the incoming playback clock.
+            if (snapshot != null && current != null && !snapshot.mediaId.isEmpty()
+                    && snapshot.mediaId.equals(current.mediaId)
+                    && snapshot.isrc.isEmpty() && !current.isrc.isEmpty()) {
+                published = snapshot.withIsrc(current.isrc);
+            }
+            latestSnapshot = published;
+            for (Listener listener : LISTENERS) listener.onNowPlayingChanged(published);
+        });
+    }
+
+    /** Enrich only the matching current track at commit time; never republish an older snapshot. */
+    static void enrichEmbeddedIsrc(String expectedMediaId, String isrc) {
+        Runnable commit = () -> {
+            TrackSnapshot current = latestSnapshot;
+            if (current == null || expectedMediaId == null || expectedMediaId.isEmpty()
+                    || !expectedMediaId.equals(current.mediaId)) return;
+            String normalized = TrackSnapshot.normalizeIsrc(isrc);
+            if (normalized.isEmpty() || normalized.equals(current.isrc)) return;
+            TrackSnapshot enriched = current.withIsrc(normalized);
+            latestSnapshot = enriched;
+            for (Listener listener : LISTENERS) listener.onNowPlayingChanged(enriched);
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) commit.run();
+        else MAIN.post(commit);
+    }
+
+    private static void refreshEmbeddedController() {
+        MediaController controller = activeController;
+        if (controller == null) return;
+        try {
+            TrackSnapshot next = buildMetadataSnapshot(controller);
+            TrackSnapshot previous = latestSnapshot;
+            if (previous != null && next.title.equals(previous.title) && next.artist.equals(previous.artist)
+                    && Math.abs(next.durationMs - previous.durationMs) < 1000L
+                    && (next.mediaId.isEmpty() || next.mediaId.equals(previous.mediaId))) {
+                // Platform notifications sometimes omit URI/ISRC available in PlayerState.
+                next = new TrackSnapshot(next.title, next.artist, next.album, next.packageName,
+                        firstNonEmpty(next.mediaId, previous.mediaId), firstNonEmpty(next.isrc, previous.isrc),
+                        next.durationMs, next.positionMs, next.lastPositionUpdateElapsedMs,
+                        next.playbackSpeed, next.playing, firstNonNull(next.artwork, previous.artwork),
+                        firstNonEmpty(next.artworkUri, previous.artworkUri), next.spotifyAutomix,
+                        next.automixFadeInStartMs, next.automixFadeInCueMs, next.automixFadeOverlapMs);
+            }
+            publishEmbeddedSnapshot(next.hasUsableMetadata() ? next : null);
+        } catch (RuntimeException ignored) {
+            // A releasing session must never crash the host player.
+        }
     }
 
     @Override
@@ -291,6 +384,25 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     private TrackSnapshot buildSnapshot(MediaController controller) {
+        TrackSnapshot snapshot = buildMetadataSnapshot(controller);
+        Bitmap artwork = snapshot.artwork;
+        if (!snapshot.artworkUri.isEmpty()) {
+            Bitmap uriArtwork = artworkCache.get(snapshot.artworkUri);
+            if (isHigherResolutionArtwork(uriArtwork, artwork)) {
+                artwork = uriArtwork;
+            } else if (uriArtwork == null) {
+                requestArtworkLoad(controller, snapshot.artworkUri);
+            }
+        }
+        if (artwork == snapshot.artwork) return snapshot;
+        return new TrackSnapshot(snapshot.title, snapshot.artist, snapshot.album,
+                snapshot.packageName, snapshot.mediaId, snapshot.isrc, snapshot.durationMs,
+                snapshot.positionMs, snapshot.lastPositionUpdateElapsedMs, snapshot.playbackSpeed,
+                snapshot.playing, artwork, snapshot.artworkUri, snapshot.spotifyAutomix,
+                snapshot.automixFadeInStartMs, snapshot.automixFadeInCueMs, snapshot.automixFadeOverlapMs);
+    }
+
+    private static TrackSnapshot buildMetadataSnapshot(MediaController controller) {
         MediaMetadata metadata = controller.getMetadata();
         PlaybackState state = controller.getPlaybackState();
         boolean playing = state != null && (
@@ -341,14 +453,6 @@ public final class NowPlayingService extends NotificationListenerService {
                         )
                 )
         );
-        if (!artworkUri.isEmpty()) {
-            Bitmap uriArtwork = artworkCache.get(artworkUri);
-            if (isHigherResolutionArtwork(uriArtwork, artwork)) {
-                artwork = uriArtwork;
-            } else if (uriArtwork == null) {
-                requestArtworkLoad(controller, artworkUri);
-            }
-        }
         SpotifyAutomixMetadata automix = spotifyAutomixMetadata(controller, metadata);
 
         return new TrackSnapshot(
@@ -476,7 +580,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private String findIsrc(MediaMetadata metadata) {
+    private static String findIsrc(MediaMetadata metadata) {
         if (metadata == null) {
             return "";
         }
@@ -507,7 +611,7 @@ public final class NowPlayingService extends NotificationListenerService {
         return "";
     }
 
-    private String metadataString(MediaMetadata metadata, String key) {
+    private static String metadataString(MediaMetadata metadata, String key) {
         if (metadata == null || key == null) {
             return "";
         }
@@ -519,7 +623,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private SpotifyAutomixMetadata spotifyAutomixMetadata(
+    private static SpotifyAutomixMetadata spotifyAutomixMetadata(
             MediaController controller,
             MediaMetadata metadata
     ) {
@@ -582,14 +686,14 @@ public final class NowPlayingService extends NotificationListenerService {
         );
     }
 
-    private boolean isEnabledAutomixMode(String value) {
+    private static boolean isEnabledAutomixMode(String value) {
         return value != null
                 && !value.isEmpty()
                 && !"off".equals(value)
                 && !"none".equals(value);
     }
 
-    private boolean isSpotifyDjContext(String title, String uri) {
+    private static boolean isSpotifyDjContext(String title, String uri) {
         String normalizedTitle = title == null
                 ? ""
                 : title.trim().toLowerCase(Locale.ROOT);
@@ -600,7 +704,7 @@ public final class NowPlayingService extends NotificationListenerService {
                 .contains(SPOTIFY_DJ_PLAYLIST_ID.toLowerCase(Locale.ROOT));
     }
 
-    private long namedPlaybackLong(
+    private static long namedPlaybackLong(
             MediaMetadata metadata,
             Bundle extras,
             String targetKey
@@ -620,7 +724,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private String firstNamedPlaybackValue(
+    private static String firstNamedPlaybackValue(
             MediaMetadata metadata,
             Bundle extras,
             String targetKey
@@ -657,7 +761,7 @@ public final class NowPlayingService extends NotificationListenerService {
         return "";
     }
 
-    private boolean playbackMetadataKeyMatches(String key, String targetKey) {
+    private static boolean playbackMetadataKeyMatches(String key, String targetKey) {
         String normalizedKey = key == null ? "" : key.trim().toLowerCase(Locale.ROOT);
         String normalizedTarget = targetKey == null ? "" : targetKey.trim().toLowerCase(Locale.ROOT);
         return normalizedKey.equals(normalizedTarget)
@@ -685,7 +789,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private boolean isStringMetadataKey(String key) {
+    private static boolean isStringMetadataKey(String key) {
         if (key == null) {
             return false;
         }
@@ -711,7 +815,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private Bitmap metadataBitmap(MediaMetadata metadata, String key) {
+    private static Bitmap metadataBitmap(MediaMetadata metadata, String key) {
         if (metadata == null || key == null) {
             return null;
         }
@@ -722,7 +826,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private Bitmap descriptionIconBitmap(MediaMetadata metadata) {
+    private static Bitmap descriptionIconBitmap(MediaMetadata metadata) {
         if (metadata == null) {
             return null;
         }
@@ -734,7 +838,7 @@ public final class NowPlayingService extends NotificationListenerService {
         }
     }
 
-    private String descriptionIconUri(MediaMetadata metadata) {
+    private static String descriptionIconUri(MediaMetadata metadata) {
         if (metadata == null) {
             return "";
         }

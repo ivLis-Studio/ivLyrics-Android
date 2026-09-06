@@ -1,0 +1,24 @@
+# ivLyrics for Spotify
+
+This module replaces Spotify's player lyrics card and full lyrics page using
+the same `:shared` library as the standalone Android app. The original Spotify
+APK, login and package are not changed by this module.
+
+Build from the repository root with `./build.sh :spotify-module:assembleRelease`.
+Output: `spotify-module/build/outputs/apk/release/spotify-module-release.apk`.
+The development module currently uses the local Android debug signing key; keep
+the same key when installing updates.
+
+Install the module, enable **ivLyrics for Spotify** in LSPosed and select Spotify
+(`com.spotify.music`) as the scope. Force-stop Spotify before updating the module
+APK, then reopen Spotify. The current physical-device setup uses rooted LSPosed.
+LSPatch is a compatible legacy loader path but requires patching the host; this
+repository migration does not require changing the installed Spotify app.
+
+The version guard recognizes Spotify **9.1.80.2221** and **9.1.42.2058**. Other
+versions are left untouched and logged as unsupported. Recognition alone does
+not establish playback validation on every Android version or loader.
+
+See [architecture](../ARCHITECTURE.md) for the host interfaces, resource context,
+WebKit isolation, build outputs and editing boundaries. No source-copy or
+source-replacement build step is used.

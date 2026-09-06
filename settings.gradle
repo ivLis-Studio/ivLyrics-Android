@@ -11,8 +11,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        exclusiveContent {
+            forRepository { maven { url "https://api.xposed.info/" } }
+            filter { includeGroup "de.robv.android.xposed" }
+        }
     }
 }
 
 rootProject.name = "ivLyricsAndroid"
-include ":app"
+include ":shared", ":app", ":spotify-module"

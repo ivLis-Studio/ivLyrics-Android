@@ -166,6 +166,14 @@ public final class LyricsView extends View {
     private int centerTransitionTargetIndex = Integer.MIN_VALUE;
     private long centerTransitionStartUptimeMs;
     private long centerTransitionDurationMs = LYRICS_CENTERING_DURATION_MS;
+    private final List<DisplayLine> rowReflowLines = new ArrayList<>();
+    private boolean rowReflowPending;
+    private boolean rowReflowActive;
+    private long rowReflowStartUptimeMs;
+    private long rowReflowDurationMs;
+    private float rowReflowInitialRemaining = 1f;
+    private float rowReflowLastRemaining;
+    private int rowReflowCenterTargetIndex = Integer.MIN_VALUE;
     private int currentDisplayLineCount;
     private long trackDurationMs;
     private float verticalCenterBias = 0.50f;
@@ -212,6 +220,7 @@ public final class LyricsView extends View {
     }
 
     void setResult(LyricsResult result) {
+        clearRowReflow();
         boolean softUpdate = canSoftUpdateResult(result);
         if (result == null || result.lines.isEmpty()) {
             lines = Collections.emptyList();
@@ -573,6 +582,11 @@ public final class LyricsView extends View {
         }
         boolean smoothSeekCenter = smoothNextSeekCenter && centerInitialized;
         smoothNextSeekCenter = false;
+        if (smoothSeekCenter || nextPositionMs + 120L < this.positionMs
+                || Math.abs(nextPositionMs - this.positionMs) > 1600L) {
+            clearRowReflow();
+            invalidateFrameGroupCache();
+        }
         if (nextPositionMs + 120L < this.positionMs || Math.abs(nextPositionMs - this.positionMs) > 1600L) {
             smoothSeekCenterActive = smoothSeekCenter;
             centerInitialized = smoothSeekCenter;
@@ -844,11 +858,18 @@ public final class LyricsView extends View {
                 : activeVocalAnchorOffset(layoutAt(layouts, activeIndex));
         updateAnimatedVocalAnchorOffset(targetVocalAnchorOffset);
         float anchoredCenterY = centerY - animatedVocalAnchorOffsetPx;
+        prepareRowReflow();
+        float reflowRemaining = rowReflowRemaining();
 
         beginHitTargetFrame();
         int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
             float baselineCenter = anchoredCenterY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
+            RowReflow reflow = layout.displayLine.reflow;
+            if (reflow != null) {
+                baselineCenter += reflow.offset(baselineCenter, reflowRemaining);
+            }
+            layout.baselineCenter = baselineCenter;
             if (baselineCenter + layout.height * 0.5f < -blockGap
                     || baselineCenter - layout.height * 0.5f > getHeight() + blockGap) {
                 continue;
@@ -857,6 +878,9 @@ public final class LyricsView extends View {
             float fadeAlpha = layout.active
                     ? 1f
                     : topFadeAlpha(baselineCenter, layout.height);
+            if (reflow != null) {
+                fadeAlpha *= reflow.opacity(reflowRemaining);
+            }
             drawGroups(canvas, layout.groups, baselineCenter, fadeAlpha);
         }
         applyBottomEdgeFade(canvas);
@@ -869,7 +893,7 @@ public final class LyricsView extends View {
         if (MotionPreferences.animationsEnabled(getContext())
                 && (shouldRenderKaraokeTiming() || activeInterlude || Math.abs(activeIndex - animatedCenterIndex) > 0.002f)) {
             postInvalidateOnAnimation();
-        } else if (vocalAnchorMoving) {
+        } else if (vocalAnchorMoving || rowReflowActive) {
             postInvalidateOnAnimation();
         }
     }
@@ -878,6 +902,7 @@ public final class LyricsView extends View {
     protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
         if (width != oldWidth || height != oldHeight) {
+            clearRowReflow();
             rowLayoutCache.clear();
             invalidateFrameGroupCache();
             releaseHitTargets();
@@ -3801,11 +3826,188 @@ public final class LyricsView extends View {
             LyricsLine line = lines.get(0);
             displayLines.add(DisplayLine.real(line, 0, 0, interludeInfoForLine(line, 0, lineCount)));
         }
+        remapDisplayCenter(cachedDisplayLines, displayLines);
         cachedDisplayLines = displayLines;
         displayLineCacheStartMs = cacheStartMs;
         displayLineCacheEndMs = cacheEndMs;
         displayLineCacheValid = true;
         return cachedDisplayLines;
+    }
+
+    private void remapDisplayCenter(List<DisplayLine> previous, List<DisplayLine> next) {
+        if (previous.isEmpty() || next.isEmpty()) {
+            return;
+        }
+        int[] previousToNext = new int[previous.size()];
+        Arrays.fill(previousToNext, -1);
+        boolean changed = previous.size() != next.size();
+        int nextSearchStart = 0;
+        for (int previousIndex = 0; previousIndex < previous.size(); previousIndex++) {
+            DisplayLine previousLine = previous.get(previousIndex);
+            for (int nextIndex = nextSearchStart; nextIndex < next.size(); nextIndex++) {
+                if (sameDisplayIdentity(previousLine, next.get(nextIndex))) {
+                    previousToNext[previousIndex] = nextIndex;
+                    nextSearchStart = nextIndex + 1;
+                    break;
+                }
+            }
+            changed |= previousToNext[previousIndex] != previousIndex;
+        }
+        if (!changed) {
+            return;
+        }
+
+        // Interludes occupy a slot only while they are visible. Keep animation
+        // coordinates attached to the same lyric rows when those slots change.
+        DisplayIndexMapping mapping = new DisplayIndexMapping(previousToNext, next.size());
+        scheduleRowReflow(previous, next, mapping);
+        float mappedStart = mapping.map(centerTransitionStartIndex);
+        if (centerInitialized && !manualScrollActive) {
+            float progress = lyricsCenteringProgress((lastFrameMs - centerTransitionStartUptimeMs)
+                    / (float) Math.max(1L, centerTransitionDurationMs));
+            mappedStart = mapping.mapTransitionStart(centerTransitionStartIndex,
+                    centerTransitionTargetIndex, animatedCenterIndex, progress);
+        }
+        animatedCenterIndex = mapping.map(animatedCenterIndex);
+        centerTransitionStartIndex = mappedStart;
+        centerTransitionTargetIndex = mapping.mapTarget(centerTransitionTargetIndex);
+        manualCenterIndex = mapping.map(manualCenterIndex);
+        currentDisplayLineCount = next.size();
+        if (manualScroller != null && !manualScroller.isFinished()) {
+            // OverScroller still contains pixels in the old index coordinate system.
+            manualScroller.abortAnimation();
+        }
+        pressedTarget = null;
+    }
+
+    private void scheduleRowReflow(List<DisplayLine> previous, List<DisplayLine> next,
+            DisplayIndexMapping mapping) {
+        if (previousFrameLayouts.isEmpty()) {
+            clearRowReflow();
+            return;
+        }
+        boolean[] surviving = new boolean[next.size()];
+        for (int index = 0; index < previous.size(); index++) {
+            int mapped = mapping.mapTarget(index);
+            if (mapped >= 0) surviving[mapped] = true;
+        }
+        boolean insertedInterlude = false;
+        for (int index = 0; index < next.size(); index++) {
+            insertedInterlude |= !surviving[index] && next.get(index).isInterlude();
+        }
+        if (!insertedInterlude && !rowReflowActive && !rowReflowPending) {
+            return;
+        }
+        clearRowReflow();
+        // Only rows prepared for the previous frame have a screen position to
+        // preserve. There is no whole-song identity search in the animation loop.
+        for (LineLayout layout : previousFrameLayouts) {
+            int mapped = mapping.mapTarget(layout.index);
+            if (mapped < 0 || Float.isNaN(layout.baselineCenter)) continue;
+            DisplayLine line = next.get(mapped);
+            line.reflow = new RowReflow(layout.baselineCenter, false);
+            rowReflowLines.add(line);
+        }
+        for (int index = 0; index < next.size(); index++) {
+            DisplayLine line = next.get(index);
+            if (!surviving[index] && line.isInterlude()) {
+                line.reflow = new RowReflow(Float.NaN, true);
+                rowReflowLines.add(line);
+            }
+        }
+        rowReflowPending = !rowReflowLines.isEmpty();
+    }
+
+    private void prepareRowReflow() {
+        if (!rowReflowPending && !rowReflowActive) return;
+        if (!MotionPreferences.animationsEnabled(getContext())) {
+            clearRowReflow();
+            return;
+        }
+        if (!rowReflowPending) {
+            if (rowReflowCenterTargetIndex != Integer.MIN_VALUE
+                    && (rowReflowCenterTargetIndex != centerTransitionTargetIndex
+                    || rowReflowStartUptimeMs != centerTransitionStartUptimeMs
+                    || rowReflowDurationMs != centerTransitionDurationMs)) {
+                if (manualScrollActive || !centerInitialized
+                        || centerTransitionTargetIndex == Integer.MIN_VALUE
+                        || rowReflowLastRemaining <= 0f
+                        || animatedCenterIndex == centerTransitionTargetIndex) {
+                    clearRowReflow();
+                    return;
+                }
+                // A short interlude can hand off to the next lyric before this
+                // reflow ends. Retain the last rendered offset, then follow the
+                // new center curve instead of completing the old curve alone.
+                rowReflowStartUptimeMs = centerTransitionStartUptimeMs;
+                rowReflowDurationMs = centerTransitionDurationMs;
+                rowReflowCenterTargetIndex = centerTransitionTargetIndex;
+                float remaining = 1f - lyricsCenteringProgress(
+                        (SystemClock.uptimeMillis() - rowReflowStartUptimeMs)
+                                / (float) Math.max(1L, rowReflowDurationMs));
+                rowReflowInitialRemaining = Math.max(0.0001f, remaining)
+                        / rowReflowLastRemaining;
+            }
+            return;
+        }
+        rowReflowPending = false;
+        rowReflowActive = true;
+        long now = SystemClock.uptimeMillis();
+        rowReflowStartUptimeMs = now;
+        rowReflowDurationMs = LYRICS_CENTERING_DURATION_MS;
+        rowReflowInitialRemaining = 1f;
+        rowReflowCenterTargetIndex = Integer.MIN_VALUE;
+        if (!manualScrollActive && centerInitialized
+                && centerTransitionTargetIndex != Integer.MIN_VALUE
+                && centerTransitionStartUptimeMs + centerTransitionDurationMs > now
+                && Math.abs(animatedCenterIndex - centerTransitionTargetIndex) > 0.002f) {
+            rowReflowStartUptimeMs = centerTransitionStartUptimeMs;
+            rowReflowDurationMs = centerTransitionDurationMs;
+            rowReflowCenterTargetIndex = centerTransitionTargetIndex;
+            rowReflowInitialRemaining = Math.max(0.0001f, 1f - lyricsCenteringProgress(
+                    (now - rowReflowStartUptimeMs) / (float) Math.max(1L, rowReflowDurationMs)));
+        }
+    }
+
+    private float rowReflowRemaining() {
+        if (!rowReflowActive) return 0f;
+        if (rowReflowCenterTargetIndex != Integer.MIN_VALUE
+                && rowReflowCenterTargetIndex == centerTransitionTargetIndex
+                && rowReflowStartUptimeMs == centerTransitionStartUptimeMs
+                && rowReflowDurationMs == centerTransitionDurationMs
+                && animatedCenterIndex == centerTransitionTargetIndex) {
+            // Centering snaps its final sub-pixel distance before its clock ends.
+            // Finish the compensation in that same frame so it cannot pass the target.
+            clearRowReflow();
+            return 0f;
+        }
+        float progress = lyricsCenteringProgress((SystemClock.uptimeMillis() - rowReflowStartUptimeMs)
+                / (float) Math.max(1L, rowReflowDurationMs));
+        float remaining = clamp((1f - progress) / rowReflowInitialRemaining);
+        rowReflowLastRemaining = remaining;
+        if (remaining <= 0f) clearRowReflow();
+        return remaining;
+    }
+
+    private void clearRowReflow() {
+        for (DisplayLine line : rowReflowLines) line.reflow = null;
+        rowReflowLines.clear();
+        rowReflowPending = false;
+        rowReflowActive = false;
+        rowReflowLastRemaining = 0f;
+        rowReflowCenterTargetIndex = Integer.MIN_VALUE;
+    }
+
+    private static boolean sameDisplayIdentity(DisplayLine first, DisplayLine second) {
+        if (first.sourceIndex != second.sourceIndex
+                || (first.line == null) != (second.line == null)
+                || first.isInterlude() != second.isInterlude()) {
+            return false;
+        }
+        return !first.isInterlude()
+                || (first.interludeInfo.startTimeMs == second.interludeInfo.startTimeMs
+                && first.interludeInfo.endTimeMs == second.interludeInfo.endTimeMs
+                && first.interludeInfo.kind.equals(second.interludeInfo.kind));
     }
 
     private long cacheIntervalStart(InterludeInfo info, long currentStartMs) {
@@ -4762,11 +4964,94 @@ public final class LyricsView extends View {
         return (sin(now, periodMs) + 1f) * 0.5f;
     }
 
+    /** Maps view coordinates through inserted/removed rows without changing their easing. */
+    static final class DisplayIndexMapping {
+        private final int[] previousToNext;
+        private final int nextCount;
+
+        DisplayIndexMapping(int[] previousToNext, int nextCount) {
+            this.previousToNext = previousToNext;
+            this.nextCount = Math.max(0, nextCount);
+        }
+
+        float map(float previousPosition) {
+            int before = -1;
+            int after = -1;
+            for (int index = 0; index < previousToNext.length; index++) {
+                if (previousToNext[index] < 0) continue;
+                if (index <= previousPosition) before = index;
+                if (index >= previousPosition) {
+                    after = index;
+                    break;
+                }
+            }
+            float mapped;
+            if (before >= 0 && after >= 0 && before != after) {
+                float fraction = (previousPosition - before) / (after - before);
+                mapped = previousToNext[before]
+                        + fraction * (previousToNext[after] - previousToNext[before]);
+            } else if (before >= 0) {
+                mapped = previousPosition + previousToNext[before] - before;
+            } else if (after >= 0) {
+                mapped = previousPosition + previousToNext[after] - after;
+            } else {
+                mapped = previousPosition;
+            }
+            return Math.max(0f, Math.min(Math.max(0, nextCount - 1), mapped));
+        }
+
+        int mapTarget(int previousIndex) {
+            return previousIndex >= 0 && previousIndex < previousToNext.length
+                    && previousToNext[previousIndex] >= 0
+                    ? previousToNext[previousIndex] : Integer.MIN_VALUE;
+        }
+
+        float mapTransitionStart(float previousStart, int previousTarget,
+                float previousCurrent, float easedProgress) {
+            float mappedStart = map(previousStart);
+            int mappedTarget = mapTarget(previousTarget);
+            float progress = Math.max(0f, Math.min(1f, easedProgress));
+            if (mappedTarget == Integer.MIN_VALUE || progress >= 0.9999f) {
+                return mappedStart;
+            }
+            float mappedCurrent = map(previousCurrent);
+            float expectedCurrent = mappedStart + (mappedTarget - mappedStart) * progress;
+            // Mapping across more than one interval is piecewise linear. Keep a
+            // smooth seek at its current point without restarting its easing clock.
+            return Math.abs(expectedCurrent - mappedCurrent) > 0.002f
+                    ? (mappedCurrent - mappedTarget * progress) / (1f - progress)
+                    : mappedStart;
+        }
+    }
+
+    static final class RowReflow {
+        private final float previousBaseline;
+        private final boolean entering;
+        private float offset = Float.NaN;
+
+        RowReflow(float previousBaseline, boolean entering) {
+            this.previousBaseline = previousBaseline;
+            this.entering = entering;
+        }
+
+        float offset(float baseline, float remaining) {
+            if (Float.isNaN(offset)) {
+                offset = Float.isNaN(previousBaseline) ? 0f : previousBaseline - baseline;
+            }
+            return offset * remaining;
+        }
+
+        float opacity(float remaining) {
+            return entering ? 1f - remaining : 1f;
+        }
+    }
+
     private static final class DisplayLine {
         final LyricsLine line;
         final int sourceIndex;
         final int displayIndex;
         final InterludeInfo interludeInfo;
+        RowReflow reflow;
 
         static DisplayLine real(LyricsLine line, int sourceIndex, int displayIndex, InterludeInfo interludeInfo) {
             return new DisplayLine(line, sourceIndex, displayIndex, interludeInfo);
@@ -4998,6 +5283,7 @@ public final class LyricsView extends View {
         float distance;
         List<DrawGroup> groups = Collections.emptyList();
         float height;
+        float baselineCenter = Float.NaN;
 
         LineLayout() {
         }
@@ -5018,6 +5304,7 @@ public final class LyricsView extends View {
             this.distance = distance;
             this.groups = groups == null ? Collections.emptyList() : groups;
             this.height = Math.max(1f, height);
+            this.baselineCenter = Float.NaN;
         }
 
         void clearReferences() {
