@@ -66,6 +66,9 @@ jobs:
           python3 tests/run_card_presence_regression.py
           python3 tests/run_karaoke_controller_regression.py
           python3 tests/run_inline_gate_regression.py
+          python3 tests/run_inline_hooks_regression.py
+          python3 tests/run_inline_lifecycle_regression.py
+          python3 tests/run_supplement_loading_regression.py
           python3 -m unittest discover -s .github/scripts -p 'test_*.py'
 
       - name: Verify both signed release APKs with a temporary CI key

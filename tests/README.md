@@ -11,6 +11,10 @@ python3 tests/run_provider_overlap_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_card_presence_regression.py
 python3 tests/run_karaoke_controller_regression.py
+python3 tests/run_inline_gate_regression.py
+python3 tests/run_inline_hooks_regression.py
+python3 tests/run_inline_lifecycle_regression.py
+python3 tests/run_supplement_loading_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
@@ -25,6 +29,17 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The inline hook regression runs production Xposed callbacks against synthetic
+Spotify 9.1.80 class shapes, including both upstream menu availability checks,
+DJ/mixing, saved visibility preferences, video restrictions, and menu-scope cleanup.
+The inline lifecycle regression executes the production preview update method
+against synthetic playback and view collaborators. It checks restoration after DJ
+speech, missing metadata, and toggling the preview, including loading and no-lyrics
+states. The supplement-loading regression uses the production AI repository with
+a controlled callback queue to check streaming/completion races, independent
+pronunciation and translation progress, errors, and disabled language rules.
+These checks run on the host and do not start an emulator or operate a device.
 
 The card-presence regression runs the production Spotify module list helper with
 synthetic cards. It checks insertion when Spotify supplies no lyrics card, placing
