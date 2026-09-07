@@ -107,6 +107,7 @@ final class AppI18n {
         addManualLrclibSearchStrings(languages);
         addSpotifyShortcutStrings(languages);
         addDisplayPowerStrings(languages);
+        addPlayerCardBackgroundStrings(languages);
         addLandscapeNoLyricsStrings(languages);
         addUpdateStrings(languages);
         addUnifiedOutputLanguageStrings(languages);
@@ -3971,6 +3972,39 @@ final class AppI18n {
                 "onboarding.preview.line4", previewTip,
                 "lyrics.menu_tip", menuTip
         };
+    }
+
+    private static void addPlayerCardBackgroundStrings(Map<String, Map<String, String>> languages) {
+        String[][] translations = {
+                {"ko", "플레이어 가사 위젯 배경 표시", "끄면 Spotify 플레이어 하단의 가사 위젯 배경을 투명하게 표시합니다."},
+                {"en", "Player lyrics widget background", "Turn off to make the lyrics widget background transparent at the bottom of the Spotify player."},
+                {"zh-CN", "播放器歌词组件背景", "关闭后，Spotify 播放器底部的歌词组件背景将变为透明。"},
+                {"zh-TW", "播放器歌詞小工具背景", "關閉後，Spotify 播放器底部的歌詞小工具背景會變為透明。"},
+                {"ja", "プレイヤーの歌詞ウィジェット背景", "オフにすると、Spotifyプレイヤー下部の歌詞ウィジェットの背景が透明になります。"},
+                {"hi", "प्लेयर के गीत विजेट की पृष्ठभूमि", "Spotify प्लेयर के नीचे गीत विजेट की पृष्ठभूमि पारदर्शी बनाने के लिए बंद करें।"},
+                {"es", "Fondo del widget de letras", "Desactívalo para que el fondo del widget de letras de la parte inferior del reproductor de Spotify sea transparente."},
+                {"fr", "Arrière-plan du widget de paroles", "Désactivez cette option pour rendre transparent le fond du widget de paroles en bas du lecteur Spotify."},
+                {"ar", "خلفية أداة كلمات الأغنية", "أوقف هذا الخيار لجعل خلفية أداة كلمات الأغنية أسفل مشغّل Spotify شفافة."},
+                {"fa", "پس‌زمینهٔ ابزارک متن آهنگ", "برای شفاف شدن پس‌زمینهٔ ابزارک متن آهنگ در پایین پخش‌کنندهٔ Spotify، این گزینه را خاموش کنید."},
+                {"de", "Hintergrund des Liedtext-Widgets", "Deaktiviere diese Option, um den Hintergrund des Liedtext-Widgets unten im Spotify-Player transparent zu machen."},
+                {"ru", "Фон виджета текста песни", "Отключите, чтобы сделать фон виджета текста песни внизу плеера Spotify прозрачным."},
+                {"sv", "Bakgrund för låttextwidgeten", "Stäng av för att göra bakgrunden för låttextwidgeten längst ned i Spotify-spelaren genomskinlig."},
+                {"pt", "Fundo do widget de letras", "Desative para tornar transparente o fundo do widget de letras na parte inferior do player do Spotify."},
+                {"bn", "প্লেয়ারের গানের কথা উইজেটের পটভূমি", "Spotify প্লেয়ারের নিচে গানের কথা উইজেটের পটভূমি স্বচ্ছ করতে এটি বন্ধ করুন।"},
+                {"it", "Sfondo del widget dei testi", "Disattiva per rendere trasparente lo sfondo del widget dei testi nella parte inferiore del lettore Spotify."},
+                {"th", "พื้นหลังวิดเจ็ตเนื้อเพลง", "ปิดเพื่อให้พื้นหลังวิดเจ็ตเนื้อเพลงด้านล่างของเครื่องเล่น Spotify โปร่งใส"},
+                {"vi", "Nền tiện ích lời bài hát", "Tắt để làm trong suốt nền tiện ích lời bài hát ở cuối trình phát Spotify."},
+                {"id", "Latar belakang widget lirik", "Nonaktifkan agar latar belakang widget lirik di bagian bawah pemutar Spotify menjadi transparan."},
+                {"ms", "Latar belakang widget lirik", "Matikan untuk menjadikan latar belakang widget lirik di bahagian bawah pemain Spotify telus."},
+                {"tr", "Şarkı sözü bileşeninin arka planı", "Spotify oynatıcısının altındaki şarkı sözü bileşeninin arka planını şeffaf yapmak için kapatın."},
+                {"cs", "Pozadí widgetu s textem písně", "Vypnutím zprůhledníte pozadí widgetu s textem písně ve spodní části přehrávače Spotify."}
+        };
+        for (String[] values : translations) {
+            Map<String, String> copy = new LinkedHashMap<>(languages.get(values[0]));
+            copy.put("setting.player_card_background", values[1]);
+            copy.put("setting.player_card_background_desc", values[2]);
+            languages.put(values[0], Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addDisplayPowerStrings(Map<String, Map<String, String>> languages) {

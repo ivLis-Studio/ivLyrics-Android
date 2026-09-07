@@ -51,6 +51,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_KARAOKE_DATA_AS_LINE_SYNCED = "karaoke_data_as_line_synced";
     static final String KEY_KARAOKE_DISPLAY_GRANULARITY = "karaoke_display_granularity_v1";
     static final String KEY_BACKGROUND_MODE = "background_mode";
+    static final String KEY_PLAYER_CARD_BACKGROUND_ENABLED = "player_card_background_enabled";
     static final String KEY_BACKGROUND_BRIGHTNESS = "background_brightness";
     static final String KEY_BACKGROUND_BLUR = "background_blur";
     static final String KEY_BACKGROUND_NOISE = "background_noise";
@@ -165,7 +166,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_TEMPERATURE, KEY_PREVIEW_MODE, KEY_PREVIEW_ITEMS, KEY_AUTO_INSTRUMENTAL_BREAK,
             KEY_INTERLUDE_LABELS_ENABLED, KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, KEY_KARAOKE_BOUNCE_EFFECT,
             KEY_KARAOKE_DATA_AS_LINE_SYNCED, KEY_KARAOKE_DISPLAY_GRANULARITY,
-            KEY_BACKGROUND_MODE, KEY_BACKGROUND_BRIGHTNESS,
+            KEY_BACKGROUND_MODE, KEY_BACKGROUND_BRIGHTNESS, KEY_PLAYER_CARD_BACKGROUND_ENABLED,
             KEY_BACKGROUND_BLUR, KEY_BACKGROUND_NOISE, KEY_BACKGROUND_REDUCE_MOTION,
             KEY_BACKGROUND_SOLID_COLOR, KEY_BACKGROUND_VIDEO_SCALE, KEY_LANDSCAPE_AUTO_HIDE_CONTROLS,
             KEY_LANDSCAPE_CENTER_NO_LYRICS, KEY_KEEP_SCREEN_ON, KEY_PIP_SHOW_ARTWORK,
@@ -850,6 +851,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setBackgroundMode(String mode) {
         prefs.edit().putString(KEY_BACKGROUND_MODE, normalizeBackgroundMode(mode)).apply();
+    }
+
+    boolean playerCardBackgroundEnabled() {
+        return prefs.getBoolean(KEY_PLAYER_CARD_BACKGROUND_ENABLED, true);
+    }
+
+    void setPlayerCardBackgroundEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PLAYER_CARD_BACKGROUND_ENABLED, enabled).apply();
     }
 
     void setBackgroundBrightness(int brightness) {

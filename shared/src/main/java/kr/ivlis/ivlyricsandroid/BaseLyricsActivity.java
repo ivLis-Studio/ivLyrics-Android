@@ -341,6 +341,7 @@ public class BaseLyricsActivity extends Activity implements
     private Switch landscapeAutoHideControlsSwitch;
     private Switch landscapeCenterNoLyricsSwitch;
     private Switch keepScreenOnSwitch;
+    private Switch playerCardBackgroundSwitch;
     private Switch pipShowArtworkSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
@@ -4729,6 +4730,19 @@ public class BaseLyricsActivity extends Activity implements
 
         settingsAppearancePage.addView(sectionTitle(ui("section.background")), topMargin(matchWrap(), dp(24)));
         settingsAppearancePage.addView(sectionDescription(ui("section.background_desc")), topMargin(matchWrap(), dp(8)));
+
+        if (IvLyricsBridge.isEmbedded(this)) {
+            playerCardBackgroundSwitch = settingSwitch(
+                    ui("setting.player_card_background"),
+                    ui("setting.player_card_background_desc")
+            );
+            playerCardBackgroundSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (suppressSettingsEvents || aiLyricsSettings == null) return;
+                aiLyricsSettings.setPlayerCardBackgroundEnabled(isChecked);
+                showSavedToast(ui("toast.settings_saved"));
+            });
+            settingsAppearancePage.addView(playerCardBackgroundSwitch, topMargin(matchWrap(), dp(12)));
+        }
 
         backgroundModeButtonsContainer = new LinearLayout(this);
         backgroundModeButtonsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -10462,6 +10476,11 @@ public class BaseLyricsActivity extends Activity implements
         if (keepScreenOnSwitch != null) {
             suppressSettingsEvents = true;
             keepScreenOnSwitch.setChecked(snapshot.keepScreenOn);
+            suppressSettingsEvents = false;
+        }
+        if (playerCardBackgroundSwitch != null) {
+            suppressSettingsEvents = true;
+            playerCardBackgroundSwitch.setChecked(aiLyricsSettings.playerCardBackgroundEnabled());
             suppressSettingsEvents = false;
         }
         if (pipShowArtworkSwitch != null) {

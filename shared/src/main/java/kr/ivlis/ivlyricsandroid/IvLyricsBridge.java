@@ -314,7 +314,10 @@ public final class IvLyricsBridge {
                 lyrics.setJapaneseFuriganaEnabled(settings.japaneseFuriganaEnabled);
                 lyrics.setUiText(state.ui("status.lyrics_loading"), state.ui("lyrics.empty_none"),
                         state.ui("interlude.prelude"), state.ui("interlude.break"), state.ui("interlude.postlude"));
-                background.setBackgroundSettings(settings.background);
+                boolean showBackground = state.settings.playerCardBackgroundEnabled();
+                background.setVisibility(showBackground ? View.VISIBLE : View.GONE);
+                if (showBackground) background.setBackgroundSettings(settings.background);
+                else background.setArtwork(null, "");
                 setContentDescription("ivLyrics, " + ("ko".equals(settings.uiLang) ? "전체 가사 열기" : "Open lyrics"));
             }
             if (appliedResult != state.result) {
@@ -328,7 +331,9 @@ public final class IvLyricsBridge {
             lyrics.setCulturalAnnotations(state.annotations, settings.culturalAnnotationsFontFamily,
                     settings.culturalAnnotationsFontSize, settings.culturalAnnotationsFontWeight,
                     settings.culturalAnnotationsOpacity);
-            if (state.track != null) background.setArtwork(state.track.artwork, state.track.artworkKey());
+            if (background.getVisibility() == View.VISIBLE && state.track != null) {
+                background.setArtwork(state.track.artwork, state.track.artworkKey());
+            }
             lyrics.setPlaybackPosition(state.position());
         }
         TextView text(String value, float size) {
