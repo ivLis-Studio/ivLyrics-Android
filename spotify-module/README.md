@@ -46,11 +46,16 @@ control belongs only to the Spotify module, not the standalone app.
 
 On **9.1.80.2221**, the Now Playing lyric line above the song title also uses
 ivLyrics. Spotify's existing **Lyrics • On/Off** option controls its visibility.
+The option remains available for songs without Spotify-hosted lyrics, while keeping
+its saved On/Off state.
 It shares the card's lyrics and translations, merges simultaneous vocals into
 one row, follows the ivLyrics alignment setting, and scrolls long rows using
-their playback timing. Tap the line to open the full lyrics page. Native Canvas,
-video-player and mixing restrictions still apply; Spotify-hosted lyric availability
-does not control this preview. The Now Playing audio/video switch is hidden.
+their playback timing. Tap the line to open the full lyrics page. Native Canvas and
+video-player restrictions still apply. DJ/automix songs can show the preview;
+DJ speech remains hidden. Spotify-hosted lyric availability does not control this
+preview. The Now Playing audio/video switch is hidden. See the
+[inline hook mapping](INLINE_MAPPING.md) for the two native menu gates and the
+code regression coverage.
 
 See [architecture](../ARCHITECTURE.md) for the host interfaces, resource context,
 WebKit isolation, build outputs and editing boundaries. No source-copy or

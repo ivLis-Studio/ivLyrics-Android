@@ -415,9 +415,14 @@ public final class IvLyricsBridge {
         @Override void updatePosition(Engine state) {
             if (appliedSettings == null) return;
             boolean song = state.track != null && state.track.mediaId.startsWith("spotify:track:")
-                    && !state.track.trackId.isEmpty() && state.track.hasUsableMetadata();
+                    && !state.track.trackId.isEmpty() && state.track.hasUsableMetadata()
+                    && !state.track.isSpotifyDjSegment();
             if (!song || appliedSettings.previewItems == AiLyricsSettings.PREVIEW_ITEM_NONE) {
                 if (getVisibility() != View.GONE) { preview.clear(); setVisibility(View.GONE); }
+                // A retained model must repopulate the renderer when this slot becomes visible again.
+                entryApplied = false;
+                appliedEntry = null;
+                emptyKey = "";
                 return;
             }
             long position = state.position();

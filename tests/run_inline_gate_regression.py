@@ -27,9 +27,8 @@ test.write_text("public final class InlineGateRegression {\n" + gates + r'''
             boolean spotifyHasLyrics = (bits & 64) != 0;
             boolean playback = Gates.playbackAllows(automobile, automobileAllowed, videoPlayer);
             boolean actual = Gates.show(Gates.layoutAllows(canvas, mixing), playback, enabled);
-            // Preserve cp5 case 2 and jm7 case 1's player restrictions while replacing
-            // only Spotify's lyrics-availability dependency with independent ivLyrics.
-            boolean expected = !canvas && enabled && !mixing && (!automobile || automobileAllowed) && !videoPlayer;
+            // DJ/automix song playback uses the shared preview; Canvas and video still hide it.
+            boolean expected = !canvas && enabled && (!automobile || automobileAllowed) && !videoPlayer;
             if (actual != expected) throw new AssertionError("Native restriction case " + bits);
             boolean nativeVisible = expected && spotifyHasLyrics;
             if (spotifyHasLyrics && actual != nativeVisible) throw new AssertionError("Native parity " + bits);

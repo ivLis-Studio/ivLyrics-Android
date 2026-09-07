@@ -18,7 +18,7 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import kr.ivlis.ivlyricsandroid.IvLyricsBridge;
 
-/** Replaces only Spotify 9.1.80's Now Playing lyric line, retaining its visibility preference. */
+/** Supplies Spotify 9.1.80's Now Playing lyric line and its existing visibility option. */
 final class SpotifyInlineLyrics {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final List<WeakReference<InlineHost>> HOSTS = new ArrayList<>();
@@ -52,6 +52,7 @@ final class SpotifyInlineLyrics {
             Field playbackBranch = intField(availability, "a");
             Field layoutBlocked = booleanField(visibility, "b");
             Field preferenceEnabled = booleanField(visibility, "c");
+            Field playbackAvailable = booleanField(visibility, "d");
             Field mixingBlocked = booleanField(visibility, "e");
             Field automobileDevice = booleanField(availability, "b");
             Field automobileException = booleanField(availability, "d");
@@ -63,7 +64,8 @@ final class SpotifyInlineLyrics {
 
             // jm7 case 1 combines native lyric presence with automobile/video-player restrictions.
             // b is Connect AUTOMOBILE, d allows that device, c is track_player=video.
-            // Observe only the restrictions: ivLyrics resolves its own lyric availability.
+            // This result also feeds the Lyrics On/Off menu. Observing it without replacing
+            // the native lyric check leaves the option absent on songs resolved by ivLyrics.
             hooks.add(XposedBridge.hookMethod(availabilityUpdate, new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam param) throws IllegalAccessException {
                     if (param.hasThrowable() || playbackBranch.getInt(param.thisObject) != 1) return;
@@ -71,12 +73,14 @@ final class SpotifyInlineLyrics {
                     automobileAllowed = automobileException.getBoolean(param.thisObject);
                     videoPlayerBlocked = videoPlayerMode.getBoolean(param.thisObject);
                     nativePlaybackAllows = Gates.playbackAllows(automobileActive, automobileAllowed, videoPlayerBlocked);
+                    param.setResult(nativePlaybackAllows);
                     playbackObserved = true;
                     updateHosts();
                 }
             }));
             // cp5 case 2 observes the existing key_lyrics_on_npv_visible setting, canvas
-            // visibility and mixing transitions. Its original result is never changed.
+            // visibility and mixing transitions. DJ/automix is a playback mode, not a
+            // reason to hide song lyrics; the shared preview excludes DJ speech itself.
             hooks.add(XposedBridge.hookMethod(visibilityUpdate, new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam param) throws IllegalAccessException {
                     if (param.hasThrowable() || visibilityBranch.getInt(param.thisObject) != 2) return;
@@ -84,10 +88,13 @@ final class SpotifyInlineLyrics {
                     canvasBlocked = layoutBlocked.getBoolean(param.thisObject);
                     mixingActive = mixingBlocked.getBoolean(param.thisObject);
                     nativeLayoutAllows = Gates.layoutAllows(canvasBlocked, mixingActive);
+                    param.setResult(Gates.show(nativeLayoutAllows,
+                            playbackAvailable.getBoolean(param.thisObject), userEnabled));
                     visibilityObserved = true;
                     updateHosts();
                 }
             }));
+            hooks.addAll(SpotifyInlineLyricsMenu.install(loader));
             hooks.add(XposedBridge.hookMethod(render, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam param) throws IllegalAccessException {
                     if (renderBranch.getInt(param.thisObject) != 0 || !model.isInstance(param.args[1])
@@ -141,7 +148,7 @@ final class SpotifyInlineLyrics {
             return (!automobileActive || automobileAllowed) && !videoPlayerBlocked;
         }
         static boolean layoutAllows(boolean canvasBlocked, boolean mixing) {
-            return !canvasBlocked && !mixing;
+            return !canvasBlocked;
         }
         static boolean show(boolean layout, boolean playback, boolean enabled) {
             return layout && playback && enabled;
