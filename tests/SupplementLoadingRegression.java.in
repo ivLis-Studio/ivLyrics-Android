@@ -1,0 +1,220 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.os.Handler;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+import sun.misc.Unsafe;
+
+/** Exercises real session/dispatcher methods; provider transport is never invoked. */
+public final class SupplementLoadingRegression {
+    private static int assertions;
+    private static final Unsafe unsafe;
+    static {
+        try {
+            Field field = Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            unsafe = (Unsafe) field.get(null);
+        } catch (Exception error) { throw new ExceptionInInitializerError(error); }
+    }
+    private static void check(boolean value, String message) {
+        assertions++;
+        if (!value) throw new AssertionError(message);
+    }
+    private static void put(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+    private static Object call(Object target, String name, Object... args) throws Exception {
+        for (Method method : target.getClass().getDeclaredMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != args.length) continue;
+            method.setAccessible(true);
+            try { return method.invoke(target, args); }
+            catch (InvocationTargetException error) { throw new RuntimeException(error.getCause()); }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    private static final class Delivery {
+        final LyricsResult result;
+        final boolean p, t, finished, error;
+        Delivery(LyricsResult result, boolean p, boolean t, boolean finished, boolean error) {
+            this.result = result; this.p = p; this.t = t; this.finished = finished; this.error = error;
+        }
+    }
+    private static final class Fixture implements AutoCloseable {
+        final AiLyricsRepository repository = new AiLyricsRepository();
+        final List<Delivery> deliveries = new ArrayList<>();
+        final Object session, dispatcher;
+        Fixture(boolean pronunciation, boolean translation) throws Exception {
+            LyricsResult base = new LyricsResult(List.of(
+                    new LyricsLine(1000, 3000, "first source", List.of()),
+                    new LyricsLine(3000, 5000, "second source", List.of())), "fixture", "base", false);
+            Object requests = call(repository, "buildSupplementRequests", base.lines);
+            Constructor<?> sessionConstructor = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$SupplementSession")
+                    .getDeclaredConstructors()[0];
+            sessionConstructor.setAccessible(true);
+            session = sessionConstructor.newInstance(base, requests, pronunciation, translation);
+            AiLyricsSettings.Snapshot settings = (AiLyricsSettings.Snapshot) unsafe.allocateInstance(AiLyricsSettings.Snapshot.class);
+            AiLyricsSettings.Provider provider = (AiLyricsSettings.Provider) unsafe.allocateInstance(AiLyricsSettings.Provider.class);
+            put(provider, "label", "fixture AI");
+            put(settings, "provider", provider);
+            AiLyricsSettings.LanguageRule rule = new AiLyricsSettings.LanguageRule("en", translation, pronunciation, "ko");
+            AiLyricsRepository.Callback callback = new AiLyricsRepository.Callback() {
+                public void onAiLyricsLoaded(String key, LyricsResult result) {
+                    deliveries.add(new Delivery(result, false, false, true, false));
+                }
+                public void onAiLyricsPartialLoaded(String key, LyricsResult result, boolean p, boolean t, boolean f, boolean e) {
+                    deliveries.add(new Delivery(result, p, t, f, e));
+                }
+                public void onAiLyricsTaskError(String key, String error, boolean p, boolean t, boolean f) {
+                    deliveries.add(new Delivery(null, p, t, f, true));
+                }
+                public void onAiLyricsError(String key, String error) { throw new AssertionError(error); }
+                public void onAiLyricsLog(String key, String message) { }
+                public void onAiMetadataTranslationLoaded(String key, AiLyricsRepository.MetadataTranslation value) { }
+                public void onAiMetadataTranslationError(String key, String message) { }
+                public void onAiTmiLoaded(String key, AiLyricsRepository.TmiInfo value) { }
+                public void onAiTmiError(String key, String message) { }
+                public void onAiCulturalAnnotationsLoaded(String key, String requestKey, List<CulturalAnnotation> value) { }
+                public void onAiCulturalAnnotationsError(String key, String requestKey, String message) { }
+            };
+            Constructor<?> constructor = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$SupplementPartialDispatcher")
+                    .getDeclaredConstructors()[0];
+            constructor.setAccessible(true);
+            dispatcher = constructor.newInstance(repository, "fixture", session, settings, rule, "en", "ko", "ko", false, callback);
+        }
+        Delivery last() { return deliveries.get(deliveries.size() - 1); }
+        public void close() { Handler.beforePost = null; Handler.drain(); repository.shutdown(); }
+    }
+    private static void parallelCompletion(boolean fail) throws Exception {
+        try (Fixture fixture = new Fixture(true, false)) {
+            CountDownLatch partialPosting = new CountDownLatch(1), releasePartial = new CountDownLatch(1);
+            AtomicReference<Throwable> workerError = new AtomicReference<>();
+            Handler.beforePost = () -> {
+                if (!Thread.currentThread().getName().equals("paused-stream")) return;
+                partialPosting.countDown();
+                try { if (!releasePartial.await(5, TimeUnit.SECONDS)) throw new AssertionError("post gate timeout"); }
+                catch (InterruptedException error) { throw new AssertionError(error); }
+            };
+            Thread stream = new Thread(() -> {
+                try { call(fixture.dispatcher, "dispatch"); } catch (Throwable error) { workerError.set(error); }
+            }, "paused-stream");
+            Thread completion = new Thread(() -> {
+                try {
+                    if (fail) {
+                        call(fixture.session, "markPronunciationFailed");
+                        call(fixture.dispatcher, "taskFailed", "fixture failure");
+                    } else {
+                        call(fixture.session, "setPronunciation", List.of("first reading", ""));
+                        call(fixture.dispatcher, "taskCompleted", "fixture-cache");
+                    }
+                } catch (Throwable error) { workerError.set(error); }
+            }, "completion");
+            stream.start();
+            check(partialPosting.await(3, TimeUnit.SECONDS), "stream reaches delayed enqueue");
+            completion.start();
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+                while (completion.isAlive() && completion.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) {
+                    Thread.yield();
+                }
+                check(completion.getState() == Thread.State.BLOCKED,
+                        "completion cannot overtake a captured stream snapshot");
+            } finally {
+                releasePartial.countDown();
+                stream.join(4000); completion.join(4000);
+            }
+            check(!stream.isAlive() && !completion.isAlive(), "workers finish without deadlock");
+            if (workerError.get() != null) throw new AssertionError(workerError.get());
+            Handler.beforePost = null;
+            Handler.drain();
+            check(fixture.deliveries.size() >= 2, "both partial and terminal event delivered");
+            check(fixture.deliveries.get(0).p, "first streamed state is loading");
+            check(fixture.last().finished && !fixture.last().p && !fixture.last().t,
+                    "terminal event clears loading after concurrent " + (fail ? "failure" : "success"));
+            check(fixture.last().error == fail, "terminal error status preserved");
+            if (!fail) {
+                check(fixture.last().result.lines.get(0).pronunciationText.equals("first reading"), "finished text retained");
+                check(fixture.last().result.lines.get(1).pronunciationText.isEmpty(), "empty final row does not remain pending");
+            }
+            call(fixture.dispatcher, "dispatch"); // An already-running timer may arrive after completion.
+            Handler.drain();
+            check(!fixture.last().p && !fixture.last().t && fixture.last().finished,
+                    "late stream flush cannot restore generating");
+        }
+    }
+    private static void independentTasks() throws Exception {
+        try (Fixture fixture = new Fixture(true, true)) {
+            call(fixture.session, "setPronunciation", List.of("reading one", "reading two"));
+            call(fixture.dispatcher, "taskCompleted", "fixture-cache");
+            Handler.drain();
+            check(!fixture.last().p && fixture.last().t && !fixture.last().finished,
+                    "pronunciation completion leaves only translation loading");
+            call(fixture.session, "setTranslation", List.of("meaning one", "meaning two"));
+            call(fixture.dispatcher, "taskCompleted", "fixture-cache");
+            Handler.drain();
+            check(!fixture.last().p && !fixture.last().t && fixture.last().finished, "both tasks finish");
+            check(fixture.last().result.lines.get(1).pronunciationText.equals("reading two"), "pronunciation survives translation completion");
+            check(fixture.last().result.lines.get(1).translationText.equals("meaning two"), "translation retained in final result");
+        }
+        try (Fixture fixture = new Fixture(false, true)) {
+            call(fixture.dispatcher, "dispatch"); Handler.drain();
+            check(!fixture.last().p && fixture.last().t, "disabled pronunciation never loads during translation");
+            call(fixture.session, "markTranslationFailed");
+            call(fixture.dispatcher, "taskFailed", "fixture failure"); Handler.drain();
+            check(!fixture.last().p && !fixture.last().t && fixture.last().finished, "last task failure terminates loading");
+        }
+    }
+    private static final class SettingsHolder {
+        final AiLyricsSettings.Snapshot value;
+        SettingsHolder(AiLyricsSettings.Snapshot value) { this.value = value; }
+        AiLyricsSettings.Snapshot snapshot() { return value; }
+    }
+    private SettingsHolder aiLyricsSettings;
+    private boolean aiLyricsGenerating = true;
+    private boolean lyricsSupplementPronunciationLoading;
+    private boolean lyricsSupplementTranslationLoading;
+    private String effectiveSelectedSourceLang() { return "en"; }
+    // INSERT_PREVIEW_LOADING_METHOD
+
+    private void previewLoading() throws Exception {
+        AiLyricsSettings.Snapshot settings = (AiLyricsSettings.Snapshot) unsafe.allocateInstance(AiLyricsSettings.Snapshot.class);
+        put(settings, "defaultRule", new AiLyricsSettings.LanguageRule("default", true, true, "ko"));
+        put(settings, "languageRules", Collections.emptyMap());
+        put(settings, "uiLang", "ko");
+        AiLyricsSettings.Provider provider = (AiLyricsSettings.Provider) unsafe.allocateInstance(AiLyricsSettings.Provider.class);
+        put(provider, "id", "fixture-provider");
+        put(settings, "provider", provider);
+        put(settings, "apiKeys", "fixture-key");
+        put(settings, "model", "fixture-model");
+        aiLyricsSettings = new SettingsHolder(settings);
+        lyricsSupplementPronunciationLoading = false;
+        lyricsSupplementTranslationLoading = true;
+        check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION),
+                "finished pronunciation does not display generating while translation runs");
+        put(settings, "apiKeys", "");
+        put(settings, "model", "");
+        check(isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION),
+                "translation task can load without the selected AI provider key (keyless provider)");
+        lyricsSupplementPronunciationLoading = true;
+        lyricsSupplementTranslationLoading = false;
+        check(isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION), "pronunciation task displays loading");
+        check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION), "finished translation stays finished while pronunciation runs");
+        put(settings, "languageRules", Collections.singletonMap("en",
+                new AiLyricsSettings.LanguageRule("en", false, false, "ko")));
+        lyricsSupplementTranslationLoading = true;
+        check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION), "disabled pronunciation masks stale loading");
+        check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_TRANSLATION), "disabled translation masks stale loading");
+        aiLyricsGenerating = false;
+        check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION), "terminal request cannot show generating");
+    }
+    public static void main(String[] args) throws Exception {
+        parallelCompletion(false);
+        parallelCompletion(true);
+        independentTasks();
+        new SupplementLoadingRegression().previewLoading();
+        System.out.println("PASS " + assertions + " checks: stream/completion ordering, terminal errors, independent tasks, disabled pronunciation, empty final rows");
+    }
+}

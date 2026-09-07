@@ -684,32 +684,56 @@ final class AiLyricsRepository {
         }
 
         private void dispatch() {
-            LyricsResult result = buildMergedSupplementResult(
-                    session.baseResult,
-                    session.requests,
-                    session.pronunciationSnapshot(),
-                    session.translationSnapshot(),
-                    session.pronunciationProviderLabel(),
-                    session.translationProviderLabel(),
-                    settings,
-                    rule,
-                    sourceLang,
-                    targetLang,
-                    pronunciationLang,
-                    translationSkipped
-            );
-            boolean pronunciationLoading = session.pronunciationLoading();
-            boolean translationLoading = session.translationLoading();
-            boolean finished = session.finished();
-            boolean hadError = session.hasError();
-            mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
-                    trackKey,
-                    result,
-                    pronunciationLoading,
-                    translationLoading,
-                    finished,
-                    hadError
-            ));
+            dispatchResult(false, "");
+        }
+
+        void taskCompleted(String combinedCacheKey) {
+            cancelPending();
+            dispatchResult(true, combinedCacheKey);
+        }
+
+        void taskFailed(String message) {
+            flush();
+            synchronized (session) {
+                boolean pronunciationLoading = session.pronunciationLoading();
+                boolean translationLoading = session.translationLoading();
+                boolean finished = session.finished();
+                mainHandler.post(() -> callback.onAiLyricsTaskError(
+                        trackKey, message, pronunciationLoading, translationLoading, finished));
+            }
+        }
+
+        private void dispatchResult(boolean taskCompleted, String combinedCacheKey) {
+            // Streaming and the two provider workers must snapshot and enqueue together.
+            // Otherwise an older partial can arrive after completion, restore "generating",
+            // and replace the finished lyrics with an incomplete result.
+            synchronized (session) {
+                LyricsResult result = buildMergedSupplementResult(
+                        session.baseResult,
+                        session.requests,
+                        session.pronunciationSnapshot(),
+                        session.translationSnapshot(),
+                        session.pronunciationProviderLabel(),
+                        session.translationProviderLabel(),
+                        settings,
+                        rule,
+                        sourceLang,
+                        targetLang,
+                        pronunciationLang,
+                        translationSkipped
+                );
+                boolean pronunciationLoading = session.pronunciationLoading();
+                boolean translationLoading = session.translationLoading();
+                boolean finished = session.finished();
+                boolean hadError = session.hasError();
+                if (taskCompleted && finished && !hadError) {
+                    cacheResult(combinedCacheKey, result);
+                    mainHandler.post(() -> callback.onAiLyricsLoaded(trackKey, result));
+                } else {
+                    mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
+                            trackKey, result, pronunciationLoading, translationLoading, finished, hadError));
+                }
+            }
         }
     }
 
@@ -1817,34 +1841,7 @@ final class AiLyricsRepository {
             );
             cacheResult(taskCacheKey, taskResult);
 
-            LyricsResult result = buildMergedSupplementResult(
-                    session.baseResult,
-                    requests,
-                    session.pronunciationSnapshot(),
-                    session.translationSnapshot(),
-                    session.pronunciationProviderLabel(),
-                    session.translationProviderLabel(),
-                    settings,
-                    rule,
-                    sourceLang,
-                    targetLang,
-                    pronunciationLang,
-                    translationSkipped
-            );
-            partialDispatcher.cancelPending();
-            if (session.finished() && !session.hasError()) {
-                cacheResult(combinedCacheKey, result);
-                mainHandler.post(() -> callback.onAiLyricsLoaded(trackKey, result));
-            } else {
-                mainHandler.post(() -> callback.onAiLyricsPartialLoaded(
-                        trackKey,
-                        result,
-                        session.pronunciationLoading(),
-                        session.translationLoading(),
-                        session.finished(),
-                        session.hasError()
-                ));
-            }
+            partialDispatcher.taskCompleted(combinedCacheKey);
         } catch (Exception error) {
             String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
             if (SUPPLEMENT_TASK_PRONUNCIATION.equals(task)) {
@@ -1854,14 +1851,7 @@ final class AiLyricsRepository {
                 session.markTranslationFailed();
                 log.write("ai translation error: " + message);
             }
-            partialDispatcher.flush();
-            mainHandler.post(() -> callback.onAiLyricsTaskError(
-                    trackKey,
-                    message,
-                    session.pronunciationLoading(),
-                    session.translationLoading(),
-                    session.finished()
-            ));
+            partialDispatcher.taskFailed(message);
         }
     }
 

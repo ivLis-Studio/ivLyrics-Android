@@ -569,7 +569,7 @@ public final class IvLyricsBridge {
                     key = "";
                     base = null;
                     result = LyricsResult.empty(ui("status.waiting_current_track"));
-                    loading = false;
+                    loading = pronunciationLoading = translationLoading = false;
                     requestInFlight = false;
                     renderCards();
                 }
@@ -652,7 +652,7 @@ public final class IvLyricsBridge {
             if (base == null || base.lines.isEmpty() || track == null) return;
             AiLyricsSettings.Snapshot snapshot = settings.snapshot();
             AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(sourceLanguage);
-            boolean ready = snapshot.hasApiKey() && snapshot.hasModel();
+            boolean ready = snapshot.hasReadyAiProvider();
             pronunciationLoading = rule.pronunciationEnabled && ready;
             translationLoading = rule.translationEnabled
                     && !snapshot.shouldSkipTranslation(sourceLanguage, snapshot.resolveTargetLanguage(sourceLanguage))
@@ -764,8 +764,8 @@ public final class IvLyricsBridge {
                     boolean pronunciation, boolean translation, boolean finished, boolean hadError) {
                 if (!current(callbackKey)) return;
                 result = withFurigana(value, furiganaResult);
-                pronunciationLoading = pronunciation;
-                translationLoading = translation;
+                pronunciationLoading = !finished && pronunciation;
+                translationLoading = !finished && translation;
                 renderCards();
             }
             @Override public void onAiLyricsError(String callbackKey, String message) {
@@ -776,8 +776,8 @@ public final class IvLyricsBridge {
             @Override public void onAiLyricsTaskError(String callbackKey, String message,
                     boolean pronunciation, boolean translation, boolean finished) {
                 if (!current(callbackKey)) return;
-                pronunciationLoading = pronunciation;
-                translationLoading = translation;
+                pronunciationLoading = !finished && pronunciation;
+                translationLoading = !finished && translation;
                 renderCards();
             }
             @Override public void onAiCulturalAnnotationsLoaded(String callbackKey, String requestKey, List<CulturalAnnotation> value) {

@@ -1880,8 +1880,9 @@ public class BaseLyricsActivity extends Activity implements
             appendLog("stale ai lyrics partial discarded after base lyrics changed");
             return;
         }
-        aiLyricsGenerating = pronunciationLoading || translationLoading;
-        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
+        aiLyricsGenerating = !finished && (pronunciationLoading || translationLoading);
+        setLyricsSupplementLoading(!finished && pronunciationLoading, !finished && translationLoading,
+                lyricsSupplementFuriganaLoading);
         currentLyricsResult = mergeAiSupplementsIntoResult(currentLyricsResult, result);
         currentLyricsResult = mergeCurrentFuriganaInto(currentLyricsResult);
         setLyricsResultOnViews(currentLyricsResult);
@@ -1921,8 +1922,9 @@ public class BaseLyricsActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
-        aiLyricsGenerating = pronunciationLoading || translationLoading;
-        setLyricsSupplementLoading(pronunciationLoading, translationLoading, lyricsSupplementFuriganaLoading);
+        aiLyricsGenerating = !finished && (pronunciationLoading || translationLoading);
+        setLyricsSupplementLoading(!finished && pronunciationLoading, !finished && translationLoading,
+                lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         if (aiSettingsStatusView != null) {
             aiSettingsStatusView.setText(uiFormat("status.ai_failed_format", message));
@@ -12601,7 +12603,7 @@ public class BaseLyricsActivity extends Activity implements
             requestJapaneseFurigana(clearCache);
             return;
         }
-        boolean selectedAiReady = snapshot.hasApiKey() && snapshot.hasModel();
+        boolean selectedAiReady = snapshot.hasReadyAiProvider();
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
         boolean canRunTask = (requestedPronunciation && selectedAiReady)
@@ -14668,17 +14670,15 @@ public class BaseLyricsActivity extends Activity implements
             return false;
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        if (!snapshot.hasApiKey() || !snapshot.hasModel()) {
-            return false;
-        }
         String source = effectiveSelectedSourceLang();
         AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(source);
         if (item == AiLyricsSettings.PREVIEW_ITEM_TRANSLATION) {
             String target = snapshot.resolveTargetLanguage(source);
-            return rule.translationEnabled && !snapshot.shouldSkipTranslation(source, target);
+            return lyricsSupplementTranslationLoading && rule.translationEnabled
+                    && !snapshot.shouldSkipTranslation(source, target);
         }
         if (item == AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION) {
-            return rule.pronunciationEnabled;
+            return lyricsSupplementPronunciationLoading && rule.pronunciationEnabled;
         }
         return false;
     }

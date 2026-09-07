@@ -153,6 +153,37 @@ public final class InlineLyricPreviewModelTest {
                 Collections.singletonMap("en", off)), "en-US").rows(modelEntry(line)).size());
     }
 
+    @Test public void disabledPronunciationHidesCachedAndLoadingRowsWithoutChangingPreviewSelection() throws Exception {
+        int selection = AiLyricsSettings.PREVIEW_ITEM_ORIGINAL | AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION;
+        AiLyricsSettings.LanguageRule disabled = new AiLyricsSettings.LanguageRule("en", false, false, "ko");
+        AiLyricsSettings.Snapshot settings = settings(selection, false, Collections.singletonMap("en", disabled));
+        for (String reading : Arrays.asList("", "cached reading")) {
+            LyricsLine line = new LyricsLine(1000, 3000, "original", Collections.emptyList()).withSupplements(reading, "");
+            InlineLyricPreviewModel model = new InlineLyricPreviewModel(
+                    new LyricsResult(Collections.singletonList(line), "fixture", "", false),
+                    settings, 12000L, true, false, "en-US");
+            List<MainLyricPreviewView.PreviewLine> rows = model.rows(model.at(1500));
+            assertEquals(1, rows.size());
+            assertEquals("original", rows.get(0).text);
+        }
+        assertEquals(selection, settings.previewItems);
+    }
+
+    @Test public void pronunciationLoadingEndsIndependentlyOfTranslationAndEmptyFinalRows() throws Exception {
+        int selection = AiLyricsSettings.PREVIEW_ITEM_ORIGINAL | AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION;
+        AiLyricsSettings.Snapshot settings = settings(selection, true, Collections.emptyMap());
+        LyricsLine line = new LyricsLine(1000, 3000, "original", Collections.emptyList());
+        LyricsResult result = new LyricsResult(Collections.singletonList(line), "fixture", "", false);
+        InlineLyricPreviewModel loading = new InlineLyricPreviewModel(result, settings, 12000L, true, true, "en");
+        assertEquals(2, loading.rows(loading.at(1500)).size());
+        InlineLyricPreviewModel completed = new InlineLyricPreviewModel(result, settings, 12000L, false, true, "en");
+        assertEquals(1, completed.rows(completed.at(1500)).size());
+        LyricsResult generated = new LyricsResult(Collections.singletonList(line.withSupplements("reading", "")),
+                "fixture", "", false);
+        InlineLyricPreviewModel applied = new InlineLyricPreviewModel(generated, settings, 12000L, false, true, "en");
+        assertEquals("reading", applied.rows(applied.at(1500)).get(1).text);
+    }
+
     @Test public void noneRemainsHiddenAndMissingTranslationDoesNotDuplicateOriginal() throws Exception {
         LyricsLine line = new LyricsLine(1000, 3000, "original", Collections.emptyList());
         InlineLyricPreviewModel hidden = model(Collections.singletonList(line), AiLyricsSettings.PREVIEW_ITEM_NONE);

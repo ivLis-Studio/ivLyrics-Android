@@ -17,6 +17,7 @@ final class InlineLyricPreviewModel {
     private final long trackDurationMs;
     private final boolean pronunciationLoading;
     private final boolean translationLoading;
+    private final boolean pronunciationEnabled;
     private final boolean translationEnabled;
     private final long[] boundaries;
     private final Map<LyricsLine, List<MainLyricPreviewView.PreviewLine>> rowCache = new IdentityHashMap<>();
@@ -32,6 +33,7 @@ final class InlineLyricPreviewModel {
         trackDurationMs = durationMs;
         this.pronunciationLoading = pronunciationLoading;
         this.translationLoading = translationLoading;
+        pronunciationEnabled = settings.ruleForSource(sourceLanguage).pronunciationEnabled;
         translationEnabled = settings.ruleForSource(sourceLanguage).translationEnabled
                 && !settings.shouldSkipTranslation(sourceLanguage, settings.resolveTargetLanguage(sourceLanguage));
         TreeSet<Long> changes = new TreeSet<>();
@@ -83,7 +85,8 @@ final class InlineLyricPreviewModel {
         // removes the source row, and enabling translation needs no preview-setting migration.
         addPreviewRow(rows, original.text, original.rubyText, original.syllables, original.kind,
                 AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL);
-        if (AiLyricsSettings.previewItemEnabled(items, AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION)) {
+        if (pronunciationEnabled
+                && AiLyricsSettings.previewItemEnabled(items, AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION)) {
             addSupplementPreviewRow(rows, line.pronunciationText, ui("loading.pronunciation"),
                     original.text, original.rubyText, original.syllables, original.kind,
                     pronunciationLoading, AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION);
