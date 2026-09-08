@@ -2,17 +2,39 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
   <script>
     (function () {
       var tokenizer = null;
       var initPromise = null;
       var conversionCache = new Map();
       var maxCacheSize = 1000;
+      var libraryPaths = [
+        "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js",
+        "https://unpkg.com/kuromoji@0.1.2/build/kuromoji.js"
+      ];
       var dictPaths = [
         "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict",
         "https://unpkg.com/kuromoji@0.1.2/dict"
       ];
+
+      // Kuromoji 0.1.2 joins dictionary URLs with Node's path.join, which turns
+      // https:// into https:/. With an HTTPS document base that becomes a path
+      // on our own host. Repair only the two known dictionary prefixes in this
+      // isolated WebView before the browser resolves the request URL.
+      var xhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function () {
+        var args = Array.prototype.slice.call(arguments);
+        if (typeof args[1] === "string") {
+          for (var i = 0; i < dictPaths.length; i++) {
+            var brokenPrefix = dictPaths[i].replace("https://", "https:/") + "/";
+            if (args[1].indexOf(brokenPrefix) === 0) {
+              args[1] = dictPaths[i] + "/" + args[1].substring(brokenPrefix.length);
+              break;
+            }
+          }
+        }
+        return xhrOpen.apply(this, args);
+      };
 
       function log(message) {
         if (window.AndroidFurigana && window.AndroidFurigana.onLog) {
@@ -26,19 +48,68 @@
         }
       }
 
+      function loadLibrary(url) {
+        return new Promise(function (resolve, reject) {
+          var script = document.createElement("script");
+          var settled = false;
+          var timer = setTimeout(function () {
+            finish(new Error("Kuromoji library load timed out"));
+          }, 6000);
+          function finish(error) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            script.onload = script.onerror = null;
+            script.remove();
+            if (error) reject(error);
+            else resolve();
+          }
+          script.onload = function () {
+            finish(window.kuromoji && typeof window.kuromoji.builder === "function"
+              ? null : new Error("Kuromoji library not loaded"));
+          };
+          script.onerror = function () { finish(new Error("Kuromoji library load failed")); };
+          script.src = url;
+          document.head.appendChild(script);
+        });
+      }
+
+      async function ensureLibrary() {
+        if (window.kuromoji && typeof window.kuromoji.builder === "function") return;
+        var lastError = null;
+        for (var i = 0; i < libraryPaths.length; i++) {
+          try {
+            await loadLibrary(libraryPaths[i]);
+            return;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError || new Error("Kuromoji library not loaded");
+      }
+
       function buildTokenizer(dictPath) {
         return new Promise(function (resolve, reject) {
           if (!window.kuromoji) {
             reject(new Error("Kuromoji library not loaded"));
             return;
           }
-          window.kuromoji.builder({ dicPath: dictPath }).build(function (error, builtTokenizer) {
+          var timer = setTimeout(function () {
+            reject(new Error("Kuromoji dictionary load timed out"));
+          }, 12000);
+          function finish(error, builtTokenizer) {
+            clearTimeout(timer);
             if (error) {
               reject(error);
               return;
             }
             resolve(builtTokenizer);
-          });
+          }
+          try {
+            window.kuromoji.builder({ dicPath: dictPath }).build(finish);
+          } catch (error) {
+            finish(error);
+          }
         });
       }
 
@@ -50,6 +121,7 @@
           return initPromise;
         }
         initPromise = (async function () {
+          await ensureLibrary();
           var lastError = null;
           for (var i = 0; i < dictPaths.length; i++) {
             try {
@@ -64,7 +136,11 @@
             }
           }
           throw lastError || new Error("Kuromoji dictionary load failed");
-        })();
+        })().catch(function (error) {
+          // A failed CDN/dictionary attempt must not poison every later request.
+          initPromise = null;
+          throw error;
+        });
         return initPromise;
       }
 
@@ -187,6 +263,9 @@
 
       init().catch(function (error) {
         log("furigana js init failed: " + String(error && error.message ? error.message : error));
+        if (window.AndroidFurigana && window.AndroidFurigana.onInitializationError) {
+          window.AndroidFurigana.onInitializationError(String(error && error.message ? error.message : error));
+        }
       });
     })();
   </script>

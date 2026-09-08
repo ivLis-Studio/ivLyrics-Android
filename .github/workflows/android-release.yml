@@ -77,6 +77,8 @@ jobs:
           python3 tests/run_supplement_loading_regression.py
           python3 tests/run_repository_completion_regression.py
           python3 tests/run_furigana_loading_regression.py
+          python3 tests/run_furigana_webview_regression.py
+          node --test tests/furigana_bridge.test.mjs
           python3 tests/run_metadata_refresh_loading_regression.py
 
       - name: Restore release signing key

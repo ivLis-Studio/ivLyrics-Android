@@ -17,6 +17,8 @@ python3 tests/run_inline_lifecycle_regression.py
 python3 tests/run_supplement_loading_regression.py
 python3 tests/run_repository_completion_regression.py
 python3 tests/run_furigana_loading_regression.py
+python3 tests/run_furigana_webview_regression.py
+node --test tests/furigana_bridge.test.mjs
 python3 tests/run_metadata_refresh_loading_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
@@ -56,6 +58,13 @@ The furigana-loading regression checks that in-flight requests survive cache res
 and finish through success, error or the existing timeout. It also covers repeated
 cold/warm loads, ignored superseded requests, track changes and a distinct furigana
 loading label.
+The furigana-WebView regression executes the production repository bootstrap with
+distinct module and host asset contexts. It verifies module HTML loading, UTF-8
+and HTTPS origin, terminal initialization/page failures, clean retry, stale bridge
+callbacks, timeout and shutdown. The JavaScript bridge tests exercise library and
+dictionary fallback, retry and CDN URL preservation without real network requests.
+For opt-in real Android WebView and Kuromoji verification in a separate QA app,
+see [the device smoke test](FURIGANA_WEBVIEW_DEVICE_SMOKE.md).
 The metadata-refresh-loading regression executes the activity's production refresh
 callbacks and provider-loading handler. It checks cached/current lyrics remain visible
 with accurate supplement progress while metadata refreshes, and old AI callbacks

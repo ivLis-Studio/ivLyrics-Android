@@ -5,6 +5,8 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -12,6 +14,9 @@ import android.webkit.WebViewClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -28,6 +33,8 @@ final class FuriganaRepository {
     private static final String CACHE_VERSION = "furigana-js-kuromoji-v1";
     private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
     private static final long REQUEST_TIMEOUT_MS = 45_000L;
+    private static final String BRIDGE_ASSET = "furigana/bridge.html";
+    private static final String BRIDGE_URL = "https://appassets.androidplatform.net/furigana/bridge.html";
     private static final Pattern RUBY_TAG_PATTERN = Pattern.compile(
             "<ruby>([^<>]+)<rt>([^<>]*)</rt></ruby>",
             Pattern.CASE_INSENSITIVE
@@ -42,6 +49,7 @@ final class FuriganaRepository {
     private final LyricsDiskCache diskCache;
     private WebView webView;
     private boolean pageLoaded;
+    private long webViewGeneration;
     private long nextRequestId;
     private long activeLoadGeneration;
     private volatile long cacheGeneration;
@@ -211,8 +219,12 @@ final class FuriganaRepository {
         pendingRequests.put(requestId, pending);
         mainHandler.postDelayed(pending.timeoutRunnable, REQUEST_TIMEOUT_MS);
         callback.onFuriganaLog(trackKey, "furigana js request: lines=" + requests.size());
-        ensureWebView();
-        evaluateWhenReady(buildRequestScript(requestId, requests));
+        try {
+            ensureWebView();
+            evaluateWhenReady(buildRequestScript(requestId, requests));
+        } catch (Exception error) {
+            failWebView(webView, "후리가나 JS 초기화 실패: " + errorMessage(error));
+        }
     }
 
     private void cancelPendingRequests() {
@@ -261,9 +273,67 @@ final class FuriganaRepository {
         cancelPendingRequests();
         queuedScripts.clear();
         cacheExecutor.shutdownNow();
-        if (webView != null) {
-            WebView target = webView;
-            webView = null;
+        resetWebView();
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressWarnings("deprecation")
+    private void ensureWebView() throws IOException {
+        if (webView != null || context == null) {
+            return;
+        }
+        // WebView's android_asset handler uses the process Application assets.
+        // In LSPatch that is Spotify, so read through our module context explicitly.
+        String bridgeHtml;
+        try (InputStream input = context.getAssets().open(BRIDGE_ASSET);
+                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
+            }
+            bridgeHtml = new String(output.toByteArray(), StandardCharsets.UTF_8);
+        }
+        long generation = ++webViewGeneration;
+        pageLoaded = false;
+        webView = new WebView(context);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        webView.addJavascriptInterface(new Bridge(generation), "AndroidFurigana");
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (view != webView || generation != webViewGeneration) return;
+                pageLoaded = true;
+                flushQueuedScripts();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    failWebView(view, "후리가나 JS 페이지 로드 실패: " + error.getDescription());
+                }
+            }
+        });
+        webView.loadDataWithBaseURL(BRIDGE_URL, bridgeHtml, "text/html", "UTF-8", null);
+    }
+
+    private static String errorMessage(Exception error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+    }
+
+    private void resetWebView() {
+        webViewGeneration++;
+        pageLoaded = false;
+        queuedScripts.clear();
+        WebView target = webView;
+        webView = null;
+        if (target != null) {
             mainHandler.post(() -> {
                 try {
                     target.destroy();
@@ -273,27 +343,14 @@ final class FuriganaRepository {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    @SuppressWarnings("deprecation")
-    private void ensureWebView() {
-        if (webView != null || context == null) {
-            return;
+    private void failWebView(WebView failedView, String message) {
+        if (failedView != webView) return;
+        List<PendingRequest> failedRequests = new ArrayList<>(pendingRequests.values());
+        cancelPendingRequests();
+        resetWebView();
+        for (PendingRequest request : failedRequests) {
+            request.callback.onFuriganaError(request.trackKey, message);
         }
-        webView = new WebView(context);
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
-        webView.addJavascriptInterface(new Bridge(), "AndroidFurigana");
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                pageLoaded = true;
-                flushQueuedScripts();
-            }
-        });
-        webView.loadUrl("file:///android_asset/furigana/bridge.html");
     }
 
     private void evaluateWhenReady(String script) {
@@ -314,7 +371,12 @@ final class FuriganaRepository {
         List<String> scripts = new ArrayList<>(queuedScripts);
         queuedScripts.clear();
         for (String script : scripts) {
-            webView.evaluateJavascript(script, null);
+            try {
+                webView.evaluateJavascript(script, null);
+            } catch (Exception error) {
+                failWebView(webView, "후리가나 JS 실행 실패: " + errorMessage(error));
+                return;
+            }
         }
     }
 
@@ -340,6 +402,7 @@ final class FuriganaRepository {
         if (request == null) {
             return;
         }
+        if (pendingRequests.isEmpty()) resetWebView();
         request.callback.onFuriganaError(request.trackKey, "후리가나 JS 처리 시간이 초과되었습니다");
     }
 
@@ -400,19 +463,40 @@ final class FuriganaRepository {
     }
 
     private final class Bridge {
+        private final long generation;
+
+        Bridge(long generation) {
+            this.generation = generation;
+        }
+
         @JavascriptInterface
         public void onReady() {
-            mainHandler.post(FuriganaRepository.this::flushQueuedScripts);
+            mainHandler.post(() -> {
+                if (generation == webViewGeneration) flushQueuedScripts();
+            });
+        }
+
+        @JavascriptInterface
+        public void onInitializationError(String message) {
+            mainHandler.post(() -> {
+                if (generation == webViewGeneration) {
+                    failWebView(webView, "후리가나 JS 초기화 실패: " + message);
+                }
+            });
         }
 
         @JavascriptInterface
         public void onResult(String requestId, String rawJson) {
-            mainHandler.post(() -> handleResult(requestId, rawJson));
+            mainHandler.post(() -> {
+                if (generation == webViewGeneration) handleResult(requestId, rawJson);
+            });
         }
 
         @JavascriptInterface
         public void onLog(String message) {
-            mainHandler.post(() -> handleLog(message));
+            mainHandler.post(() -> {
+                if (generation == webViewGeneration) handleLog(message);
+            });
         }
     }
 
