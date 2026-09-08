@@ -1,0 +1,314 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.os.Handler;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.json.JSONObject;
+import sun.misc.Unsafe;
+
+/** Calls the full production loadSupplements entry point with an in-memory provider. */
+public final class RepositoryCompletionRegression {
+    private static final Unsafe unsafe;
+    private static final AtomicInteger connections = new AtomicInteger();
+    private static int assertions;
+    private static volatile boolean rejectRequests;
+
+    static {
+        try {
+            Field field = Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            unsafe = (Unsafe) field.get(null);
+        } catch (Exception error) {
+            throw new ExceptionInInitializerError(error);
+        }
+    }
+
+    private static void put(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, LyricsResult> cache(AiLyricsRepository repository) throws Exception {
+        Field field = AiLyricsRepository.class.getDeclaredField("cache");
+        field.setAccessible(true);
+        return (Map<String, LyricsResult>) field.get(repository);
+    }
+
+    private static void check(boolean value, String message) {
+        assertions++;
+        if (!value) throw new AssertionError(message);
+    }
+
+    private static AiLyricsSettings.Snapshot settings(boolean pronunciation, boolean translation) throws Exception {
+        // Snapshot construction normally reads Android preferences. Populate the fixture
+        // fields directly while retaining all production provider/rule/cache behavior.
+        AiLyricsSettings.Snapshot settings =
+                (AiLyricsSettings.Snapshot) unsafe.allocateInstance(AiLyricsSettings.Snapshot.class);
+        for (Field field : AiLyricsSettings.Snapshot.class.getDeclaredFields()) {
+            field.setAccessible(true);
+            if (field.getType() == String.class) field.set(settings, "");
+            if (field.getType() == Map.class) field.set(settings, Collections.emptyMap());
+            if (field.getType() == List.class) field.set(settings, Collections.emptyList());
+        }
+        AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById("chatgpt");
+        AiLyricsSettings.ProviderProfile profile = AiLyricsSettings.ProviderProfile.defaults(provider);
+        put(profile, "apiKeys", "synthetic-key");
+        put(profile, "model", "synthetic-model");
+        put(profile, "baseUrl", "https://fixture.invalid/v1");
+        put(settings, "provider", provider);
+        put(settings, "uiLang", "ko");
+        put(settings, "outputLang", "ko");
+        put(settings, "apiKeys", "synthetic-key");
+        put(settings, "model", "synthetic-model");
+        put(settings, "baseUrl", "https://fixture.invalid/v1");
+        put(settings, "defaultRule", new AiLyricsSettings.LanguageRule("default", translation, pronunciation, "ko"));
+        put(settings, "aiProviderOrder", List.of("chatgpt"));
+        put(settings, "aiProviderEnabled", Map.of("chatgpt", true));
+        put(settings, "providerProfiles", Map.of("chatgpt", profile));
+        return settings;
+    }
+
+    private static TrackSnapshot track() {
+        return new TrackSnapshot("Fixture", "Artist", "Album", "com.spotify.music",
+                "spotify:track:0123456789012345678901", "", 10000, 1000, 1000, 1, true, null, "");
+    }
+
+    private static LyricsResult base() {
+        return new LyricsResult(List.of(
+                new LyricsLine(1000, 4000, "Source one", List.of()),
+                new LyricsLine(4000, 8000, "Source two", List.of())), "fixture", "base", false);
+    }
+
+    private static final class Observer implements InvocationHandler {
+        int completed, partial, errors;
+        boolean pronunciationLoading = true, translationLoading = true, finished;
+        LyricsResult result;
+
+        AiLyricsRepository.Callback callback() {
+            return (AiLyricsRepository.Callback) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{AiLyricsRepository.Callback.class}, this);
+        }
+
+        private void progress(boolean pronunciation, boolean translation, boolean done) {
+            check(!finished || (!pronunciation && !translation && done),
+                    "late callback cannot restore generating after terminal delivery");
+            pronunciationLoading = pronunciation;
+            translationLoading = translation;
+            finished = done;
+        }
+
+        @Override public Object invoke(Object proxy, Method method, Object[] args) {
+            switch (method.getName()) {
+                case "onAiLyricsLoaded":
+                    completed++;
+                    result = (LyricsResult) args[1];
+                    progress(false, false, true);
+                    break;
+                case "onAiLyricsPartialLoaded":
+                    partial++;
+                    result = (LyricsResult) args[1];
+                    progress((boolean) args[2], (boolean) args[3], (boolean) args[4]);
+                    break;
+                case "onAiLyricsError":
+                    errors++;
+                    progress(false, false, true);
+                    break;
+                case "onAiLyricsTaskError":
+                    errors++;
+                    progress((boolean) args[2], (boolean) args[3], (boolean) args[4]);
+                    break;
+                default:
+                    // Provider-attribution and diagnostic callbacks have no loading state.
+                    break;
+            }
+            return null;
+        }
+    }
+
+    private static final class Connection extends HttpURLConnection {
+        private final boolean rejected = rejectRequests;
+        private final ByteArrayOutputStream request = new ByteArrayOutputStream();
+
+        Connection(URL url) { super(url); connections.incrementAndGet(); }
+        @Override public void connect() { }
+        @Override public boolean usingProxy() { return false; }
+        @Override public void disconnect() { }
+        @Override public int getResponseCode() { return rejected ? 401 : 200; }
+        @Override public OutputStream getOutputStream() { return request; }
+        @Override public InputStream getErrorStream() {
+            return bytes("{\"error\":{\"message\":\"synthetic rejection\"}}");
+        }
+        @Override public InputStream getInputStream() {
+            String body = request.toString(StandardCharsets.UTF_8);
+            String text = body.contains("PRONUNCIATION task")
+                    ? "L0001\tReading one\nL0002\tReading two\n"
+                    : "L0001\tMeaning one\nL0002\tMeaning two\n";
+            return bytes("data: {\"choices\":[{\"delta\":{\"content\":" + JSONObject.quote(text)
+                    + "}}]}\n\ndata: [DONE]\n\n");
+        }
+        private static InputStream bytes(String value) {
+            return new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static void await(Observer observer) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!observer.finished && System.nanoTime() < deadline) {
+            Handler.drain();
+            Thread.sleep(2);
+        }
+        Handler.drain();
+        check(observer.finished, "worker delivers terminal callback");
+        check(!observer.pronunciationLoading && !observer.translationLoading,
+                "terminal callback clears both loading flags");
+    }
+
+    private static void generationAndCombinedCache(boolean pronunciation, boolean translation) throws Exception {
+        AiLyricsRepository repository = new AiLyricsRepository();
+        try {
+            AiLyricsSettings.Snapshot settings = settings(pronunciation, translation);
+            LyricsResult source = base();
+            Observer generated = new Observer();
+            repository.loadSupplements(track(), source, settings, "en", false, generated.callback());
+            await(generated);
+            check(generated.completed > 0 && generated.errors == 0, "enabled tasks complete successfully");
+            check(AiLyricsRepository.hasSameBaseLyrics(source, generated.result), "generation retains base identity");
+            check(generated.result.lines.get(0).pronunciationText.isEmpty() != pronunciation,
+                    "only requested pronunciation is generated");
+            check(generated.result.lines.get(0).translationText.isEmpty() != translation,
+                    "only requested translation is generated");
+
+            int requestsBeforeCache = connections.get();
+            Observer cached = new Observer();
+            repository.loadSupplements(track(), source, settings, "en", false, cached.callback());
+            check(cached.completed == 1 && cached.finished, "combined cache delivers terminal result synchronously");
+            check(!cached.pronunciationLoading && !cached.translationLoading, "combined cache clears loading");
+            check(connections.get() == requestsBeforeCache, "combined cache needs no provider request");
+            check(AiLyricsRepository.hasSameBaseLyrics(source, cached.result), "combined cache retains base identity");
+        } finally {
+            repository.shutdown();
+            Handler.drain();
+        }
+    }
+
+    private static void complexBasesAndTaskCaches() throws Exception {
+        for (int variant = 0; variant < 12; variant++) {
+            List<LyricsLine.Syllable> syllables = List.of(
+                    new LyricsLine.Syllable("日本語 ", 1000, 2000, true, true, "vocal", "female1", "#ffffff", "normal"),
+                    new LyricsLine.Syllable("text", 2000, 3000));
+            LyricsLine.VocalPart lead = new LyricsLine.VocalPart("lead-id", "lead", "female1", "#aabbcc",
+                    "normal", "vocal", variant % 2 == 0 ? "日本語 text" : "", syllables,
+                    "prior pronunciation", "prior translation", "日本語[にほんご]");
+            LyricsLine.VocalPart backing = new LyricsLine.VocalPart("back-id", "background", "male1", "#ddeeff",
+                    "normal", "vocal", "Overlapping voice", List.of(new LyricsLine.Syllable("Overlap", 1500, 3500)),
+                    "", "", "");
+            List<LyricsLine.VocalPart> parts = variant % 3 == 0 ? List.of()
+                    : variant % 3 == 1 ? List.of(lead) : List.of(lead, backing);
+            LyricsLine line = new LyricsLine(1000, 4000, variant % 2 == 0 ? "Lead line" : "", syllables,
+                    "duet3", "#112233", "normal", "vocal", parts,
+                    "previous pronunciation", "previous translation", "line[ruby]");
+            LyricsResult source = new LyricsResult(List.of(line,
+                    new LyricsLine(4000, 8000, "", List.of(), "", "interlude", List.of())),
+                    "provider label", "base detail", variant % 4 < 2, "USAAA2600001", "0123456789012345678901",
+                    List.of(), "ivsync", "current-selection", "word", 50);
+            AiLyricsRepository repository = new AiLyricsRepository();
+            try {
+                AiLyricsSettings.Snapshot settings = settings(true, true);
+                Observer generated = new Observer();
+                repository.loadSupplements(track(), source, settings, "ja", false, generated.callback());
+                await(generated);
+                check(AiLyricsRepository.hasSameBaseLyrics(source, generated.result),
+                        "generated overlapping/furigana base retains identity, variant " + variant);
+                check(generated.result.lines.get(0).furiganaText.equals(line.furiganaText),
+                        "AI generation preserves existing line furigana");
+
+                // Remove only the combined entry so loadSupplements must reconstruct
+                // a terminal result from both independently stored task results.
+                cache(repository).keySet().removeIf(key -> !key.contains("|task="));
+                int requestsBeforeCache = connections.get();
+                Observer tasks = new Observer();
+                repository.loadSupplements(track(), source, settings, "ja", false, tasks.callback());
+                check(tasks.completed == 1 && tasks.finished, "two task caches deliver terminal result synchronously");
+                check(!tasks.pronunciationLoading && !tasks.translationLoading, "two task caches clear loading");
+                check(connections.get() == requestsBeforeCache, "two task caches need no provider request");
+                check(AiLyricsRepository.hasSameBaseLyrics(source, tasks.result), "task cache retains complex base identity");
+
+                // Retain only pronunciation: cached pronunciation must stop loading
+                // immediately while translation is still genuinely in flight.
+                cache(repository).keySet().removeIf(key -> !key.contains("|task=pronunciation"));
+                Observer partial = new Observer();
+                repository.loadSupplements(track(), source, settings, "ja", false, partial.callback());
+                check(partial.partial == 1 && !partial.pronunciationLoading
+                                && partial.translationLoading && !partial.finished,
+                        "pronunciation cache announces only translation loading");
+                await(partial);
+                check(AiLyricsRepository.hasSameBaseLyrics(source, partial.result),
+                        "partial task cache plus live completion retains complex base identity");
+            } finally {
+                repository.shutdown();
+                Handler.drain();
+            }
+        }
+    }
+
+    private static void errorsAndDisabledSourceRule() throws Exception {
+        AiLyricsRepository repository = new AiLyricsRepository();
+        try {
+            rejectRequests = true;
+            Observer failed = new Observer();
+            repository.loadSupplements(track(), base(), settings(true, true), "en", false, failed.callback());
+            await(failed);
+            check(failed.errors > 0 && failed.completed == 0, "provider errors terminate without success delivery");
+            rejectRequests = false;
+
+            AiLyricsSettings.Snapshot settings = settings(true, true);
+            put(settings, "languageRules", Map.of("en", new AiLyricsSettings.LanguageRule("en", false, false, "ko")));
+            LyricsResult source = base();
+            int requestsBeforeRule = connections.get();
+            Observer disabled = new Observer();
+            repository.loadSupplements(track(), source, settings, "en", false, disabled.callback());
+            check(disabled.completed == 1 && disabled.finished, "disabled source rule delivers terminal result");
+            check(disabled.result == source, "disabled source rule returns unchanged base");
+            check(connections.get() == requestsBeforeRule, "disabled source rule needs no provider request");
+        } finally {
+            rejectRequests = false;
+            repository.shutdown();
+            Handler.drain();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        URL.setURLStreamHandlerFactory(protocol -> new URLStreamHandler() {
+            @Override protected URLConnection openConnection(URL url) {
+                if (!url.getHost().equals("fixture.invalid")) {
+                    throw new AssertionError("Network request escaped synthetic provider: " + url);
+                }
+                return new Connection(url);
+            }
+        });
+        generationAndCombinedCache(true, false);
+        generationAndCombinedCache(false, true);
+        generationAndCombinedCache(true, true);
+        complexBasesAndTaskCaches();
+        errorsAndDisabledSourceRule();
+        System.out.println("Repository completion regression passed: " + assertions + " assertions");
+    }
+}

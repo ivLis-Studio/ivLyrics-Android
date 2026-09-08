@@ -15,6 +15,9 @@ python3 tests/run_inline_gate_regression.py
 python3 tests/run_inline_hooks_regression.py
 python3 tests/run_inline_lifecycle_regression.py
 python3 tests/run_supplement_loading_regression.py
+python3 tests/run_repository_completion_regression.py
+python3 tests/run_furigana_loading_regression.py
+python3 tests/run_metadata_refresh_loading_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
@@ -42,6 +45,21 @@ a controlled callback queue to check streaming/completion races, independent
 pronunciation and translation progress, errors, and disabled language rules. A
 synthetic SSE connection verifies provider completion without waiting for transport
 EOF, including final text, keepalives, nonterminal events, and provider errors.
+The repository-completion regression calls the full production `loadSupplements`
+entry point through an in-memory provider connection. It checks pronunciation-only,
+translation-only and concurrent requests, combined and per-task memory caches,
+cached pronunciation with live translation, provider errors and disabled source
+rules. Overlapping vocal parts, blank/interlude rows, syllable timing, existing
+furigana and provider identity must survive generation and cache restoration, so
+the activity's base-result check accepts terminal callbacks.
+The furigana-loading regression checks that in-flight requests survive cache resets
+and finish through success, error or the existing timeout. It also covers repeated
+cold/warm loads, ignored superseded requests, track changes and a distinct furigana
+loading label.
+The metadata-refresh-loading regression executes the activity's production refresh
+callbacks and provider-loading handler. It checks cached/current lyrics remain visible
+with accurate supplement progress while metadata refreshes, and old AI callbacks
+cannot restore loading after the activity switches generation or base result.
 These checks run on the host and do not start an emulator or operate a device.
 
 The card-presence regression runs the production Spotify module list helper with
