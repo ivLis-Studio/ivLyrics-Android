@@ -1,0 +1,109 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.graphics.Bitmap;
+import java.util.*;
+
+public final class MetadataRefreshLoadingRegression {
+    private static int assertions;
+    private String currentLyricsKey = "fixture-track";
+    private LyricsResult currentBaseLyricsResult = base("original words");
+    private LyricsResult currentLyricsResult = new LyricsResult(List.of(
+            currentBaseLyricsResult.lines.get(0).withSupplements("existing pronunciation", "existing translation", "")),
+            "fixture", "partial supplements", false);
+    private long aiSupplementGeneration = 1L;
+    private boolean lyricsLookupInFlight = true;
+    private boolean aiLyricsGenerating = true;
+    private boolean lyricsSupplementPronunciationLoading = true;
+    private boolean lyricsSupplementTranslationLoading;
+    private String lyricsLoadingProviderName = "";
+    private TrackSnapshot currentTrack;
+    private final Text sourceView = new Text(), statusView = new Text();
+    private int publishedResults, loadingIndicatorUpdates;
+    private static final class Text { void setText(String value) {} }
+    private static void check(boolean condition, String message) {
+        assertions++;
+        if (!condition) throw new AssertionError(message);
+    }
+    private static LyricsResult base(String text) {
+        return new LyricsResult(List.of(new LyricsLine(1000, 3000, text, List.of())), "fixture", "base", false);
+    }
+    private String ui(String key) { return key; }
+    private String lyricsLoadingText() { return "loading lyrics"; }
+    private void setLyricsResultOnViews(LyricsResult result) { publishedResults++; }
+    private void updateLyricPreview(long position) {}
+    private long currentLyricsPlaybackPosition(TrackSnapshot track) { return 0; }
+    private void updateVinylLoadingIndicator(boolean force) { loadingIndicatorUpdates++; }
+    private void appendLog(String message) {}
+    private void onLyricsLog(String key, String message) {}
+    private void onLyricsArtworkLoaded(String key, Bitmap bitmap, String artworkKey) {}
+    private void onLyricsMetadataResolved(String key, String isrc, String trackId) {}
+    private void onLyricsLoaded(String key, LyricsResult value) {
+        if (!currentLyricsKey.equals(key)) return;
+        lyricsLookupInFlight = false;
+        currentBaseLyricsResult = value;
+        currentLyricsResult = value;
+        aiSupplementGeneration++; // onLyricsLoaded requests a new AI generation for the new base.
+    }
+    // INSERT_PROVIDER_LOADING
+    private LyricsRepository.Callback callback() {
+        return // INSERT_REFRESH_CALLBACK
+        ;
+    }
+    private final class GenerationGate {
+        private final long generation = aiSupplementGeneration;
+        private final String trackKey = currentLyricsKey;
+        private final LyricsResult baseResult = currentBaseLyricsResult;
+        // INSERT_GENERATION_GUARD
+        void complete() {
+            if (!current(trackKey)) return;
+            aiLyricsGenerating = false;
+            lyricsSupplementPronunciationLoading = false;
+            lyricsSupplementTranslationLoading = false;
+        }
+    }
+    private void failedRefreshWhileAiRuns() {
+        LyricsResult previous = currentBaseLyricsResult;
+        LyricsResult previousPresentation = currentLyricsResult;
+        GenerationGate ai = new GenerationGate();
+        LyricsRepository.Callback refresh = callback();
+        refresh.onLyricsProviderLoading(currentLyricsKey, "fixture provider");
+        check(currentBaseLyricsResult == previous && currentLyricsResult == previousPresentation,
+                "metadata enrichment must keep displayed lyrics and active AI base identity during provider lookup");
+        refresh.onLyricsError(currentLyricsKey, "fixture fetch failed");
+        check(!lyricsLookupInFlight, "failed refresh ends lookup state");
+        check(ai.current(currentLyricsKey), "failed background refresh still accepts original AI completion");
+        ai.complete();
+        check(!aiLyricsGenerating && !lyricsSupplementPronunciationLoading,
+                "AI completion after refresh failure clears pronunciation generating");
+        check(publishedResults == 0, "background refresh does not publish an empty lyric replacement");
+        check(currentLyricsResult.lines.get(0).pronunciationText.equals("existing pronunciation")
+                && currentLyricsResult.lines.get(0).translationText.equals("existing translation"),
+                "background failure preserves supplements already visible to the user");
+        check(loadingIndicatorUpdates == 1, "failed lookup immediately refreshes indicator even while playback is paused");
+    }
+    private void successfulRefreshAndLateEvents() {
+        GenerationGate oldAi = new GenerationGate();
+        LyricsRepository.Callback refresh = callback();
+        LyricsResult updated = base("new timing base");
+        refresh.onLyricsLoaded(currentLyricsKey, updated);
+        refresh.onLyricsProviderLoading(currentLyricsKey, "late provider");
+        check(currentBaseLyricsResult == updated, "late provider event cannot replace completed lyrics");
+        check(!oldAi.current(currentLyricsKey), "successful new base still rejects old AI completion");
+        oldAi.complete();
+        check(lyricsSupplementPronunciationLoading, "old completion cannot end new generation state");
+    }
+    private void wrongTrackIgnored() {
+        LyricsResult previous = currentBaseLyricsResult;
+        LyricsRepository.Callback refresh = callback();
+        refresh.onLyricsProviderLoading("old-track", "provider");
+        refresh.onLyricsError("old-track", "failure");
+        check(currentBaseLyricsResult == previous && lyricsLookupInFlight, "stale track events leave current lookup and lyrics intact");
+        check(loadingIndicatorUpdates == 0, "stale errors do not change loading indicator");
+    }
+    public static void main(String[] args) {
+        new MetadataRefreshLoadingRegression().failedRefreshWhileAiRuns();
+        new MetadataRefreshLoadingRegression().successfulRefreshAndLateEvents();
+        new MetadataRefreshLoadingRegression().wrongTrackIgnored();
+        System.out.println("PASS " + assertions + " assertions: metadata-refresh failure preserves AI completion, success replaces base, stale events ignored");
+    }
+}

@@ -173,7 +173,14 @@ final class FuriganaRepository {
             Callback callback,
             LyricsResult diskCached
     ) {
-        if (loadGeneration != activeLoadGeneration || expectedCacheGeneration != cacheGeneration) {
+        if (loadGeneration != activeLoadGeneration) {
+            return;
+        }
+        // Clearing AI caches can race the queued disk lookup while this request is
+        // still current. Ignore that cached value, but retain a terminal callback.
+        // Returning here would leave the page loading with no request or timeout.
+        if (expectedCacheGeneration != cacheGeneration) {
+            startFuriganaRequest(trackKey, cacheKey, baseResult, requests, callback);
             return;
         }
         if (diskCached != null) {

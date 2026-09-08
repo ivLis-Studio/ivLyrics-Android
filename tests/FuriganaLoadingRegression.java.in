@@ -1,0 +1,175 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.os.Handler;
+import java.lang.reflect.*;
+import java.util.*;
+
+/** Uses actual repository disk-delivery, JS-result and timeout methods with synthetic values. */
+public final class FuriganaLoadingRegression {
+    private static int assertions;
+    private static void check(boolean value, String message) {
+        assertions++;
+        if (!value) throw new AssertionError(message);
+    }
+    private static Object call(Object target, String name, Object... args) throws Exception {
+        for (Method method : target.getClass().getDeclaredMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != args.length) continue;
+            method.setAccessible(true);
+            try { return method.invoke(target, args); }
+            catch (InvocationTargetException error) { throw new RuntimeException(error.getCause()); }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    private static Object get(Object target, String name) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+    private static void set(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+    private static final class Fixture implements AutoCloseable, FuriganaRepository.Callback {
+        final FuriganaRepository repository = new FuriganaRepository(null);
+        final LyricsResult base = new LyricsResult(List.of(
+                new LyricsLine(1000, 3000, "日本語", List.of())), "fixture", "base", false);
+        final List<?> requests;
+        int loaded, errors;
+        boolean loading = true;
+        LyricsResult result;
+        Fixture() throws Exception { requests = (List<?>) call(repository, "buildRequests", base.lines); }
+        void finishDiskLookup(long loadGeneration, long cacheGeneration, LyricsResult cached) throws Exception {
+            call(repository, "finishDiskLookup", loadGeneration, cacheGeneration,
+                    "fixture", "fixture-cache", base, requests, this, cached);
+        }
+        Map<?, ?> pending() throws Exception { return (Map<?, ?>) get(repository, "pendingRequests"); }
+        String pendingId() throws Exception { return (String) pending().keySet().iterator().next(); }
+        public void onFuriganaLoaded(String key, LyricsResult value) { loaded++; loading = false; result = value; }
+        public void onFuriganaError(String key, String message) { errors++; loading = false; }
+        public void onFuriganaLog(String key, String message) { }
+        public void close() { repository.shutdown(); Handler.drain(); }
+    }
+    private static void cacheInvalidationCompletes() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            // The disk read captured cache generation 0, then the AI-cache reset ran.
+            fixture.repository.clearCache();
+            fixture.finishDiskLookup(0L, 0L, fixture.base);
+            check(fixture.pending().size() == 1, "cache reset retains a live timed request");
+            check(fixture.loaded == 0, "invalidated cached result is not reused");
+            String requestId = fixture.pendingId();
+            call(fixture.repository, "handleResult", requestId,
+                    "{\"ok\":true,\"lines\":[\"<ruby>日本語<rt>にほんご</rt></ruby>\"]}");
+            Handler.drain();
+            check(fixture.loaded == 1 && fixture.errors == 0 && !fixture.loading,
+                    "generation after cache reset clears loading exactly once");
+            check(fixture.result.lines.get(0).furiganaText.contains("にほんご"), "new furigana result retained");
+            check(fixture.pending().isEmpty(), "completed request removed");
+        }
+        try (Fixture fixture = new Fixture()) {
+            fixture.repository.clearTrackCache("fixture");
+            fixture.finishDiskLookup(0L, 0L, null);
+            check(fixture.pending().size() == 1, "track-cache invalidation also retains timed request");
+            String requestId = fixture.pendingId();
+            Handler.drain(); // Controlled timeout fires; no WebView was created.
+            check(fixture.errors == 1 && !fixture.loading, "unavailable JS terminates through existing timeout");
+            call(fixture.repository, "handleResult", requestId, "{\"ok\":true,\"lines\":[]}");
+            check(fixture.errors == 1 && fixture.loaded == 0, "late result cannot revive a timed-out request");
+        }
+        try (Fixture fixture = new Fixture()) {
+            fixture.repository.clearCache();
+            fixture.finishDiskLookup(0L, 0L, null);
+            call(fixture.repository, "handleResult", fixture.pendingId(), "{\"ok\":false,\"error\":\"fixture error\"}");
+            Handler.drain();
+            check(fixture.errors == 1 && fixture.loaded == 0 && !fixture.loading,
+                    "JS error clears invalidated lookup once without duplicate timeout");
+        }
+    }
+    private static void repeatedPublicLoads() throws Exception {
+        TrackSnapshot track = new TrackSnapshot("fixture song", "fixture artist", "", "", "", "",
+                5000, 0, 1, 1f, false, null, "");
+        try (Fixture fixture = new Fixture()) {
+            fixture.repository.loadFurigana(track, fixture.base, false, fixture);
+            check(fixture.pending().size() == 1 && fixture.loading, "cold public load starts an independent furigana request");
+            call(fixture.repository, "handleResult", fixture.pendingId(),
+                    "{\"ok\":true,\"lines\":[\"<ruby>日本語<rt>にほんご</rt></ruby>\"]}");
+            Handler.drain();
+            check(fixture.loaded == 1 && fixture.errors == 0 && !fixture.loading, "cold result terminates without any AI task");
+            for (int count = 0; count < 3; count++) {
+                fixture.loading = true; // requestJapaneseFurigana sets this before every repository call.
+                fixture.repository.loadFurigana(track, fixture.base, false, fixture);
+                check(!fixture.loading && fixture.pending().isEmpty(), "repeated warm request clears loading synchronously");
+            }
+            check(fixture.loaded == 4 && fixture.errors == 0, "all repeated warm requests deliver their terminal callback");
+            fixture.loading = true;
+            fixture.repository.loadFurigana(track, fixture.base, true, fixture);
+            String supersededId = fixture.pendingId();
+            fixture.repository.loadFurigana(track, fixture.base, true, fixture);
+            check(fixture.pending().size() == 1 && !supersededId.equals(fixture.pendingId()),
+                    "settings regeneration supersedes the previous timed request");
+            call(fixture.repository, "handleResult", supersededId, "{\"ok\":true,\"lines\":[]}");
+            check(fixture.loaded == 4 && fixture.loading, "old result cannot finish the current regeneration");
+            call(fixture.repository, "handleResult", fixture.pendingId(), "{\"ok\":false,\"error\":\"fixture error\"}");
+            Handler.drain();
+            check(fixture.errors == 1 && !fixture.loading, "current regeneration error clears loading once");
+        }
+        try (Fixture fixture = new Fixture()) {
+            fixture.repository.loadFurigana(track, fixture.base, false, fixture);
+            String oldId = fixture.pendingId();
+            TrackSnapshot next = new TrackSnapshot("next fixture", "fixture artist", "", "", "", "",
+                    5000, 0, 1, 1f, false, null, "");
+            fixture.repository.loadFurigana(next, fixture.base, false, fixture);
+            check(fixture.pending().size() == 1 && !oldId.equals(fixture.pendingId()), "track switch cancels old request timeout");
+            Handler.drain();
+            check(fixture.errors == 1 && !fixture.loading, "only new track timeout terminates its loading");
+        }
+    }
+
+    private static void generationAndCacheIsolation() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            set(fixture.repository, "activeLoadGeneration", 2L);
+            fixture.repository.clearCache();
+            fixture.finishDiskLookup(1L, 0L, fixture.base);
+            Handler.drain();
+            check(fixture.pending().isEmpty() && fixture.loaded == 0 && fixture.errors == 0,
+                    "superseded load does not restart or finish the newer load");
+        }
+        try (Fixture fixture = new Fixture()) {
+            fixture.finishDiskLookup(0L, 0L, fixture.base);
+            Handler.drain();
+            check(fixture.loaded == 1 && fixture.errors == 0 && !fixture.loading,
+                    "current valid cache completes synchronously");
+            check(fixture.pending().isEmpty(), "cache hit starts no JS timeout");
+        }
+    }
+
+    private boolean lyricsCulturalAnnotationsLoading, metadataTranslationLoading;
+    private boolean lyricsSupplementTranslationLoading, lyricsSupplementPronunciationLoading, lyricsSupplementFuriganaLoading;
+    private boolean lyricsLookupInFlight;
+    private LyricsResult currentLyricsResult;
+    private String ui(String key) { return key; }
+    private String aiProviderLoadingText(String format, String fallback) { return fallback; }
+    private boolean isLoadingLyricsPreview(String detail) { return false; }
+    private String lyricsLoadingText() { return "lyrics loading"; }
+    // INSERT_SUPPLEMENT_LOADING_TEXT
+    // INSERT_VINYL_LOADING_TEXT
+    private void independentFuriganaLabel() {
+        lyricsSupplementFuriganaLoading = true;
+        check(supplementLoadingText().equals("lyrics.furigana · loading.generating"),
+                "header identifies furigana when AI pronunciation is disabled or complete");
+        check(vinylLoadingText().equals("lyrics.furigana · loading.generating"),
+                "vinyl identifies the same independent furigana task");
+        lyricsSupplementPronunciationLoading = true;
+        check(supplementLoadingText().equals("loading.pronunciation"), "active AI pronunciation retains its label");
+        lyricsSupplementPronunciationLoading = false;
+        lyricsSupplementFuriganaLoading = false;
+        check(vinylLoadingText().isEmpty(), "no task keeps a loading label after completion");
+    }
+    public static void main(String[] args) throws Exception {
+        cacheInvalidationCompletes();
+        generationAndCacheIsolation();
+        repeatedPublicLoads();
+        new FuriganaLoadingRegression().independentFuriganaLabel();
+        System.out.println("PASS " + assertions + " assertions: invalidated cache success/error/timeout, stale load, repeated cold/warm/settings/track loads, distinct furigana label");
+    }
+}

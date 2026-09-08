@@ -1521,8 +1521,15 @@ public class BaseLyricsActivity extends Activity implements
                     if (!key.equals(currentLyricsKey)) return;
                     lyricsLookupInFlight = false;
                     appendLog("embedded metadata refresh: " + message);
+                    updateVinylLoadingIndicator(true);
                 }
-                @Override public void onLyricsProviderLoading(String key, String provider) { BaseLyricsActivity.this.onLyricsProviderLoading(key, provider); }
+                @Override public void onLyricsProviderLoading(String key, String provider) {
+                    if (!key.equals(currentLyricsKey) || !lyricsLookupInFlight) return;
+                    // ISRC enrichment refreshes the current song in the background.
+                    // Keep its base identity so the running AI completion still applies
+                    // if this lookup fails; only a loaded replacement starts new AI work.
+                    appendLog("embedded metadata refresh provider: " + provider);
+                }
                 @Override public void onLyricsLog(String key, String message) { BaseLyricsActivity.this.onLyricsLog(key, message); }
                 @Override public void onLyricsArtworkLoaded(String key, Bitmap bitmap, String artworkKey) { BaseLyricsActivity.this.onLyricsArtworkLoaded(key, bitmap, artworkKey); }
                 @Override public void onLyricsMetadataResolved(String key, String isrc, String trackId) { BaseLyricsActivity.this.onLyricsMetadataResolved(key, isrc, trackId); }
@@ -13147,7 +13154,7 @@ public class BaseLyricsActivity extends Activity implements
             );
         }
         if (lyricsSupplementFuriganaLoading) {
-            return ui("loading.pronunciation");
+            return ui("lyrics.furigana") + " · " + ui("loading.generating");
         }
         String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
         if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
@@ -13204,7 +13211,7 @@ public class BaseLyricsActivity extends Activity implements
             );
         }
         if (lyricsSupplementFuriganaLoading) {
-            return ui("loading.pronunciation");
+            return ui("lyrics.furigana") + " · " + ui("loading.generating");
         }
         return ui("loading.generating");
     }
