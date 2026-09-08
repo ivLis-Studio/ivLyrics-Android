@@ -15,11 +15,28 @@ public final class MetadataRefreshLoadingRegression {
     private boolean aiLyricsGenerating = true;
     private boolean lyricsSupplementPronunciationLoading = true;
     private boolean lyricsSupplementTranslationLoading;
+    private boolean lyricsSupplementFuriganaLoading = true;
+    private boolean lyricsCulturalAnnotationsLoading, metadataTranslationLoading;
+    private String pronunciationLoadingProviderName = "fixture AI", translationLoadingProviderName = "";
     private String lyricsLoadingProviderName = "";
     private TrackSnapshot currentTrack;
-    private final Text sourceView = new Text(), statusView = new Text();
-    private int publishedResults, loadingIndicatorUpdates;
-    private static final class Text { void setText(String value) {} }
+    private final Text sourceView = new Text(), statusView = new Text(), aiSettingsStatusView = new Text();
+    private final LyricsViewSink lyricsView = new LyricsViewSink(), landscapeLyricsView = new LyricsViewSink(),
+            pictureInPictureLyricsView = new LyricsViewSink();
+    private int publishedResults, loadingIndicatorUpdates, previewInvalidations;
+    private LyricsResult publishedResult;
+    private boolean loadingIndicatorVisible;
+    private static final class Text {
+        String value = "";
+        void setText(String value) { this.value = value; }
+    }
+    private static final class LyricsViewSink {
+        boolean pronunciation = true, translation;
+        void setSupplementLoading(boolean pronunciation, boolean translation) {
+            this.pronunciation = pronunciation;
+            this.translation = translation;
+        }
+    }
     private static void check(boolean condition, String message) {
         assertions++;
         if (!condition) throw new AssertionError(message);
@@ -29,7 +46,13 @@ public final class MetadataRefreshLoadingRegression {
     }
     private String ui(String key) { return key; }
     private String lyricsLoadingText() { return "loading lyrics"; }
-    private void setLyricsResultOnViews(LyricsResult result) { publishedResults++; }
+    private void setLyricsResultOnViews(LyricsResult result) { publishedResults++; publishedResult = result; }
+    private LyricsResult mergeCurrentFuriganaInto(LyricsResult result) { return result; }
+    private void clearPreviewRowsCache() { previewInvalidations++; }
+    private void updateLyricsSupplementLoadingText() {}
+    private void updateLyricsSupplementLoadingIndicator(boolean visible) { loadingIndicatorVisible = visible; }
+    // INSERT_AI_LOADED
+    // INSERT_SUPPLEMENT_LOADING
     private void updateLyricPreview(long position) {}
     private long currentLyricsPlaybackPosition(TrackSnapshot track) { return 0; }
     private void updateVinylLoadingIndicator(boolean force) { loadingIndicatorUpdates++; }
@@ -54,12 +77,13 @@ public final class MetadataRefreshLoadingRegression {
         private final String trackKey = currentLyricsKey;
         private final LyricsResult baseResult = currentBaseLyricsResult;
         // INSERT_GENERATION_GUARD
-        void complete() {
-            if (!current(trackKey)) return;
-            aiLyricsGenerating = false;
-            lyricsSupplementPronunciationLoading = false;
-            lyricsSupplementTranslationLoading = false;
+        // INSERT_GUARDED_DELIVERY
+        LyricsResult completedResult() {
+            List<LyricsLine> lines = List.of(baseResult.lines.get(0).withSupplements(
+                    "completed pronunciation", "completed translation", ""));
+            return AiLyricsRepository.resultWithBaseIdentity(baseResult, lines, "fixture AI completed");
         }
+        void complete() { onAiLyricsLoaded(trackKey, completedResult()); }
     }
     private void failedRefreshWhileAiRuns() {
         LyricsResult previous = currentBaseLyricsResult;
@@ -72,14 +96,29 @@ public final class MetadataRefreshLoadingRegression {
         refresh.onLyricsError(currentLyricsKey, "fixture fetch failed");
         check(!lyricsLookupInFlight, "failed refresh ends lookup state");
         check(ai.current(currentLyricsKey), "failed background refresh still accepts original AI completion");
-        ai.complete();
-        check(!aiLyricsGenerating && !lyricsSupplementPronunciationLoading,
-                "AI completion after refresh failure clears pronunciation generating");
         check(publishedResults == 0, "background refresh does not publish an empty lyric replacement");
         check(currentLyricsResult.lines.get(0).pronunciationText.equals("existing pronunciation")
                 && currentLyricsResult.lines.get(0).translationText.equals("existing translation"),
                 "background failure preserves supplements already visible to the user");
         check(loadingIndicatorUpdates == 1, "failed lookup immediately refreshes indicator even while playback is paused");
+        LyricsResult completed = ai.completedResult();
+        check(AiLyricsRepository.hasSameBaseLyrics(previous, completed), "terminal fixture retains real repository base identity");
+        ai.onAiLyricsLoaded(currentLyricsKey, completed);
+        check(!aiLyricsGenerating && !lyricsSupplementPronunciationLoading && !lyricsSupplementTranslationLoading,
+                "production AI completion after refresh failure clears pronunciation generating");
+        check(currentLyricsResult == completed && publishedResult == completed && publishedResults == 1,
+                "production completion applies and publishes the final result exactly once");
+        check(currentLyricsResult.lines.get(0).pronunciationText.equals("completed pronunciation")
+                && currentLyricsResult.lines.get(0).translationText.equals("completed translation"),
+                "final pronunciation and translation reach displayed result");
+        check(!lyricsView.pronunciation && !landscapeLyricsView.pronunciation && !pictureInPictureLyricsView.pronunciation,
+                "production loading update clears each lyric surface");
+        check(pronunciationLoadingProviderName.isEmpty() && previewInvalidations == 1,
+                "production terminal update clears provider attribution and invalidates preview cache");
+        check(lyricsSupplementFuriganaLoading && loadingIndicatorVisible,
+                "AI completion retains separately running furigana task");
+        check(statusView.value.equals(completed.detail) && aiSettingsStatusView.value.equals("status.ai_applied"),
+                "completion updates result detail and settings status");
     }
     private void successfulRefreshAndLateEvents() {
         GenerationGate oldAi = new GenerationGate();
@@ -91,6 +130,7 @@ public final class MetadataRefreshLoadingRegression {
         check(!oldAi.current(currentLyricsKey), "successful new base still rejects old AI completion");
         oldAi.complete();
         check(lyricsSupplementPronunciationLoading, "old completion cannot end new generation state");
+        check(currentLyricsResult == updated && publishedResults == 0, "guard rejects obsolete completed result without publishing it");
     }
     private void wrongTrackIgnored() {
         LyricsResult previous = currentBaseLyricsResult;
@@ -100,10 +140,21 @@ public final class MetadataRefreshLoadingRegression {
         check(currentBaseLyricsResult == previous && lyricsLookupInFlight, "stale track events leave current lookup and lyrics intact");
         check(loadingIndicatorUpdates == 0, "stale errors do not change loading indicator");
     }
+    private void invalidCompletionRejected() {
+        GenerationGate ai = new GenerationGate();
+        LyricsResult previous = currentLyricsResult;
+        ai.onAiLyricsLoaded(currentLyricsKey, base("wrong base words"));
+        check(currentLyricsResult == previous && publishedResults == 0 && lyricsSupplementPronunciationLoading,
+                "production base comparison rejects malformed terminal result without ending current generation");
+        ai.onAiLyricsLoaded("stale-track", ai.completedResult());
+        check(currentLyricsResult == previous && publishedResults == 0 && lyricsSupplementPronunciationLoading,
+                "production identity guard rejects wrong-track terminal result");
+    }
     public static void main(String[] args) {
         new MetadataRefreshLoadingRegression().failedRefreshWhileAiRuns();
         new MetadataRefreshLoadingRegression().successfulRefreshAndLateEvents();
         new MetadataRefreshLoadingRegression().wrongTrackIgnored();
+        new MetadataRefreshLoadingRegression().invalidCompletionRejected();
         System.out.println("PASS " + assertions + " assertions: metadata-refresh failure preserves AI completion, success replaces base, stale events ignored");
     }
 }
