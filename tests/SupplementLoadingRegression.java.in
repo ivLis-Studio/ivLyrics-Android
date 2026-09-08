@@ -1,11 +1,15 @@
 package kr.ivlis.ivlyricsandroid;
 
 import android.os.Handler;
+import java.io.*;
 import java.lang.reflect.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import sun.misc.Unsafe;
+import org.json.JSONObject;
 
 /** Exercises real session/dispatcher methods; provider transport is never invoked. */
 public final class SupplementLoadingRegression {
@@ -210,11 +214,113 @@ public final class SupplementLoadingRegression {
         aiLyricsGenerating = false;
         check(!isPreviewSupplementGenerating(AiLyricsSettings.PREVIEW_ITEM_PRONUNCIATION), "terminal request cannot show generating");
     }
+
+    private static StreamConnection streamConnection;
+    private static final class StreamConnection extends HttpURLConnection {
+        final InputStream input;
+        boolean disconnected, closed;
+        StreamConnection(URL url, String events, boolean remainsOpen) {
+            super(url);
+            byte[] bytes = events.getBytes(StandardCharsets.UTF_8);
+            input = new InputStream() {
+                int offset;
+                @Override public int read() {
+                    if (offset < bytes.length) return bytes[offset++] & 255;
+                    if (remainsOpen) throw new AssertionError("Read after provider completion: transport is still open");
+                    return -1;
+                }
+                @Override public int read(byte[] target, int start, int length) {
+                    if (length == 0) return 0;
+                    int value = read();
+                    if (value < 0) return -1;
+                    target[start] = (byte) value;
+                    return 1;
+                }
+                @Override public void close() { closed = true; }
+            };
+        }
+        @Override public void connect() { }
+        @Override public boolean usingProxy() { return false; }
+        @Override public void disconnect() { disconnected = true; }
+        @Override public int getResponseCode() { return 200; }
+        @Override public InputStream getInputStream() { return input; }
+        @Override public OutputStream getOutputStream() { return new ByteArrayOutputStream(); }
+    }
+
+    private static void completedStream(String terminal, boolean remainsOpen) throws Exception {
+        try (Fixture fixture = new Fixture(true, false)) {
+            URL endpoint = new URL("fixture-sse://supplements");
+            streamConnection = new StreamConnection(endpoint,
+                    ": heartbeat\n\ndata: {\"text\":\"reading one\"}\n\n"
+                            + "event: content_block_stop\ndata: {\"type\":\"content_block_stop\"}\n\n"
+                            + "data: {\"choices\":[{\"finish_reason\":null}]}\n\n"
+                            + "data: {\"candidates\":[{\"finishReason\":\"FINISH_REASON_UNSPECIFIED\"}]}\n\n"
+                            + "data: {\"text\":\" / reading two\"}\n\n" + terminal,
+                    remainsOpen);
+            Class<?> handlerType = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$SseDataHandler");
+            Object handler = java.lang.reflect.Proxy.newProxyInstance(handlerType.getClassLoader(), new Class<?>[]{handlerType},
+                    (proxy, method, args) -> {
+                        String data = (String) args[1];
+                        return "[DONE]".equals(data.trim()) ? "" : new JSONObject(data).optString("text", "");
+                    });
+            Class<?> sinkType = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$TextDeltaSink");
+            StringBuilder streamed = new StringBuilder();
+            Object sink = java.lang.reflect.Proxy.newProxyInstance(sinkType.getClassLoader(), new Class<?>[]{sinkType},
+                    (proxy, method, args) -> { streamed.append((String) args[0]); return null; });
+            call(fixture.dispatcher, "dispatch"); Handler.drain();
+            check(fixture.last().p, "pronunciation starts generating before stream");
+            String raw = (String) call(fixture.repository, "postJsonSse", endpoint.toString(), new JSONObject(),
+                    Collections.emptyMap(), handler, sink);
+            check(raw.equals("reading one / reading two" + (terminal.contains("final text") ? " / final text" : "")),
+                    "completion retains all deltas including text in terminal event");
+            check(raw.equals(streamed.toString()), "streamed and completed text agree");
+            check(streamConnection.closed && streamConnection.disconnected, "completed stream closes resources");
+            call(fixture.session, "setPronunciation", List.of("reading one", "reading two"));
+            call(fixture.dispatcher, "taskCompleted", "fixture-cache"); Handler.drain();
+            check(fixture.last().finished && !fixture.last().p, "provider completion clears pronunciation loading without EOF");
+        }
+    }
+
+    private static void failedStream() throws Exception {
+        try (Fixture fixture = new Fixture(true, false)) {
+            URL endpoint = new URL("fixture-sse://failed-supplements");
+            streamConnection = new StreamConnection(endpoint,
+                    "event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n", true);
+            Class<?> handlerType = Class.forName("kr.ivlis.ivlyricsandroid.AiLyricsRepository$SseDataHandler");
+            Object handler = java.lang.reflect.Proxy.newProxyInstance(handlerType.getClassLoader(), new Class<?>[]{handlerType},
+                    (proxy, method, args) -> { throw new IOException("fixture provider failure"); });
+            boolean failed = false;
+            try {
+                call(fixture.repository, "postJsonSse", endpoint.toString(), new JSONObject(),
+                        Collections.emptyMap(), handler, null);
+            } catch (RuntimeException error) {
+                failed = error.getCause() instanceof IOException
+                        && "fixture provider failure".equals(error.getCause().getMessage());
+            }
+            check(failed, "provider failure propagates before completion detection");
+            check(streamConnection.closed && streamConnection.disconnected, "failed stream closes resources");
+        }
+    }
+
+    private static void providerCompletion() throws Exception {
+        URL.setURLStreamHandlerFactory(protocol -> "fixture-sse".equals(protocol) ? new URLStreamHandler() {
+            @Override protected URLConnection openConnection(URL url) { return streamConnection; }
+        } : null);
+        completedStream("data: [DONE]\n\n", true);
+        completedStream("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", true);
+        completedStream("event: message_stop\n\n", true);
+        completedStream("data: {\"type\":\"response.completed\",\"text\":\" / final text\"}\n\n", true);
+        completedStream("data: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}],\"text\":\" / final text\"}\n\n", true);
+        completedStream("data: {\"candidates\":[{\"finishReason\":\"STOP\"}],\"text\":\" / final text\"}\n\n", true);
+        completedStream("", false);
+        failedStream();
+    }
     public static void main(String[] args) throws Exception {
         parallelCompletion(false);
         parallelCompletion(true);
         independentTasks();
         new SupplementLoadingRegression().previewLoading();
-        System.out.println("PASS " + assertions + " checks: stream/completion ordering, terminal errors, independent tasks, disabled pronunciation, empty final rows");
+        providerCompletion();
+        System.out.println("PASS " + assertions + " checks: stream/completion ordering, terminal errors, independent tasks, disabled pronunciation, empty final rows, SSE completion without EOF");
     }
 }

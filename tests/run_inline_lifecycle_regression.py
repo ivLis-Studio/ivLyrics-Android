@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the production inline update method with a deterministic host-side view.
+"""Run production inline render/update methods with a deterministic host-side view.
 
 No Android runtime, emulator, device, account, or network is used. Only renderer
 and playback collaborators are substituted; visibility/cache decisions are real.
@@ -9,13 +9,15 @@ import subprocess
 from regression_runtime import ROOT, REPORTS, java_tool
 
 source = (ROOT / "shared/src/main/java/kr/ivlis/ivlyricsandroid/IvLyricsBridge.java").read_text()
-start = source.index("@Override void updatePosition(Engine state)", source.index("class NativeInline"))
-cursor = source.index("{", start) + 1
-depth = 1
-while depth:
-    depth += (source[cursor] == "{") - (source[cursor] == "}")
-    cursor += 1
-method = source[start:cursor]
+def declaration(signature):
+    start = source.index(signature, source.index("class NativeInline"))
+    cursor = source.index("{", start) + 1
+    depth = 1
+    while depth:
+        depth += (source[cursor] == "{") - (source[cursor] == "}")
+        cursor += 1
+    return source[start:cursor]
+method = declaration("@Override void render(Engine state)") + "\n" + declaration("@Override void updatePosition(Engine state)")
 work = REPORTS / "inline-lifecycle"
 work.mkdir(parents=True, exist_ok=True)
 test = work / "InlineLifecycleRegression.java"
@@ -27,6 +29,8 @@ public final class InlineLifecycleRegression {
         int visibility = VISIBLE;
         int getVisibility() { return visibility; }
         void setVisibility(int value) { visibility = value; }
+        void setContentDescription(String value) { }
+        void render(Engine state) { }
         void updatePosition(Engine state) { }
     }
     static class SystemClock {
@@ -35,20 +39,30 @@ public final class InlineLifecycleRegression {
     }
     static class AiLyricsSettings {
         static final int PREVIEW_ITEM_NONE = 0;
-        static class Snapshot { int previewItems = 1; }
+        Snapshot value = new Snapshot();
+        Snapshot snapshot() { return value; }
+        static class Snapshot {
+            int previewItems = 1;
+            Object typography;
+            String karaokeDisplayGranularity = "", lyricsTextAlignment = "", uiLang = "en";
+            boolean karaokeBounceEffectEnabled;
+        }
     }
     static class Track {
         String mediaId = "spotify:track:test", trackId = "test";
         boolean dj, metadata = true, playing = true;
+        long durationMs = 5000;
         boolean hasUsableMetadata() { return metadata; }
         boolean isSpotifyDjSegment() { return dj; }
     }
-    static class Result { String detail = "No lyrics"; }
+    static class Result { String detail = "No lyrics"; List<String> lines = List.of("Song words"); }
     static class Engine {
         Track track = new Track();
         String key = "song";
         Result result = new Result();
-        boolean loading;
+        AiLyricsSettings settings = new AiLyricsSettings();
+        String sourceLanguage = "en";
+        boolean loading, pronunciationLoading, translationLoading;
         long position() { return 1000; }
         String ui(String key) { return key; }
     }
@@ -65,17 +79,36 @@ public final class InlineLifecycleRegression {
             rows = value; sets++;
         }
         void setPlaybackPosition(long position, boolean playing) { ticks++; }
+        void setTypographySettings(Object settings) { }
+        void setKaraokeDisplayGranularity(String value) { }
+        void setKaraokeBounceEffectEnabled(boolean value) { }
+        void setLyricTextAlignment(String value) { }
+        void setLyricsSegmentationLocale(String value) { }
     }
     static class InlineLyricPreviewModel {
         static class PreviewEntry { long startTimeMs = 0, endTimeMs = 5000; }
         final PreviewEntry entry = new PreviewEntry();
+        boolean pronunciation, translation;
+        InlineLyricPreviewModel() { }
+        InlineLyricPreviewModel(Result result, AiLyricsSettings.Snapshot settings, long duration,
+                boolean pronunciation, boolean translation, String source) {
+            this.pronunciation = pronunciation; this.translation = translation;
+        }
         PreviewEntry at(long position) { return entry; }
         List<MainLyricPreviewView.PreviewLine> rows(PreviewEntry entry) {
-            return Collections.singletonList(new MainLyricPreviewView.PreviewLine("Song words", true));
+            List<MainLyricPreviewView.PreviewLine> rows = new ArrayList<>();
+            rows.add(new MainLyricPreviewView.PreviewLine("Song words", true));
+            if (pronunciation) rows.add(new MainLyricPreviewView.PreviewLine("Generating pronunciation", false));
+            if (translation) rows.add(new MainLyricPreviewView.PreviewLine("Generating translation", false));
+            return rows;
         }
     }
     static class Inline extends View {
         AiLyricsSettings.Snapshot appliedSettings = new AiLyricsSettings.Snapshot();
+        Result appliedResult;
+        long appliedDuration;
+        boolean appliedPronunciationLoading, appliedTranslationLoading;
+        String appliedSourceLanguage;
         final MainLyricPreviewView preview = new MainLyricPreviewView();
         InlineLyricPreviewModel model = new InlineLyricPreviewModel();
         InlineLyricPreviewModel.PreviewEntry appliedEntry;
@@ -139,8 +172,42 @@ public final class InlineLifecycleRegression {
         check("late lyrics become visible", view.getVisibility() == View.VISIBLE
                 && view.preview.rows.get(0).text.equals("Song words"));
     }
+    static void supplementCompletionRefreshesRetainedRows() {
+        Inline view = new Inline(); Engine state = new Engine();
+        state.pronunciationLoading = state.translationLoading = true;
+        view.render(state);
+        check("both tasks shown while generating", view.preview.rows.size() == 3);
+        InlineLyricPreviewModel original = view.model;
+        state.pronunciationLoading = false;
+        view.render(state);
+        check("pronunciation completion refreshes unchanged lyric result", view.model != original
+                && view.preview.rows.size() == 2
+                && view.preview.rows.get(1).text.equals("Generating translation"));
+        state.translationLoading = false;
+        view.render(state);
+        check("terminal callback removes last loading row", view.preview.rows.size() == 1);
+        int sets = view.preview.sets;
+        view.render(state);
+        check("finished row remains cached during playback", view.preview.sets == sets);
+        state.track.dj = true;
+        view.updatePosition(state);
+        state.track.dj = false;
+        view.updatePosition(state);
+        check("reopened retained slot cannot restore generating", view.preview.rows.size() == 1);
+        state.pronunciationLoading = true;
+        view.render(state);
+        state.settings.value = new AiLyricsSettings.Snapshot();
+        state.settings.value.previewItems = 0;
+        view.render(state);
+        state.pronunciationLoading = false;
+        view.render(state);
+        state.settings.value = new AiLyricsSettings.Snapshot();
+        view.render(state);
+        check("completion while hidden is preserved on re-enable", view.preview.rows.size() == 1);
+    }
     public static void main(String[] args) {
         returnsFromSpeech(); returnsFromMissingTrackAndToggle(); returnsWhileLoading();
+        supplementCompletionRefreshesRetainedRows();
         System.out.println("Inline lifecycle: " + assertions + " assertions passed");
     }
 }

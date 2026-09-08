@@ -33,12 +33,15 @@ These checks complement physical playback/UI validation.
 The inline hook regression runs production Xposed callbacks against synthetic
 Spotify 9.1.80 class shapes, including both upstream menu availability checks,
 DJ/mixing, saved visibility preferences, video restrictions, and menu-scope cleanup.
-The inline lifecycle regression executes the production preview update method
+The inline lifecycle regression executes the production preview render/update methods
 against synthetic playback and view collaborators. It checks restoration after DJ
 speech, missing metadata, and toggling the preview, including loading and no-lyrics
-states. The supplement-loading regression uses the production AI repository with
+states, plus removal of completed supplement rows from retained/hidden views.
+The supplement-loading regression uses the production AI repository with
 a controlled callback queue to check streaming/completion races, independent
-pronunciation and translation progress, errors, and disabled language rules.
+pronunciation and translation progress, errors, and disabled language rules. A
+synthetic SSE connection verifies provider completion without waiting for transport
+EOF, including final text, keepalives, nonterminal events, and provider errors.
 These checks run on the host and do not start an emulator or operate a device.
 
 The card-presence regression runs the production Spotify module list helper with

@@ -3023,15 +3023,21 @@ final class AiLyricsRepository {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (line.isEmpty()) {
-                        String delta = handleSseEvent(eventName, data.toString(), handler);
+                        String eventData = data.toString();
+                        String delta = handleSseEvent(eventName, eventData, handler);
                         if (!delta.isEmpty()) {
                             raw.append(delta);
                             if (sink != null) {
                                 sink.onDelta(delta);
                             }
                         }
+                        // Provider completion ends the task even when a proxy keeps
+                        // the SSE connection open. Consume the final text before
+                        // closing, but never wait for another heartbeat or TCP EOF.
+                        boolean completed = isSseCompletionEvent(eventName, eventData);
                         eventName = "";
                         data.setLength(0);
+                        if (completed) break;
                         continue;
                     }
                     if (line.startsWith(":")) {
@@ -3067,6 +3073,31 @@ final class AiLyricsRepository {
             throw new IOException("Streaming returned no text");
         }
         return text;
+    }
+
+    private static boolean isSseCompletionEvent(String eventName, String data) {
+        String value = data == null ? "" : data.trim();
+        if ("[DONE]".equals(value)) return true;
+        if ("message_stop".equals(eventName) || "response.completed".equals(eventName)) return true;
+        if (value.isEmpty()) return false;
+        try {
+            JSONObject event = new JSONObject(value);
+            String type = event.optString("type", "");
+            if ("message_stop".equals(type) || "response.completed".equals(type)) return true;
+            // All requests use one candidate. OpenAI-compatible and Gemini
+            // providers may finish it without sending a separate [DONE] event.
+            JSONArray choices = event.optJSONArray("choices");
+            JSONObject choice = choices == null ? null : choices.optJSONObject(0);
+            if (choice != null && !choice.isNull("finish_reason")
+                    && !choice.optString("finish_reason", "").isEmpty()) return true;
+            JSONArray candidates = event.optJSONArray("candidates");
+            JSONObject candidate = candidates == null ? null : candidates.optJSONObject(0);
+            String reason = candidate == null ? "" : candidate.optString("finishReason", "");
+            return !reason.isEmpty() && !"FINISH_REASON_UNSPECIFIED".equals(reason);
+        } catch (JSONException ignored) {
+            // Parsing and provider errors remain the provider handler's concern.
+            return false;
+        }
     }
 
     private HttpURLConnection openJsonPostConnection(
