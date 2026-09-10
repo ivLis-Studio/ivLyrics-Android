@@ -32,6 +32,7 @@ production = "\n".join(declaration(signature) for signature in (
     "private long cacheIntervalEnd(",
     "private boolean hasVisibleInterludeOverlap(",
     "private boolean interludesOverlap(",
+    "private static final class DisplayLine {",
     "private static final class LineVisualState {",
     "private static final class InterludeInfo {",
 ))

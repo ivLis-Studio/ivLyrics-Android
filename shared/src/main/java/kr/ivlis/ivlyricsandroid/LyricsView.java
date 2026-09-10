@@ -2151,6 +2151,9 @@ public final class LyricsView extends View {
         }
         LyricsLine line = displayLine.line;
         if (line == null) return "";
+        if (displayLine.cachedAccessibilityLabel != null) {
+            return displayLine.cachedAccessibilityLabel;
+        }
         LinkedHashSet<String> originals = new LinkedHashSet<>();
         LinkedHashSet<String> pronunciations = new LinkedHashSet<>();
         LinkedHashSet<String> translations = new LinkedHashSet<>();
@@ -2165,7 +2168,8 @@ public final class LyricsView extends View {
         List<String> ordered = new ArrayList<>(originals);
         ordered.addAll(pronunciations);
         ordered.addAll(translations);
-        return android.text.TextUtils.join(". ", ordered);
+        displayLine.cachedAccessibilityLabel = android.text.TextUtils.join(". ", ordered);
+        return displayLine.cachedAccessibilityLabel;
     }
 
     private void addAccessibilityText(Set<String> values, String text) {
@@ -4316,7 +4320,10 @@ public final class LyricsView extends View {
         if (line == null) {
             return displayLine.endTimeMs();
         }
-        return Math.max(displayLine.endTimeMs(), lastLyricEndTime(line));
+        if (displayLine.cachedContentEndTimeMs == Long.MIN_VALUE) {
+            displayLine.cachedContentEndTimeMs = Math.max(displayLine.endTimeMs(), lastLyricEndTime(line));
+        }
+        return displayLine.cachedContentEndTimeMs;
     }
 
     private InterludeInfo interludeInfoForLine(LyricsLine line, int lineIndex, int lineCount) {
@@ -5010,6 +5017,11 @@ public final class LyricsView extends View {
         final int sourceIndex;
         final int displayIndex;
         final InterludeInfo interludeInfo;
+        // LyricsLine and VocalPart copy their lists and expose final values.
+        // Display rows are replaced on every result/display-list invalidation;
+        // only source-derived metadata is retained, never visual frame state.
+        String cachedAccessibilityLabel;
+        long cachedContentEndTimeMs = Long.MIN_VALUE;
         RowReflow reflow;
 
         static DisplayLine real(LyricsLine line, int sourceIndex, int displayIndex, InterludeInfo interludeInfo) {

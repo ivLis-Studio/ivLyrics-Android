@@ -17,19 +17,7 @@ public final class RendererOverlapRegression {
 
     // INSERT_PRODUCTION_DECLARATIONS
 
-    private static final class DisplayLine {
-        final LyricsLine line;
-        final InterludeInfo interludeInfo;
-        DisplayLine(LyricsLine line, InterludeInfo info) { this.line = line; interludeInfo = info; }
-        static DisplayLine real(LyricsLine line, int source, int index, InterludeInfo info) {
-            return new DisplayLine(line, info);
-        }
-        static DisplayLine virtual(int source, int index, InterludeInfo info) { return new DisplayLine(null, info); }
-        boolean isInterlude() { return interludeInfo.isInterlude; }
-        boolean isTimed() { return isInterlude() || line.isTimed(); }
-        long startTimeMs() { return isInterlude() ? interludeInfo.startTimeMs : line.startTimeMs; }
-        long endTimeMs() { return isInterlude() ? interludeInfo.endTimeMs : line.endTimeMs; }
-    }
+    private static final class RowReflow {}
 
     private static float clamp(float value) { return Math.max(0, Math.min(1, value)); }
     private void remapDisplayCenter(List<DisplayLine> previous, List<DisplayLine> next) {}

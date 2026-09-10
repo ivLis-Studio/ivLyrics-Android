@@ -5,6 +5,7 @@ Run these commands from the repository root:
 ```sh
 ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug :spotify-module:lintDebug :app:assembleDebug :app:assembleQa :spotify-module:assembleDebug
 python3 tests/run_lyrics_center_regression.py
+python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
@@ -34,6 +35,15 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The lyrics-metadata-cache regression compares the production accessibility label,
+content-end and visual-state methods with frozen commit `cf69ad2`. It runs the
+immutable lyric model and pronunciation normalization directly, including word
+units, inline styles, ruby, RTL, overlapping vocals, pause/seek, replacement
+supplements/timing and live interlude-label changes. Instrumented preparation and
+syllable-visit counts show repeated-frame work removed without claiming Android
+Canvas pixel equivalence or real-device FPS. The overlap regression also extracts
+the production display-row class so its metadata lifecycle stays covered.
 
 The inline hook regression runs production Xposed callbacks against synthetic
 Spotify 9.1.80 class shapes, including both upstream menu availability checks,

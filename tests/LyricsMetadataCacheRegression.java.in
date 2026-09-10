@@ -1,0 +1,127 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.util.*;
+
+public final class LyricsMetadataCacheRegression {
+    static int assertions;
+    static void check(boolean condition, String label) {
+        assertions++;
+        if (!condition) throw new AssertionError(label);
+    }
+    static void equal(Object before, Object after, String label) {
+        check(Objects.equals(before, after), label + ": " + before + " != " + after);
+    }
+    // INSERT_BASELINE
+    // INSERT_CANDIDATE
+
+    static List<LyricsLine> fixture(int count) {
+        String[] texts = {"Ｆｕｌｌ Ｗｉｄｔｈ！", "Darlin’ (Baby)", "漢字と仮名", "مرحبا بالعالم", "👩‍👩‍👧‍👦 á", "", "한글 / 함께"};
+        List<LyricsLine> lines = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            long start = index * 1700L, end = start + 1600L;
+            String text = texts[index % texts.length];
+            List<LyricsLine.Syllable> syllables = new ArrayList<>();
+            for (int part = 0; part < 30; part++) {
+                syllables.add(part == 2 ? null : new LyricsLine.Syllable(text, start + part * 20L,
+                        part == 4 ? start + part * 20L : end + part * 2L,
+                        index % 2 == 0, part % 3 == 0, "wave", "CUSTOM", "#f0aabb", "FEMALE 1"));
+            }
+            List<LyricsLine.VocalPart> vocals = new ArrayList<>();
+            if (index % 2 == 0) for (int vocal = 0; vocal < 4; vocal++) {
+                String original = texts[(index + vocal) % texts.length];
+                vocals.add(new LyricsLine.VocalPart("v" + vocal, vocal == 0 ? "lead" : "background",
+                        "MALE 1", "vocal", original, syllables, vocal % 2 == 0 ? original : "발음 " + vocal,
+                        "Translation " + vocal, "<ruby>漢<rt>かん</rt></ruby>"));
+            }
+            lines.add(new LyricsLine(start, end, text, syllables, "CUSTOM", "#abcdef", "FEMALE 1",
+                    "vocal", vocals, index % 3 == 0 ? text : " 읽기 " + index + " ",
+                    " 뜻 " + index + " ", "<ruby>漢<rt>かん</rt></ruby>"));
+            // Constructor snapshots must isolate cached metadata from producer lists.
+            syllables.clear(); vocals.clear();
+        }
+        return lines;
+    }
+
+    static void checkTimelineAndLabels(Baseline before, Candidate after, List<LyricsLine> lines) {
+        before.load(lines); after.load(lines);
+        for (int index = 0; index < lines.size(); index++) {
+            equal(before.label(index), after.label(index), "label " + index);
+            equal(before.end(index), after.end(index), "content end " + index);
+            LyricsLine line = lines.get(index);
+            long contentEnd = before.end(index);
+            long[] times = {0, line.startTimeMs - 1, line.startTimeMs, line.endTimeMs - 1,
+                    line.endTimeMs, contentEnd - 1, contentEnd, contentEnd + 519,
+                    contentEnd + 520, contentEnd + 819, contentEnd + 820, 1_000_000,
+                    line.startTimeMs + 17, line.startTimeMs + 17, 0};
+            for (long time : times) equal(before.visual(index,time),after.visual(index,time),"pause/seek/overlap " + index + "@" + time);
+        }
+    }
+
+    static List<LyricsLine> stableOverlapFixture() {
+        List<LyricsLine> result = new ArrayList<>();
+        for (LyricsLine source : fixture(8)) {
+            List<LyricsLine.Syllable> syllables = new ArrayList<>();
+            for (int index=0;index<30;index++) syllables.add(new LyricsLine.Syllable(source.text,0,30000));
+            List<LyricsLine.VocalPart> vocals = new ArrayList<>();
+            for (LyricsLine.VocalPart part : source.vocalParts) vocals.add(new LyricsLine.VocalPart(
+                    part.id,part.role,part.speaker,part.kind,part.text,syllables,
+                    part.pronunciationText,part.translationText,part.furiganaText));
+            result.add(new LyricsLine(0,30000,source.text,syllables,source.speaker,source.kind,vocals,
+                    source.pronunciationText,source.translationText,source.furiganaText));
+        }
+        return result;
+    }
+
+    public static void main(String[] args) {
+        Baseline before = new Baseline(); Candidate after = new Candidate();
+        List<LyricsLine> lines = fixture(40);
+        checkTimelineAndLabels(before, after, lines);
+        // Changed supplements and timings replace immutable source/display rows.
+        List<LyricsLine> replaced = new ArrayList<>(lines);
+        replaced.set(0, lines.get(0).withSupplements("new pronunciation", "새 번역", "new ruby"));
+        replaced.set(1, new LyricsLine(100, 50000, "same identity slot, new timing", List.of()));
+        checkTimelineAndLabels(before, after, replaced);
+        check(after.label(0).contains("새 번역"), "late translation is not stale");
+        equal(50000L, after.end(1), "replaced timing refreshed");
+
+        // Locale labels stay live; explicit and virtual markers bypass text cache.
+        for (String kind : List.of("prelude", "break", "postlude")) for (boolean virtual : new boolean[]{false,true}) {
+            before.addInterlude(kind,virtual); after.addInterlude(kind,virtual);
+            int index = before.display.size()-1;
+            equal(before.label(index),after.label(index),"initial marker");
+            before.preludeLabel=after.preludeLabel="전주";
+            before.breakLabel=after.breakLabel="간주";
+            before.postludeLabel=after.postludeLabel="후주";
+            equal(before.label(index),after.label(index),"live language marker");
+            equal(before.end(index),after.end(index),"marker end");
+        }
+        equal("",after.accessibilityLabel(null),"null display label");
+        equal(0L,after.displayLineContentEndTime(null),"null display end");
+        before.load(List.of(new LyricsLine(0,0,"",List.of())));
+        after.load(List.of(new LyricsLine(0,0,"",List.of())));
+        for (int repeat=0;repeat<100;repeat++) equal(before.label(0),after.label(0),"empty label cache");
+
+        // The main, landscape, PiP and module pages use the same metadata path.
+        // All eight source rows overlap for 30s. The 20.4s frame sequence never
+        // crosses a display-list boundary, matching the real cache lifetime.
+        // Quantify work only, not device FPS: 1200 frames * 8 prepared source rows.
+        before = new Baseline(); after = new Candidate();
+        List<LyricsLine> stress = stableOverlapFixture();
+        before.load(stress); after.load(stress);
+        for (int frame=0;frame<1200;frame++) {
+            long time = frame % 250 < 10 ? 0 : frame * 17L;
+            for (int index=0;index<8;index++) {
+                equal(before.label(index),after.label(index),"frame label");
+                equal(before.visual(index,time),after.visual(index,time),"frame state");
+            }
+        }
+        equal(9600L,before.labelBuilds,"baseline label work exercised");
+        equal(8L,after.labelBuilds,"one label preparation per display row");
+        equal(720L,after.syllableVisits,"one immutable syllable scan per display row");
+        check(before.syllableVisits > after.syllableVisits * 1000L,"content scans reduced");
+        System.out.println("Assertions: " + assertions);
+        System.out.println("1200 frames x 8 rows: accessibility builds " + before.labelBuilds + " -> " + after.labelBuilds);
+        System.out.println("1200 frames x 8 rows: syllable visits " + before.syllableVisits + " -> " + after.syllableVisits);
+        System.out.println("PASS: exact labels/content bounds/visual state across glyph styles, word flags, RTL, ruby, four vocals, pause, seeks, replacements and localized interludes.");
+    }
+}
