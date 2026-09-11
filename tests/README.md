@@ -137,3 +137,7 @@ Detailed scopes:
 
 - [Lyrics center regression](LYRICS_CENTER_REGRESSION.md)
 - [Provider attribution regression](PROVIDER_ATTRIBUTION_REGRESSION.md)
+
+## Sync metadata reporting
+
+`python3 tests/run_sync_metadata_reporting_regression.py` compiles the production sync-data fetch/HTTP/parser and frozen `1888014` baseline against an in-memory URL transport. It compares result payloads and privacy GET counts and verifies acknowledged metadata reuse only within one load, changed fields, cache clearing during a response, cancellation, malformed/error/negative responses, raw caches, and contributor privacy refresh. No real API or device is used. Requires the same JDK, compiled shared classes, Android SDK, and pinned JSON dependency as the other repository regressions. Both CI workflows run it.

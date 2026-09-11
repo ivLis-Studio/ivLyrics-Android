@@ -115,6 +115,8 @@ final class LyricsRepository {
         }
     };
     private final AtomicLong providerPolicyGeneration = new AtomicLong();
+    private final AtomicLong syncMetadataReportGeneration = new AtomicLong();
+    private final ThreadLocal<SyncMetadataReportScope> syncMetadataReportScope = new ThreadLocal<>();
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
     private final LyricsProviderSettings lyricsProviderSettings;
@@ -361,6 +363,7 @@ final class LyricsRepository {
 
         LyricsResult memoryCached = cached;
         latestLyricsRequest.submit(request, () -> {
+            syncMetadataReportScope.set(new SyncMetadataReportScope());
             LogSink log = message -> { request.throwIfCancelled(); emitLog(key, callback, message); };
             LyricsResult reusableCached = memoryCached;
             try {
@@ -435,6 +438,8 @@ final class LyricsRepository {
                         callback.onLyricsError(key, message);
                     }
                 });
+            } finally {
+                syncMetadataReportScope.remove();
             }
         });
     }
@@ -463,6 +468,7 @@ final class LyricsRepository {
     }
 
     void clearCache() {
+        syncMetadataReportGeneration.incrementAndGet();
         clearMemoryLyricsCache();
         if (diskCache != null) {
             diskCache.clear();
@@ -479,6 +485,7 @@ final class LyricsRepository {
         if (key.isEmpty()) {
             return;
         }
+        syncMetadataReportGeneration.incrementAndGet();
         removeMemoryCachedLyrics(key);
         if (diskCache != null) {
             diskCache.remove(key);
@@ -486,6 +493,7 @@ final class LyricsRepository {
     }
 
     void clearSyncDataCacheForIsrc(String isrc) {
+        syncMetadataReportGeneration.incrementAndGet();
         if (syncDataResponseCache == null) {
             return;
         }
@@ -2080,7 +2088,6 @@ final class LyricsRepository {
             params.put("isrc", normalizedIsrc);
             params.put("provider", normalizedProvider);
             params.put("request-version", SYNC_DATA_REQUEST_VERSION);
-            params.put("metadata", "1");
             if (bypassServerCache) {
                 params.put("bypassCache", "1");
             }
@@ -2092,11 +2099,26 @@ final class LyricsRepository {
                 params.put("trackId", trackId);
             }
 
+            SyncMetadataReportScope metadataScope = syncMetadataReportScope.get();
+            long metadataGeneration = syncMetadataReportGeneration.get();
+            String metadataFingerprint = SyncMetadataReportScope.fingerprint(params);
+            boolean reportMetadata = metadataScope == null
+                    || !metadataScope.isAccepted(metadataFingerprint, metadataGeneration);
+            if (reportMetadata) {
+                params.put("metadata", "1");
+                if (metadataScope != null) params.put("metadata_ack", "1");
+            }
+
             log.write("sync-data request: " + describeParams(params));
             Map<String, String> headers = syncDataHeaders();
             log.write("sync-data headers: Origin=" + headers.get("Origin"));
-            String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers);
+            Map<String, String> responseHeaders = new HashMap<>();
+            String response = get(SYNC_DATA_BASE + "?" + encodeParams(params), headers, responseHeaders);
             SyncDataResult result = parseSyncDataResponse(response, normalizedProvider, log, false);
+            if (reportMetadata && metadataScope != null
+                    && "1".equals(responseHeaders.get("X-Sync-Metadata-Accepted"))) {
+                metadataScope.accept(metadataFingerprint, metadataGeneration, syncMetadataReportGeneration.get());
+            }
             if (embeddedSpotify) Log.i("ivLyricsSync", "Sync response: provider=" + normalizedProvider
                     + " / timing=" + (result != null) + " / points=" + (result == null ? 0 : result.syncPoints));
             if (syncDataResponseCache != null && !cacheKey.isEmpty()) {
@@ -3514,6 +3536,10 @@ final class LyricsRepository {
     }
 
     private String get(String url, Map<String, String> headers) throws IOException {
+        return get(url, headers, null);
+    }
+
+    private String get(String url, Map<String, String> headers, Map<String, String> responseHeaders) throws IOException {
         URL parsedUrl = URI.create(url).toURL();
         RequestCancellation.check();
         HttpURLConnection connection = (HttpURLConnection) parsedUrl.openConnection();
@@ -3537,7 +3563,11 @@ final class LyricsRepository {
             }
 
             try {
-                return readBody(connection.getInputStream());
+                String body = readBody(connection.getInputStream());
+                if (responseHeaders != null) {
+                    responseHeaders.put("X-Sync-Metadata-Accepted", connection.getHeaderField("X-Sync-Metadata-Accepted"));
+                }
+                return body;
             } finally {
                 RequestCancellation.check();
             }

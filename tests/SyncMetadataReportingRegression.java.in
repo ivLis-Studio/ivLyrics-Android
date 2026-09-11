@@ -1,0 +1,185 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.io.*;
+import java.lang.reflect.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import org.json.*;
+import sun.misc.Unsafe;
+
+/** Production fetchSyncData/get/parser; only transport and operation ownership are synthetic. */
+public final class SyncMetadataReportingRegression {
+    static final Unsafe unsafe;
+    static final List<Map<String, String>> requests = new ArrayList<>();
+    static final List<String> outputs = new ArrayList<>();
+    static int checks;
+    static boolean candidate;
+    static boolean acknowledge = true;
+    static int status = 200;
+    static String overrideBody;
+    static Runnable duringRead;
+    static final Class<?> logType;
+    static final Object log;
+    static {
+        try {
+            Field f = Unsafe.class.getDeclaredField("theUnsafe"); f.setAccessible(true); unsafe = (Unsafe) f.get(null);
+            logType = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$LogSink");
+            log = java.lang.reflect.Proxy.newProxyInstance(logType.getClassLoader(), new Class<?>[]{logType}, (p, m, a) -> null);
+        } catch (Exception e) { throw new ExceptionInInitializerError(e); }
+    }
+    static void check(boolean pass, String message) { checks++; if (!pass) throw new AssertionError(message); }
+    static Field field(Object object, String name) throws Exception {
+        Field f = object.getClass().getDeclaredField(name); f.setAccessible(true); return f;
+    }
+    static void put(Object object, String name, Object value) throws Exception { field(object, name).set(object, value); }
+    static Object value(Object object, String name) throws Exception { return field(object, name).get(object); }
+    static Object call(Object object, String name, Object... args) throws Exception {
+        for (Method m : object.getClass().getDeclaredMethods()) if (m.getName().equals(name) && m.getParameterCount() == args.length) {
+            m.setAccessible(true);
+            try { return m.invoke(object, args); } catch (InvocationTargetException e) { throw new RuntimeException(e.getCause()); }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    static LyricsRepository repository() throws Exception {
+        LyricsRepository r = (LyricsRepository) unsafe.allocateInstance(LyricsRepository.class);
+        put(r, "syncDataServerCacheBypassUntil", new HashMap<String, Long>());
+        put(r, "cache", new HashMap<>());
+        if (candidate) {
+            put(r, "syncMetadataReportGeneration", new AtomicLong());
+            put(r, "syncMetadataReportScope", new ThreadLocal<SyncMetadataReportScope>());
+        }
+        newOperation(r);
+        return r;
+    }
+    @SuppressWarnings("unchecked")
+    static void newOperation(LyricsRepository r) throws Exception {
+        if (candidate) ((ThreadLocal<SyncMetadataReportScope>) value(r, "syncMetadataReportScope")).set(new SyncMetadataReportScope());
+    }
+    static TrackSnapshot track(String title, String mediaId) {
+        return new TrackSnapshot(title, "Artist", "Album", "com.spotify.music", mediaId,
+                "USABC1234567", 180000, 15000, 1000, 1f, true, null, "");
+    }
+    static Object fetch(LyricsRepository r, String provider, TrackSnapshot track, boolean refresh) throws Exception {
+        Object result = call(r, "fetchSyncData", track.isrc, provider, track, null, log, refresh);
+        if (result == null) outputs.add("null");
+        else outputs.add(value(result, "provider") + "|" + value(result, "syncBody") + "|" + value(result, "syncPoints")
+                + "|contributors=" + ((List<?>) value(result, "contributors")).size());
+        return result;
+    }
+    static int metadataCount(int start) {
+        int count = 0;
+        for (int i = start; i < requests.size(); i++) if ("1".equals(requests.get(i).get("metadata"))) count++;
+        return count;
+    }
+    static Map<String, String> params(URL url) {
+        Map<String, String> p = new HashMap<>();
+        for (String pair : url.getQuery().split("&")) {
+            String[] parts = pair.split("=", 2);
+            p.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8), parts.length < 2 ? "" : URLDecoder.decode(parts[1], StandardCharsets.UTF_8));
+        }
+        return p;
+    }
+    static final class Connection extends HttpURLConnection {
+        final Map<String, String> params;
+        Connection(URL url) {
+            super(url); params = params(url); requests.add(params);
+            check(url.getHost().equals("lyrics.api.ivl.is"), "fixture must never make an unrelated request");
+        }
+        public int getResponseCode() { return status; }
+        public String getHeaderField(String name) {
+            return "X-Sync-Metadata-Accepted".equalsIgnoreCase(name) && acknowledge ? "1" : null;
+        }
+        public InputStream getInputStream() {
+            if (duringRead != null) { Runnable action = duringRead; duringRead = null; action.run(); }
+            String body = overrideBody == null
+                    ? "{\"success\":true,\"data\":{\"provider\":\"" + params.get("provider")
+                    + "\",\"syncType\":\"word\",\"syncPoints\":7,\"contributors\":[],\"syncData\":{\"version\":5,\"lines\":[{\"start\":0,\"end\":0,\"chars\":[100]}]}}}"
+                    : overrideBody;
+            return new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8));
+        }
+        public InputStream getErrorStream() { return new ByteArrayInputStream("{\"error\":\"fixture failure\"}".getBytes(StandardCharsets.UTF_8)); }
+        public void disconnect() {} public boolean usingProxy() { return false; } public void connect() {}
+    }
+    static RawResponseDiskCache diskCache() throws Exception {
+        RawResponseDiskCache cache = (RawResponseDiskCache) unsafe.allocateInstance(RawResponseDiskCache.class);
+        File root = Files.createTempDirectory("ivlyrics-sync-report-test").toFile();
+        root.deleteOnExit();
+        put(cache, "directory", root); put(cache, "cacheRoot", root); put(cache, "maxAgeMs", 0L);
+        return cache;
+    }
+    public static void main(String[] args) throws Exception {
+        candidate = args[0].equals("candidate");
+        URL.setURLStreamHandlerFactory(protocol -> protocol.equals("https") ? new URLStreamHandler() {
+            protected URLConnection openConnection(URL url) { return new Connection(url); }
+        } : null);
+        LyricsRepository r = repository();
+        TrackSnapshot song = track("Song", "spotify:track:0123456789012345678901");
+        int start = requests.size();
+        for (String provider : List.of("lrclib", "lyricsplus", "paxsenix")) check(fetch(r, provider, song, true) != null, "provider result retained");
+        int sharedMetadataCount = metadataCount(start);
+        check(requests.size() - start == 3, "all three provider/privacy GETs retained");
+        check(sharedMetadataCount == (candidate ? 1 : 3), "acknowledged identical metadata reported once per operation");
+        for (Map<String, String> p : requests) check(!candidate || !"1".equals(p.get("metadata")) || "1".equals(p.get("metadata_ack")), "ACK opt-in accompanies reports");
+        newOperation(r); start = requests.size(); fetch(r, "lrclib", song, true);
+        check(metadataCount(start) == 1, "new load must report again");
+        start = requests.size(); fetch(r, "lrclib", track("Song improved", song.mediaId), true);
+        check(metadataCount(start) == 1, "late improved title not suppressed");
+        start = requests.size(); fetch(r, "lrclib", track("Song", "spotify:track:1123456789012345678901"), true);
+        check(metadataCount(start) == 1, "late changed Spotify id not suppressed");
+        for (String reason : List.of("server cache HIT", "failed storage", "older server")) {
+            newOperation(r); acknowledge = false; start = requests.size();
+            fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+            check(metadataCount(start) == 2, reason + " without ACK keeps both reports");
+        }
+        acknowledge = true; newOperation(r); overrideBody = "{\"success\":true,\"data\":null}"; start = requests.size();
+        fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == (candidate ? 1 : 2), "valid negative lyrics response may acknowledge saved metadata");
+        overrideBody = "invalid-json"; newOperation(r); start = requests.size();
+        fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == 2, "malformed response does not acknowledge locally");
+        overrideBody = null; status = 500; newOperation(r); start = requests.size();
+        fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == 2, "HTTP failures never acknowledge"); status = 200;
+        for (String clear : List.of("clearCache", "clearCacheForTrack", "clearSyncDataCacheForIsrc")) {
+            newOperation(r); fetch(r, "lrclib", song, true); start = requests.size();
+            if (clear.equals("clearCache")) call(r, clear); else call(r, clear, clear.endsWith("Isrc") ? song.isrc : song.stableKey());
+            fetch(r, "lyricsplus", song, true);
+            check(metadataCount(start) == 1, clear + " resets accepted metadata");
+        }
+        newOperation(r); start = requests.size(); duringRead = () -> r.clearCache();
+        fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == 2, "in-flight ACK cannot cross cache-clear generation");
+        newOperation(r); start = requests.size();
+        RequestCancellation request = new RequestCancellation();
+        request.run(() -> {
+            duringRead = request::cancel;
+            try { fetch(r, "lrclib", song, true); } catch (Exception error) { throw new RuntimeException(error); }
+        });
+        Thread.interrupted();
+        fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == 2, "canceled response cannot acknowledge the operation");
+        newOperation(r);
+        if (candidate) ((ThreadLocal<?>) value(r, "syncMetadataReportScope")).remove();
+        start = requests.size(); fetch(r, "lrclib", song, true); fetch(r, "lyricsplus", song, true);
+        check(metadataCount(start) == 2, "manual/out-of-load requests retain metadata reporting");
+        check(!requests.get(start).containsKey("metadata_ack"), "manual requests retain asynchronous server metadata handling");
+        RawResponseDiskCache disk = diskCache(); put(r, "syncDataResponseCache", disk);
+        String key = (String) call(r, "syncDataCacheKey", song.isrc, "lrclib");
+        disk.put(key, "{\"success\":true,\"data\":null}"); newOperation(r); start = requests.size();
+        fetch(r, "lrclib", song, false); fetch(r, "lyricsplus", song, true);
+        check(requests.size() - start == 1 && metadataCount(start) == 1, "raw cache hit cannot acknowledge metadata");
+        disk.put(key, "{\"identityRedacted\":true,\"success\":true,\"data\":null}"); start = requests.size();
+        fetch(r, "lrclib", song, false);
+        check(requests.size() - start == 1, "redacted contributor identities still trigger privacy GET");
+        Map<String, String> left = Map.of("isrc", "a", "title", "b:c", "artist", "d");
+        Map<String, String> right = Map.of("isrc", "a", "title", "b", "artist", "c:d");
+        check(!SyncMetadataReportScope.fingerprint(left).equals(SyncMetadataReportScope.fingerprint(right)), "length-delimited metadata prevents collisions");
+        JSONObject result = new JSONObject().put("getCount", requests.size()).put("metadataCount", metadataCount(0))
+                .put("threeProviderMetadataCount", sharedMetadataCount).put("outputs", outputs).put("assertions", checks);
+        System.out.println("PASS " + checks + " checks: ACK/no ACK/failure/null/cancellation/cache clear/privacy/changed metadata");
+        System.out.println("RESULT_JSON " + result);
+    }
+}
