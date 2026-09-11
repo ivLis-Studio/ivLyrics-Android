@@ -63,6 +63,7 @@ jobs:
           python3 tests/run_provider_attribution_regression.py
           python3 tests/run_provider_overlap_regression.py
           python3 tests/run_renderer_overlap_regression.py
+          python3 tests/run_frame_layout_pool_regression.py
           python3 tests/run_lyrics_metadata_cache_regression.py
           python3 tests/run_sync_metadata_reporting_regression.py
           python3 tests/check_module_boundaries.py --built

@@ -10,6 +10,7 @@ python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
 python3 tests/run_renderer_overlap_regression.py
+python3 tests/run_frame_layout_pool_regression.py
 python3 tests/run_card_presence_regression.py
 python3 tests/run_karaoke_controller_regression.py
 python3 tests/run_inline_gate_regression.py
@@ -45,6 +46,13 @@ syllable-visit counts show repeated-frame work removed without claiming Android
 Canvas pixel equivalence or real-device FPS. The overlap regression also extracts
 the production display-row class so its metadata lifecycle stays covered.
 
+The frame-layout-pool regression reproduces the eleventh-row overflow in frozen
+commit `1c8314c`, then runs the current production frame bounds and layout pool.
+It covers long sparse overlaps, normal/manual scrolling, backward seeks, capacity
+growth, object reuse and release of stale lyric references after shrinking or
+clearing a frame. It requires only a JDK and does not claim Android pixel or
+physical-device validation.
+
 The inline hook regression runs production Xposed callbacks against synthetic
 Spotify 9.1.80 class shapes, including both upstream menu availability checks,
 DJ/mixing, saved visibility preferences, video restrictions, and menu-scope cleanup.
@@ -52,6 +60,9 @@ The inline lifecycle regression executes the production preview render/update me
 against synthetic playback and view collaborators. It checks restoration after DJ
 speech, missing metadata, and toggling the preview, including loading and no-lyrics
 states, plus removal of completed supplement rows from retained/hidden views.
+It also executes the real language detector and bridge language adapter before
+repeated renders: missing lyrics and undetectable text retain the default locale,
+preserve the existing three-second empty preview, and recover with detected lyrics.
 The supplement-loading regression uses the production AI repository with
 a controlled callback queue to check streaming/completion races, independent
 pronunciation and translation progress, errors, and disabled language rules. A

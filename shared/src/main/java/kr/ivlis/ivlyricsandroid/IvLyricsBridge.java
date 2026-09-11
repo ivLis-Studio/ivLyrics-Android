@@ -721,7 +721,9 @@ public final class IvLyricsBridge {
         String detectLanguage(LyricsResult value) {
             StringBuilder text = new StringBuilder();
             for (LyricsLine line : value.lines) text.append(line.text).append('\n');
-            return LyricsLanguageDetector.detect(text.toString());
+            String detected = LyricsLanguageDetector.detect(text.toString());
+            // Missing or undetectable lyrics still need a locale for repeated surface updates.
+            return detected == null ? "auto" : detected;
         }
 
         void updateBluetoothOffset() {

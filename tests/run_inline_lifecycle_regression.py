@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Run production inline render/update methods with a deterministic host-side view.
 
-No Android runtime, emulator, device, account, or network is used. Only renderer
-and playback collaborators are substituted; visibility/cache decisions are real.
+No Android runtime, emulator, device, account, or network is used. Renderer and
+playback collaborators are substituted; visibility/cache decisions and language
+detection use production code.
 """
 import subprocess
 
-from regression_runtime import ROOT, REPORTS, java_tool
+from regression_runtime import ROOT, REPORTS, SHARED, java_tool
 
 source = (ROOT / "shared/src/main/java/kr/ivlis/ivlyricsandroid/IvLyricsBridge.java").read_text()
 def declaration(signature):
@@ -18,8 +19,13 @@ def declaration(signature):
         cursor += 1
     return source[start:cursor]
 method = declaration("@Override void render(Engine state)") + "\n" + declaration("@Override void updatePosition(Engine state)")
+detect_language = declaration("String detectLanguage(LyricsResult value)")
 work = REPORTS / "inline-lifecycle"
 work.mkdir(parents=True, exist_ok=True)
+detector = work / "LyricsLanguageDetector.java"
+detector.write_text((SHARED / "LyricsLanguageDetector.java").read_text().replace(
+    "package kr.ivlis.ivlyricsandroid;", "", 1
+))
 test = work / "InlineLifecycleRegression.java"
 test.write_text(r'''
 import java.util.*;
@@ -55,16 +61,24 @@ public final class InlineLifecycleRegression {
         boolean hasUsableMetadata() { return metadata; }
         boolean isSpotifyDjSegment() { return dj; }
     }
-    static class Result { String detail = "No lyrics"; List<String> lines = List.of("Song words"); }
+    static class LyricsLine {
+        final String text;
+        LyricsLine(String text) { this.text = text; }
+    }
+    static class LyricsResult {
+        String detail = "No lyrics";
+        List<LyricsLine> lines = List.of(new LyricsLine("Song words"));
+    }
     static class Engine {
         Track track = new Track();
         String key = "song";
-        Result result = new Result();
+        LyricsResult result = new LyricsResult();
         AiLyricsSettings settings = new AiLyricsSettings();
         String sourceLanguage = "en";
         boolean loading, pronunciationLoading, translationLoading;
         long position() { return 1000; }
         String ui(String key) { return key; }
+''' + detect_language + r'''
     }
     static class MainLyricPreviewView {
         List<PreviewLine> rows = Collections.emptyList();
@@ -90,7 +104,7 @@ public final class InlineLifecycleRegression {
         final PreviewEntry entry = new PreviewEntry();
         boolean pronunciation, translation;
         InlineLyricPreviewModel() { }
-        InlineLyricPreviewModel(Result result, AiLyricsSettings.Snapshot settings, long duration,
+        InlineLyricPreviewModel(LyricsResult result, AiLyricsSettings.Snapshot settings, long duration,
                 boolean pronunciation, boolean translation, String source) {
             this.pronunciation = pronunciation; this.translation = translation;
         }
@@ -105,7 +119,7 @@ public final class InlineLifecycleRegression {
     }
     static class Inline extends View {
         AiLyricsSettings.Snapshot appliedSettings = new AiLyricsSettings.Snapshot();
-        Result appliedResult;
+        LyricsResult appliedResult;
         long appliedDuration;
         boolean appliedPronunciationLoading, appliedTranslationLoading;
         String appliedSourceLanguage;
@@ -205,12 +219,50 @@ public final class InlineLifecycleRegression {
         view.render(state);
         check("completion while hidden is preserved on re-enable", view.preview.rows.size() == 1);
     }
+    static void undetectedLanguageSurvivesRepeatedRenders() {
+        Inline view = new Inline(); Engine state = new Engine();
+        view.render(state);
+        check("detector has no language for empty lyrics", LyricsLanguageDetector.detect("") == null);
+        state.result = new LyricsResult();
+        state.result.lines = Collections.emptyList();
+        state.sourceLanguage = state.detectLanguage(state.result);
+        view.render(state);
+        // A changed result short-circuits the comparison on the first callback.
+        // The next metadata/surface render must also tolerate an unknown language.
+        view.render(state);
+        check("empty result keeps a usable language", "auto".equals(state.sourceLanguage));
+        check("missing lyrics show the empty state", view.model == null
+                && view.preview.rows.get(0).text.equals("No lyrics"));
+        int sets = view.preview.sets;
+        view.render(state);
+        check("repeated empty rendering reuses preview", view.preview.sets == sets);
+        SystemClock.now += 3001;
+        view.render(state);
+        check("missing lyrics still hide after the existing delay", view.getVisibility() == View.GONE);
+
+        state.result = new LyricsResult();
+        state.result.lines = List.of(new LyricsLine("♪"));
+        state.sourceLanguage = state.detectLanguage(state.result);
+        view.render(state);
+        view.render(state);
+        check("nonempty unknown language is safe", "auto".equals(state.sourceLanguage)
+                && view.model != null && view.getVisibility() == View.VISIBLE);
+
+        state.result = new LyricsResult();
+        state.result.lines = List.of(new LyricsLine("안녕하세요 사랑해요"));
+        state.sourceLanguage = state.detectLanguage(state.result);
+        view.render(state);
+        view.render(state);
+        check("detected language recovers after missing lyrics", "ko".equals(state.sourceLanguage)
+                && view.getVisibility() == View.VISIBLE && view.model != null);
+    }
     public static void main(String[] args) {
         returnsFromSpeech(); returnsFromMissingTrackAndToggle(); returnsWhileLoading();
         supplementCompletionRefreshesRetainedRows();
+        undetectedLanguageSurvivesRepeatedRenders();
         System.out.println("Inline lifecycle: " + assertions + " assertions passed");
     }
 }
 ''')
-subprocess.run([str(java_tool("javac")), "-d", str(work), str(test)], check=True)
+subprocess.run([str(java_tool("javac")), "-d", str(work), str(detector), str(test)], check=True)
 subprocess.run([str(java_tool("java")), "-cp", str(work), "InlineLifecycleRegression"], check=True)

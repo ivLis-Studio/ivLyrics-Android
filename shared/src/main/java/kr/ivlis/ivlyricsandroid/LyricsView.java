@@ -5279,7 +5279,7 @@ public final class LyricsView extends View {
     }
 
     private static final class FrameLineLayouts extends ArrayList<LineLayout> {
-        private final LineLayout[] entries = new LineLayout[VISIBLE_RADIUS * 2 + 6];
+        private LineLayout[] entries = new LineLayout[VISIBLE_RADIUS * 2 + 6];
 
         FrameLineLayouts() {
             super(VISIBLE_RADIUS * 2 + 6);
@@ -5299,6 +5299,10 @@ public final class LyricsView extends View {
                 float height
         ) {
             int activeSize = size();
+            // Sustained vocals can extend the frame beyond its usual visible radius.
+            if (activeSize >= entries.length) {
+                entries = Arrays.copyOf(entries, Math.max(activeSize + 1, entries.length * 2));
+            }
             LineLayout entry;
             if (entries[activeSize] == null) {
                 entry = new LineLayout();

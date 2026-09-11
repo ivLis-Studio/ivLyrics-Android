@@ -1,0 +1,95 @@
+import java.util.*;
+
+/** Real frame bounds and layout pools; does not simulate Android Canvas drawing. */
+public final class FrameLayoutPoolRegression {
+    static final class DisplayLine {
+        final int index;
+        DisplayLine(int index) { this.index = index; }
+    }
+    static final class DrawGroup {}
+    static int assertions;
+
+    // INSERT_PRODUCTION_DECLARATIONS
+
+    static void check(boolean condition, String message) {
+        assertions++;
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static void baselineOverflows() {
+        Baseline renderer = new Baseline();
+        int[] range = renderer.range(160, 128f, false, 4);
+        check(range[0] == 4 && range[1] == 133,
+                "Sparse sustained vocal remains in the production frame range");
+        try {
+            renderer.frame(range[0], range[1]);
+            throw new AssertionError("Frozen baseline must overflow after ten rows");
+        } catch (ArrayIndexOutOfBoundsException expected) {
+            check(renderer.size() == 10, "Baseline fails on its eleventh pooled layout");
+        }
+    }
+
+    static void expandedFramesReuseAndRelease() {
+        Candidate renderer = new Candidate();
+        int[] range = renderer.range(160, 128f, false, 4);
+        renderer.frame(range[0], range[1]);
+        check(renderer.size() == 130, "Long sparse overlap retains all rows without overflow");
+        Object[] largeFrame = renderer.slots();
+        for (int slot = 0; slot < renderer.size(); slot++) {
+            check(renderer.indexAt(slot) == range[0] + slot, "Expanded range keeps row order");
+        }
+        renderer.frame(range[0], range[1]);
+        check(Arrays.equals(largeFrame, renderer.slots()), "Same-sized frames reuse every pooled object");
+
+        range = renderer.range(160, 128f, true, 4);
+        renderer.frame(range[0], range[1]);
+        check(renderer.size() == 10, "Manual scroll still uses the normal visible range");
+        check(renderer.releasedAfter(10), "Shrinking clears all unused lyric and group references");
+        check(renderer.slots()[0] == largeFrame[0], "Shrinking retains reusable slot identity");
+
+        range = renderer.range(160, 2f, false, 0);
+        renderer.frame(range[0], range[1]);
+        check(renderer.size() == 8 && renderer.indexAt(0) == 0,
+                "Backward seek rebuilds the smaller range in order");
+        check(renderer.releasedAfter(8), "Seek releases formerly visible references");
+        renderer.frame(4, 133);
+        check(Arrays.equals(largeFrame, renderer.slots()), "Expanded slots survive shrink and seek for reuse");
+
+        renderer.clear();
+        check(renderer.size() == 0 && renderer.allReleased(), "Result reset releases every lyric reference");
+        renderer.frame(4, 133);
+        check(Arrays.equals(largeFrame, renderer.slots()), "Reset retains reusable layout capacity");
+        renderer.frame(0, -1);
+        check(renderer.size() == 0 && renderer.allReleased(), "An empty frame releases all retained references");
+    }
+
+    static void ordinaryAndExactBoundaryFrames() {
+        Candidate renderer = new Candidate();
+        Baseline baseline = new Baseline();
+        for (int count : new int[]{1, 10, 40}) {
+            for (int center = 0; center < count; center++) {
+                int[] range = renderer.range(count, center, false, -1);
+                check(Arrays.equals(range, baseline.range(count, center, false, -1)),
+                        "Ordinary frame bounds remain identical");
+                renderer.frame(range[0], range[1]);
+                check(renderer.size() <= 10, "Ordinary frames retain their original capacity budget");
+            }
+        }
+        renderer.frame(0, 9);
+        Object[] normalFrame = renderer.slots();
+        renderer.frame(0, 10);
+        check(renderer.size() == 11, "The first overflow slot is now supported");
+        check(renderer.slots()[0] == normalFrame[0], "Expansion preserves existing pooled objects");
+        renderer.frame(0, 511);
+        check(renderer.size() == 512, "Multiple capacity expansions remain safe");
+        renderer.clear();
+        check(renderer.allReleased(), "Large retained capacity contains no result references after clear");
+    }
+
+    public static void main(String[] args) {
+        baselineOverflows();
+        expandedFramesReuseAndRelease();
+        ordinaryAndExactBoundaryFrames();
+        System.out.println("Frame layout pool: " + assertions + " assertions passed; baseline eleventh-row overflow reproduced.");
+    }
+}
