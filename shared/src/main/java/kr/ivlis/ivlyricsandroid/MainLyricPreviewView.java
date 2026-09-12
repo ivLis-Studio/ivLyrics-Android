@@ -67,6 +67,9 @@ final class MainLyricPreviewView extends View {
             Color.argb(0, 255, 255, 255),
             Color.argb(0, 255, 255, 255)
     };
+    private final LinearGradient[] loadingShaders = new LinearGradient[LOADING_ROW_WIDTH_FACTORS.length];
+    private final float[] loadingShaderWidths = new float[LOADING_ROW_WIDTH_FACTORS.length];
+    private int loadingShaderAlpha = -1;
     private final Matrix karaokeFillShaderMatrix = new Matrix();
     private final List<PreviewLine> lines = new ArrayList<>();
     private final Map<PreviewLine, List<TextSegment>> textSegmentCache = new IdentityHashMap<>();
@@ -87,6 +90,10 @@ final class MainLyricPreviewView extends View {
     private boolean playing;
     private boolean compactLayout;
     private boolean externallyDriven;
+    private boolean timeDrivenVisuals;
+    private boolean frameAnimationsEnabled;
+    private long frameUptimeMs;
+    private long frameWallTimeMs;
     private String lyricTextAlignment = AiLyricsSettings.LYRICS_ALIGN_CENTER;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
@@ -115,6 +122,10 @@ final class MainLyricPreviewView extends View {
         boolean lineWidthInputsChanged = (previewMatches & PREVIEW_WIDTH_INPUTS_MATCH) == 0;
         lines.clear();
         lines.addAll(safeLines);
+        timeDrivenVisuals = false;
+        for (PreviewLine line : lines) {
+            timeDrivenVisuals |= line.isAnimatedVisual() || !"vocal".equals(line.kind);
+        }
         basePositionMs = Math.max(0L, positionMs);
         baseUptimeMs = SystemClock.uptimeMillis();
         lineStartMs = Math.max(0L, startTimeMs);
@@ -155,9 +166,13 @@ final class MainLyricPreviewView extends View {
     }
 
     void setPlaybackPosition(long positionMs, boolean isPlaying) {
-        basePositionMs = Math.max(0L, positionMs);
+        long nextPositionMs = Math.max(0L, positionMs);
+        boolean unchangedPaused = !playing && !isPlaying && basePositionMs == nextPositionMs;
+        basePositionMs = nextPositionMs;
         baseUptimeMs = SystemClock.uptimeMillis();
         playing = isPlaying;
+        if (unchangedPaused && !timeDrivenVisuals
+                && frameAnimationsEnabled == MotionPreferences.animationsEnabled(getContext())) return;
         postInvalidateOnAnimation();
     }
 
@@ -254,7 +269,9 @@ final class MainLyricPreviewView extends View {
         float totalHeight = desiredContentHeight();
         float top = Math.max(0f, (getHeight() - totalHeight) * 0.5f);
         long position = estimatedPositionMs();
-        boolean animationsEnabled = MotionPreferences.animationsEnabled(getContext());
+        frameAnimationsEnabled = MotionPreferences.animationsEnabled(getContext());
+        frameUptimeMs = SystemClock.uptimeMillis();
+        frameWallTimeMs = System.currentTimeMillis();
         float left = getPaddingLeft();
         float width = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
         boolean overflow = measureLineWidths(width);
@@ -265,7 +282,7 @@ final class MainLyricPreviewView extends View {
         canvas.clipRect(left, 0f, left + width, getHeight());
         for (int index = 0; index < lines.size(); index++) {
             PreviewLine line = lines.get(index);
-            float progress = animationsEnabled ? line.progress(position, lineStartMs, lineEndMs) : 0f;
+            float progress = frameAnimationsEnabled ? line.progress(position, lineStartMs, lineEndMs) : 0f;
             float textSize = sp(textSizeSp(line));
             textPaint.setTypeface(typefaceForLine(line));
             textPaint.setTextSize(textSize);
@@ -295,7 +312,7 @@ final class MainLyricPreviewView extends View {
         }
         canvas.restoreToCount(save);
 
-        if (!externallyDriven && MotionPreferences.animationsEnabled(getContext()) && ((playing && lineEndMs > lineStartMs && position < lineEndMs + 700L && (overflow || hasKaraokeLine()))
+        if (!externallyDriven && frameAnimationsEnabled && ((playing && lineEndMs > lineStartMs && position < lineEndMs + 700L && (overflow || hasKaraokeLine()))
                 || hasAnimatedLine())) {
             postInvalidateOnAnimation();
         }
@@ -344,7 +361,7 @@ final class MainLyricPreviewView extends View {
             float left,
             float width
     ) {
-        long now = MotionPreferences.animationsEnabled(getContext()) ? SystemClock.uptimeMillis() : 0L;
+        long now = frameAnimationsEnabled ? frameUptimeMs : 0L;
         float barWidth = dp(3.2f);
         float barGap = dp(3.8f);
         float iconWidth = barWidth * 4f + barGap * 3f;
@@ -383,7 +400,7 @@ final class MainLyricPreviewView extends View {
             float left,
             float width
     ) {
-        long now = MotionPreferences.animationsEnabled(getContext()) ? SystemClock.uptimeMillis() : 0L;
+        long now = frameAnimationsEnabled ? frameUptimeMs : 0L;
         float railWidth = Math.min(width * 0.72f, dp(210f));
         float railHeight = dp(4.2f);
         float railGap = dp(6.6f);
@@ -394,7 +411,6 @@ final class MainLyricPreviewView extends View {
 
         shapePaint.setShader(null);
         shapePaint.setStyle(Paint.Style.FILL);
-        loadingShimmerColors[1] = Color.argb(Math.min(255, alpha), 255, 255, 255);
         for (int index = 0; index < LOADING_ROW_WIDTH_FACTORS.length; index++) {
             float rowWidth = Math.max(dp(42f), railWidth * LOADING_ROW_WIDTH_FACTORS[index]);
             float rowLeft = alignedStart(rowWidth, width, left);
@@ -405,21 +421,32 @@ final class MainLyricPreviewView extends View {
             float shimmerWidth = Math.max(dp(28f), rowWidth * 0.36f);
             float phase = ((now + index * 145L) % 1280L) / 1280f;
             float shimmerLeft = rowLeft - shimmerWidth + (rowWidth + shimmerWidth * 2f) * phase;
-            shapePaint.setShader(new LinearGradient(
-                    shimmerLeft,
-                    0f,
-                    shimmerLeft + shimmerWidth,
-                    0f,
-                    loadingShimmerColors,
-                    LOADING_SHIMMER_STOPS,
-                    Shader.TileMode.CLAMP
-            ));
+            shapePaint.setShader(loadingShader(index, shimmerWidth, alpha));
             int save = canvas.save();
             canvas.clipRect(rowLeft, rowTop, rowLeft + rowWidth, rowTop + railHeight);
-            canvas.drawRoundRect(rowLeft, rowTop, rowLeft + rowWidth, rowTop + railHeight, radius, radius, shapePaint);
+            canvas.translate(shimmerLeft, 0f);
+            canvas.drawRoundRect(rowLeft - shimmerLeft, rowTop, rowLeft + rowWidth - shimmerLeft,
+                    rowTop + railHeight, radius, radius, shapePaint);
             canvas.restoreToCount(save);
             shapePaint.setShader(null);
         }
+    }
+
+    private LinearGradient loadingShader(int index, float width, int alpha) {
+        int nextAlpha = Math.min(255, alpha);
+        if (loadingShaderAlpha != nextAlpha) {
+            java.util.Arrays.fill(loadingShaders, null);
+            loadingShimmerColors[1] = Color.argb(nextAlpha, 255, 255, 255);
+            loadingShaderAlpha = nextAlpha;
+        }
+        LinearGradient shader = loadingShaders[index];
+        if (shader == null || Float.compare(loadingShaderWidths[index], width) != 0) {
+            shader = new LinearGradient(0f, 0f, width, 0f, loadingShimmerColors,
+                    LOADING_SHIMMER_STOPS, Shader.TileMode.CLAMP);
+            loadingShaders[index] = shader;
+            loadingShaderWidths[index] = width;
+        }
+        return shader;
     }
 
     private float xForText(float textWidth, float width, float left, float progress) {
@@ -1148,20 +1175,20 @@ final class MainLyricPreviewView extends View {
     }
 
     private KaraokeMotion.Values karaokeBounce(TextSegment segment, long positionMs, float textSize) {
-        if (!MotionPreferences.animationsEnabled(getContext()) || !karaokeBounceEffectEnabled) {
+        if (!frameAnimationsEnabled || !karaokeBounceEffectEnabled) {
             return karaokeBounceResult.idle();
         }
         return KaraokeMotion.evaluate(segment.motionProfile, positionMs, textSize, karaokeBounceResult);
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
-        if (!MotionPreferences.animationsEnabled(getContext())) return 0f;
-        return KaraokeMotion.waveOffset(SystemClock.uptimeMillis() + rowIndex * 95L, segmentIndex, textSize);
+        if (!frameAnimationsEnabled) return 0f;
+        return KaraokeMotion.waveOffset(frameUptimeMs + rowIndex * 95L, segmentIndex, textSize);
     }
 
     private void applyCanvasEffect(Canvas canvas, String kind, float centerX, float y, float textSize, int rowIndex) {
-        if (!MotionPreferences.animationsEnabled(getContext())) return;
-        long now = SystemClock.uptimeMillis() + rowIndex * 73L;
+        if (!frameAnimationsEnabled) return;
+        long now = frameUptimeMs + rowIndex * 73L;
         switch (kind) {
             case "effect": {
                 float density = textSize / KaraokeMotion.DESKTOP_TEXT_SIZE;
@@ -1217,9 +1244,9 @@ final class MainLyricPreviewView extends View {
         textPaint.setColor(color);
         textPaint.setAlpha(Color.alpha(color));
 
-        if (!MotionPreferences.animationsEnabled(getContext())) return;
+        if (!frameAnimationsEnabled) return;
 
-        long now = System.currentTimeMillis();
+        long now = frameWallTimeMs;
         int alpha = Color.alpha(color);
         switch (kind) {
             case "sparkle": {

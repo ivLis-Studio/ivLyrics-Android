@@ -588,6 +588,16 @@ public final class LyricsView extends View {
 
     void setPlaybackPosition(long positionMs) {
         long nextPositionMs = Math.max(0L, positionMs);
+        if (lines.isEmpty()) {
+            this.positionMs = nextPositionMs;
+            // Empty content is independent of playback; loading drives its own animation.
+            // Still notice system motion changes while its fixed loading frame is idle.
+            if (isLoadingEmptyMessage()
+                    && frameAnimationsEnabled != MotionPreferences.animationsEnabled(getContext())) {
+                postInvalidateOnAnimation();
+            }
+            return;
+        }
         if (this.positionMs == nextPositionMs && !smoothNextSeekCenter) {
             return;
         }
@@ -1033,7 +1043,7 @@ public final class LyricsView extends View {
 
     private void updateDisplayCenter(int activeIndex, long durationMs) {
         long now = SystemClock.uptimeMillis();
-        if (!MotionPreferences.animationsEnabled(getContext()) && !manualScrollActive) {
+        if (!frameAnimationsEnabled && !manualScrollActive) {
             animatedCenterIndex = activeIndex;
             centerInitialized = true;
             return;
@@ -3503,7 +3513,7 @@ public final class LyricsView extends View {
     private void drawEmpty(Canvas canvas) {
         if (isLoadingEmptyMessage()) {
             drawLoadingSkeleton(canvas);
-            postInvalidateOnAnimation();
+            if (frameAnimationsEnabled) postInvalidateOnAnimation();
             return;
         }
         float centerX = getWidth() * 0.5f;
@@ -3574,7 +3584,7 @@ public final class LyricsView extends View {
     }
 
     private void drawLoadingSkeleton(Canvas canvas) {
-        long now = MotionPreferences.animationsEnabled(getContext()) ? SystemClock.uptimeMillis() : 0L;
+        long now = frameAnimationsEnabled ? frameEffectTimeMs : 0L;
         float left = contentLeft();
         float availableWidth = contentWidth();
         float centerY = getHeight() * verticalCenterBias;
@@ -3969,7 +3979,7 @@ public final class LyricsView extends View {
 
     private void prepareRowReflow() {
         if (!rowReflowPending && !rowReflowActive) return;
-        if (!MotionPreferences.animationsEnabled(getContext())) {
+        if (!frameAnimationsEnabled) {
             clearRowReflow();
             return;
         }
@@ -4201,7 +4211,7 @@ public final class LyricsView extends View {
     private int findVisualCenterDisplayIndex(List<DisplayLine> displayLines, int activeIndex) {
         if (!karaoke
                 || !syncedLyricsKaraokeAnimationEnabled
-                || !MotionPreferences.animationsEnabled(getContext())) {
+                || !frameAnimationsEnabled) {
             return activeIndex;
         }
         int advancedIndex = findActiveDisplayIndexAt(

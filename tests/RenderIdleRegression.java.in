@@ -1,0 +1,273 @@
+import java.util.*;
+import org.json.JSONException;
+
+/** Counts work and compares loading geometry without claiming Android pixel/FPS validation. */
+public final class RenderIdleRegression {
+    static int checks;
+    static void check(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+    static class JSONObject extends org.json.JSONObject {
+        static int parses;
+        JSONObject(String value) throws JSONException { super(value); parses++; }
+    }
+    static class Prefs {
+        final Map<String, String> values = new HashMap<>();
+        int removals;
+        String getString(String key, String fallback) { return values.getOrDefault(key, fallback); }
+        Prefs edit() { return this; }
+        Prefs remove(String key) { values.remove(key); removals++; return this; }
+        void apply() {}
+    }
+    static class OffsetFields {
+        final Prefs prefs = new Prefs();
+        static final String KEY_TRACK_SYNC_OFFSETS = "track", KEY_TRACK_VIDEO_SYNC_OFFSETS = "video", KEY_BLUETOOTH_SYNC_OFFSETS = "bluetooth";
+        static int clampInt(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
+    }
+    static class SystemClock { static long now = 1000; static long uptimeMillis() { return now; } }
+    static class MotionPreferences {
+        static boolean enabled = true; static int reads;
+        static boolean animationsEnabled(Object context) { reads++; return enabled; }
+    }
+    static class Color {
+        static final int WHITE = -1;
+        static int argb(int a, int r, int g, int b) { return a << 24 | r << 16 | g << 8 | b; }
+        static int alpha(int value) { return value >>> 24; }
+    }
+    static class Shader { enum TileMode { CLAMP } }
+    static class LinearGradient extends Shader {
+        static int created;
+        final float x0, x1; final int[] colors; final float[] stops;
+        LinearGradient(float x0, float y0, float x1, float y1, int[] colors, float[] stops, TileMode mode) {
+            created++; this.x0 = x0; this.x1 = x1; this.colors = colors.clone(); this.stops = stops.clone();
+        }
+    }
+    static class Paint {
+        enum Style { FILL } enum Align { CENTER, LEFT }
+        LinearGradient shader; int color, alpha;
+        void setShader(LinearGradient value) { shader = value; }
+        void setStyle(Style value) {}
+        void setColor(int value) { color = value; }
+        void setAlpha(int value) { alpha = value; }
+        void setTextSize(float value) {}
+        void setTextAlign(Align value) {}
+        void setShadowLayer(float a, float b, float c, int d) {}
+        void clearShadowLayer() {}
+    }
+    static class Canvas {
+        float x;
+        final List<Float> stack = new ArrayList<>();
+        final List<float[]> draws = new ArrayList<>();
+        int save() { stack.add(x); return stack.size(); }
+        void restoreToCount(int count) { x = stack.get(count - 1); while (stack.size() >= count) stack.remove(stack.size() - 1); }
+        void clipRect(float a, float b, float c, float d) {}
+        void translate(float a, float b) { x += a; }
+        void drawRoundRect(float a, float b, float c, float d, float rx, float ry, Paint paint) {
+            LinearGradient shader = paint.shader;
+            draws.add(new float[]{a + x, b, c + x, d, rx, ry,
+                    shader == null ? -999f : shader.x0 + x, shader == null ? -999f : shader.x1 + x,
+                    shader == null ? paint.color : shader.colors[1]});
+        }
+        void drawText(String text, float a, float b, Paint paint) {}
+    }
+    static class KaraokeMotion {
+        static class Values { Values idle() { return this; } }
+        static Values evaluate(Object profile, long position, float size, Values result) { return result; }
+    }
+    static class TextSegment { Object motionProfile; }
+    static class PreviewLine {
+        final String kind; final boolean animated;
+        PreviewLine(String kind, boolean animated) { this.kind = kind; this.animated = animated; }
+        boolean isAnimatedVisual() { return animated; }
+    }
+    static class PreviewFields {
+        static final int PREVIEW_LAYOUT_MATCH = 1, PREVIEW_INSTANCES_MATCH = 2, PREVIEW_WIDTH_INPUTS_MATCH = 4;
+        static final float[] LOADING_ROW_WIDTH_FACTORS = {.54f, .78f, .42f}, LOADING_SHIMMER_STOPS = {0f, .5f, 1f};
+        final int[] loadingShimmerColors = {0x00ffffff, 0x00ffffff, 0x00ffffff};
+        final LinearGradient[] loadingShaders = new LinearGradient[3];
+        final float[] loadingShaderWidths = new float[3];
+        int loadingShaderAlpha = -1;
+        final List<PreviewLine> lines = new ArrayList<>();
+        final Map<Object, Object> textSegmentCache = new HashMap<>();
+        boolean measuredLineWidthsValid, playing, timeDrivenVisuals, frameAnimationsEnabled, karaokeBounceEffectEnabled = true;
+        long basePositionMs, baseUptimeMs, lineStartMs, lineEndMs, frameUptimeMs, frameWallTimeMs;
+        int invalidations;
+        final Paint textPaint = new Paint(), shapePaint = new Paint();
+        final KaraokeMotion.Values karaokeBounceResult = new KaraokeMotion.Values();
+        Object getContext() { return this; }
+        int comparePreviewLines(List<PreviewLine> value) { return 0; }
+        void requestLayout() {}
+        void postInvalidateOnAnimation() { invalidations++; }
+        void resetPaintEffects() { textPaint.setShader(null); textPaint.clearShadowLayer(); }
+        float dp(float value) { return value; }
+        float alignedStart(float total, float width, float left) { return left + (width - total) / 2; }
+        float positiveSin(long now, long period) { return (float)((Math.sin(now / (double)period * Math.PI * 2) + 1) / 2); }
+        int withAlpha(int color, int alpha) { return color & 0xffffff | alpha << 24; }
+    }
+    static class AppFonts { static Object regular(Object context) { return null; } }
+    static class Scroller { void abortAnimation() {} }
+    static class EmptyFields {
+        final List<Object> lines = new ArrayList<>();
+        long positionMs, lastFrameMs;
+        boolean smoothNextSeekCenter, centerInitialized, smoothSeekCenterActive, manualScrollActive, draggingLyrics;
+        boolean frameAnimationsEnabled, loading;
+        Object pressedTarget; Scroller manualScroller;
+        int invalidations, skeletonDraws;
+        String emptyMessage = "No lyrics", emptyFallbackMessage = "No lyrics";
+        float verticalCenterBias = .5f;
+        final Paint textPaint = new Paint();
+        Object getContext() { return this; }
+        void clearRowReflow() {}
+        void invalidateFrameGroupCache() {}
+        void postInvalidateOnAnimation() { invalidations++; }
+        boolean isLoadingEmptyMessage() { return loading; }
+        void drawLoadingSkeleton(Canvas canvas) { skeletonDraws++; }
+        int getWidth() { return 300; } int getHeight() { return 500; }
+        void drawEmptyNoteIcon(Canvas canvas, float x, float y) {}
+        float sp(float value) { return value; }
+        float contentWidth() { return 300; }
+        void configurePaint(int color, String kind, boolean a, float size, boolean b, Object face) {}
+        void shrinkTextToFit(String text, float width, float initial, float min) {}
+        void resetPaintEffects() {}
+    }
+
+    // INSERT_PRODUCTION_DECLARATIONS
+
+    static void offsetCache() {
+        BaselineOffsets baseline = new BaselineOffsets(); CandidateOffsets candidate = new CandidateOffsets();
+        org.json.JSONObject data = new org.json.JSONObject();
+        for (int i = 0; i < 500; i++) data.put("track" + i, i);
+        baseline.prefs.values.put("track", data.toString()); candidate.prefs.values.putAll(baseline.prefs.values);
+        JSONObject.parses = 0;
+        for (int i = 0; i < 1200; i++) check(baseline.trackSyncOffsetMs("track250") == 250, "baseline offset");
+        int baselineParses = JSONObject.parses; JSONObject.parses = 0;
+        for (int i = 0; i < 1200; i++) check(candidate.trackSyncOffsetMs("track250") == 250, "cached offset");
+        check(JSONObject.parses == 1 && baselineParses == 1200, "1200 offset parses become one");
+        System.out.println("OFFSET baseline_parses=" + baselineParses + " candidate_parses=" + JSONObject.parses);
+        candidate.prefs.values.put("track", new String(data.toString()));
+        check(candidate.trackSyncOffsetMs("track300") == 300 && JSONObject.parses == 1, "Equal source and next track reuse parse");
+        candidate.prefs.values.put("track", "{\"track250\":20000}");
+        check(candidate.trackSyncOffsetMs("track250") == 10000, "Preference write immediately changes clamped result");
+        candidate.prefs.values.put("video", "{\"track250\":-20000}");
+        candidate.prefs.values.put("bluetooth", "{\"device\":75}");
+        check(candidate.trackVideoSyncOffsetMs("track250") == -10000 && candidate.bluetoothSyncOffsetMs("device") == 75, "Independent tables");
+        int parses = JSONObject.parses;
+        for (int i = 0; i < 30; i++) {
+            check(candidate.trackSyncOffsetMs("track250") == 10000, "track table survives other categories");
+            candidate.trackVideoSyncOffsetMs("track250"); candidate.bluetoothSyncOffsetMs("device");
+        }
+        check(JSONObject.parses == parses, "Each category retains its cache");
+        candidate.prefs.values.put("track", "bad-json");
+        check(candidate.trackSyncOffsetMs("track250") == 0 && candidate.prefs.removals == 1, "Malformed JSON retains cleanup behavior");
+        check(candidate.trackSyncOffsetMs("track250") == 0, "Deleted preference cannot reuse old offset");
+        candidate.prefs.values.put("track", "{\"track250\":-32}");
+        check(candidate.trackSyncOffsetMs(" track250 ") == -32, "Restore and trimmed key apply immediately");
+        check(candidate.trackSyncOffsetMs(null) == 0 && candidate.trackSyncOffsetMs(" ") == 0, "Missing track still returns zero");
+    }
+
+    static void idlePolicies() {
+        BaselinePreview baseline = new BaselinePreview(); CandidatePreview candidate = new CandidatePreview();
+        baseline.setPreview(List.of(new PreviewLine("vocal", false)), 30000, 0, 50000, false);
+        candidate.setPreview(List.of(new PreviewLine("vocal", false)), 30000, 0, 50000, false);
+        candidate.beginFrame();
+        baseline.invalidations = candidate.invalidations = 0;
+        for (int i = 0; i < 600; i++) { baseline.setPlaybackPosition(30000, false); candidate.setPlaybackPosition(30000, false); }
+        check(baseline.invalidations == 600 && candidate.invalidations == 0, "Static pause avoids 600 redundant redraws");
+        System.out.println("PAUSED baseline_invalidations=" + baseline.invalidations + " candidate_invalidations=" + candidate.invalidations);
+        MotionPreferences.enabled = false;
+        candidate.setPlaybackPosition(30000, false);
+        check(candidate.invalidations == 1, "Paused vocal notices reduced motion enabled");
+        candidate.beginFrame();
+        candidate.setPlaybackPosition(30000, false);
+        check(candidate.invalidations == 1, "Unchanged motion setting stays idle after drawing");
+        MotionPreferences.enabled = true;
+        candidate.setPlaybackPosition(30000, false);
+        check(candidate.invalidations == 2, "Paused vocal notices reduced motion disabled");
+        candidate.beginFrame();
+        candidate.invalidations = 0;
+        candidate.setPlaybackPosition(30500, false);
+        check(candidate.invalidations == 1 && candidate.estimatedPositionMs() == 30500, "Paused seek still redraws immediately");
+        candidate.setPlaybackPosition(30500, true); SystemClock.now += 100;
+        check(candidate.invalidations == 2 && candidate.estimatedPositionMs() == 30600, "Resume retains playback clock");
+        for (String kind : List.of("wave", "glow", "effect", "pulse", "whisper")) {
+            candidate.setPreview(List.of(new PreviewLine(kind, false)), 30000, 0, 50000, false);
+            candidate.invalidations = 0; candidate.setPlaybackPosition(30000, false);
+            check(candidate.invalidations == 1, "Paused effect preserved: " + kind);
+        }
+        candidate.setPreview(List.of(new PreviewLine("vocal", true)), 30000, 0, 0, false);
+        candidate.invalidations = 0; candidate.setPlaybackPosition(30000, false);
+        check(candidate.invalidations == 1, "Paused loading/interlude remains animated");
+
+        BaselineEmpty before = new BaselineEmpty(); CandidateEmpty after = new CandidateEmpty();
+        for (int i = 1; i <= 600; i++) { before.setPlaybackPosition(i); after.setPlaybackPosition(i); }
+        check(before.invalidations == 600 && after.invalidations == 0 && after.positionMs == 600, "Empty result preserves position without repainting");
+        System.out.println("EMPTY baseline_invalidations=" + before.invalidations + " candidate_invalidations=" + after.invalidations);
+        MotionPreferences.enabled = false; before.loading = after.loading = true;
+        before.frameAnimationsEnabled = after.frameAnimationsEnabled = false;
+        before.invalidations = after.invalidations = 0;
+        before.drawEmpty(new Canvas()); after.drawEmpty(new Canvas());
+        check(before.invalidations == 1 && after.invalidations == 0 && after.skeletonDraws == 1, "Reduced-motion loading draws once");
+        MotionPreferences.enabled = true; after.setPlaybackPosition(600);
+        check(after.invalidations == 1, "Same paused position notices system motion re-enabled");
+        after.frameAnimationsEnabled = true; after.drawEmpty(new Canvas());
+        check(after.invalidations == 2, "Loading animation continues when enabled");
+        MotionPreferences.enabled = false; after.setPlaybackPosition(600);
+        check(after.invalidations == 3, "Same paused position notices system motion disabled");
+        after.loading = false; after.lines.add(new Object()); after.invalidations = 0;
+        after.setPlaybackPosition(700);
+        check(after.invalidations == 1, "Arriving lyrics restore normal playback invalidation");
+        MotionPreferences.enabled = true;
+    }
+
+    static void gradientsAndFrameReads() {
+        BaselinePreview baseline = new BaselinePreview(); CandidatePreview candidate = new CandidatePreview();
+        LinearGradient.created = 0;
+        baseline.beginFrame(); Canvas b = new Canvas();
+        baseline.drawLoadingLine(b, "loading", 100, 17, 244, 4, 300);
+        int initialBaseline = LinearGradient.created;
+        candidate.beginFrame(); Canvas c = new Canvas();
+        candidate.drawLoadingLine(c, "loading", 100, 17, 244, 4, 300);
+        check(initialBaseline == 3 && LinearGradient.created == 6, "First frame builds three gradients each");
+        for (int frame = 0; frame < 120; frame++) {
+            SystemClock.now += 16;
+            baseline.beginFrame(); candidate.beginFrame(); b = new Canvas(); c = new Canvas();
+            baseline.drawLoadingLine(b, "loading", 100, 17, 244, 4, 300);
+            int before = LinearGradient.created;
+            candidate.drawLoadingLine(c, "loading", 100, 17, 244, 4, 300);
+            check(LinearGradient.created == before, "Warm loading frame allocates no gradients");
+            sameGeometry(b, c);
+        }
+        System.out.println("LOADING 121_frames baseline_gradients=363 candidate_gradients=3");
+        for (boolean enabled : List.of(false, true)) {
+            MotionPreferences.enabled = enabled;
+            for (int alpha : new int[]{196, 208, 244}) {
+                for (float width : new float[]{120f, 600f}) {
+                    baseline.beginFrame(); candidate.beginFrame(); b = new Canvas(); c = new Canvas();
+                    baseline.drawLoadingLine(b, "loading", 150, 21, alpha, 12, width);
+                    candidate.drawLoadingLine(c, "loading", 150, 21, alpha, 12, width);
+                    sameGeometry(b, c);
+                }
+            }
+        }
+        MotionPreferences.enabled = true; MotionPreferences.reads = 0; baseline.beginFrame();
+        for (int i = 0; i < 20; i++) { baseline.karaokeBounce(new TextSegment(), 50, 17); baseline.configureTextPaint(-1, "vocal", 17, false); }
+        int baselineReads = MotionPreferences.reads; MotionPreferences.reads = 0; candidate.beginFrame();
+        for (int i = 0; i < 20; i++) { candidate.karaokeBounce(new TextSegment(), 50, 17); candidate.configureTextPaint(-1, "vocal", 17, false); }
+        check(baselineReads == 41 && MotionPreferences.reads == 1, "Twenty glyph bounce/paint calls share one motion read");
+        System.out.println("MOTION partial_draw baseline_reads=" + baselineReads + " candidate_reads=" + MotionPreferences.reads);
+    }
+
+    static void sameGeometry(Canvas before, Canvas after) {
+        check(before.draws.size() == after.draws.size(), "Loading draw count identical");
+        for (int i = 0; i < before.draws.size(); i++) {
+            float[] a = before.draws.get(i), b = after.draws.get(i);
+            for (int j = 0; j < a.length; j++) check(Math.abs(a[j] - b[j]) < .001f, "Loading world geometry/color identical");
+        }
+    }
+
+    public static void main(String[] args) {
+        offsetCache(); idlePolicies(); gradientsAndFrameReads();
+        System.out.println("Render idle regression: " + checks + " assertions passed.");
+    }
+}

@@ -323,6 +323,17 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     private final SharedPreferences prefs;
     private final SecureStringStore secureStore;
     private volatile Snapshot cachedSnapshot;
+    private final Map<String, OffsetTable> cachedOffsetTables = new LinkedHashMap<>();
+
+    private static final class OffsetTable {
+        final String source;
+        final JSONObject values;
+
+        OffsetTable(String source) throws JSONException {
+            this.source = source;
+            values = new JSONObject(source);
+        }
+    }
 
     AiLyricsSettings(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -1004,15 +1015,22 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         setTrackOffsetMs(KEY_BLUETOOTH_SYNC_OFFSETS, deviceKey, offsetMs);
     }
 
-    private int trackOffsetMs(String prefsKey, String trackKey) {
+    private synchronized int trackOffsetMs(String prefsKey, String trackKey) {
         String key = trackKey == null ? "" : trackKey.trim();
         if (key.isEmpty()) {
             return 0;
         }
         try {
-            JSONObject object = new JSONObject(prefs.getString(prefsKey, "{}"));
-            return clampInt(object.optInt(key, 0), -10000, 10000);
+            String source = prefs.getString(prefsKey, "{}");
+            OffsetTable table = cachedOffsetTables.get(prefsKey);
+            // Read the current value directly so writes/restores apply before listener delivery.
+            if (table == null || !table.source.equals(source)) {
+                table = new OffsetTable(source);
+                cachedOffsetTables.put(prefsKey, table);
+            }
+            return clampInt(table.values.optInt(key, 0), -10000, 10000);
         } catch (JSONException ignored) {
+            cachedOffsetTables.remove(prefsKey);
             prefs.edit().remove(prefsKey).apply();
             return 0;
         }

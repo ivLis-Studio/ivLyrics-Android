@@ -5,6 +5,7 @@ public final class LyricsCenterRegression extends TestView {
     private boolean centerInitialized = true;
     private boolean smoothSeekCenterActive;
     private boolean manualScrollActive;
+    private boolean frameAnimationsEnabled = true;
     private float animatedCenterIndex;
     private float centerTransitionStartIndex;
     private int centerTransitionTargetIndex;
@@ -54,6 +55,7 @@ public final class LyricsCenterRegression extends TestView {
         final boolean karaoke = false;
     }
     private Object getContext() { return this; }
+    private boolean isLoadingEmptyMessage() { return false; }
     private boolean canSoftUpdateResult(LyricsResult result) { return testSoftUpdate; }
     private boolean hasTimedKaraokeData(List<Object> lines) { return false; }
     private void invalidateDisplayLineCache() { }
@@ -289,6 +291,7 @@ public final class LyricsCenterRegression extends TestView {
 
     private List<DisplayLine> beginReflowFixture(long duration, long alreadyElapsed) {
         clearRowReflow();
+        lines = List.of(new Object());
         previousFrameLayouts.clear();
         List<DisplayLine> old = List.of(lyric(0), lyric(1), lyric(2));
         List<LineLayout> geometry = layouts(120f, 200f, 88f);
@@ -395,10 +398,12 @@ public final class LyricsCenterRegression extends TestView {
                 "size change clears stale coordinates");
         rows = beginReflowFixture(300L, 0L);
         MotionPreferences.enabled = false;
+        frameAnimationsEnabled = MotionPreferences.animationsEnabled(getContext());
         prepareRowReflow();
         require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
                 "reduced motion discards all row compensation");
         MotionPreferences.enabled = true;
+        frameAnimationsEnabled = MotionPreferences.animationsEnabled(getContext());
         System.out.println("PASS production cleanup paths: completion, forward/backward/smooth seek, hard/soft setResult, resize, reduced motion");
     }
 

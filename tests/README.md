@@ -11,6 +11,7 @@ python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_frame_layout_pool_regression.py
+python3 tests/run_render_idle_regression.py
 python3 tests/run_card_presence_regression.py
 python3 tests/run_karaoke_controller_regression.py
 python3 tests/run_inline_gate_regression.py
@@ -52,6 +53,14 @@ It covers long sparse overlaps, normal/manual scrolling, backward seeks, capacit
 growth, object reuse and release of stale lyric references after shrinking or
 clearing a frame. It requires only a JDK and does not claim Android pixel or
 physical-device validation.
+
+The render-idle regression compares production methods with frozen commit
+`02ebb13`. It checks immediate offset preference changes and malformed JSON
+cleanup, paused seeks/resume and effects, motion-setting changes while paused,
+empty/loading states, and loading gradient geometry across size/alpha changes.
+It counts JSON parsing, invalidation requests, gradient allocation and preference
+reads using synthetic Android collaborators and the pinned JSON dependency.
+It does not measure device FPS or Canvas pixels.
 
 The inline hook regression runs production Xposed callbacks against synthetic
 Spotify 9.1.80 class shapes, including both upstream menu availability checks,

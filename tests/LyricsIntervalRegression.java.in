@@ -10,10 +10,9 @@ public class LyricsIntervalRegression {
     int activeDisplayIndexCacheValue, visualCenterIndexCacheValue;
     int activeDisplayFirstSingingCacheValue;
     boolean karaoke = true, syncedLyricsKaraokeAnimationEnabled = true;
+    boolean frameAnimationsEnabled = true;
     static final long LYRICS_CENTERING_LEAD_MS = 300L;
     long positionMs;
-    Object getContext() { return this; }
-    static class MotionPreferences { static boolean enabled = true; static boolean animationsEnabled(Object context) { return enabled; } }
     static int reads, assertions;
     record DisplayLine(long start, long end, boolean timed) {
         boolean isTimed() { reads++; return timed; }
@@ -66,7 +65,7 @@ public class LyricsIntervalRegression {
         view.positionMs = 1700;
         view.karaoke = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
         view.karaoke = true; view.syncedLyricsKaraokeAnimationEnabled = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
-        view.syncedLyricsKaraokeAnimationEnabled = true; MotionPreferences.enabled = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
+        view.syncedLyricsKaraokeAnimationEnabled = true; view.frameAnimationsEnabled = false; equal(1, view.findVisualCenterDisplayIndex(fixture, 1));
         equal(0, view.findActiveDisplayIndexAt(Collections.emptyList(), 1000, false));
         System.out.println("Lyrics interval regression: " + assertions + " assertions passed; 100 stable frames perform no repeated timeline scans.");
     }
