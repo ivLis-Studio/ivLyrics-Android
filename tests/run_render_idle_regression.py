@@ -84,4 +84,46 @@ report = (f"Frozen baseline: {BASELINE}\nProduction methods with synthetic Andro
           + result.stdout)
 (work / "result.txt").write_text(report)
 print(report, end="")
-raise SystemExit(result.returncode)
+if result.returncode:
+    raise SystemExit(result.returncode)
+
+# Keep precision-sensitive preview measurement checks on the established CI entry point.
+MEASUREMENT_BASELINE = "3f238d1a503b2b400cbebd369857428ab837ae83"
+def measurement_renderer(baseline):
+    value = subprocess.check_output(["git", "show", f"{MEASUREMENT_BASELINE}:shared/src/main/java/kr/ivlis/ivlyricsandroid/MainLyricPreviewView.java"], cwd=ROOT, text=True) if baseline else source("MainLyricPreviewView", False)
+    signatures = ("private void drawPlainRubyText(", "private void drawRubyText(",
+                  "private int charIndexForCodePointOffset(", "private static List<String> splitChars(",
+                  "private static final class TextSegment {", "private static final class RubyAnnotation {")
+    body = "\n".join(declaration(value, signature) for signature in signatures)
+    bridge = '''
+        final class PreviewLine {
+            final String text, kind = "vocal";
+            final List<RubyAnnotation> annotations;
+            PreviewLine(String text, String ruby) { this.text = text; annotations = List.of(new RubyAnnotation(2, 2, ruby)); }
+            boolean hasRuby() { return true; }
+            List<RubyAnnotation> rubyAnnotations() { return annotations; }
+        }
+        PreviewLine line; String key;
+        TextSegment segment; String segmentRuby;
+        Typeface typefaceForLine(PreviewLine ignored) { return font; }
+        void plain(Canvas canvas, float x, float baseline, float size, int alpha, String text, String reading) {
+            String nextKey = text + "|" + reading;
+            if (!nextKey.equals(key)) { line = new PreviewLine(text, reading); key = nextKey; }
+            drawPlainRubyText(canvas, line, x, baseline, size, alpha);
+        }
+        void karaoke(Canvas canvas, float x, float baseline, float size, float fill, boolean primary, String reading) {
+            if (!reading.equals(segmentRuby)) { segment = new TextSegment("漢字", 25f, 0, 1000, 0, 2, reading); segmentRuby = reading; }
+            textPaint.setTypeface(font);
+            drawRubyText(canvas, segment, x, baseline, "vocal", size, fill, primary);
+        }
+    '''
+    return "static final class " + ("BaselineMeasurements" if baseline else "CandidateMeasurements") + " extends Fields {" + body + bridge + "}"
+
+measurement = work / "PreviewMeasurementsRegression.java"
+measurement.write_text(Path(__file__).with_name("PreviewMeasurementsRegression.java.in").read_text().replace(
+    "// INSERT_MEASUREMENT_DECLARATIONS", "\n".join(measurement_renderer(baseline) for baseline in (True, False))))
+subprocess.run([java_tool("javac"), "-d", str(work), str(measurement)], check=True)
+measured = subprocess.run([java_tool("java"), "-cp", str(work), "PreviewMeasurementsRegression"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+print(measured.stdout, end="")
+(work / "measurements-result.txt").write_text(measured.stdout)
+raise SystemExit(measured.returncode)

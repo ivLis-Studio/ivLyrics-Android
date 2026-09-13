@@ -161,3 +161,5 @@ Detailed scopes:
 ## Sync metadata reporting
 
 `python3 tests/run_sync_metadata_reporting_regression.py` compiles the production sync-data fetch/HTTP/parser and frozen `1888014` baseline against an in-memory URL transport. It compares result payloads and privacy GET counts and verifies acknowledged metadata reuse only within one load, changed fields, cache clearing during a response, cancellation, malformed/error/negative responses, raw caches, and contributor privacy refresh. No real API or device is used. Requires the same JDK, compiled shared classes, Android SDK, and pinned JSON dependency as the other repository regressions. Both CI workflows run it.
+
+The render-idle regression also compares preview ruby draw arguments with frozen 1.3.18 source across font, text size, density, ruby/source replacement, alpha and playback fill changes; it counts text measurement calls without claiming device raster/FPS equivalence.

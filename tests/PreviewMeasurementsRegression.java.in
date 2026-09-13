@@ -1,0 +1,70 @@
+import java.util.*;
+
+/** Production draw helpers; synthetic font measurement exposes stale cache keys and exact draw arguments. */
+public final class PreviewMeasurementsRegression {
+    static int checks;
+    static class Typeface { final float width; Typeface(float width) { this.width = width; } }
+    static class Color {
+        static int argb(int a, int r, int g, int b) { return a << 24 | r << 16 | g << 8 | b; }
+    }
+    static class KaraokeMotion { static class Profile {} }
+    static class Paint {
+        float size; Typeface typeface; int color, measures;
+        void setTypeface(Typeface value) { typeface = value; }
+        Typeface getTypeface() { return typeface; }
+        void setTextSize(float value) { size = value; }
+        float measureText(String text) { return measureText(text, 0, text.length()); }
+        float measureText(String text, int start, int end) {
+            measures++; float width = 0f;
+            for (int i = start; i < end; i++) width += ((text.charAt(i) % 13) + 3f) * size * typeface.width / 17f;
+            return width;
+        }
+    }
+    static class Canvas {
+        final List<String> draws = new ArrayList<>();
+        void drawText(String text, float x, float y, Paint paint) {
+            draws.add(text + "|" + Float.floatToIntBits(x) + "|" + Float.floatToIntBits(y)
+                    + "|" + Float.floatToIntBits(paint.size) + "|" + paint.color + "|" + paint.typeface.width);
+        }
+    }
+    static abstract class Fields {
+        static final float FURIGANA_TEXT_RATIO = .46f;
+        final Paint textPaint = new Paint();
+        Typeface font; float density = 1f;
+        float sp(float size) { return size * density; }
+        void configureTextPaint(int color, String kind, float size, boolean active) { textPaint.color = color; textPaint.size = size; }
+        abstract void plain(Canvas canvas, float x, float baseline, float size, int alpha, String text, String reading);
+        abstract void karaoke(Canvas canvas, float x, float baseline, float size, float fill, boolean primary, String reading);
+    }
+    // INSERT_MEASUREMENT_DECLARATIONS
+    static void check(boolean pass, String message) { checks++; if (!pass) throw new AssertionError(message); }
+    public static void main(String[] args) {
+        Fields before = new BaselineMeasurements(), after = new CandidateMeasurements();
+        Typeface regular = new Typeface(1f), bold = new Typeface(1.3f);
+        before.font = after.font = regular;
+        for (int frame = 0; frame < 600; frame++) {
+            Canvas a = new Canvas(), b = new Canvas();
+            before.plain(a, frame % 20, 72f, 17f, 244, "前😀漢字後", "かんじ");
+            after.plain(b, frame % 20, 72f, 17f, 244, "前😀漢字後", "かんじ");
+            before.karaoke(a, frame % 15, 72f, 17f, (frame % 100) / 100f, true, "かんじ");
+            after.karaoke(b, frame % 15, 72f, 17f, (frame % 100) / 100f, true, "かんじ");
+            check(a.draws.equals(b.draws), "steady exact draw arguments " + frame);
+        }
+        int baselineMeasures = before.textPaint.measures, candidateMeasures = after.textPaint.measures;
+        check(baselineMeasures == 2400 && candidateMeasures == 4, "ruby measurement reduction 2400 -> 4");
+        for (int i = 0; i < 120; i++) {
+            before.font = after.font = i % 2 == 0 ? bold : regular;
+            before.density = after.density = i % 3 == 0 ? 2f : 1f;
+            float size = i % 4 == 0 ? 8f : 19f; // Exercises the minimum ruby size as well as proportional sizes.
+            String text = i % 5 == 0 ? "ع😀漢字。" : "前😀漢字後";
+            String ruby = i % 7 == 0 ? "かんじ改" : "かんじ";
+            Canvas a = new Canvas(), b = new Canvas();
+            before.plain(a, i * .3f, 80f, size, 100 + i, text, ruby);
+            after.plain(b, i * .3f, 80f, size, 100 + i, text, ruby);
+            before.karaoke(a, i * .1f, 80f, size, i % 2, i % 3 == 0, ruby);
+            after.karaoke(b, i * .1f, 80f, size, i % 2, i % 3 == 0, ruby);
+            check(a.draws.equals(b.draws), "font/size/density/ruby/source/position/alpha mutation " + i);
+        }
+        System.out.println("PASS preview ruby draw equivalence " + checks + "; steady measurement calls " + baselineMeasures + " -> " + candidateMeasures);
+    }
+}

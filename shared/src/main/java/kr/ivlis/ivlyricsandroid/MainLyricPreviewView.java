@@ -978,17 +978,35 @@ final class MainLyricPreviewView extends View {
         int rubyColor = Color.argb(Math.round(alpha * 0.82f), 255, 255, 255);
         float rubyBaseline = baseline - textSize * 0.88f;
         for (RubyAnnotation annotation : annotations) {
-            int startIndex = charIndexForCodePointOffset(text, annotation.start);
-            int endIndex = charIndexForCodePointOffset(text, annotation.end());
+            if (annotation.cachedTextStart < 0) {
+                annotation.cachedTextStart = charIndexForCodePointOffset(text, annotation.start);
+                annotation.cachedTextEnd = charIndexForCodePointOffset(text, annotation.end());
+            }
+            int startIndex = annotation.cachedTextStart;
+            int endIndex = annotation.cachedTextEnd;
             if (endIndex <= startIndex) {
                 continue;
             }
-            textPaint.setTypeface(typefaceForLine(line));
+            Typeface typeface = typefaceForLine(line);
+            textPaint.setTypeface(typeface);
             textPaint.setTextSize(textSize);
-            float baseLeft = x + textPaint.measureText(text, 0, startIndex);
-            float baseWidth = textPaint.measureText(text, startIndex, endIndex);
+            boolean measure = annotation.cachedTypeface != typeface
+                    || Float.compare(annotation.cachedTextSize, textSize) != 0
+                    || Float.compare(annotation.cachedRubySize, rubySize) != 0;
+            if (measure) {
+                annotation.cachedBaseLeft = textPaint.measureText(text, 0, startIndex);
+                annotation.cachedBaseWidth = textPaint.measureText(text, startIndex, endIndex);
+            }
+            float baseLeft = x + annotation.cachedBaseLeft;
+            float baseWidth = annotation.cachedBaseWidth;
             configureTextPaint(rubyColor, line.kind, rubySize, false);
-            float rubyWidth = textPaint.measureText(annotation.reading);
+            if (measure) {
+                annotation.cachedRubyWidth = textPaint.measureText(annotation.reading);
+                annotation.cachedTypeface = typeface;
+                annotation.cachedTextSize = textSize;
+                annotation.cachedRubySize = rubySize;
+            }
+            float rubyWidth = annotation.cachedRubyWidth;
             canvas.drawText(annotation.reading, baseLeft + baseWidth * 0.5f - rubyWidth * 0.5f, rubyBaseline, textPaint);
         }
     }
@@ -1012,7 +1030,13 @@ final class MainLyricPreviewView extends View {
                 ? Color.argb(alpha, 255, 255, 255)
                 : Color.argb(Math.round(alpha * 0.66f), 255, 255, 255);
         configureTextPaint(color, kind, rubySize, fill > 0f);
-        float rubyWidth = textPaint.measureText(segment.rubyText);
+        Typeface typeface = textPaint.getTypeface();
+        if (segment.cachedRubyTypeface != typeface || Float.compare(segment.cachedRubySize, rubySize) != 0) {
+            segment.cachedRubyWidth = textPaint.measureText(segment.rubyText);
+            segment.cachedRubyTypeface = typeface;
+            segment.cachedRubySize = rubySize;
+        }
+        float rubyWidth = segment.cachedRubyWidth;
         float rubyLeft = cursor + segment.width * 0.5f - rubyWidth * 0.5f;
         float rubyBaseline = baseline - textSize * 0.88f;
         canvas.drawText(segment.rubyText, rubyLeft, rubyBaseline, textPaint);
@@ -1560,6 +1584,9 @@ final class MainLyricPreviewView extends View {
         final int sourceIndex;
         final int sourceLength;
         final String rubyText;
+        float cachedRubyWidth;
+        float cachedRubySize = Float.NaN;
+        Typeface cachedRubyTypeface;
         String cachedBounceKeyPrefix;
         String cachedBounceKey;
 
@@ -1604,6 +1631,14 @@ final class MainLyricPreviewView extends View {
         final int length;
         final String reading;
         final List<String> readingChars;
+        int cachedTextStart = -1;
+        int cachedTextEnd;
+        float cachedBaseLeft;
+        float cachedBaseWidth;
+        float cachedRubyWidth;
+        float cachedTextSize = Float.NaN;
+        float cachedRubySize = Float.NaN;
+        Typeface cachedTypeface;
 
         RubyAnnotation(int start, int length, String reading) {
             this.start = Math.max(0, start);
