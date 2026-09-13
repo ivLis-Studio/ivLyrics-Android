@@ -9,7 +9,7 @@ from pathlib import Path
 import hashlib
 import subprocess
 
-from regression_runtime import SHARED, REPORTS, java_tool
+from regression_runtime import ROOT, SHARED, REPORTS, java_tool
 
 SOURCE = SHARED / "LyricsView.java"
 WORK = REPORTS / "lyrics-center"
@@ -51,10 +51,13 @@ signatures = [
     "private float cubicBezierDerivative(float t, float first, float second)",
     "private float clamp(float value)",
     "private LineLayout layoutAt(List<LineLayout> layouts, int index)",
-    "private float offsetFromAnchor(List<LineLayout> layouts, int anchorIndex, int targetIndex, float blockGap)",
+    "private void prepareAnchorOffsets(List<LineLayout> layouts, int anchorIndex, float blockGap)",
     "private float distanceBetween(LineLayout previous, LineLayout next, float blockGap)",
 ]
 production = "\n\n".join(declaration(source, signature) for signature in signatures)
+baseline = subprocess.check_output(["git", "show", "3f238d1a503b2b400cbebd369857428ab837ae83:shared/src/main/java/kr/ivlis/ivlyricsandroid/LyricsView.java"], cwd=ROOT, text=True)
+production += "\n" + declaration(baseline, "private float offsetFromAnchor(List<LineLayout> layouts, int anchorIndex, int targetIndex, float blockGap)")
+production = production.replace("return previous.height * 0.5f + blockGap + next.height * 0.5f;", "distanceCalls++; return previous.height * 0.5f + blockGap + next.height * 0.5f;")
 template = TEMPLATE.read_text()
 if template.count("// INSERT_PRODUCTION_DECLARATIONS") != 1:
     raise RuntimeError("Missing production insertion point")

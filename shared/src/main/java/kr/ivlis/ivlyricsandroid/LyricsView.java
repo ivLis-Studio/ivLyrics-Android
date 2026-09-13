@@ -889,11 +889,12 @@ public final class LyricsView extends View {
         float anchoredCenterY = centerY - animatedVocalAnchorOffsetPx;
         prepareRowReflow();
         float reflowRemaining = rowReflowRemaining();
+        prepareAnchorOffsets(layouts, anchorIndex, blockGap);
 
         beginHitTargetFrame();
         int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
-            float baselineCenter = anchoredCenterY + offsetFromAnchor(layouts, anchorIndex, layout.index, blockGap) - scrollOffset;
+            float baselineCenter = anchoredCenterY + layout.anchorOffset - scrollOffset;
             RowReflow reflow = layout.displayLine.reflow;
             if (reflow != null) {
                 baselineCenter += reflow.offset(baselineCenter, reflowRemaining);
@@ -2358,31 +2359,21 @@ public final class LyricsView extends View {
         return null;
     }
 
-    private float offsetFromAnchor(List<LineLayout> layouts, int anchorIndex, int targetIndex, float blockGap) {
-        if (targetIndex == anchorIndex) {
-            return 0f;
-        }
+    private void prepareAnchorOffsets(List<LineLayout> layouts, int anchorIndex, float blockGap) {
+        if (layouts.isEmpty()) return;
+        int anchor = anchorIndex - layouts.get(0).index;
+        if (anchor < 0 || anchor >= layouts.size()) return;
+        layouts.get(anchor).anchorOffset = 0f;
         float offset = 0f;
-        if (targetIndex > anchorIndex) {
-            for (int index = anchorIndex; index < targetIndex; index++) {
-                LineLayout current = layoutAt(layouts, index);
-                LineLayout next = layoutAt(layouts, index + 1);
-                if (current == null || next == null) {
-                    break;
-                }
-                offset += distanceBetween(current, next, blockGap);
-            }
-            return offset;
+        for (int index = anchor + 1; index < layouts.size(); index++) {
+            offset += distanceBetween(layouts.get(index - 1), layouts.get(index), blockGap);
+            layouts.get(index).anchorOffset = offset;
         }
-        for (int index = anchorIndex; index > targetIndex; index--) {
-            LineLayout current = layoutAt(layouts, index);
-            LineLayout previous = layoutAt(layouts, index - 1);
-            if (current == null || previous == null) {
-                break;
-            }
-            offset -= distanceBetween(previous, current, blockGap);
+        offset = 0f;
+        for (int index = anchor - 1; index >= 0; index--) {
+            offset -= distanceBetween(layouts.get(index), layouts.get(index + 1), blockGap);
+            layouts.get(index).anchorOffset = offset;
         }
-        return offset;
     }
 
     private float distanceBetween(LineLayout previous, LineLayout next, float blockGap) {
@@ -5258,6 +5249,7 @@ public final class LyricsView extends View {
         float distance;
         List<DrawGroup> groups = Collections.emptyList();
         float height;
+        float anchorOffset;
         float baselineCenter = Float.NaN;
 
         LineLayout() {
@@ -5279,6 +5271,7 @@ public final class LyricsView extends View {
             this.distance = distance;
             this.groups = groups == null ? Collections.emptyList() : groups;
             this.height = Math.max(1f, height);
+            this.anchorOffset = 0f;
             this.baselineCenter = Float.NaN;
         }
 

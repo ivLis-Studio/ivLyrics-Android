@@ -10,7 +10,7 @@ device, access an account, or download dependencies.
 
 The subject consists of the current `LyricsView.java` declarations extracted
 verbatim on each run: `DisplayIndexMapping`, `remapDisplayCenter`, display identity,
-`updateAnimatedCenter`, easing, `layoutAt`, `offsetFromAnchor`, `distanceBetween`,
+`updateAnimatedCenter`, easing, `layoutAt`, `prepareAnchorOffsets`, `distanceBetween`,
 `RowReflow` and its scheduling/progress/cleanup methods. The actual
 `setPlaybackPosition`, `setResult`, `onSizeChanged`, and frame-cache invalidation
 methods are also executed to verify that they discard stale row offsets.
@@ -50,3 +50,5 @@ This verifies the production coordinate and easing contract with fixed row
 heights. It does **not** execute the complete Android View, font measurement,
 Canvas rendering, real audio timing, or the device UI. The physical playback
 check remains a separate validation step.
+
+The prepared anchor offsets are compared bit-for-bit with frozen 1.3.18 `offsetFromAnchor` across 1,000 windows that reuse row instances while changing anchor, start index, height, gap and count. The original fractional-center/reflow/seek checks consume the new prepared offsets. Default ten-row geometry computes 9 distances instead of 25; no device FPS claim.

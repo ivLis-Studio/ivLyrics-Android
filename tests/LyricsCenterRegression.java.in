@@ -85,14 +85,17 @@ public final class LyricsCenterRegression extends TestView {
         boolean isInterlude() { return interludeInfo != null; }
     }
     static final class LineLayout {
-        final int index;
-        final float height;
+        int index;
+        float height;
+        float anchorOffset;
         float baselineCenter = Float.NaN;
         LineLayout(int index, float height) { this.index = index; this.height = height; }
     }
     static final class FrameLineLayouts extends ArrayList<LineLayout> {
         void clearReferences() { clear(); }
     }
+
+    private int distanceCalls;
 
     // INSERT_PRODUCTION_DECLARATIONS
 
@@ -116,7 +119,8 @@ public final class LyricsCenterRegression extends TestView {
         LineLayout current = layoutAt(rows, anchor), next = layoutAt(rows, anchor + 1);
         float fraction = clamp(center - anchor);
         float scroll = current != null && next != null ? fraction * distanceBetween(current, next, GAP) : 0f;
-        return CENTER_Y + offsetFromAnchor(rows, anchor, target, GAP) - scroll;
+        prepareAnchorOffsets(rows, anchor, GAP);
+        return CENTER_Y + layoutAt(rows, target).anchorOffset - scroll;
     }
     private static DisplayLine lyric(int source) { return new DisplayLine(source, false, null); }
     private static DisplayLine interlude(int source, boolean virtual, long start, long end) {
@@ -438,8 +442,43 @@ public final class LyricsCenterRegression extends TestView {
         System.out.println("PASS short 501ms interlude: centering retarget preserves monotonic row motion");
     }
 
+    private void anchorOffsetsContract() {
+        java.util.Random random = new java.util.Random(128);
+        FrameLineLayouts pool = new FrameLineLayouts();
+        for (int i = 0; i < 48; i++) pool.add(new LineLayout(i, 1f));
+        for (int frame = 0; frame < 1000; frame++) {
+            int count = 1 + random.nextInt(pool.size());
+            List<LineLayout> rows = pool.subList(0, count);
+            int firstIndex = random.nextInt(180);
+            for (int i = 0; i < count; i++) {
+                LineLayout row = rows.get(i);
+                row.index = firstIndex + i;
+                row.height = 1f + random.nextFloat() * 1000f;
+                row.anchorOffset = Float.NaN; // Reused pool values must always be overwritten.
+            }
+            int anchor = firstIndex + random.nextInt(count);
+            float gap = random.nextFloat() * 40f;
+            float[] baseline = new float[count];
+            for (int i = 0; i < count; i++) baseline[i] = offsetFromAnchor(rows, anchor, rows.get(i).index, gap);
+            distanceCalls = 0;
+            prepareAnchorOffsets(rows, anchor, gap);
+            require(distanceCalls == count - 1, "one distance per neighboring pair");
+            for (int i = 0; i < count; i++) require(Float.floatToIntBits(baseline[i]) == Float.floatToIntBits(rows.get(i).anchorOffset),
+                    "exact baseline anchor offsets after height/anchor/window/pool change");
+        }
+        List<LineLayout> rows = layouts(51.2f, 130f, 48f, 68.3f, 77f, 157f, 49.2f, 84.4f, 101f, 43f);
+        distanceCalls = 0;
+        for (int i = 0; i < rows.size(); i++) offsetFromAnchor(rows, 4, i, GAP);
+        int previousCalls = distanceCalls;
+        distanceCalls = 0; prepareAnchorOffsets(rows, 4, GAP);
+        require(previousCalls == 25 && distanceCalls == 9, "default ten-row window 25 -> 9 distance calls");
+        prepareAnchorOffsets(Collections.emptyList(), 0, GAP);
+        System.out.println("PASS exact anchor offsets over 1000 reused windows; default distance calls 25 -> 9");
+    }
+
     public static void main(String[] args) {
         LyricsCenterRegression subject = new LyricsCenterRegression();
+        subject.anchorOffsetsContract();
         subject.mappingContract();
         subject.preludeBoundary();
         subject.middleInsertionRemovalAndSeek();
