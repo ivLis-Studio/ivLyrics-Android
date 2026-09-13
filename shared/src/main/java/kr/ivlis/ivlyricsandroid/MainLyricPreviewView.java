@@ -559,7 +559,7 @@ final class MainLyricPreviewView extends View {
 
     private float measureLineWidth(PreviewLine line) {
         if (line != null && line.hasKaraoke()) {
-            if (TimedSyllableNormalizer.requiresContinuousShaping(line.text)) {
+            if (line.continuousShaping) {
                 return textPaint.measureText(line.text);
             }
             float width = 0f;
@@ -752,13 +752,9 @@ final class MainLyricPreviewView extends View {
 
         int inactiveColor = Color.argb(line.primary ? 116 : 96, 255, 255, 255);
         int activeColor = line.primary ? PRIMARY_KARAOKE_ACTIVE_COLOR : SECONDARY_KARAOKE_ACTIVE_COLOR;
-        float rowWidth = 0f;
-        for (TextSegment segment : segments) {
-            rowWidth += segment.width;
-        }
+        float rowWidth = karaokeRowWidth(line, segments);
 
-        if (TimedSyllableNormalizer.requiresContinuousShaping(line.text)) {
-            rowWidth = textPaint.measureText(line.text);
+        if (line.continuousShaping) {
             int rowSave = canvas.save();
             applyCanvasEffect(canvas, line.kind, x + rowWidth * 0.5f, baseline, textSize, line.rowSeed());
             configureTextPaint(inactiveColor, line.kind, textSize, false);
@@ -814,6 +810,28 @@ final class MainLyricPreviewView extends View {
         }
         canvas.restoreToCount(rowSave);
         resetPaintEffects();
+    }
+
+    private float karaokeRowWidth(PreviewLine line, List<TextSegment> segments) {
+        if (line.continuousShaping) {
+            float textSize = textPaint.getTextSize();
+            Typeface typeface = textPaint.getTypeface();
+            if (Float.compare(line.cachedShapedTextSize, textSize) != 0 || line.cachedShapedTypeface != typeface) {
+                line.cachedShapedWidth = textPaint.measureText(line.text);
+                line.cachedShapedTextSize = textSize;
+                line.cachedShapedTypeface = typeface;
+            }
+            return line.cachedShapedWidth;
+        }
+        if (segments.isEmpty()) return 0f;
+        TextSegment first = segments.get(0);
+        // Segments are prepared together and retained only by textSegmentCache.
+        if (Float.isNaN(first.cachedRowWidth)) {
+            float width = 0f;
+            for (TextSegment segment : segments) width += segment.width;
+            first.cachedRowWidth = width;
+        }
+        return first.cachedRowWidth;
     }
 
     private float continuousFillFraction(List<TextSegment> segments, long positionMs) {
@@ -1419,6 +1437,10 @@ final class MainLyricPreviewView extends View {
         final int type;
         final String slotId;
         final boolean rubyMarkupMatchesText;
+        final boolean continuousShaping;
+        float cachedShapedWidth;
+        float cachedShapedTextSize = Float.NaN;
+        Typeface cachedShapedTypeface;
         final int stableRowSeed;
         String cachedBounceKeyPrefix;
         List<RubyAnnotation> cachedRubyAnnotations;
@@ -1462,6 +1484,7 @@ final class MainLyricPreviewView extends View {
         private PreviewLine(String text, String rubyText, boolean primary, List<LyricsLine.Syllable> syllables,
                 String kind, int type, String slotId, long sourceStartTimeMs, long sourceEndTimeMs) {
             this.text = text == null ? "" : text;
+            this.continuousShaping = TimedSyllableNormalizer.requiresContinuousShaping(this.text);
             this.rubyText = rubyText == null ? "" : rubyText;
             this.primary = primary;
             this.sourceStartTimeMs = sourceStartTimeMs;
@@ -1584,6 +1607,7 @@ final class MainLyricPreviewView extends View {
         final int sourceIndex;
         final int sourceLength;
         final String rubyText;
+        float cachedRowWidth = Float.NaN;
         float cachedRubyWidth;
         float cachedRubySize = Float.NaN;
         Typeface cachedRubyTypeface;

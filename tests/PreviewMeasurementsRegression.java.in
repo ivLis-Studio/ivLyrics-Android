@@ -13,12 +13,17 @@ public final class PreviewMeasurementsRegression {
         void setTypeface(Typeface value) { typeface = value; }
         Typeface getTypeface() { return typeface; }
         void setTextSize(float value) { size = value; }
+        float getTextSize() { return size; }
         float measureText(String text) { return measureText(text, 0, text.length()); }
         float measureText(String text, int start, int end) {
             measures++; float width = 0f;
             for (int i = start; i < end; i++) width += ((text.charAt(i) % 13) + 3f) * size * typeface.width / 17f;
             return width;
         }
+    }
+    static class TimedSyllableNormalizer {
+        static int scans;
+        // INSERT_SCRIPT_DECLARATIONS
     }
     static class Canvas {
         final List<String> draws = new ArrayList<>();
@@ -35,6 +40,8 @@ public final class PreviewMeasurementsRegression {
         void configureTextPaint(int color, String kind, float size, boolean active) { textPaint.color = color; textPaint.size = size; }
         abstract void plain(Canvas canvas, float x, float baseline, float size, int alpha, String text, String reading);
         abstract void karaoke(Canvas canvas, float x, float baseline, float size, float fill, boolean primary, String reading);
+        abstract float rowWidth(String text, int generation, float textSize);
+        int visitedSegments;
     }
     // INSERT_MEASUREMENT_DECLARATIONS
     static void check(boolean pass, String message) { checks++; if (!pass) throw new AssertionError(message); }
@@ -65,6 +72,30 @@ public final class PreviewMeasurementsRegression {
             after.karaoke(b, i * .1f, 80f, size, i % 2, i % 3 == 0, ruby);
             check(a.draws.equals(b.draws), "font/size/density/ruby/source/position/alpha mutation " + i);
         }
+        before = new BaselineMeasurements(); after = new CandidateMeasurements();
+        before.font = after.font = regular;
+        String[] texts = {"日本語😀 long Latin text", "مرحبا بالعالم", "😀 abc مرحبا", "", "עברית"};
+        int beforeScans = 0, afterScans = 0;
+        for (String text : texts) for (int frame = 0; frame < 600; frame++) {
+            int count = TimedSyllableNormalizer.scans;
+            float a = before.rowWidth(text, 1, 17f);
+            beforeScans += TimedSyllableNormalizer.scans - count;
+            count = TimedSyllableNormalizer.scans;
+            float b = after.rowWidth(text, 1, 17f);
+            afterScans += TimedSyllableNormalizer.scans - count;
+            check(Float.floatToIntBits(a) == Float.floatToIntBits(b), "exact row width " + text + ":" + frame);
+        }
+        check(beforeScans == 3000 && afterScans == 5, "script scan per prepared line, not per frame");
+        check(before.textPaint.measures == 1200 && after.textPaint.measures == 2, "Arabic shape width 1200 -> 2");
+        check(before.visitedSegments == 18000 && after.visitedSegments == 18, "static segment width 18000 -> 18 (Arabic sum removed)");
+        for (int i = 0; i < 180; i++) {
+            before.font = after.font = i % 2 == 0 ? bold : regular;
+            float a = before.rowWidth(texts[i % texts.length], i / 2, i % 3 == 0 ? 11f : 28f);
+            float b = after.rowWidth(texts[i % texts.length], i / 2, i % 3 == 0 ? 11f : 28f);
+            check(Float.floatToIntBits(a) == Float.floatToIntBits(b), "segment rebuild/font/size source changes " + i);
+        }
+        System.out.println("PASS preview row preparation: script scans " + beforeScans + " -> " + afterScans
+                + "; Arabic measures 1200 -> 2; segment visits 18000 -> 18");
         System.out.println("PASS preview ruby draw equivalence " + checks + "; steady measurement calls " + baselineMeasures + " -> " + candidateMeasures);
     }
 }

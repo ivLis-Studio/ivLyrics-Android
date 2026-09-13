@@ -95,16 +95,43 @@ def measurement_renderer(baseline):
                   "private int charIndexForCodePointOffset(", "private static List<String> splitChars(",
                   "private static final class TextSegment {", "private static final class RubyAnnotation {")
     body = "\n".join(declaration(value, signature) for signature in signatures)
+    if baseline:
+        draw = declaration(value, "private void drawKaraokeLine(")
+        width = draw[draw.index("        float rowWidth = 0f;"):draw.index("            int rowSave =", draw.index("        float rowWidth = 0f;"))]
+        body += "private float karaokeRowWidth(PreviewLine line, List<TextSegment> segments) {" + width + "} return rowWidth; }"
+    else:
+        body += declaration(value, "private float karaokeRowWidth(")
     bridge = '''
         final class PreviewLine {
             final String text, kind = "vocal";
             final List<RubyAnnotation> annotations;
-            PreviewLine(String text, String ruby) { this.text = text; annotations = List.of(new RubyAnnotation(2, 2, ruby)); }
+            final boolean continuousShaping;
+            float cachedShapedTextSize = Float.NaN, cachedShapedWidth;
+            Typeface cachedShapedTypeface;
+            PreviewLine(String text, String ruby) { this.text = text; continuousShaping = SCRIPT_INITIALIZER; annotations = List.of(new RubyAnnotation(2, 2, ruby)); }
             boolean hasRuby() { return true; }
             List<RubyAnnotation> rubyAnnotations() { return annotations; }
         }
         PreviewLine line; String key;
         TextSegment segment; String segmentRuby;
+        PreviewLine widthLine; String widthText; int widthGeneration = -999;
+        List<TextSegment> widthSegments;
+        float rowWidth(String text, int generation, float textSize) {
+            if (!text.equals(widthText)) { widthLine = new PreviewLine(text, ""); widthText = text; widthSegments = null; }
+            if (widthSegments == null || widthGeneration != generation) {
+                widthSegments = new ArrayList<>() {
+                    @Override public Iterator<TextSegment> iterator() {
+                        Iterator<TextSegment> iterator = super.iterator();
+                        return new Iterator<>() { public boolean hasNext() { return iterator.hasNext(); }
+                            public TextSegment next() { visitedSegments++; return iterator.next(); } };
+                    }
+                };
+                for (int i = 0; i < 6; i++) widthSegments.add(new TextSegment("x", (i + 1.37f) * (generation + 1), 0, 1000, i, 1));
+                widthGeneration = generation;
+            }
+            textPaint.setTypeface(font); textPaint.setTextSize(textSize);
+            return karaokeRowWidth(widthLine, widthSegments);
+        }
         Typeface typefaceForLine(PreviewLine ignored) { return font; }
         void plain(Canvas canvas, float x, float baseline, float size, int alpha, String text, String reading) {
             String nextKey = text + "|" + reading;
@@ -117,10 +144,15 @@ def measurement_renderer(baseline):
             drawRubyText(canvas, segment, x, baseline, "vocal", size, fill, primary);
         }
     '''
+    bridge = bridge.replace("SCRIPT_INITIALIZER", "false" if baseline else "TimedSyllableNormalizer.requiresContinuousShaping(text)")
     return "static final class " + ("BaselineMeasurements" if baseline else "CandidateMeasurements") + " extends Fields {" + body + bridge + "}"
 
 measurement = work / "PreviewMeasurementsRegression.java"
-measurement.write_text(Path(__file__).with_name("PreviewMeasurementsRegression.java.in").read_text().replace(
+normalizer = source("TimedSyllableNormalizer", False)
+script = "\n".join(declaration(normalizer, signature) for signature in (
+    "static boolean requiresContinuousShaping(String text)", "private static boolean isArabicScriptCodePoint(int codePoint)"))
+script = script.replace('String value = text == null ? "" : text;', 'scans++; String value = text == null ? "" : text;')
+measurement.write_text(Path(__file__).with_name("PreviewMeasurementsRegression.java.in").read_text().replace("// INSERT_SCRIPT_DECLARATIONS", script).replace(
     "// INSERT_MEASUREMENT_DECLARATIONS", "\n".join(measurement_renderer(baseline) for baseline in (True, False))))
 subprocess.run([java_tool("javac"), "-d", str(work), str(measurement)], check=True)
 measured = subprocess.run([java_tool("java"), "-cp", str(work), "PreviewMeasurementsRegression"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
