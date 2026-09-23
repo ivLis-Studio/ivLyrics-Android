@@ -88,6 +88,10 @@ are replaced with underscores so older standalone updaters continue selecting
 the Android APK. The single `ivLyrics-Android-${tag}-version.json` retains the
 standalone app's top-level version. Both products take their version name and
 code from `ivLyricsVersionName` and `ivLyricsVersionCode` in `gradle.properties`.
+Before publishing a new tag, update both properties: the version name must equal
+the tag without `v`, and the code must exceed both APKs in the previous release.
+The release workflow checks this before building and verifies the actual signed
+APK versions again before collecting either file. Changing only the tag is rejected.
 Each `apks` entry includes its product label, package and version alongside the
 existing name, size and SHA-256. A manual release run with `publish=false` builds
 and uploads signed verification artifacts without changing a GitHub Release.

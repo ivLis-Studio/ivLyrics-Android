@@ -803,12 +803,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             float temperature
     ) {
         Provider provider = providerById(providerId);
+        ProviderProfile previous = loadProviderProfiles().get(provider.id);
         ProviderProfile profile = new ProviderProfile(
                 apiKeys,
                 baseUrl == null || baseUrl.trim().isEmpty() ? provider.defaultBaseUrl : baseUrl,
                 model,
                 maxTokens,
-                temperature
+                temperature,
+                previous == null ? Collections.emptyList() : previous.openAIConnections
         );
         Map<String, ProviderProfile> profiles = new LinkedHashMap<>(loadProviderProfiles());
         profiles.put(provider.id, profile);
@@ -822,6 +824,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     .putFloat(KEY_TEMPERATURE, profile.temperature);
         }
         editor.apply();
+        cachedSnapshot = null;
     }
 
     void setPreviewMode(String previewMode) {
@@ -1374,6 +1377,21 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         return Collections.unmodifiableMap(values);
     }
 
+    List<OpenAIConnection> openAIConnections() {
+        ProviderProfile profile = loadProviderProfiles().get("chatgpt");
+        return profile == null ? Collections.emptyList() : profile.openAIConnections;
+    }
+
+    void setOpenAIConnections(List<OpenAIConnection> connections) {
+        Map<String, ProviderProfile> profiles = new LinkedHashMap<>(loadProviderProfiles());
+        ProviderProfile current = profiles.get("chatgpt");
+        if (current == null) current = ProviderProfile.defaults(providerById("chatgpt"));
+        profiles.put("chatgpt", new ProviderProfile(current.apiKeys, current.baseUrl, current.model,
+                current.maxTokens, current.temperature, connections));
+        secureStore.putString(KEY_AI_PROVIDER_PROFILES, providerProfilesJson(profiles));
+        cachedSnapshot = null;
+    }
+
     private Map<String, ProviderProfile> loadProviderProfiles() {
         Map<String, ProviderProfile> profiles = new LinkedHashMap<>();
         String raw = secureStore.getString(KEY_AI_PROVIDER_PROFILES, "");
@@ -1390,7 +1408,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                             object.optString("baseUrl", provider.defaultBaseUrl),
                             object.optString("model", provider.defaultModel),
                             object.optInt("maxTokens", 16000),
-                            (float) object.optDouble("temperature", 0.3)
+                            (float) object.optDouble("temperature", 0.3),
+                            OpenAIConnection.parse(object.optJSONArray("openAIConnections"))
                     ));
                 }
             } catch (Exception ignored) {
@@ -1459,6 +1478,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 object.put("model", profile.model);
                 object.put("maxTokens", profile.maxTokens);
                 object.put("temperature", profile.temperature);
+                object.put("openAIConnections", OpenAIConnection.toJson(profile.openAIConnections));
                 root.put(provider.id, object);
             } catch (JSONException ignored) {
             }
@@ -1965,8 +1985,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String model;
         final int maxTokens;
         final float temperature;
+        final List<OpenAIConnection> openAIConnections;
 
         ProviderProfile(String apiKeys, String baseUrl, String model, int maxTokens, float temperature) {
+            this(apiKeys, baseUrl, model, maxTokens, temperature, Collections.emptyList());
+        }
+
+        ProviderProfile(String apiKeys, String baseUrl, String model, int maxTokens, float temperature, List<OpenAIConnection> connections) {
+            this.openAIConnections = Collections.unmodifiableList(new ArrayList<>(connections));
             this.apiKeys = apiKeys == null ? "" : apiKeys.trim();
             this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
             this.model = model == null ? "" : model.trim();
@@ -2390,11 +2416,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             if ("pollinations".equals(provider.id) && !pollinationsAccessToken.trim().isEmpty()) {
                 return true;
             }
-            return !apiKeys.trim().isEmpty();
+            return !apiKeys.trim().isEmpty() || hasReadyOpenAIConnection();
         }
 
         boolean hasModel() {
-            return model != null && !model.trim().isEmpty();
+            return (model != null && !model.trim().isEmpty()) || hasReadyOpenAIConnection();
         }
 
         boolean hasKeylessTranslationProvider() {
@@ -2460,6 +2486,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             if (profile == null) {
                 profile = ProviderProfile.defaults(candidate);
             }
+            return withProviderProfile(candidate, profile);
+        }
+
+        private Snapshot withProviderProfile(Provider candidate, ProviderProfile profile) {
             return new Snapshot(
                     uiLang,
                     outputLang,
@@ -2512,6 +2542,29 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     spotifyClientId,
                     spotifyClientSecret
             );
+        }
+
+        List<Snapshot> openAIConnectionSnapshots() {
+            List<Snapshot> result = new ArrayList<>();
+            result.add(this);
+            if ("chatgpt".equals(provider.id)) {
+                ProviderProfile profile = providerProfiles.get("chatgpt");
+                if (profile != null) for (OpenAIConnection connection : profile.openAIConnections) {
+                    if (!connection.enabled) continue;
+                    result.add(withProviderProfile(provider, new ProviderProfile(connection.apiKeys,
+                            connection.baseUrl, connection.model, maxTokens, temperature)));
+                }
+            }
+            return result;
+        }
+
+        private boolean hasReadyOpenAIConnection() {
+            if (!"chatgpt".equals(provider.id)) return false;
+            ProviderProfile profile = providerProfiles.get("chatgpt");
+            if (profile != null) for (OpenAIConnection connection : profile.openAIConnections) {
+                if (connection.isReady()) return true;
+            }
+            return false;
         }
 
         boolean hasSpotifyApiCredentials() {
@@ -2569,7 +2622,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                             .append(":url=").append(profile.baseUrl)
                             .append(":tok=").append(profile.maxTokens)
                             .append(":temp=").append(profile.temperature)
-                            .append(":key=").append(profile.apiKeys.hashCode());
+                            .append(":key=").append(profile.apiKeys.hashCode())
+                            .append(":connections=").append(OpenAIConnection.toJson(profile.openAIConnections).toString().hashCode());
                 }
             }
             for (LanguageRule rule : languageRules.values()) {

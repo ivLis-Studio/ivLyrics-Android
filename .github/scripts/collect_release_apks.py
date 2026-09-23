@@ -30,6 +30,35 @@ def asset_names(tag):
     return names
 
 
+def release_version(tag, root=ROOT, previous=None):
+    asset_names(tag)
+    properties = {}
+    for line in (root / "gradle.properties").read_text().splitlines():
+        match = re.fullmatch(r"\s*(ivLyricsVersionName|ivLyricsVersionCode)\s*=\s*(.*?)\s*", line)
+        if match:
+            if match[1] in properties:
+                raise RuntimeError(f"Duplicate release property: {match[1]}")
+            properties[match[1]] = match[2]
+    name = properties.get("ivLyricsVersionName", "")
+    code = properties.get("ivLyricsVersionCode", "")
+    if name != tag.removeprefix("v"):
+        raise RuntimeError(f"Release tag {tag} does not match configured versionName {name!r}")
+    if not code.isdigit() or not 0 < int(code) <= 2100000000:
+        raise RuntimeError("ivLyricsVersionCode must be a positive Android version code")
+    version = {"versionName": name, "versionCode": int(code)}
+    if previous is not None:
+        records = [previous, *previous.get("apks", [])]
+        codes = [row.get("versionCode") for row in records]
+        if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in codes):
+            raise RuntimeError("Previous release metadata has invalid version codes")
+        if previous.get("tag") == tag:
+            if any(row.get("versionName") != name or row["versionCode"] != version["versionCode"] for row in records):
+                raise RuntimeError("Rebuilding an existing release must preserve its published APK versions")
+        elif version["versionCode"] <= max(codes):
+            raise RuntimeError("A new release must increase versionCode above every previously published APK")
+    return version
+
+
 def sdk_tool(name):
     roots = [Path(value) for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT")
              if (value := os.environ.get(key))]
@@ -82,6 +111,13 @@ def collect(tag, destination, root=ROOT, aapt=None, apksigner=None):
         verified.append((product, source, info))
     if verified[0][2]["signers"] != verified[1][2]["signers"]:
         raise RuntimeError("Both release APKs must use the configured stable release signing key")
+    expected = release_version(tag, root)
+    for product, source, info in verified:
+        if any(info.get(key) != value for key, value in expected.items()):
+            raise RuntimeError(
+                f"{product} APK version {info.get('versionName')} ({info.get('versionCode')}) "
+                f"does not match release {expected['versionName']} ({expected['versionCode']})"
+            )
     # Verify both before creating any output; never publish a module-only set.
     destination.mkdir(parents=True, exist_ok=True)
     if list(destination.glob("*.apk")):
@@ -102,7 +138,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--output", type=Path, default=Path("release-apks"))
+    parser.add_argument("--verify-version-only", action="store_true")
+    parser.add_argument("--previous-version-file", type=Path)
     args = parser.parse_args()
+    if args.verify_version_only:
+        previous = json.loads(args.previous_version_file.read_text()) if args.previous_version_file else None
+        print(json.dumps(release_version(args.tag, previous=previous)))
+        return
     collect(args.tag, args.output)
 
 

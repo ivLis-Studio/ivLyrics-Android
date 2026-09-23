@@ -28,6 +28,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -41,6 +45,35 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify release version and target before building
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            release_tag="$REQUESTED_RELEASE_TAG"
+          fi
+          release_target="$(git rev-parse HEAD)"
+          if tagged_target="$(git rev-parse --verify "${release_tag}^{commit}" 2>/dev/null)"; then
+            if [[ "$tagged_target" != "$release_target" ]]; then
+              echo "::error::The release tag must point to the checkout being built."
+              exit 1
+            fi
+          fi
+          previous_tag="$(gh release view --json tagName --jq '.tagName')"
+          previous_dir="$RUNNER_TEMP/previous-release"
+          gh release download "$previous_tag" --pattern '*-version.json' --dir "$previous_dir" --clobber
+          python3 .github/scripts/collect_release_apks.py --tag "$release_tag" --verify-version-only \
+            --previous-version-file "$previous_dir/ivLyrics-Android-${previous_tag}-version.json"
+          {
+            echo "release_tag=$release_tag"
+            echo "release_target=$release_target"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -84,6 +117,8 @@ jobs:
           python3 tests/run_furigana_webview_regression.py
           node --test tests/furigana_bridge.test.mjs
           python3 tests/run_metadata_refresh_loading_regression.py
+          python3 tests/run_ai_models_regression.py
+          python3 tests/run_openai_connections_regression.py
 
       - name: Restore release signing key
         shell: bash
@@ -124,18 +159,14 @@ jobs:
         id: collect
         shell: bash
         env:
-          REQUESTED_RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.release_target }}
         run: |
           set -euo pipefail
-          release_tag="${GITHUB_REF_NAME}"
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            release_tag="${REQUESTED_RELEASE_TAG}"
-          fi
-          python3 .github/scripts/collect_release_apks.py --tag "${release_tag}" --output release-apks
-          release_target="$(git rev-parse --verify "${release_tag}^{commit}" 2>/dev/null || git rev-parse HEAD)"
+          python3 .github/scripts/collect_release_apks.py --tag "$RELEASE_TAG" --output release-apks
           {
-            echo "release_tag=${release_tag}"
-            echo "release_target=${release_target}"
+            echo "release_tag=$RELEASE_TAG"
+            echo "release_target=$RELEASE_TARGET"
             echo "apk_list<<EOF"
             find release-apks -type f -name "*.apk" -print | sort
             echo "EOF"

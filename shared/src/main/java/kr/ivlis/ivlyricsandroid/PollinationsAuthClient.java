@@ -20,7 +20,6 @@ final class PollinationsAuthClient {
 
     private static final String CLIENT_ID = "pk_r7hWynUBrOgSV9SJ";
     private static final String AUTH_SCOPE = "generate";
-    private static final String AUTH_MODEL = "openai";
     private static final int AUTH_BUDGET = 999;
     private static final int AUTH_EXPIRY_DAYS = 365;
     private static final long DEFAULT_POLL_INTERVAL_MS = 5_000L;
@@ -74,7 +73,6 @@ final class PollinationsAuthClient {
         params.put("user_code", userCode);
         params.put("app_key", CLIENT_ID);
         params.put("scope", AUTH_SCOPE);
-        params.put("models", AUTH_MODEL);
         params.put("budget", String.valueOf(AUTH_BUDGET));
         params.put("expiry", String.valueOf(AUTH_EXPIRY_DAYS));
         StringBuilder builder = new StringBuilder(AUTH_BASE_URL).append("/authorize?");

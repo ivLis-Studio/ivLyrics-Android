@@ -1753,8 +1753,9 @@ final class AppI18n {
             Map<String, String> copy = new LinkedHashMap<>(table);
             copy.put("provider.desc.paxsenix", values[0]);
             copy.put("button.choose_model", values[1]);
+            OpenAIConnectionI18n.add(copy, language.code);
             copy.put("status.model_loading", values[2]);
-            copy.put("dialog.select_model", values[3]);
+            copy.put("dialog.select_model", copy.getOrDefault("field.model", values[3]));
             copy.put("toast.model_load_failed", values[4]);
             copy.put("toast.model_empty", values[5]);
             copy.put("status.ai_model_needed", values[6]);

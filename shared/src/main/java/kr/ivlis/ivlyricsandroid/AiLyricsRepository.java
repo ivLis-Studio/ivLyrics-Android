@@ -1395,11 +1395,10 @@ final class AiLyricsRepository {
                                 continue;
                             }
                             log.write("ai metadata attempt: provider=" + provider.label + " / model=" + providerSettings.model);
-                            String raw = callProviderRaw(
-                                    buildMetadataTranslationPrompt(title, artist, targetLang),
-                                    providerSettings
-                            );
-                            translation = parseMetadataTranslation(raw, title, artist, sourceLang, targetLang);
+                            translation = withOpenAIConnections(providerSettings, null, connection -> {
+                                String raw = callProviderRaw(buildMetadataTranslationPrompt(title, artist, targetLang), connection);
+                                return parseMetadataTranslation(raw, title, artist, sourceLang, targetLang);
+                            });
                         }
                         if (translation != null) {
                             break;
@@ -1456,6 +1455,7 @@ final class AiLyricsRepository {
                 + "|provider=" + settings.provider.id
                 + "|model=" + settings.model
                 + "|url=" + settings.baseUrl
+                + "|connections=" + sha256(settings.cacheKey())
                 + "|tok=" + settings.maxTokens
                 + "|temp=" + settings.temperature
                 + "|text=" + sha256(title + "\n" + artist + "\n" + researchLyricsFingerprint(lyrics));
@@ -1494,56 +1494,11 @@ final class AiLyricsRepository {
         executor.execute(() -> {
             LogSink log = message -> emitLog(trackKey, callback, message);
             try {
-                AiLyricsSettings.Language language = AiLyricsSettings.languageInfo(targetLang);
-                String prompt = ResearchDocument.buildPrompt(track, lyrics, language);
-                boolean webSearchFallback = false;
-                ResearchDocument.StreamParser webParser = new ResearchDocument.StreamParser();
-                long[] lastDispatch = {0L};
-                TextDeltaSink progressSink = delta -> {
-                    ResearchDocument partial = webParser.append(delta, targetLang);
-                    long now = SystemClock.elapsedRealtime();
-                    if (partial != null && partial.hasContent()
-                            && now - lastDispatch[0] >= STREAM_PARTIAL_DISPATCH_INTERVAL_MS) {
-                        lastDispatch[0] = now;
-                        TmiInfo partialInfo = TmiInfo.fromResearch(partial, targetLang, false);
-                        mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, partialInfo, false, false));
-                    }
-                };
-                String raw;
-                try {
-                    raw = callResearchStreamRaw(prompt, title, artist, settings, true, progressSink);
-                    log.write("ai research web search completed");
-                } catch (Exception searchError) {
-                    if (!isResearchWebSearchFailure(searchError)) {
-                        throw searchError;
-                    }
-                    webSearchFallback = true;
-                    log.write("ai research web search failed; retrying without search: " + errorMessage(searchError));
-                    mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, null, true, true));
-                    ResearchDocument.StreamParser fallbackParser = new ResearchDocument.StreamParser();
-                    lastDispatch[0] = 0L;
-                    raw = callResearchStreamRaw(prompt, title, artist, settings, false, delta -> {
-                        ResearchDocument partial = fallbackParser.append(delta, targetLang);
-                        long now = SystemClock.elapsedRealtime();
-                        if (partial != null && partial.hasContent()
-                                && now - lastDispatch[0] >= STREAM_PARTIAL_DISPATCH_INTERVAL_MS) {
-                            lastDispatch[0] = now;
-                            TmiInfo partialInfo = TmiInfo.fromResearch(partial, targetLang, true);
-                            mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, partialInfo, true, false));
-                        }
-                    });
-                }
-                ResearchDocument research = ResearchDocument.fromProviderJson(parseJsonObjectResponse(raw), targetLang);
-                if (research == null || !research.hasContent()) {
-                    throw new JSONException("Research response did not contain readable sections");
-                }
-                TmiInfo info = TmiInfo.fromResearch(research, targetLang, webSearchFallback);
+                TmiInfo info = withOpenAIConnections(settings,
+                        () -> mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, null, false, true)),
+                        connection -> generateTmiForConnection(track, lyrics, title, artist, targetLang, connection, trackKey, callback, log));
                 tmiCache.put(cacheKey, info);
                 putTmiToPrefs(cacheKey, info);
-                log.write("ai research response: sections=" + research.sections.size()
-                        + " / facts=" + research.funFacts.size()
-                        + " / sources=" + research.sources.size()
-                        + " / webFallback=" + webSearchFallback);
                 mainHandler.post(() -> callback.onAiTmiLoaded(trackKey, info));
             } catch (Exception error) {
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
@@ -1584,6 +1539,7 @@ final class AiLyricsRepository {
                 + "|provider=" + settings.provider.id
                 + "|model=" + settings.model
                 + "|url=" + settings.baseUrl
+                + "|connections=" + sha256(settings.cacheKey())
                 + "|temp=" + settings.temperature
                 + "|text=" + sha256(payload);
 
@@ -1625,8 +1581,8 @@ final class AiLyricsRepository {
         executor.execute(() -> {
             try {
                 String prompt = buildCulturalAnnotationPrompt(baseResult.lines, sourceLang, targetLang);
-                String raw = callProviderRaw(prompt, settings);
-                List<CulturalAnnotation> annotations = parseCulturalAnnotations(raw, baseResult.lines);
+                List<CulturalAnnotation> annotations = withOpenAIConnections(settings, null, connection ->
+                        parseCulturalAnnotations(callProviderRaw(prompt, connection), baseResult.lines));
                 List<CulturalAnnotation> immutable = Collections.unmodifiableList(annotations);
                 culturalAnnotationCache.put(cacheKey, immutable);
                 putCulturalAnnotationsToPrefs(cacheKey, immutable);
@@ -1639,6 +1595,59 @@ final class AiLyricsRepository {
             }
         });
         return cacheKey;
+    }
+
+    private TmiInfo generateTmiForConnection(TrackSnapshot track, LyricsResult lyrics, String title, String artist,
+            String targetLang, AiLyricsSettings.Snapshot settings, String trackKey, Callback callback, LogSink log) throws Exception {
+        AiLyricsSettings.Language language = AiLyricsSettings.languageInfo(targetLang);
+        String prompt = ResearchDocument.buildPrompt(track, lyrics, language);
+        boolean webSearchFallback = false;
+        ResearchDocument.StreamParser webParser = new ResearchDocument.StreamParser();
+        long[] lastDispatch = {0L};
+        TextDeltaSink progressSink = delta -> {
+            ResearchDocument partial = webParser.append(delta, targetLang);
+            long now = SystemClock.elapsedRealtime();
+            if (partial != null && partial.hasContent()
+                    && now - lastDispatch[0] >= STREAM_PARTIAL_DISPATCH_INTERVAL_MS) {
+                lastDispatch[0] = now;
+                TmiInfo partialInfo = TmiInfo.fromResearch(partial, targetLang, false);
+                mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, partialInfo, false, false));
+            }
+        };
+        String raw;
+        try {
+            raw = callResearchStreamRaw(prompt, title, artist, settings, true, progressSink);
+            log.write("ai research web search completed");
+        } catch (Exception searchError) {
+            if (!isResearchWebSearchFailure(searchError)) {
+                throw searchError;
+            }
+            webSearchFallback = true;
+            log.write("ai research web search failed; retrying without search: " + errorMessage(searchError));
+            mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, null, true, true));
+            ResearchDocument.StreamParser fallbackParser = new ResearchDocument.StreamParser();
+            lastDispatch[0] = 0L;
+            raw = callResearchStreamRaw(prompt, title, artist, settings, false, delta -> {
+                ResearchDocument partial = fallbackParser.append(delta, targetLang);
+                long now = SystemClock.elapsedRealtime();
+                if (partial != null && partial.hasContent()
+                        && now - lastDispatch[0] >= STREAM_PARTIAL_DISPATCH_INTERVAL_MS) {
+                    lastDispatch[0] = now;
+                    TmiInfo partialInfo = TmiInfo.fromResearch(partial, targetLang, true);
+                    mainHandler.post(() -> callback.onAiTmiPartialLoaded(trackKey, partialInfo, true, false));
+                }
+            });
+        }
+        ResearchDocument research = ResearchDocument.fromProviderJson(parseJsonObjectResponse(raw), targetLang);
+        if (research == null || !research.hasContent()) {
+            throw new JSONException("Research response did not contain readable sections");
+        }
+        TmiInfo info = TmiInfo.fromResearch(research, targetLang, webSearchFallback);
+        log.write("ai research response: sections=" + research.sections.size()
+                + " / facts=" + research.funFacts.size()
+                + " / sources=" + research.sources.size()
+                + " / webFallback=" + webSearchFallback);
+        return info;
     }
 
     void clearCache() {
@@ -1855,7 +1864,55 @@ final class AiLyricsRepository {
         }
     }
 
+    private interface ConnectionRequest<T> {
+        T run(AiLyricsSettings.Snapshot settings) throws Exception;
+    }
+
+    private <T> T withOpenAIConnections(AiLyricsSettings.Snapshot settings, Runnable reset, ConnectionRequest<T> request) throws Exception {
+        Exception lastError = null;
+        boolean first = true;
+        for (AiLyricsSettings.Snapshot connection : settings.openAIConnectionSnapshots()) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            if (!first && reset != null) reset.run();
+            first = false;
+            try { return request.run(connection); }
+            catch (Exception error) {
+                if (error instanceof InterruptedException || Thread.currentThread().isInterrupted()) {
+                    Thread.currentThread().interrupt();
+                    throw error;
+                }
+                lastError = error;
+            }
+        }
+        throw lastError == null ? new IOException("No OpenAI-compatible provider is configured") : lastError;
+    }
+
     private List<String> loadSupplementValuesStreamFirst(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            List<SupplementRequest> requests,
+            String taskName,
+            SupplementSession session,
+            boolean pronunciation,
+            String trackKey,
+            AiLyricsSettings.LanguageRule rule,
+            String sourceLang,
+            String targetLang,
+            String pronunciationLang,
+            boolean translationSkipped,
+            SupplementPartialDispatcher partialDispatcher,
+            LogSink log
+    ) throws Exception {
+        return withOpenAIConnections(settings, () -> {
+            if (pronunciation) session.resetPronunciationValues();
+            else session.resetTranslationValues();
+            partialDispatcher.request();
+        }, connection -> loadSupplementValuesStreamFirstSingle(prompt, connection, requests, taskName,
+                session, pronunciation, trackKey, rule, sourceLang, targetLang, pronunciationLang,
+                translationSkipped, partialDispatcher, log));
+    }
+
+    private List<String> loadSupplementValuesStreamFirstSingle(
             String prompt,
             AiLyricsSettings.Snapshot settings,
             List<SupplementRequest> requests,
@@ -2063,6 +2120,7 @@ final class AiLyricsRepository {
                 + "|googleTranslate=" + settings.googleTranslateEnabled
                 + "|model=" + settings.model
                 + "|url=" + settings.baseUrl
+                + "|connections=" + sha256(settings.cacheKey())
                 + "|tok=" + settings.maxTokens
                 + "|temp=" + settings.temperature
                 + "|output=" + outputLang

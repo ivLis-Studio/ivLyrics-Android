@@ -394,7 +394,9 @@ public class BaseLyricsActivity extends Activity implements
     private TextView lyricsBackgroundVideoScaleValueView;
     private EditText apiKeysInput;
     private EditText modelInput;
-    private TextView paxsenixModelPickerButton;
+    private TextView aiModelPickerButton;
+    private int aiModelRequestId;
+    private LinearLayout openAIConnectionsContainer;
     private EditText baseUrlInput;
     private EditText maxTokensInput;
     private EditText temperatureInput;
@@ -4940,13 +4942,17 @@ public class BaseLyricsActivity extends Activity implements
         modelControls.setOrientation(LinearLayout.VERTICAL);
         modelInput = settingEditText("", false, false);
         modelControls.addView(modelInput, matchWrap());
-        paxsenixModelPickerButton = debugButton(ui("button.choose_model"));
-        paxsenixModelPickerButton.setOnClickListener(view -> loadPaxsenixModels());
-        modelControls.addView(paxsenixModelPickerButton, topMargin(matchWrap(), dp(8)));
+        aiModelPickerButton = debugButton(ui("button.choose_model"));
+        aiModelPickerButton.setOnClickListener(view -> loadAiModels());
+        modelControls.addView(aiModelPickerButton, topMargin(matchWrap(), dp(8)));
         providerDetailsContainer.addView(settingGroup(ui("field.model"), ui("field.model_desc"), modelControls), topMargin(matchWrap(), dp(12)));
 
         baseUrlInput = settingEditText("", false, false);
         providerDetailsContainer.addView(settingField(ui("field.base_url"), ui("field.base_url_desc"), baseUrlInput), topMargin(matchWrap(), dp(12)));
+
+        openAIConnectionsContainer = new LinearLayout(this);
+        openAIConnectionsContainer.setOrientation(LinearLayout.VERTICAL);
+        providerDetailsContainer.addView(openAIConnectionsContainer, topMargin(matchWrap(), dp(12)));
 
         LinearLayout advancedRow = new LinearLayout(this);
         advancedRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -7875,7 +7881,8 @@ public class BaseLyricsActivity extends Activity implements
             providerButtonsContainer.addView(card, params);
         }
         updatePollinationsAuthUi(snapshot);
-        updatePaxsenixModelPickerUi(snapshot);
+        updateAiModelPickerUi(snapshot);
+        rebuildOpenAIConnectionsUi();
     }
 
     private View providerButton(
@@ -8046,74 +8053,85 @@ public class BaseLyricsActivity extends Activity implements
         buildProviderButtons();
     }
 
-    private void updatePaxsenixModelPickerUi(AiLyricsSettings.Snapshot snapshot) {
-        if (paxsenixModelPickerButton == null) return;
-        boolean visible = snapshot != null && "paxsenix".equals(snapshot.provider.id);
-        paxsenixModelPickerButton.setVisibility(visible ? View.VISIBLE : View.GONE);
-        if (visible && paxsenixModelPickerButton.isEnabled()) {
-            paxsenixModelPickerButton.setText(ui("button.choose_model"));
-        }
+    private void updateAiModelPickerUi(AiLyricsSettings.Snapshot snapshot) {
+        if (aiModelPickerButton == null) return;
+        aiModelRequestId++;
+        aiModelPickerButton.setVisibility(snapshot != null && !snapshot.provider.keyless ? View.VISIBLE : View.GONE);
+        aiModelPickerButton.setEnabled(true);
+        aiModelPickerButton.setText(ui("button.choose_model"));
     }
 
-    private void loadPaxsenixModels() {
-        if (aiLyricsSettings == null || paxsenixModelPickerButton == null) return;
+    private boolean isCurrentModelRequest(int requestId, AiLyricsSettings.Snapshot snapshot) {
+        if (isFinishing() || isDestroyed() || requestId != aiModelRequestId) return false;
+        AiLyricsSettings.Snapshot current = aiLyricsSettings.snapshot();
+        String baseUrl = textOf(baseUrlInput);
+        if (baseUrl.isEmpty()) baseUrl = current.provider.defaultBaseUrl;
+        return current.provider.id.equals(snapshot.provider.id)
+                && baseUrl.equals(snapshot.baseUrl)
+                && textOf(apiKeysInput).equals(snapshot.apiKeys)
+                && java.util.Objects.equals(current.pollinationsAccessToken, snapshot.pollinationsAccessToken);
+    }
+
+    private void loadAiModels() {
+        if (aiLyricsSettings == null || aiModelPickerButton == null) return;
         applyAiSettingsFromUi(false);
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        if (!"paxsenix".equals(snapshot.provider.id)) return;
-        String apiKey = firstApiKey(snapshot.apiKeys);
-        if (apiKey.isEmpty()) {
-            showSavedToast(ui("status.ai_key_needed"));
-            return;
-        }
-
-        paxsenixModelPickerButton.setEnabled(false);
-        paxsenixModelPickerButton.setText(ui("status.model_loading"));
+        if (snapshot.provider.keyless) return;
+        String accessToken = snapshot.pollinationsAccessToken == null ? "" : snapshot.pollinationsAccessToken.trim();
+        String apiKey = "pollinations".equals(snapshot.provider.id) && !accessToken.isEmpty()
+                ? accessToken : firstApiKey(snapshot.apiKeys);
+        final int requestId = ++aiModelRequestId;
+        aiModelPickerButton.setEnabled(false);
+        aiModelPickerButton.setText(ui("status.model_loading"));
         aiModelExecutor.execute(() -> {
-            List<PaxsenixAiModels.Model> models = Collections.emptyList();
+            AiProviderModels.Catalog catalog = null;
             Exception failure = null;
             try {
-                models = PaxsenixAiModels.fetch(apiKey);
+                catalog = AiProviderModels.fetch(snapshot.provider.id, snapshot.baseUrl, apiKey);
             } catch (Exception error) {
                 failure = error;
             }
-            List<PaxsenixAiModels.Model> loadedModels = models;
+            AiProviderModels.Catalog loaded = catalog;
             Exception loadFailure = failure;
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) return;
-                paxsenixModelPickerButton.setEnabled(true);
-                paxsenixModelPickerButton.setText(ui("button.choose_model"));
+                if (isFinishing() || isDestroyed() || requestId != aiModelRequestId) return;
+                aiModelPickerButton.setEnabled(true);
+                aiModelPickerButton.setText(ui("button.choose_model"));
+                if (!isCurrentModelRequest(requestId, snapshot)) return;
                 if (loadFailure != null) {
-                    appendLog("paxsenix model list error: " + loadFailure.getMessage());
+                    appendLog(snapshot.provider.id + " model list error: " + loadFailure.getMessage());
                     showSavedToast(ui("toast.model_load_failed"));
                     return;
                 }
-                if (loadedModels.isEmpty()) {
+                if (loaded.models.isEmpty()) {
                     showSavedToast(ui("toast.model_empty"));
                     return;
                 }
-                showPaxsenixModelDialog(loadedModels);
+                if (loaded.builtIn) showSavedToast(ui("status.models_builtin_sonar"));
+                showAiModelDialog(loaded.models, requestId, snapshot);
             });
         });
     }
 
-    private void showPaxsenixModelDialog(List<PaxsenixAiModels.Model> models) {
+    private void showAiModelDialog(List<AiProviderModels.Model> models, int requestId, AiLyricsSettings.Snapshot snapshot) {
         if (models == null || models.isEmpty() || isFinishing()) return;
         String[] labels = new String[models.size()];
+        int selected = -1;
         for (int index = 0; index < models.size(); index++) {
             labels[index] = models.get(index).displayLabel();
+            if (models.get(index).id.equals(textOf(modelInput))) selected = index;
         }
         new AlertDialog.Builder(this)
                 .setTitle(ui("dialog.select_model"))
-                .setItems(labels, (dialog, which) -> {
-                    if (which < 0 || which >= models.size()) return;
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    if (which < 0 || which >= models.size() || !isCurrentModelRequest(requestId, snapshot)) return;
                     String modelId = models.get(which).id;
                     modelInput.setText(modelId);
                     modelInput.setSelection(modelId.length());
                     aiLyricsSettings.setModel(modelId);
-                    if (aiSettingsStatusView != null) {
-                        aiSettingsStatusView.setText(ui("toast.settings_saved"));
-                    }
+                    if (aiSettingsStatusView != null) aiSettingsStatusView.setText(ui("toast.settings_saved"));
                     showSavedToast(ui("toast.settings_saved"));
+                    dialog.dismiss();
                 })
                 .setNegativeButton(ui("button.close"), null)
                 .show();
@@ -8138,6 +8156,128 @@ public class BaseLyricsActivity extends Activity implements
             if (!key.isEmpty()) return key;
         }
         return "";
+    }
+
+    private void saveOpenAIConnections(List<OpenAIConnection> connections) {
+        aiLyricsSettings.setOpenAIConnections(connections);
+        rebuildOpenAIConnectionsUi();
+    }
+
+    private void rebuildOpenAIConnectionsUi() {
+        if (openAIConnectionsContainer == null || aiLyricsSettings == null) return;
+        openAIConnectionsContainer.removeAllViews();
+        boolean visible = "chatgpt".equals(aiLyricsSettings.snapshot().provider.id);
+        openAIConnectionsContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (!visible) return;
+        openAIConnectionsContainer.addView(settingSubLabel(ui("openai.connections_desc")), matchWrap());
+        List<OpenAIConnection> connections = aiLyricsSettings.openAIConnections();
+        for (int index = 0; index < connections.size(); index++) {
+            OpenAIConnection connection = connections.get(index);
+            final int position = index;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            Switch enabled = new Switch(this);
+            enabled.setChecked(connection.enabled);
+            enabled.setOnCheckedChangeListener((button, checked) -> {
+                List<OpenAIConnection> next = new ArrayList<>(aiLyricsSettings.openAIConnections());
+                for (int i = 0; i < next.size(); i++) if (next.get(i).id.equals(connection.id)) {
+                    next.set(i, new OpenAIConnection(connection.id, connection.name, connection.baseUrl,
+                            connection.apiKeys, connection.model, checked));
+                }
+                saveOpenAIConnections(next);
+            });
+            row.addView(enabled);
+            TextView edit = debugButton((index + 2) + ". " + (connection.name.isEmpty() ? "API" : connection.name));
+            edit.setOnClickListener(view -> editOpenAIConnection(connection));
+            row.addView(edit, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            for (int delta : new int[]{-1, 1}) {
+                TextView move = debugButton(delta < 0 ? "↑" : "↓");
+                move.setEnabled(index + delta >= 0 && index + delta < connections.size());
+                move.setContentDescription(ui(delta < 0 ? "lyrics_provider.move_up" : "lyrics_provider.move_down"));
+                move.setOnClickListener(view -> {
+                    List<OpenAIConnection> next = new ArrayList<>(aiLyricsSettings.openAIConnections());
+                    if (position + delta < 0 || position + delta >= next.size()) return;
+                    Collections.swap(next, position, position + delta);
+                    saveOpenAIConnections(next);
+                });
+                row.addView(move);
+            }
+            TextView remove = debugButton("×");
+            remove.setContentDescription(ui("openai.remove_connection"));
+            remove.setOnClickListener(view -> {
+                List<OpenAIConnection> next = new ArrayList<>(aiLyricsSettings.openAIConnections());
+                next.removeIf(item -> item.id.equals(connection.id));
+                saveOpenAIConnections(next);
+            });
+            row.addView(remove);
+            openAIConnectionsContainer.addView(row, topMargin(matchWrap(), dp(8)));
+        }
+        TextView add = debugButton(ui("openai.add_connection"));
+        add.setOnClickListener(view -> editOpenAIConnection(new OpenAIConnection("", "API", "", "", "", true)));
+        openAIConnectionsContainer.addView(add, topMargin(matchWrap(), dp(8)));
+    }
+
+    private void editOpenAIConnection(OpenAIConnection connection) {
+        applyAiSettingsFromUi(false);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(18), dp(8), dp(18), dp(8));
+        EditText name = settingEditText("API", false, false);
+        name.setText(connection.name);
+        form.addView(settingField(ui("openai.connection_name"), "", name), matchWrap());
+        EditText baseUrl = settingEditText("https://api.openai.com/v1", false, false);
+        baseUrl.setText(connection.baseUrl);
+        form.addView(settingField(ui("field.base_url"), "", baseUrl), topMargin(matchWrap(), dp(8)));
+        EditText keys = settingEditText("", true, true);
+        keys.setText(connection.apiKeys);
+        form.addView(settingField(ui("field.api_key"), "", keys), topMargin(matchWrap(), dp(8)));
+        EditText model = settingEditText("", false, false);
+        model.setText(connection.model);
+        form.addView(settingField(ui("field.model"), "", model), topMargin(matchWrap(), dp(8)));
+        TextView choose = debugButton(ui("button.choose_model"));
+        form.addView(choose, topMargin(matchWrap(), dp(8)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(form);
+        AlertDialog editor = new AlertDialog.Builder(this)
+                .setTitle(ui("openai.connection"))
+                .setView(scroll)
+                .setPositiveButton(ui("openai.save_connection"), (dialog, which) -> {
+                    OpenAIConnection saved = new OpenAIConnection(connection.id, textOf(name), textOf(baseUrl),
+                            textOf(keys), textOf(model), connection.enabled);
+                    List<OpenAIConnection> next = new ArrayList<>(aiLyricsSettings.openAIConnections());
+                    int existing = -1;
+                    for (int i = 0; i < next.size(); i++) if (next.get(i).id.equals(saved.id)) existing = i;
+                    if (existing >= 0) next.set(existing, saved); else next.add(saved);
+                    saveOpenAIConnections(next);
+                })
+                .setNegativeButton(ui("button.close"), null).create();
+        choose.setOnClickListener(view -> {
+            String requestBase = textOf(baseUrl).isEmpty() ? "https://api.openai.com/v1" : textOf(baseUrl);
+            String requestKeys = textOf(keys);
+            choose.setEnabled(false);
+            choose.setText(ui("status.model_loading"));
+            aiModelExecutor.execute(() -> {
+                AiProviderModels.Catalog catalog = null;
+                try { catalog = AiProviderModels.fetch("chatgpt", requestBase, firstApiKey(requestKeys)); }
+                catch (Exception ignored) { }
+                AiProviderModels.Catalog loaded = catalog;
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || !editor.isShowing()) return;
+                    choose.setEnabled(true);
+                    choose.setText(ui("button.choose_model"));
+                    String currentBase = textOf(baseUrl).isEmpty() ? "https://api.openai.com/v1" : textOf(baseUrl);
+                    if (!currentBase.equals(requestBase) || !textOf(keys).equals(requestKeys)) return;
+                    if (loaded == null || loaded.models.isEmpty()) { showSavedToast(ui("toast.model_load_failed")); return; }
+                    String[] labels = new String[loaded.models.size()];
+                    for (int i = 0; i < labels.length; i++) labels[i] = loaded.models.get(i).displayLabel();
+                    new AlertDialog.Builder(this).setTitle(ui("dialog.select_model"))
+                            .setItems(labels, (dialog, which) -> { if (editor.isShowing()) model.setText(loaded.models.get(which).id); })
+                            .setNegativeButton(ui("button.close"), null).show();
+                });
+            });
+        });
+        editor.show();
     }
 
     private String providerDescription(AiLyricsSettings.Provider provider) {

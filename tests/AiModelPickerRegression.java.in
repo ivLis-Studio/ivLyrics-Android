@@ -1,0 +1,124 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.util.*;
+
+/** UI shells only; model loading/selection methods below are copied unchanged from production. */
+public final class AiModelPickerRegression {
+    private final AiLyricsSettings aiLyricsSettings = new AiLyricsSettings();
+    private final TextView aiModelPickerButton = new TextView();
+    private final TextView aiSettingsStatusView = new TextView();
+    private final EditText apiKeysInput = new EditText();
+    private final EditText modelInput = new EditText();
+    private final EditText baseUrlInput = new EditText();
+    private final QueueExecutor aiModelExecutor = new QueueExecutor();
+    private int aiModelRequestId;
+    private AlertDialog dialog;
+    private String toast = "";
+    private boolean destroyed;
+
+    // PRODUCTION_METHODS
+
+    private boolean isFinishing() { return false; }
+    private boolean isDestroyed() { return destroyed; }
+    private String ui(String key) { return key; }
+    private String textOf(EditText view) { return view.text.trim(); }
+    private void appendLog(String message) {}
+    private void showSavedToast(String message) { toast = message; }
+    private void runOnUiThread(Runnable runnable) { runnable.run(); }
+    private void applyAiSettingsFromUi(boolean updateStatus) {
+        aiLyricsSettings.apiKeys = textOf(apiKeysInput);
+        aiLyricsSettings.baseUrl = textOf(baseUrlInput).isEmpty() ? aiLyricsSettings.provider.defaultBaseUrl : textOf(baseUrlInput);
+    }
+    static class View { static int VISIBLE = 0, GONE = 8; }
+    static class TextView {
+        String text = ""; boolean enabled = true; int visibility;
+        void setText(String text) { this.text = text; }
+        void setEnabled(boolean value) { enabled = value; }
+        void setVisibility(int value) { visibility = value; }
+    }
+    static class EditText extends TextView { void setSelection(int index) {} }
+    static class QueueExecutor {
+        final ArrayDeque<Runnable> queue = new ArrayDeque<>();
+        void execute(Runnable runnable) { queue.add(runnable); }
+        void drain() { while (!queue.isEmpty()) queue.remove().run(); }
+    }
+    static class AiLyricsSettings {
+        Provider provider = new Provider("perplexity");
+        String apiKeys = "", baseUrl = provider.defaultBaseUrl, token = "", model = "saved-custom";
+        void setModel(String model) { this.model = model; }
+        Snapshot snapshot() { return new Snapshot(provider, apiKeys, baseUrl, token); }
+        static class Provider {
+            final String id, defaultBaseUrl; final boolean keyless;
+            Provider(String id) {
+                this.id = id; defaultBaseUrl = "https://api.perplexity.ai"; keyless = id.equals("bing");
+            }
+        }
+        static class Snapshot {
+            final Provider provider; final String apiKeys, baseUrl, pollinationsAccessToken;
+            Snapshot(Provider provider, String keys, String base, String token) {
+                this.provider = provider; apiKeys = keys; baseUrl = base; pollinationsAccessToken = token;
+            }
+        }
+    }
+    static class AlertDialog {
+        interface Listener { void onClick(AlertDialog dialog, int index); }
+        Listener listener; boolean dismissed; int selected; String[] labels;
+        void dismiss() { dismissed = true; }
+        static class Builder {
+            final AiModelPickerRegression owner; final AlertDialog dialog = new AlertDialog();
+            Builder(AiModelPickerRegression owner) { this.owner = owner; }
+            Builder setTitle(String title) { return this; }
+            Builder setSingleChoiceItems(String[] labels, int selected, Listener listener) {
+                dialog.labels = labels; dialog.selected = selected; dialog.listener = listener; return this;
+            }
+            Builder setNegativeButton(String title, Listener listener) { return this; }
+            void show() { owner.dialog = dialog; }
+        }
+    }
+    private static int count;
+    private static void check(boolean condition, String message) {
+        count++;
+        if (!condition) throw new AssertionError(message);
+    }
+    public static void main(String[] args) {
+        var ui = new AiModelPickerRegression();
+        ui.modelInput.setText("saved-custom");
+        for (String provider : new String[]{"gemini", "chatgpt", "claude", "groq", "openrouter", "perplexity", "pollinations", "paxsenix", "bing"}) {
+            ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider(provider);
+            ui.updateAiModelPickerUi(ui.aiLyricsSettings.snapshot());
+            check(ui.aiModelPickerButton.visibility == (provider.equals("bing") ? View.GONE : View.VISIBLE), provider + " picker visibility");
+        }
+        ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("perplexity");
+        ui.loadAiModels();
+        check(!ui.aiModelPickerButton.enabled, "Loading disables button");
+        ui.aiModelExecutor.drain();
+        check(ui.dialog != null && ui.aiModelPickerButton.enabled, "Blank base URL uses provider default and opens catalog");
+        check(ui.modelInput.text.equals("saved-custom"), "Loading preserves custom selection");
+        ui.dialog.listener.onClick(ui.dialog, 1);
+        check(ui.modelInput.text.equals("sonar-pro") && ui.aiLyricsSettings.model.equals("sonar-pro") && ui.dialog.dismissed, "Selection is saved and dialog closes");
+
+        ui.dialog = null;
+        ui.loadAiModels();
+        ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("chatgpt");
+        ui.updateAiModelPickerUi(ui.aiLyricsSettings.snapshot());
+        ui.aiModelExecutor.drain();
+        check(ui.dialog == null && ui.aiModelPickerButton.enabled, "Old provider response is ignored");
+
+        ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("perplexity");
+        ui.loadAiModels();
+        ui.apiKeysInput.setText("new-key");
+        ui.aiModelExecutor.drain();
+        check(ui.dialog == null && ui.aiModelPickerButton.enabled, "Old credentials response is ignored");
+
+        ui.apiKeysInput.setText("");
+        ui.loadAiModels(); ui.aiModelExecutor.drain();
+        var opened = ui.dialog;
+        ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("chatgpt");
+        opened.listener.onClick(opened, 0);
+        check(ui.aiLyricsSettings.model.equals("sonar-pro"), "An old dialog cannot change another provider");
+        ui.dialog = null;
+        ui.loadAiModels(); ui.aiModelExecutor.drain();
+        check(ui.dialog == null && ui.aiModelPickerButton.enabled && ui.toast.equals("toast.model_load_failed"), "Failed fetch re-enables picker without changing the model");
+        System.out.println("AI model picker regression: " + count + " checks passed");
+    }
+}

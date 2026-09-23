@@ -10,6 +10,38 @@ spec.loader.exec_module(collector)
 
 
 class ReleaseCollectionTest(unittest.TestCase):
+    def write_version(self, root, name="1.3.6", code=66):
+        (root / "gradle.properties").write_text(f"ivLyricsVersionName={name}\nivLyricsVersionCode={code}\n")
+
+    def test_tag_cannot_advance_without_app_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_version(root, "1.3.18", 78)
+            with self.assertRaisesRegex(RuntimeError, "does not match configured versionName"):
+                collector.release_version("v1.3.19", root)
+
+    def test_new_release_requires_a_higher_code_than_both_previous_apks(self):
+        previous = {"tag": "v1.3.19", "versionName": "1.3.18", "versionCode": 78,
+                    "apks": [{"versionCode": 79}, {"versionCode": 78}]}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_version(root, "1.3.20", 79)
+            with self.assertRaisesRegex(RuntimeError, "must increase versionCode"):
+                collector.release_version("v1.3.20", root, previous)
+            self.write_version(root, "1.3.20", 80)
+            self.assertEqual(collector.release_version("v1.3.20", root, previous),
+                             {"versionName": "1.3.20", "versionCode": 80})
+
+    def test_existing_release_rebuild_keeps_published_versions(self):
+        previous = {"tag": "v1.3.20", "versionName": "1.3.20", "versionCode": 80}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_version(root, "1.3.20", 80)
+            self.assertEqual(collector.release_version("v1.3.20", root, previous)["versionCode"], 80)
+            self.write_version(root, "1.3.20", 81)
+            with self.assertRaisesRegex(RuntimeError, "preserve its published APK versions"):
+                collector.release_version("v1.3.20", root, previous)
+
     def test_legacy_updater_can_only_recognize_android_as_release(self):
         for tag in ("v1.3.6", "v1.3.6-release-candidate", "v1.3.6-RELEASE.1"):
             android, module = collector.asset_names(tag)
@@ -25,6 +57,7 @@ class ReleaseCollectionTest(unittest.TestCase):
     def test_module_only_build_cannot_create_partial_asset_set(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            self.write_version(root)
             destination = root / "release-apks"
             with self.assertRaisesRegex(RuntimeError, "Missing signed release APK"):
                 collector.collect("v1.3.6", destination, root, "unused-aapt", "unused-apksigner")
@@ -55,18 +88,31 @@ class ReleaseCollectionTest(unittest.TestCase):
     def test_two_verified_apks_are_both_collected_with_checksums(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            self.write_version(root)
             for _, project, filename, _, _ in collector.PRODUCTS:
                 path = root / project / "build/outputs/apk/release" / filename
                 path.parent.mkdir(parents=True)
                 path.write_bytes(project.encode())
             def inspected(path, package, permissions, *tools):
-                return {"packageName": package, "versionName": "1", "versionCode": 1, "signers": ["aabb"]}
+                return {"packageName": package, "versionName": "1.3.6", "versionCode": 66, "signers": ["aabb"]}
             with patch.object(collector, "inspect_apk", side_effect=inspected):
                 reports = collector.collect("v1.3.6", root / "out", root, "aapt", "apksigner")
             self.assertEqual([row["product"] for row in reports], ["standalone", "spotify-module"])
             self.assertEqual(len(list((root / "out").glob("*.apk"))), 2)
             self.assertTrue(all(len(row["sha256"]) == 64 for row in reports))
             self.assertFalse(list((root / "out").glob("*version.json")))
+
+    def test_stale_module_name_or_code_prevents_both_apks_from_being_published(self):
+        for stale in ({"versionName": "1.3.18", "versionCode": 80},
+                      {"versionName": "1.3.20", "versionCode": 78}):
+            with self.subTest(stale=stale), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self.write_version(root, "1.3.20", 80)
+                valid = {"versionName": "1.3.20", "versionCode": 80, "signers": ["aabb"]}
+                with patch.object(collector, "inspect_apk", side_effect=[valid, {**valid, **stale}]):
+                    with self.assertRaisesRegex(RuntimeError, "spotify-module APK version"):
+                        collector.collect("v1.3.20", root / "out", root, "aapt", "apksigner")
+                self.assertFalse((root / "out").exists())
 
     def test_old_and_new_apksigner_output_formats(self):
         with tempfile.TemporaryDirectory() as temp:
