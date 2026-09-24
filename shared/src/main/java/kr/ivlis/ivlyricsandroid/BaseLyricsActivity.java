@@ -3778,7 +3778,7 @@ public class BaseLyricsActivity extends Activity implements
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_SYNC, ui("lyrics.tab.sync"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_VIDEO, ui("lyrics.tab.video"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_BACKGROUND, ui("lyrics.tab.background"));
-        addLyricsPopupTabButton(LYRICS_POPUP_TAB_LRCLIB, "LRCLIB");
+        addLyricsPopupTabButton(LYRICS_POPUP_TAB_LRCLIB, ui("section.lyrics_providers"));
 
         lyricsLanguageSettingsContent = new LinearLayout(this);
         lyricsLanguageSettingsContent.setOrientation(LinearLayout.VERTICAL);
@@ -4192,6 +4192,10 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout buildLyricsManualSearchContent() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
+
+        TextView chooseProvider = languageButton(ui("section.lyrics_providers"), false);
+        chooseProvider.setOnClickListener(view -> showTrackLyricsProviderDialog());
+        content.addView(chooseProvider, topMargin(matchWrap(), dp(8)));
 
         TextView title = label(ui("lyrics.lrclib_search.title"), 14f, Color.WHITE, AppFonts.bold(this));
         content.addView(title, new LinearLayout.LayoutParams(
@@ -9488,6 +9492,31 @@ public class BaseLyricsActivity extends Activity implements
             }
         }
         setManualLrclibStatus(ui("lyrics.lrclib_search.ready"));
+    }
+
+    private void showTrackLyricsProviderDialog() {
+        if (currentTrack == null || !currentTrack.hasUsableMetadata() || lyricsProviderSettings == null) {
+            showSavedToast(ui("toast.current_track_missing"));
+            return;
+        }
+        String trackKey = currentTrack.stableKey();
+        String selectedProvider = lyricsProviderSettings.providerForTrack(trackKey);
+        List<LyricsProviderSettings.Provider> providers = LyricsProviderSettings.PROVIDERS;
+        String[] labels = new String[providers.size() + 1];
+        labels[0] = ui("label.auto");
+        int selected = 0;
+        for (int index = 0; index < providers.size(); index++) {
+            labels[index + 1] = providers.get(index).label;
+            if (providers.get(index).id.equals(selectedProvider)) selected = index + 1;
+        }
+        new AlertDialog.Builder(this).setTitle(ui("section.lyrics_providers"))
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    if (currentTrack != null && trackKey.equals(currentTrack.stableKey())) {
+                        lyricsProviderSettings.setProviderForTrack(trackKey, which == 0 ? "" : providers.get(which - 1).id);
+                        onLyricsProviderSettingsChanged(false);
+                    }
+                    dialog.dismiss();
+                }).setNegativeButton(android.R.string.cancel, null).show();
     }
 
     private void performManualLrclibSearch() {

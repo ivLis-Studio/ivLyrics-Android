@@ -311,7 +311,9 @@ final class LyricsRepository {
             LyricsProviderSettings.Snapshot settings
     ) {
         if (result == null || result.lines.isEmpty()) return false;
-        if ("manual".equals(result.selectionPolicyKey)) return true;
+        if ("manual".equals(result.selectionPolicyKey)) {
+            return settings == null || settings.order.size() != 1 || settings.config(result.providerId) != null;
+        }
         return settings != null
                 && settings.cacheKeyForProvider(result.providerId).equals(result.selectionPolicyKey);
     }
@@ -339,7 +341,7 @@ final class LyricsRepository {
         }
 
         String key = track.stableKey();
-        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
+        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshotForTrack(key);
         LyricsResult cached = getMemoryCachedLyrics(key);
         if (!isCachedResultReusable(cached, providerSettings)) {
             cached = null;
@@ -742,7 +744,7 @@ final class LyricsRepository {
             publishResolvedMetadata(trackKey, isrc, spotifyTrackId, callback);
         }
 
-        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
+        LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshotForTrack(trackKey);
         if (cachedBase != null) {
             Set<String> syncDataProviders = isrc.isEmpty()
                     ? Collections.emptySet()
@@ -853,7 +855,7 @@ final class LyricsRepository {
             Callback callback,
             LogSink log
     ) {
-        LyricsProviderSettings.Snapshot settings = lyricsProviderSettings.snapshot();
+        LyricsProviderSettings.Snapshot settings = lyricsProviderSettings.snapshotForTrack(trackKey);
         Set<String> syncDataProviders = availableSyncDataProviders(isrc, log);
         LyricsProviderSelectionPlan plan = LyricsProviderSelectionPlan.create(settings, syncDataProviders);
         log.write("provider policy: " + (settings.typeFirst ? "karaoke -> synced -> plain" : "provider first")

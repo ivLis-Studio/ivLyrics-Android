@@ -115,6 +115,23 @@ final class LyricsProviderSettings {
         );
     }
 
+    String providerForTrack(String trackKey) {
+        return preferences == null || trackKey == null ? ""
+                : preferences.getString("track_provider_" + trackKey, "");
+    }
+
+    void setProviderForTrack(String trackKey, String providerId) {
+        if (preferences == null || trackKey == null || trackKey.isEmpty()) return;
+        String id = normalizeProviderId(providerId);
+        if (!id.isEmpty() && snapshot().config(id) == null) return;
+        if (id.isEmpty()) preferences.edit().remove("track_provider_" + trackKey).apply();
+        else preferences.edit().putString("track_provider_" + trackKey, id).apply();
+    }
+
+    Snapshot snapshotForTrack(String trackKey) {
+        return snapshot().withSelectedProvider(providerForTrack(trackKey));
+    }
+
     void setProviderEnabled(String providerId, boolean enabled) {
         putBoolean(KEY_ENABLED_PREFIX + normalizeProviderId(providerId), enabled);
     }
@@ -304,6 +321,16 @@ final class LyricsProviderSettings {
             this.configs = Collections.unmodifiableMap(new LinkedHashMap<>(configs));
             this.preferSyncDataProvider = preferSyncDataProvider;
             this.typeFirst = typeFirst;
+        }
+
+        Snapshot withSelectedProvider(String providerId) {
+            ProviderConfig selected = config(providerId);
+            if (selected == null) return this;
+            Map<String, ProviderConfig> selectedConfigs = new LinkedHashMap<>();
+            // An explicit per-track choice enables all types for that provider only.
+            selectedConfigs.put(selected.provider.id,
+                    new ProviderConfig(selected.provider, true, true, true, true));
+            return new Snapshot(Collections.singletonList(selected.provider.id), selectedConfigs, false, true);
         }
 
         ProviderConfig config(String providerId) {
