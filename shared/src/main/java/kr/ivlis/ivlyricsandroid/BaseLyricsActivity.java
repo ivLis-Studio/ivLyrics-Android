@@ -6143,6 +6143,28 @@ public class BaseLyricsActivity extends Activity implements
                 }
             }
         }
+        if (!providerDetailsExpanded && providerDetailsContainer != null) {
+            for (String key : new String[]{"field.api_key", "field.base_url", "field.model", "field.max_tokens", "field.temperature"}) {
+                if (!ui(key).toLowerCase(java.util.Locale.ROOT).contains(query)) continue;
+                TextView result = debugButton(ui(key) + " · " + ui("tab.ai"));
+                result.setOnClickListener(view -> {
+                    settingsSearchInput.setText("");
+                    providerDetailsExpanded = true;
+                    buildProviderButtons();
+                    switchSettingsTab(SETTINGS_TAB_AI);
+                    settingsSearchInput.clearFocus();
+                    android.view.inputmethod.InputMethodManager keyboard = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    if (keyboard != null) keyboard.hideSoftInputFromWindow(settingsSearchInput.getWindowToken(), 0);
+                    settingsScrollView.post(() -> {
+                        android.graphics.Rect rect = new android.graphics.Rect();
+                        providerDetailsContainer.getDrawingRect(rect);
+                        ((ViewGroup) settingsScrollView.getChildAt(0)).offsetDescendantRectToMyCoords(providerDetailsContainer, rect);
+                        settingsScrollView.smoothScrollTo(0, Math.max(0, rect.top - dp(12)));
+                    });
+                });
+                settingsSearchResults.addView(result, topMargin(matchWrap(), dp(8)));
+            }
+        }
         if (settingsSearchResults.getChildCount() == 0) {
             settingsSearchResults.addView(sectionDescription(ui("settings.no_results")), matchWrap());
         }
