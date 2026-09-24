@@ -897,6 +897,7 @@ final class AppI18n {
             Map<String, String> copy = new LinkedHashMap<>(table);
             LyricsToolsTranslationOverrides.apply(language.code, copy);
             VideoSelectionTranslations.apply(language.code, copy);
+            SettingsExperienceTranslations.apply(language.code, copy);
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }
