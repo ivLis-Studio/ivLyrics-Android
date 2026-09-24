@@ -2499,7 +2499,13 @@ final class AiLyricsRepository {
         JSONObject config = new JSONObject();
         config.put("maxOutputTokens", maxTokens);
         config.put("temperature", settings.temperature);
-        config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
+        String model = settings.model.replaceFirst("^models/", "").toLowerCase(java.util.Locale.ROOT);
+        if (model.matches("^gemini-3[.-].*")) {
+            boolean supportsMinimal = model.matches("^gemini-3\\.(1|5)-flash-lite($|-.*)");
+            config.put("thinkingConfig", new JSONObject().put("thinkingLevel", supportsMinimal ? "minimal" : "low"));
+        } else if (model.matches("^gemini-2\\.5-flash($|-.*)")) {
+            config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
+        }
         body.put("generationConfig", config);
         return body;
     }
