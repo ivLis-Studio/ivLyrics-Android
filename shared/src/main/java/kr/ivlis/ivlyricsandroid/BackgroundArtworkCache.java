@@ -24,9 +24,12 @@ final class BackgroundArtworkCache {
     }
 
     static Bitmap prepare(Bitmap source, int blur) {
+        // Zero is a real off position, including the original artwork resolution.
+        if (blur <= 0) return source;
+        blur = Math.min(100, blur);
         int width = Math.max(1, source.getWidth());
         int height = Math.max(1, source.getHeight());
-        float scale = 220f / Math.max(width, height);
+        float scale = Math.min(1f, 720f / Math.max(width, height));
         int targetWidth = Math.max(48, Math.round(width * scale));
         int targetHeight = Math.max(48, Math.round(height * scale));
         Bitmap scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true);
@@ -34,7 +37,7 @@ final class BackgroundArtworkCache {
         if (scaled != source) scaled.recycle();
         int[] pixels = new int[targetWidth * targetHeight];
         int[] scratch = new int[pixels.length];
-        int radius = Math.max(4, Math.round(5f + blur * .12f));
+        int radius = Math.max(1, Math.round(blur * .36f));
         int passes = Math.max(2, Math.min(9, 2 + blur / 10));
         for (int pass = 0; pass < passes; pass++) {
             // Keep the old Bitmap round-trip at every pass: translucent artwork

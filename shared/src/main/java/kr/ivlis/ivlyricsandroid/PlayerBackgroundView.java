@@ -165,16 +165,15 @@ public final class PlayerBackgroundView extends View {
     }
 
     private void drawAlbumGradient(Canvas canvas, int width, int height, double seconds) {
-        Bitmap artwork = blurredArtwork;
+        Bitmap artwork = backgroundSettings.blur == 0 ? sourceArtwork : blurredArtwork;
         if (artwork == null || artwork.isRecycled()) {
             drawBlurGradient(canvas, width, height, seconds);
             return;
         }
 
-        float scale = Math.max(width / (float) artwork.getWidth(), height / (float) artwork.getHeight()) * 2.2f;
-        if (backgroundSettings.blur >= 55) {
-            scale *= 1.16f;
-        }
+        // Keep the cover recognizable; leave a small motion margin instead of cropping 2.2x.
+        float scale = Math.max(width / (float) artwork.getWidth(), height / (float) artwork.getHeight())
+                * (backgroundSettings.reduceMotion ? 1f : 1.08f);
         drawMovingArtwork(canvas, artwork, width, height, seconds, scale, 1f);
         drawDimmingGradient(canvas, width, height, 1f);
     }
@@ -265,7 +264,7 @@ public final class PlayerBackgroundView extends View {
                     index,
                     cx,
                     cy,
-                    Math.max(width, height) * blobRadiusFactor(index),
+                    Math.max(width, height) * blobRadiusFactor(index) * (0.6f + backgroundSettings.blur * 0.02f),
                     blobColor(index),
                     Math.max(42, alpha)
             );
