@@ -248,7 +248,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     "https://gen.pollinations.ai",
                     "openai",
                     "https://enter.pollinations.ai"
-            )
+            ),
+            new Provider("deepl", "DeepL", "DeepL API Free / Pro", "", "", "https://www.deepl.com/your-account/keys")
     ));
     static final List<Provider> ALL_AI_PROVIDERS = allAiProviders();
     static final List<String> DEFAULT_AI_PROVIDER_ORDER = defaultAiProviderOrder();
@@ -1954,6 +1955,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final boolean keyless;
         final boolean defaultEnabled;
 
+        boolean translationOnly() { return keyless || "deepl".equals(id); }
+
         Provider(String id, String label, String description, String defaultBaseUrl, String defaultModel, String apiKeyUrl) {
             this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, false, false);
         }
@@ -2445,7 +2448,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             List<Snapshot> snapshots = new ArrayList<>();
             for (String providerId : enabledAiProviderOrder()) {
                 Provider candidate = aiProviderById(providerId);
-                if (candidate == null || candidate.keyless) {
+                if (candidate == null || candidate.translationOnly()) {
                     continue;
                 }
                 Snapshot candidateSnapshot = forProvider(providerId);
@@ -2463,7 +2466,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         boolean hasEnabledAiProvider() {
             for (String providerId : enabledAiProviderOrder()) {
                 Provider candidate = aiProviderById(providerId);
-                if (candidate != null && !candidate.keyless) {
+                if (candidate != null && !candidate.translationOnly()) {
                     return true;
                 }
             }
@@ -2474,7 +2477,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             if (hasKeylessTranslationProvider()) {
                 return true;
             }
-            return hasReadyAiProvider();
+            Snapshot deepl = forProvider("deepl");
+            return (isAiProviderEnabled("deepl") && deepl != null && deepl.hasApiKey()) || hasReadyAiProvider();
         }
 
         Snapshot forProvider(String providerId) {

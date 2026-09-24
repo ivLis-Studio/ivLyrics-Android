@@ -80,7 +80,7 @@ helper = section(repository, "    private interface ConnectionRequest<T>", "    
 helper = helper.replace("private interface", "interface").replace("private <T>", "<T>")
 (work / "ConnectionRunner.java").write_text("package kr.ivlis.ivlyricsandroid;\nimport java.io.IOException;\nclass ConnectionRunner {\n" + helper + "}\n")
 sources = [work / "AiLyricsSettings.java", work / "ConnectionRunner.java", ROOT / "tests/kr/ivlis/ivlyricsandroid/OpenAIConnectionsRegression.java"]
-sources += [SHARED / name for name in ("OpenAIConnection.java", "OpenAIConnectionI18n.java", "AppI18n.java", "SettingsTranslationOverrides.java", "LyricsToolsTranslationOverrides.java", "ResearchI18n.java")]
+sources += [SHARED / name for name in ("OpenAIConnection.java", "OpenAIConnectionI18n.java", "AppI18n.java", "SettingsTranslationOverrides.java", "LyricsToolsTranslationOverrides.java", "ResearchI18n.java", "VideoSelectionTranslations.java", "SettingsExperienceTranslations.java")]
 dependencies = classpath(work, json_jar())
 subprocess.run([java_tool("javac"), "-cp", dependencies, "-d", str(work), *map(str, sources)], check=True)
 subprocess.run([java_tool("java"), "-cp", dependencies, "kr.ivlis.ivlyricsandroid.OpenAIConnectionsRegression"], check=True)

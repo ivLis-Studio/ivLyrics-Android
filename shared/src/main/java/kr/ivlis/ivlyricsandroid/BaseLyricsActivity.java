@@ -307,6 +307,7 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout landscapeMetaContainer;
     private LinearLayout settingsTabButtonsContainer;
     private LinearLayout providerDetailsContainer;
+    private View providerBaseUrlGroup, providerModelGroup, providerAdvancedGroup;
     private boolean providerDetailsExpanded = true;
     private LinearLayout settingsGeneralPage;
     private LinearLayout settingsLyricsPage;
@@ -4969,7 +4970,8 @@ public class BaseLyricsActivity extends Activity implements
         providerDetailsContainer.addView(pollinationsAuthGroup, topMargin(matchWrap(), dp(14)));
 
         baseUrlInput = settingEditText("", false, false);
-        providerDetailsContainer.addView(settingField(ui("field.base_url"), ui("field.base_url_desc"), baseUrlInput), topMargin(matchWrap(), dp(12)));
+        providerBaseUrlGroup = settingField(ui("field.base_url"), ui("field.base_url_desc"), baseUrlInput);
+        providerDetailsContainer.addView(providerBaseUrlGroup, topMargin(matchWrap(), dp(12)));
 
         LinearLayout modelControls = new LinearLayout(this);
         modelControls.setOrientation(LinearLayout.VERTICAL);
@@ -4978,7 +4980,8 @@ public class BaseLyricsActivity extends Activity implements
         aiModelPickerButton = debugButton(ui("button.choose_model"));
         aiModelPickerButton.setOnClickListener(view -> loadAiModels());
         modelControls.addView(aiModelPickerButton, topMargin(matchWrap(), dp(8)));
-        providerDetailsContainer.addView(settingGroup(ui("field.model"), ui("field.model_desc"), modelControls), topMargin(matchWrap(), dp(12)));
+        providerModelGroup = settingGroup(ui("field.model"), ui("field.model_desc"), modelControls);
+        providerDetailsContainer.addView(providerModelGroup, topMargin(matchWrap(), dp(12)));
 
         apiKeysInput = settingEditText("", true, true);
         providerDetailsContainer.addView(settingField(ui("field.api_key"), ui("field.api_key_desc"), apiKeysInput), topMargin(matchWrap(), dp(18)));
@@ -4996,6 +4999,7 @@ public class BaseLyricsActivity extends Activity implements
         LinearLayout.LayoutParams tempParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         tempParams.leftMargin = dp(10);
         advancedRow.addView(settingField(ui("field.temperature"), "", temperatureInput), tempParams);
+        providerAdvancedGroup = advancedRow;
         providerDetailsContainer.addView(advancedRow, topMargin(matchWrap(), dp(12)));
 
         providerDetailsContainer.addView(sectionDescription(ui("settings.ai_autosave")), topMargin(matchWrap(), dp(12)));
@@ -5033,7 +5037,7 @@ public class BaseLyricsActivity extends Activity implements
         connectionTestButton.setOnClickListener(view -> {
             applyAiSettingsFromUi(false);
             AiLyricsSettings.Snapshot tested = aiLyricsSettings.snapshot();
-            if (!tested.hasApiKey() || tested.model.trim().isEmpty()) {
+            if (!tested.hasApiKey() || (!tested.provider.translationOnly() && tested.model.trim().isEmpty())) {
                 showSavedToast(ui(!tested.hasApiKey() ? "status.ai_key_needed" : "status.ai_model_needed"));
                 return;
             }
@@ -6145,6 +6149,7 @@ public class BaseLyricsActivity extends Activity implements
         }
         if (!providerDetailsExpanded && providerDetailsContainer != null) {
             for (String key : new String[]{"field.api_key", "field.base_url", "field.model", "field.max_tokens", "field.temperature"}) {
+                if (aiLyricsSettings.snapshot().provider.translationOnly() && !"field.api_key".equals(key)) continue;
                 if (!ui(key).toLowerCase(java.util.Locale.ROOT).contains(query)) continue;
                 TextView result = debugButton(ui(key) + " · " + ui("tab.ai"));
                 result.setOnClickListener(view -> {
@@ -8051,6 +8056,10 @@ public class BaseLyricsActivity extends Activity implements
             LinearLayout.LayoutParams params = matchWrap();
             providerButtonsContainer.addView(card, params);
         }
+        int aiControlsVisibility = snapshot.provider.translationOnly() ? View.GONE : View.VISIBLE;
+        if (providerBaseUrlGroup != null) providerBaseUrlGroup.setVisibility(aiControlsVisibility);
+        if (providerModelGroup != null) providerModelGroup.setVisibility(aiControlsVisibility);
+        if (providerAdvancedGroup != null) providerAdvancedGroup.setVisibility(aiControlsVisibility);
         updatePollinationsAuthUi(snapshot);
         updateAiModelPickerUi(snapshot);
         rebuildOpenAIConnectionsUi();
@@ -8227,7 +8236,7 @@ public class BaseLyricsActivity extends Activity implements
     private void updateAiModelPickerUi(AiLyricsSettings.Snapshot snapshot) {
         if (aiModelPickerButton == null) return;
         aiModelRequestId++;
-        aiModelPickerButton.setVisibility(snapshot != null && !snapshot.provider.keyless ? View.VISIBLE : View.GONE);
+        aiModelPickerButton.setVisibility(snapshot != null && !snapshot.provider.translationOnly() ? View.VISIBLE : View.GONE);
         aiModelPickerButton.setEnabled(true);
         aiModelPickerButton.setText(ui("button.choose_model"));
     }
@@ -8247,7 +8256,7 @@ public class BaseLyricsActivity extends Activity implements
         if (aiLyricsSettings == null || aiModelPickerButton == null) return;
         applyAiSettingsFromUi(false);
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
-        if (snapshot.provider.keyless) return;
+        if (snapshot.provider.translationOnly()) return;
         String accessToken = snapshot.pollinationsAccessToken == null ? "" : snapshot.pollinationsAccessToken.trim();
         String apiKey = "pollinations".equals(snapshot.provider.id) && !accessToken.isEmpty()
                 ? accessToken : firstApiKey(snapshot.apiKeys);
@@ -8461,6 +8470,7 @@ public class BaseLyricsActivity extends Activity implements
         if (KeylessTranslationProviders.GOOGLE_ID.equals(provider.id)) {
             return ui("setting.google_translate_provider_desc");
         }
+        if ("deepl".equals(provider.id)) return provider.description;
         return ui("provider.desc." + provider.id);
     }
 
@@ -12913,7 +12923,7 @@ public class BaseLyricsActivity extends Activity implements
 
         AiLyricsSettings.Snapshot providerSnapshot = aiLyricsSettings.snapshot();
         final TextView providerHint;
-        if (providerSnapshot.hasKeylessTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()) {
+        if (providerSnapshot.hasAnyTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()) {
             providerHint = label(
                     "✦  " + ui("first_language.ai_provider_hint"),
                     12.5f,
@@ -13135,7 +13145,7 @@ public class BaseLyricsActivity extends Activity implements
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
         boolean canRunTask = (requestedPronunciation && selectedAiReady)
-                || (requestedTranslation && (snapshot.hasKeylessTranslationProvider() || selectedAiReady));
+                || (requestedTranslation && snapshot.hasAnyTranslationProvider());
         if (!canRunTask && !snapshot.hasApiKey()) {
             aiLyricsGenerating = false;
             currentLyricsResult = currentBaseLyricsResult;

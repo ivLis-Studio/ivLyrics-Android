@@ -49,6 +49,7 @@ public final class AiModelPickerRegression {
         Snapshot snapshot() { return new Snapshot(provider, apiKeys, baseUrl, token); }
         static class Provider {
             final String id, defaultBaseUrl; final boolean keyless;
+            boolean translationOnly() { return keyless || id.equals("deepl"); }
             Provider(String id) {
                 this.id = id; defaultBaseUrl = "https://api.perplexity.ai"; keyless = id.equals("bing");
             }
@@ -83,11 +84,14 @@ public final class AiModelPickerRegression {
     public static void main(String[] args) {
         var ui = new AiModelPickerRegression();
         ui.modelInput.setText("saved-custom");
-        for (String provider : new String[]{"gemini", "chatgpt", "claude", "groq", "openrouter", "perplexity", "pollinations", "paxsenix", "bing"}) {
+        for (String provider : new String[]{"gemini", "chatgpt", "claude", "groq", "openrouter", "perplexity", "pollinations", "paxsenix", "bing", "deepl"}) {
             ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider(provider);
             ui.updateAiModelPickerUi(ui.aiLyricsSettings.snapshot());
-            check(ui.aiModelPickerButton.visibility == (provider.equals("bing") ? View.GONE : View.VISIBLE), provider + " picker visibility");
+            check(ui.aiModelPickerButton.visibility == ((provider.equals("bing") || provider.equals("deepl")) ? View.GONE : View.VISIBLE), provider + " picker visibility");
         }
+        ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("deepl");
+        ui.loadAiModels();
+        check(ui.aiModelExecutor.queue.isEmpty(), "DeepL never requests an AI model catalog");
         ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("perplexity");
         ui.loadAiModels();
         check(!ui.aiModelPickerButton.enabled, "Loading disables button");

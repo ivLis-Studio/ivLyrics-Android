@@ -22,6 +22,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -102,11 +103,15 @@ final class AiLyricsRepository {
         executor.execute(() -> {
             String failure = null;
             try {
-                PaxsenixAiModels.requireSelectedModel(settings.model);
-                List<String> keys = providerApiKeys(settings);
-                if (keys.isEmpty()) throw new IOException("API key is required");
-                String response = callProviderRawOnce("Reply with only OK.", settings, keys.get(0));
-                if (response == null || response.trim().isEmpty()) throw new IOException("Empty response");
+                if ("deepl".equals(settings.provider.id)) {
+                    translateDeepL(Collections.singletonList("Hello"), "KO", settings, false);
+                } else {
+                    PaxsenixAiModels.requireSelectedModel(settings.model);
+                    List<String> keys = providerApiKeys(settings);
+                    if (keys.isEmpty()) throw new IOException("API key is required");
+                    String response = callProviderRawOnce("Reply with only OK.", settings, keys.get(0));
+                    if (response == null || response.trim().isEmpty()) throw new IOException("Empty response");
+                }
             } catch (Exception error) {
                 // Provider error payloads may contain credentials. Only expose the status/type.
                 failure = error instanceof HttpStatusException
@@ -921,14 +926,14 @@ final class AiLyricsRepository {
 
         boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
         boolean selectedAiReady = settings.hasReadyAiProvider();
-        boolean keylessTranslationReady = settings.hasKeylessTranslationProvider();
+        boolean translationReady = settings.hasAnyTranslationProvider();
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
-        if (!selectedAiReady && requestedPronunciation && requestedTranslation && keylessTranslationReady) {
+        if (!selectedAiReady && requestedPronunciation && requestedTranslation && translationReady) {
             emitLog(trackKey, callback, "ai pronunciation skipped: selected AI provider is not fully configured");
         }
         boolean hasExecutableTask = (requestedPronunciation && selectedAiReady)
-                || (requestedTranslation && (keylessTranslationReady || selectedAiReady));
+                || (requestedTranslation && translationReady);
         if (!hasExecutableTask && (requestedPronunciation || requestedTranslation)) {
             String message = AppI18n.t(settings.uiLang, "error.translation_providers_failed");
             emitLog(trackKey, callback, "ai lyrics skipped: no enabled provider is fully configured");
@@ -946,7 +951,7 @@ final class AiLyricsRepository {
 
         List<SupplementRequest> requests = buildSupplementRequests(baseResult.lines);
         boolean needsPronunciation = requestedPronunciation && selectedAiReady;
-        boolean needsTranslation = requestedTranslation && (keylessTranslationReady || selectedAiReady);
+        boolean needsTranslation = requestedTranslation && translationReady;
         if (translationSkipped) {
             emitLog(trackKey, callback, "ai translation skipped: source language matches target (" + sourceLang + " -> " + targetLang + ")");
         }
@@ -1388,7 +1393,12 @@ final class AiLyricsRepository {
                         continue;
                     }
                     try {
-                        if (provider.keyless) {
+                        if ("deepl".equals(provider.id)) {
+                            AiLyricsSettings.Snapshot profile = settings.forProvider(provider.id);
+                            if (profile == null || !profile.hasApiKey()) continue;
+                            List<String> values = translateDeepL(Arrays.asList(title, artist), targetLang, profile, false);
+                            translation = new MetadataTranslation(values.get(0), values.get(1), sourceLang, targetLang);
+                        } else if (provider.keyless) {
                             log.write("metadata translation attempt: provider=" + provider.label);
                             List<String> sourceTexts = new ArrayList<>();
                             sourceTexts.add(title);
@@ -1803,7 +1813,13 @@ final class AiLyricsRepository {
                     }
                     session.resetTranslationValues();
                     try {
-                        if (provider.keyless) {
+                        if ("deepl".equals(provider.id)) {
+                            AiLyricsSettings.Snapshot profile = settings.forProvider(provider.id);
+                            if (profile == null || !profile.hasApiKey()) continue;
+                            session.setProvider(false, provider.label);
+                            reportSupplementProvider(trackKey, callback, false, provider.label);
+                            values = translateDeepL(sourceTexts, targetLang, profile, true);
+                        } else if (provider.keyless) {
                             session.setProvider(false, provider.label);
                             reportSupplementProvider(trackKey, callback, false, provider.label);
                             log.write("translation attempt: provider=" + provider.label);
@@ -2313,6 +2329,7 @@ final class AiLyricsRepository {
             TextDeltaSink sink
     ) throws Exception {
         String providerId = settings.provider.id;
+        if ("deepl".equals(providerId)) throw new IOException("DeepL supports translation only");
         int researchMaxTokens = resolveResearchMaxTokens(settings, apiKey);
         if ("gemini".equals(providerId)) {
             return callGeminiStream(prompt, settings, apiKey, sink, webSearch, researchMaxTokens);
@@ -2359,6 +2376,7 @@ final class AiLyricsRepository {
             TextDeltaSink sink
     ) throws Exception {
         String providerId = settings.provider.id;
+        if ("deepl".equals(providerId)) throw new IOException("DeepL supports translation only");
         if ("gemini".equals(providerId)) {
             return callGeminiStream(prompt, settings, apiKey, sink);
         }
@@ -2406,6 +2424,7 @@ final class AiLyricsRepository {
 
     private String callProviderRawOnce(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
         String providerId = settings.provider.id;
+        if ("deepl".equals(providerId)) throw new IOException("DeepL supports translation only");
         if ("gemini".equals(providerId)) {
             return callGemini(prompt, settings, apiKey);
         }
@@ -3043,6 +3062,22 @@ final class AiLyricsRepository {
             if (RESEARCH_WEB_SEARCH_FAILURE_PATTERN.matcher(message).find()) return true;
         }
         return false;
+    }
+
+    private List<String> translateDeepL(List<String> texts, String language,
+            AiLyricsSettings.Snapshot settings, boolean preserveLyricsStructure) throws Exception {
+        List<String> keys = providerApiKeys(settings);
+        if (keys.isEmpty()) throw new IOException("DeepL API key is required");
+        HttpStatusException lastError = null;
+        for (String key : keys) {
+            try {
+                return DeepLTranslationProvider.translate(texts, language, key, preserveLyricsStructure, this::postJson);
+            } catch (HttpStatusException error) {
+                if (error.statusCode != 401 && error.statusCode != 403 && error.statusCode != 429 && error.statusCode != 456) throw error;
+                lastError = error;
+            }
+        }
+        throw lastError;
     }
 
     private String postJson(String endpoint, JSONObject body, Map<String, String> headers) throws IOException {
