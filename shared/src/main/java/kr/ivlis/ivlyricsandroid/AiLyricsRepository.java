@@ -98,6 +98,26 @@ final class AiLyricsRepository {
                 : context.getApplicationContext().getSharedPreferences("ai_cultural_annotations", Context.MODE_PRIVATE);
     }
 
+    void testConnection(AiLyricsSettings.Snapshot settings, java.util.function.Consumer<String> callback) {
+        executor.execute(() -> {
+            String failure = null;
+            try {
+                PaxsenixAiModels.requireSelectedModel(settings.model);
+                List<String> keys = providerApiKeys(settings);
+                if (keys.isEmpty()) throw new IOException("API key is required");
+                String response = callProviderRawOnce("Reply with only OK.", settings, keys.get(0));
+                if (response == null || response.trim().isEmpty()) throw new IOException("Empty response");
+            } catch (Exception error) {
+                // Provider error payloads may contain credentials. Only expose the status/type.
+                failure = error instanceof HttpStatusException
+                        ? "HTTP " + ((HttpStatusException) error).statusCode
+                        : error.getClass().getSimpleName();
+            }
+            String result = failure;
+            mainHandler.post(() -> callback.accept(result));
+        });
+    }
+
     static <K, V> Map<K, V> newBoundedCache(int maxEntries) {
         final int boundedMaxEntries = Math.max(1, maxEntries);
         return Collections.synchronizedMap(new LinkedHashMap<K, V>(16, 0.75f, true) {

@@ -3841,6 +3841,10 @@ public class BaseLyricsActivity extends Activity implements
                 ), dp(10))
         );
 
+        TextView regenerateButton = languageButton(ui("tmi.regenerate"), false);
+        regenerateButton.setOnClickListener(view -> requestAiLyrics(true));
+        lyricsLanguageSettingsContent.addView(regenerateButton, topMargin(matchWrap(), dp(10)));
+
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
 
@@ -4980,6 +4984,32 @@ public class BaseLyricsActivity extends Activity implements
             requestAiLyrics(true);
         });
         actionRow.addView(applyButton, weightedButtonParams(1.4f, dp(4)));
+
+        TextView connectionTestButton = debugButton(ui("pollinations.test"));
+        connectionTestButton.setOnClickListener(view -> {
+            applyAiSettingsFromUi(false);
+            AiLyricsSettings.Snapshot tested = aiLyricsSettings.snapshot();
+            if (!tested.hasApiKey() || tested.model.trim().isEmpty()) {
+                showSavedToast(ui(!tested.hasApiKey() ? "status.ai_key_needed" : "status.ai_model_needed"));
+                return;
+            }
+            connectionTestButton.setEnabled(false);
+            connectionTestButton.setText(ui("pollinations.status_testing"));
+            aiLyricsRepository.testConnection(tested, error -> {
+                if (isFinishing() || isDestroyed()) return;
+                connectionTestButton.setEnabled(true);
+                connectionTestButton.setText(ui("pollinations.test"));
+                AiLyricsSettings.Snapshot current = aiLyricsSettings.snapshot();
+                if (!current.provider.id.equals(tested.provider.id)
+                        || !textOf(apiKeysInput).equals(tested.apiKeys)
+                        || !textOf(modelInput).equals(tested.model)
+                        || !textOf(baseUrlInput).equals(tested.baseUrl)
+                        || !java.util.Objects.equals(current.pollinationsAccessToken, tested.pollinationsAccessToken)) return;
+                showSavedToast(ui(error == null ? "pollinations.status_valid" : "pollinations.status_invalid")
+                        + (error == null ? "" : " · " + error));
+            });
+        });
+        providerDetailsContainer.addView(connectionTestButton, topMargin(matchWrap(), dp(10)));
 
         TextView keyButton = debugButton(ui("button.get_key"));
         keyButton.setOnClickListener(view -> {
