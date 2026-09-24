@@ -1,5 +1,6 @@
 package kr.ivlis.ivlyricsandroid;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -26,11 +27,11 @@ final class YouTubeVideoSelection {
             for (String parameter : uri.getRawQuery().split("&")) {
                 String[] pair = parameter.split("=", 2);
                 if (pair.length == 2 && pair[0].equals("v")) {
-                    String id = URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+                    String id = URLDecoder.decode(pair[1], StandardCharsets.UTF_8.name());
                     return validId(id) ? id : "";
                 }
             }
-        } catch (IllegalArgumentException ignored) { }
+        } catch (IllegalArgumentException | UnsupportedEncodingException ignored) { }
         return "";
     }
 
