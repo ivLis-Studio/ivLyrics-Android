@@ -461,6 +461,7 @@ public class BaseLyricsActivity extends Activity implements
     private boolean cachedPreviewRowsGenerating;
     private List<MainLyricPreviewView.PreviewLine> cachedPreviewRows = Collections.emptyList();
     private String currentArtworkKey = "";
+    private long youtubeBackgroundRequestGeneration;
     private String currentYouTubeBackgroundRequestKey = "";
     private String currentResolvedIsrc = "";
     private String currentResolvedSpotifyTrackId = "";
@@ -3948,6 +3949,10 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout buildVideoSyncSettingsContent() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
+
+        TextView chooseVideo = languageButton(ui("video.choose"), false);
+        chooseVideo.setOnClickListener(view -> showVideoSelectionDialog());
+        content.addView(chooseVideo, topMargin(matchWrap(), dp(8)));
 
         TextView title = label(ui("lyrics.video_sync.title"), 14f, Color.WHITE, AppFonts.bold(this));
         content.addView(title, new LinearLayout.LayoutParams(
@@ -9077,6 +9082,71 @@ public class BaseLyricsActivity extends Activity implements
         youtubeBackgroundAttachedToPictureInPicture = false;
     }
 
+    private void showVideoSelectionDialog() {
+        if (currentTrack == null || !currentTrack.hasUsableMetadata() || youtubeBackgroundRepository == null) {
+            showSavedToast(ui("toast.current_track_missing"));
+            return;
+        }
+        TrackSnapshot track = currentTrack;
+        String trackKey = track.stableKey();
+        String isrc = nonEmpty(currentResolvedIsrc, nonEmpty(currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc, track.isrc));
+        String[] options = {ui("label.auto"), ui("video.url"), ui("video.community")};
+        new AlertDialog.Builder(this).setTitle(ui("video.choose"))
+                .setItems(options, (dialog, which) -> {
+                    if (!isCurrentVideoSelectionTrack(trackKey)) return;
+                    if (which == 0) {
+                        applySelectedVideo(trackKey, null);
+                    } else if (which == 1) {
+                        EditText input = settingEditText("https://www.youtube.com/watch?v=...", false, false);
+                        YouTubeBackgroundRepository.VideoInfo selected = youtubeBackgroundRepository.selectedVideo(trackKey);
+                        if (selected != null) input.setText("https://www.youtube.com/watch?v=" + selected.youtubeVideoId);
+                        AlertDialog editor = new AlertDialog.Builder(this).setTitle(ui("video.url"))
+                                .setView(input).setPositiveButton(android.R.string.ok, null)
+                                .setNegativeButton(android.R.string.cancel, null).create();
+                        editor.setOnShowListener(ignored -> editor.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+                            String id = YouTubeVideoSelection.extractId(textOf(input));
+                            if (id.isEmpty()) { input.setError(ui("video.invalid")); return; }
+                            applySelectedVideo(trackKey, new YouTubeBackgroundRepository.VideoInfo(
+                                    isrc, track.trackId, id, id, false, 0d, false, ""));
+                            editor.dismiss();
+                        }));
+                        editor.show();
+                    } else {
+                        youtubeBackgroundRepository.loadCommunityVideos(isrc, track, (videos, error) -> {
+                            if (!isCurrentVideoSelectionTrack(trackKey)) return;
+                            if (error != null || videos.isEmpty()) {
+                                showSavedToast(ui(error == null ? "video.empty" : "video.failed"));
+                                return;
+                            }
+                            String[] titles = new String[videos.size()];
+                            for (int index = 0; index < videos.size(); index++) {
+                                var video = videos.get(index);
+                                titles[index] = nonEmpty(video.youtubeTitle, video.youtubeVideoId);
+                            }
+                            new AlertDialog.Builder(this).setTitle(ui("video.community"))
+                                    .setItems(titles, (choices, index) -> applySelectedVideo(trackKey, videos.get(index)))
+                                    .setNegativeButton(android.R.string.cancel, null).show();
+                        });
+                    }
+                }).setNegativeButton(android.R.string.cancel, null).show();
+    }
+
+    private boolean isCurrentVideoSelectionTrack(String trackKey) {
+        return !isFinishing() && !isDestroyed() && currentTrack != null && trackKey.equals(currentTrack.stableKey());
+    }
+
+    private void applySelectedVideo(String trackKey, YouTubeBackgroundRepository.VideoInfo info) {
+        if (!isCurrentVideoSelectionTrack(trackKey)) return;
+        youtubeBackgroundRepository.selectVideo(trackKey, info);
+        if (info == null) {
+            String isrc = nonEmpty(currentResolvedIsrc, nonEmpty(currentBaseLyricsResult == null ? "" : currentBaseLyricsResult.isrc, currentTrack.isrc));
+            youtubeBackgroundRepository.clearCacheForIsrc(isrc);
+        }
+        resetYouTubeBackgroundForTrack();
+        syncYouTubeBackgroundState();
+        showSavedToast(ui("toast.settings_saved"));
+    }
+
     private void requestYouTubeBackgroundIfNeeded() {
         if (!isVideoBackgroundMode()
                 || youtubeBackgroundRepository == null
@@ -9087,16 +9157,17 @@ public class BaseLyricsActivity extends Activity implements
         }
         LyricsResult lyricsResult = currentBaseLyricsResult == null ? LyricsResult.empty("") : currentBaseLyricsResult;
         String isrc = nonEmpty(lyricsResult.isrc, nonEmpty(currentResolvedIsrc, currentTrack.isrc));
-        if (isrc.isEmpty()) {
+        if (isrc.isEmpty() && youtubeBackgroundRepository.selectedVideo(currentTrack.stableKey()) == null) {
             appendLog("youtube background: waiting for ISRC");
             return;
         }
         String trackId = nonEmpty(lyricsResult.spotifyTrackId, nonEmpty(currentResolvedSpotifyTrackId, currentTrack.trackId));
-        String requestKey = "isrc:" + isrc;
-        if (requestKey.equals(currentYouTubeBackgroundRequestKey)
+        String requestPrefix = "track:" + currentTrack.stableKey() + ":isrc:" + isrc + "#";
+        if (currentYouTubeBackgroundRequestKey.startsWith(requestPrefix)
                 && (currentYouTubeBackgroundLoading || currentYouTubeBackgroundInfo != null)) {
             return;
         }
+        String requestKey = requestPrefix + (++youtubeBackgroundRequestGeneration);
         currentYouTubeBackgroundRequestKey = requestKey;
         currentYouTubeBackgroundLoading = true;
         youtubeBackgroundRepository.load(requestKey, currentTrack, youtubeMetadataResult(lyricsResult, isrc, trackId), this);
