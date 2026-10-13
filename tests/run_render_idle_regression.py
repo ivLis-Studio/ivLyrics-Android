@@ -46,13 +46,21 @@ def preview(baseline):
     declarations = "\n".join(declaration(value, signature) for signature in (
         "void setPreview(",
         "void setPlaybackPosition(",
-        "private long estimatedPositionMs()",
+        *(("private long estimatedPositionMs()",) if baseline else (
+            "void setPlaybackFrame(double positionMs, long frameTimeNanos)",
+            "void setPlaybackFrame(double positionMs, long frameTimeNanos, boolean isPlaying)",
+            "private long frameTimeNanos()",
+            "private double positionAtFrame(",
+        )),
         "private void drawLoadingLine(",
         "private KaraokeMotion.Values karaokeBounce(",
         "private void configureTextPaint(",
     ))
     if not baseline:
         declarations += declaration(value, "private LinearGradient loadingShader(")
+        # The candidate's playback clock is exact and anchored on the frame clock.
+        declarations += ("double basePositionMs; long baseTimeNanos, hostFrameTimeNanos, hostFrameOffsetNanos;"
+                         " boolean hostFrameFresh;")
     on_draw = declaration(value, "protected void onDraw(Canvas canvas)")
     start = on_draw.index("boolean animationsEnabled =" if baseline else "frameAnimationsEnabled =")
     end = on_draw.index("float left =", start)
@@ -65,7 +73,7 @@ def empty_renderer(baseline):
     declarations = "\n".join(declaration(value, signature) for signature in (
         "void setPlaybackPosition(",
         "private void drawEmpty(Canvas canvas)",
-    ))
+    ) + (() if baseline else ("private void updatePlaybackPosition(",)))
     return "static final class " + ("BaselineEmpty" if baseline else "CandidateEmpty") + " extends EmptyFields {" + declarations + "}"
 
 

@@ -60,6 +60,10 @@ cleanup, paused seeks/resume and effects, motion-setting changes while paused,
 empty/loading states, and loading gradient geometry across size/alpha changes.
 It counts JSON parsing, invalidation requests, gradient allocation and preference
 reads using synthetic Android collaborators and the pinned JSON dependency.
+The preview's frame-synchronized clock is also covered: a position supplied with a
+Choreographer frame time paints exactly that position (even when the drawing time leads
+it by one frame), a frame without a host tick continues on the same clock, and a
+static pause still avoids redundant redraws.
 It does not measure device FPS or Canvas pixels.
 
 The inline hook regression runs production Xposed callbacks against synthetic

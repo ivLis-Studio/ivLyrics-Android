@@ -27,6 +27,7 @@ clock.write_text('''package android.os;
 public final class SystemClock {
     public static long uptimeMillis() { return 1000L; }
     public static long elapsedRealtime() { return 1000L; }
+    public static long elapsedRealtimeNanos() { return 1_000_000_000L; }
 }
 ''')
 fixture = work / "RepositoryCompletionRegression.java"

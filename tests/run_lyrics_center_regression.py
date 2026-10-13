@@ -53,6 +53,7 @@ signatures = [
     "private LineLayout layoutAt(List<LineLayout> layouts, int index)",
     "private void prepareAnchorOffsets(List<LineLayout> layouts, int anchorIndex, float blockGap)",
     "private float distanceBetween(LineLayout previous, LineLayout next, float blockGap)",
+    "private void updatePlaybackPosition(long nextPositionMs, double nextFramePositionMs)",
 ]
 production = "\n\n".join(declaration(source, signature) for signature in signatures)
 baseline = subprocess.check_output(["git", "show", "3f238d1a503b2b400cbebd369857428ab837ae83:shared/src/main/java/kr/ivlis/ivlyricsandroid/LyricsView.java"], cwd=ROOT, text=True)

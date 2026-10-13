@@ -51,8 +51,12 @@ final class KaraokeMotion {
         Values idle() { offsetY = 0f; scale = 1f; active = false; return this; }
     }
 
-    /** Allocation-free continuous Canvas values; desktop's quantized targets use CSS interpolation. */
-    static Values evaluate(Profile profile, long positionMs, float textSizePx, Values result) {
+    /**
+     * Allocation-free continuous Canvas values for one display frame. The position is the
+     * playback clock at the frame's vsync without rounding; its arithmetic was already in
+     * double precision, so whole milliseconds evaluate exactly as before.
+     */
+    static Values evaluate(Profile profile, double positionMs, float textSizePx, Values result) {
         if (profile == null || !Float.isFinite(textSizePx) || textSizePx <= 0f
                 || positionMs < profile.startTime || positionMs >= profile.endTime + profile.releaseDuration) {
             return result.idle();

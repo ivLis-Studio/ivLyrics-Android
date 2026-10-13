@@ -393,7 +393,7 @@ public final class EmbeddedSmokeActivity extends Activity {
         if (inline == null || inline.getVisibility() != View.VISIBLE || inline.getHeight() == 0) return false;
         List<MainLyricPreviewView.PreviewLine> rows = inlineRows();
         return rows.size() == rowCount && translation(suffix, line).equals(rows.get(rowCount - 1).text)
-                && (Long) field(inlinePreview, "basePositionMs") == position;
+                && ((Number) field(inlinePreview, "basePositionMs")).doubleValue() == position;
     }
 
     private void assertAlignment(String expected, float shortTextStart) {

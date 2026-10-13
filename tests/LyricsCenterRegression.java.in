@@ -37,6 +37,7 @@ public final class LyricsCenterRegression extends TestView {
     private boolean vocalAnchorOffsetInitialized;
     private int retainedVocalAnchorSourceIndex, rowPrewarmIndex;
     private float retainedVocalAnchorOffsetPx;
+    private double framePositionMs;
     private static int assertions;
     private static final float GAP = 32f;
     private static final float CENTER_Y = 960f;

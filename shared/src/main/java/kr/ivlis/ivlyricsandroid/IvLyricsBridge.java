@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -221,26 +222,33 @@ public final class IvLyricsBridge {
     private abstract static class NativeSurface extends FrameLayout {
         NativeSurface(Context context) { super(context); }
         abstract void render(Engine state);
-        abstract void updatePosition(Engine state);
-        private final Runnable tick = new Runnable() {
-            @Override public void run() {
-                if (!isAttachedToWindow()) return;
-                if (isShown() && getWindowVisibility() == View.VISIBLE && engine != null) {
-                    updatePosition(engine);
-                }
-                if (isShown() && getWindowVisibility() == View.VISIBLE) postOnAnimation(this);
-                else postDelayed(this, 250L);
-            }
-        };
+        /** frameTimeNanos is the Choreographer frame time, or 0 outside a frame. */
+        abstract void updatePosition(Engine state, long frameTimeNanos);
+        // A visible surface follows every display frame at its vsync time; a hidden one polls.
+        private final Choreographer.FrameCallback frameTick = this::tick;
+        private final Runnable idleTick = () -> tick(0L);
+
+        private void tick(long frameTimeNanos) {
+            if (!isAttachedToWindow()) return;
+            boolean visible = isShown() && getWindowVisibility() == View.VISIBLE;
+            if (visible && engine != null) updatePosition(engine, frameTimeNanos);
+            if (visible) Choreographer.getInstance().postFrameCallback(frameTick);
+            else postDelayed(idleTick, 250L);
+        }
+
+        private void stopTicks() {
+            removeCallbacks(idleTick);
+            Choreographer.getInstance().removeFrameCallback(frameTick);
+        }
 
         @Override protected void onAttachedToWindow() {
             super.onAttachedToWindow();
             attach(this);
-            removeCallbacks(tick);
-            post(tick);
+            stopTicks();
+            post(idleTick);
         }
         @Override protected void onDetachedFromWindow() {
-            removeCallbacks(tick);
+            stopTicks();
             detach(this);
             super.onDetachedFromWindow();
         }
@@ -295,8 +303,9 @@ public final class IvLyricsBridge {
             super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
-        @Override void updatePosition(Engine state) {
-            lyrics.setPlaybackPosition(state.position());
+        @Override void updatePosition(Engine state, long frameTimeNanos) {
+            if (frameTimeNanos > 0L) lyrics.setPlaybackFrame(state.positionAtFrame(frameTimeNanos), frameTimeNanos);
+            else lyrics.setPlaybackPosition(state.position());
         }
         @Override void render(Engine state) {
             AiLyricsSettings.Snapshot settings = state.settings.snapshot();
@@ -409,10 +418,10 @@ public final class IvLyricsBridge {
                 entryApplied = false;
                 emptyKey = "";
             }
-            updatePosition(state);
+            updatePosition(state, 0L);
         }
 
-        @Override void updatePosition(Engine state) {
+        @Override void updatePosition(Engine state, long frameTimeNanos) {
             if (appliedSettings == null) return;
             boolean song = state.track != null && state.track.mediaId.startsWith("spotify:track:")
                     && !state.track.trackId.isEmpty() && state.track.hasUsableMetadata()
@@ -425,7 +434,9 @@ public final class IvLyricsBridge {
                 emptyKey = "";
                 return;
             }
-            long position = state.position();
+            // Inside a frame the preview paints that frame's exact clock; elsewhere "now".
+            double framePosition = frameTimeNanos > 0L ? state.positionAtFrame(frameTimeNanos) : state.position();
+            long position = (long) Math.floor(framePosition);
             boolean playing = state.track != null && state.track.playing;
             if (model == null) {
                 String detail = state.result == null ? state.ui("status.lyrics_waiting") : state.result.detail;
@@ -451,6 +462,9 @@ public final class IvLyricsBridge {
                 entryApplied = true;
                 preview.setPreview(model.rows(entry), position, entry == null ? 0L : entry.startTimeMs,
                         entry == null ? 0L : entry.endTimeMs, playing);
+                if (frameTimeNanos > 0L) preview.setPlaybackFrame(framePosition, frameTimeNanos, playing);
+            } else if (frameTimeNanos > 0L) {
+                preview.setPlaybackFrame(framePosition, frameTimeNanos, playing);
             } else {
                 preview.setPlaybackPosition(position, playing);
             }
@@ -689,6 +703,13 @@ public final class IvLyricsBridge {
             if (track == null) return 0;
             long value = track.positionNow() + djOffset + settings.globalSyncOffsetMs() + settings.trackSyncOffsetMs(key) + bluetoothOffset;
             return Math.max(0, track.durationMs > 0 ? Math.min(track.durationMs + djOffset, value) : value);
+        }
+        /** {@link #position()} at a Choreographer frame time, without rounding. */
+        double positionAtFrame(long frameTimeNanos) {
+            if (track == null) return 0d;
+            double value = track.positionAtFrame(frameTimeNanos) + djOffset + settings.globalSyncOffsetMs()
+                    + settings.trackSyncOffsetMs(key) + bluetoothOffset;
+            return Math.max(0d, track.durationMs > 0 ? Math.min(track.durationMs + djOffset, value) : value);
         }
         String ui(String message) { return AppI18n.t(settings.snapshot().uiLang, message); }
         void renderCards() {

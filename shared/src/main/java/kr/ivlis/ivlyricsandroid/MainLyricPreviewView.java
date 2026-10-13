@@ -83,8 +83,15 @@ final class MainLyricPreviewView extends View {
     private Typeface primaryTypeface;
     private Typeface secondaryTypeface;
     private AiLyricsSettings.TypographySettings typographySettings = AiLyricsSettings.TypographySettings.defaults();
-    private long basePositionMs;
-    private long baseUptimeMs;
+    // Playback clock: basePositionMs at baseTimeNanos (System.nanoTime() clock).
+    private double basePositionMs;
+    private long baseTimeNanos;
+    /** Choreographer frame time of the last frame-synchronized position. */
+    private long hostFrameTimeNanos;
+    /** Set by the host for the frame in progress; consumed by that frame's draw. */
+    private boolean hostFrameFresh;
+    /** Drawing time minus the host's frame time, last observed; estimates frames without a host. */
+    private long hostFrameOffsetNanos;
     private long lineStartMs;
     private long lineEndMs;
     private boolean playing;
@@ -129,7 +136,7 @@ final class MainLyricPreviewView extends View {
             timeDrivenVisuals |= line.isAnimatedVisual() || !"vocal".equals(line.kind);
         }
         basePositionMs = Math.max(0L, positionMs);
-        baseUptimeMs = SystemClock.uptimeMillis();
+        baseTimeNanos = SystemClock.uptimeMillis() * 1_000_000L;
         lineStartMs = Math.max(0L, startTimeMs);
         lineEndMs = Math.max(lineStartMs, endTimeMs);
         playing = isPlaying;
@@ -171,8 +178,31 @@ final class MainLyricPreviewView extends View {
         long nextPositionMs = Math.max(0L, positionMs);
         boolean unchangedPaused = !playing && !isPlaying && basePositionMs == nextPositionMs;
         basePositionMs = nextPositionMs;
-        baseUptimeMs = SystemClock.uptimeMillis();
+        baseTimeNanos = SystemClock.uptimeMillis() * 1_000_000L;
         playing = isPlaying;
+        if (unchangedPaused && !timeDrivenVisuals
+                && frameAnimationsEnabled == MotionPreferences.animationsEnabled(getContext())) return;
+        postInvalidateOnAnimation();
+    }
+
+    /**
+     * Playback position at a Choreographer frame time, without rounding. The fill and
+     * bounce of that frame then paint exactly this position; later frames extrapolate
+     * from it on the same frame clock.
+     */
+    void setPlaybackFrame(double positionMs, long frameTimeNanos, boolean isPlaying) {
+        playing = isPlaying;
+        setPlaybackFrame(positionMs, frameTimeNanos);
+    }
+
+    /** As {@link #setPlaybackFrame(double, long, boolean)}, keeping the current playing state. */
+    void setPlaybackFrame(double positionMs, long frameTimeNanos) {
+        double nextPositionMs = Double.isFinite(positionMs) ? Math.max(0d, positionMs) : 0d;
+        boolean unchangedPaused = !playing && basePositionMs == nextPositionMs;
+        basePositionMs = nextPositionMs;
+        baseTimeNanos = frameTimeNanos;
+        hostFrameTimeNanos = frameTimeNanos;
+        hostFrameFresh = frameTimeNanos > 0L;
         if (unchangedPaused && !timeDrivenVisuals
                 && frameAnimationsEnabled == MotionPreferences.animationsEnabled(getContext())) return;
         postInvalidateOnAnimation();
@@ -277,7 +307,9 @@ final class MainLyricPreviewView extends View {
         long frameProbeStartNs = frameProbeEnabled ? System.nanoTime() : 0L;
         float totalHeight = desiredContentHeight();
         float top = Math.max(0f, (getHeight() - totalHeight) * 0.5f);
-        long position = estimatedPositionMs();
+        boolean frameProbeHostTime = hostFrameFresh;
+        long frameNanos = frameTimeNanos();
+        double position = positionAtFrame(frameNanos);
         frameAnimationsEnabled = MotionPreferences.animationsEnabled(getContext());
         frameUptimeMs = SystemClock.uptimeMillis();
         frameWallTimeMs = System.currentTimeMillis();
@@ -321,7 +353,7 @@ final class MainLyricPreviewView extends View {
         }
         canvas.restoreToCount(save);
         if (frameProbeEnabled) {
-            logFrameProbe(frameProbeStartNs, position);
+            logFrameProbe(frameProbeStartNs, position, frameProbeHostTime, frameNanos);
         }
 
         if (!externallyDriven && frameAnimationsEnabled && ((playing && lineEndMs > lineStartMs && position < lineEndMs + 700L && (overflow || hasKaraokeLine()))
@@ -331,7 +363,7 @@ final class MainLyricPreviewView extends View {
     }
 
     /** Debug-only: the karaoke values this preview frame painted. */
-    private void logFrameProbe(long startNs, long position) {
+    private void logFrameProbe(long startNs, double position, boolean hostTime, long frameNanos) {
         double fillPx = 0d;
         float lift = 0f;
         for (PreviewLine line : lines) {
@@ -346,9 +378,14 @@ final class MainLyricPreviewView extends View {
         }
         StringBuilder line = frameProbeLine;
         line.setLength(0);
-        line.append("PV").append(externallyDriven ? "x" : "").append(" vsync=").append(getDrawingTime()).append(" draw=");
+        line.append("PV").append(externallyDriven ? "x" : "").append(" vsync=").append(getDrawingTime()).append(" vsyncExact=");
+        LyricsFrameProbe.appendFixed(line, frameNanos / 1_000_000d, 4);
+        line.append(" draw=");
         LyricsFrameProbe.appendFixed(line, startNs / 1_000_000d, 3);
-        line.append(" pos=").append(position).append(" fillPx=");
+        line.append(" host=").append(hostTime ? 1 : 0);
+        line.append(" pos=").append((long) Math.floor(position)).append(" posExact=");
+        LyricsFrameProbe.appendFixed(line, position, 4);
+        line.append(" fillPx=");
         LyricsFrameProbe.appendFixed(line, fillPx, 3);
         line.append(" lift=");
         LyricsFrameProbe.appendFixed(line, lift, 4);
@@ -363,7 +400,7 @@ final class MainLyricPreviewView extends View {
             float baseline,
             float textSize,
             int normalAlpha,
-            long positionMs,
+            double positionMs,
             float left,
             float width
     ) {
@@ -559,11 +596,29 @@ final class MainLyricPreviewView extends View {
         return Math.min(dp(EDGE_FADE_DP), width * 0.28f);
     }
 
-    private long estimatedPositionMs() {
+    /**
+     * The frame time of this draw on the Choreographer frame-callback clock: the host's
+     * time when it ticked this frame, otherwise the drawing time moved by the last observed
+     * difference so the extrapolated position never switches clocks. Call once per draw.
+     */
+    private long frameTimeNanos() {
+        long drawingTimeMs = getDrawingTime();
+        long drawingNanos = drawingTimeMs > 0L ? drawingTimeMs * 1_000_000L : SystemClock.uptimeMillis() * 1_000_000L;
+        if (hostFrameFresh) {
+            hostFrameFresh = false;
+            // getDrawingTime() may lead the frame-callback time by one frame interval.
+            hostFrameOffsetNanos = Math.max(0L, Math.min(34_000_000L, drawingNanos - hostFrameTimeNanos));
+            return hostFrameTimeNanos;
+        }
+        return drawingNanos - hostFrameOffsetNanos;
+    }
+
+    /** Playback position painted by a frame: paused exactly, playing extrapolated to its vsync. */
+    private double positionAtFrame(long frameNanos) {
         if (!playing) {
             return basePositionMs;
         }
-        return basePositionMs + Math.max(0L, SystemClock.uptimeMillis() - baseUptimeMs);
+        return basePositionMs + Math.max(0L, frameNanos - baseTimeNanos) / 1_000_000d;
     }
 
     private boolean measureLineWidths(float width) {
@@ -780,7 +835,7 @@ final class MainLyricPreviewView extends View {
         return line.primary ? AiLyricsSettings.TYPO_MAIN_PREVIEW_ORIGINAL : AiLyricsSettings.TYPO_MAIN_PREVIEW_PRONUNCIATION;
     }
 
-    private void drawKaraokeLine(Canvas canvas, PreviewLine line, float x, float baseline, float textSize, long positionMs) {
+    private void drawKaraokeLine(Canvas canvas, PreviewLine line, float x, float baseline, float textSize, double positionMs) {
         List<TextSegment> segments = textSegments(line);
         if (segments.isEmpty()) {
             textPaint.setColor(Color.argb(line.primary ? 244 : 208, 255, 255, 255));
@@ -872,7 +927,7 @@ final class MainLyricPreviewView extends View {
         return first.cachedRowWidth;
     }
 
-    private float continuousFillFraction(List<TextSegment> segments, long positionMs) {
+    private float continuousFillFraction(List<TextSegment> segments, double positionMs) {
         float total = 0f;
         float filled = 0f;
         for (TextSegment segment : segments) {
@@ -1233,7 +1288,7 @@ final class MainLyricPreviewView extends View {
         return builder.toString();
     }
 
-    private float segmentFillFraction(TextSegment segment, long positionMs) {
+    private float segmentFillFraction(TextSegment segment, double positionMs) {
         if (isWordDisplayGranularity()) {
             return positionMs >= segment.startTimeMs ? 1f : 0f;
         }
@@ -1243,7 +1298,8 @@ final class MainLyricPreviewView extends View {
         if (positionMs <= segment.startTimeMs || segment.endTimeMs <= segment.startTimeMs) {
             return 0f;
         }
-        return clamp((positionMs - segment.startTimeMs) / (float) (segment.endTimeMs - segment.startTimeMs));
+        // Whole milliseconds give the same float as before; the frame clock adds the rest.
+        return clamp((float) ((positionMs - segment.startTimeMs) / (double) (segment.endTimeMs - segment.startTimeMs)));
     }
 
     private boolean isLineDisplayGranularity() {
@@ -1254,7 +1310,7 @@ final class MainLyricPreviewView extends View {
         return AiLyricsSettings.KARAOKE_DISPLAY_WORD.equals(karaokeDisplayGranularity);
     }
 
-    private KaraokeMotion.Values karaokeBounce(TextSegment segment, long positionMs, float textSize) {
+    private KaraokeMotion.Values karaokeBounce(TextSegment segment, double positionMs, float textSize) {
         if (!frameAnimationsEnabled || !karaokeBounceEffectEnabled) {
             return karaokeBounceResult.idle();
         }
@@ -1546,11 +1602,11 @@ final class MainLyricPreviewView extends View {
                     Math.max(0L, startTimeMs), Math.max(startTimeMs, endTimeMs));
         }
 
-        float progress(long positionMs, long fallbackStartMs, long fallbackEndMs) {
+        float progress(double positionMs, long fallbackStartMs, long fallbackEndMs) {
             long start = sourceStartTimeMs >= 0L ? sourceStartTimeMs : fallbackStartMs;
             long end = sourceEndTimeMs >= 0L ? sourceEndTimeMs : fallbackEndMs;
             if (end <= start) return 0f;
-            return Math.max(0f, Math.min(1f, (positionMs - start) / (float) (end - start)));
+            return Math.max(0f, Math.min(1f, (float) ((positionMs - start) / (double) (end - start))));
         }
 
         static PreviewLine interlude(String text) {

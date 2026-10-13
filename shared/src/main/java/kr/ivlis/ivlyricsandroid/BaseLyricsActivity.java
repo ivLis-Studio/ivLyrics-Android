@@ -573,7 +573,7 @@ public class BaseLyricsActivity extends Activity implements
         @Override
         public void doFrame(long frameTimeNanos) {
             if (!playbackClockActive) return;
-            updatePlaybackUi();
+            updatePlaybackUi(frameTimeNanos);
             if (playbackClockActive) Choreographer.getInstance().postFrameCallback(this);
         }
     };
@@ -9990,6 +9990,20 @@ public class BaseLyricsActivity extends Activity implements
                 : Math.max(0L, adjusted);
     }
 
+    /** {@link #lyricsPlaybackPosition} without rounding, for a frame-synchronized position. */
+    private double lyricsPlaybackFramePosition(double playerPositionMs, long durationMs) {
+        double adjusted =
+                playerPositionMs
+                + currentSpotifyDjLyricsOffsetMs
+                + currentGlobalSyncOffsetMs
+                + currentTrackSyncOffsetMs
+                + currentBluetoothLyricsOffsetMs;
+        long lyricsDurationMs = lyricsTrackDuration(durationMs);
+        return lyricsDurationMs > 0L
+                ? Math.max(0d, Math.min(lyricsDurationMs, adjusted))
+                : Math.max(0d, adjusted);
+    }
+
     private long playerPositionForLyricsTime(long lyricsTimeMs, long durationMs) {
         long target =
                 lyricsTimeMs
@@ -14237,6 +14251,38 @@ public class BaseLyricsActivity extends Activity implements
         }
     }
 
+    /** The frame clock's position for the visible lyric renderer; see {@link LyricsView#setPlaybackFrame}. */
+    private void setLyricsFramePositionOnActiveView(double positionMs, long frameTimeNanos) {
+        if (isPictureInPictureUiActive()) {
+            if (pictureInPictureLyricsView != null) {
+                pictureInPictureLyricsView.setPlaybackFrame(positionMs, frameTimeNanos);
+            }
+            return;
+        }
+        if (isLandscapeLayout()) {
+            if (landscapeLyricsView != null) {
+                landscapeLyricsView.setPlaybackFrame(positionMs, frameTimeNanos);
+            }
+            return;
+        }
+        if (lyricsPageVisible && lyricsView != null) {
+            lyricsView.setPlaybackFrame(positionMs, frameTimeNanos);
+        }
+    }
+
+    /**
+     * Previews receive new rows every 250 ms and extrapolate in between; anchor that
+     * extrapolation to each frame's exact clock while they are on screen.
+     */
+    private void setLyricPreviewFramePosition(double positionMs, long frameTimeNanos) {
+        if (lyricPreviewView != null && lyricPreviewView.isShown()) {
+            lyricPreviewView.setPlaybackFrame(positionMs, frameTimeNanos);
+        }
+        if (vinylPlayerModeView != null && vinylModeVisible && vinylPlayerModeView.lyricView().isShown()) {
+            vinylPlayerModeView.lyricView().setPlaybackFrame(positionMs, frameTimeNanos);
+        }
+    }
+
     private void setAutoInstrumentalBreakOnViews(boolean enabled) {
         if (lyricsView != null) {
             lyricsView.setAutoInstrumentalBreakEnabled(enabled);
@@ -14438,17 +14484,20 @@ public class BaseLyricsActivity extends Activity implements
         }
     }
 
-    private void updatePlaybackUi() {
+    private void updatePlaybackUi(long frameTimeNanos) {
         TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
         if (snapshot == null || !snapshot.hasUsableMetadata()) {
             return;
         }
         long position = currentPlaybackPosition(snapshot);
+        // Lyric renderers paint the playback clock at this frame's vsync, without rounding.
+        double lyricsFramePosition = lyricsPlaybackFramePosition(
+                currentPlaybackFramePosition(snapshot, frameTimeNanos), snapshot.durationMs);
         if (vinylPlayerModeView != null) {
             vinylPlayerModeView.setPlayback(position, snapshot.durationMs, snapshot.playing);
         }
         long lyricsPosition = lyricsPlaybackPosition(position, snapshot.durationMs);
-        setLyricsPlaybackPositionOnActiveView(lyricsPosition);
+        setLyricsFramePositionOnActiveView(lyricsFramePosition, frameTimeNanos);
         if (playerProgressView != null && playerProgressView.isShown()) {
             playerProgressView.setProgress(position, snapshot.durationMs);
         }
@@ -14461,6 +14510,7 @@ public class BaseLyricsActivity extends Activity implements
             if (playPauseButton != null) playPauseButton.setPlaying(snapshot.playing);
             updateYouTubeBackgroundPlaybackState();
         }
+        setLyricPreviewFramePosition(lyricsFramePosition, frameTimeNanos);
     }
 
     private void updateProgressViews(long position, long duration) {
@@ -16626,6 +16676,23 @@ public class BaseLyricsActivity extends Activity implements
             return 0L;
         }
         return lyricsPlaybackPosition(currentPlaybackPosition(snapshot), snapshot.durationMs);
+    }
+
+    /**
+     * {@link #currentPlaybackPosition} at a frame's vsync time, without rounding. Call it
+     * after currentPlaybackPosition(), which resolves a pending seek for this frame.
+     */
+    private double currentPlaybackFramePosition(TrackSnapshot snapshot, long frameTimeNanos) {
+        double position;
+        if (pendingSeekPositionMs >= 0L) {
+            double elapsed = Math.max(0d, frameTimeNanos / 1_000_000d - pendingSeekUptimeMs);
+            position = pendingSeekPositionMs + (snapshot.playing ? elapsed : 0d);
+        } else {
+            position = snapshot.positionAtFrame(frameTimeNanos);
+        }
+        return snapshot.durationMs > 0L
+                ? Math.max(0d, Math.min(snapshot.durationMs, position))
+                : Math.max(0d, position);
     }
 
     private void updateArtwork(Bitmap artwork, String artworkKey) {

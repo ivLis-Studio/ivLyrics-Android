@@ -73,7 +73,7 @@ public final class RenderIdleRegression {
     }
     static class KaraokeMotion {
         static class Values { Values idle() { return this; } }
-        static Values evaluate(Object profile, long position, float size, Values result) { return result; }
+        static Values evaluate(Object profile, double position, float size, Values result) { return result; }
     }
     static class TextSegment { Object motionProfile; }
     static class PreviewLine {
@@ -96,6 +96,7 @@ public final class RenderIdleRegression {
         final Paint textPaint = new Paint(), shapePaint = new Paint();
         final KaraokeMotion.Values karaokeBounceResult = new KaraokeMotion.Values();
         Object getContext() { return this; }
+        long getDrawingTime() { return SystemClock.uptimeMillis(); }
         int comparePreviewLines(List<PreviewLine> value) { return 0; }
         void requestLayout() {}
         void postInvalidateOnAnimation() { invalidations++; }
@@ -110,6 +111,7 @@ public final class RenderIdleRegression {
     static class EmptyFields {
         final List<Object> lines = new ArrayList<>();
         long positionMs, lastFrameMs;
+        double framePositionMs;
         boolean smoothNextSeekCenter, centerInitialized, smoothSeekCenterActive, manualScrollActive, draggingLyrics;
         boolean frameAnimationsEnabled, loading;
         Object pressedTarget; Scroller manualScroller;
@@ -187,9 +189,37 @@ public final class RenderIdleRegression {
         candidate.beginFrame();
         candidate.invalidations = 0;
         candidate.setPlaybackPosition(30500, false);
-        check(candidate.invalidations == 1 && candidate.estimatedPositionMs() == 30500, "Paused seek still redraws immediately");
+        check(candidate.invalidations == 1 && candidate.positionAtFrame(SystemClock.uptimeMillis() * 1_000_000L) == 30500,
+                "Paused seek still redraws immediately");
         candidate.setPlaybackPosition(30500, true); SystemClock.now += 100;
-        check(candidate.invalidations == 2 && candidate.estimatedPositionMs() == 30600, "Resume retains playback clock");
+        check(candidate.invalidations == 2 && candidate.positionAtFrame(SystemClock.uptimeMillis() * 1_000_000L) == 30600,
+                "Resume retains playback clock");
+        // Frame-synchronized positions: exact at their own frame, continuous after it,
+        // and a static pause still avoids redundant redraws.
+        long frame = SystemClock.uptimeMillis() * 1_000_000L + 250_000L;
+        candidate.setPlaybackFrame(30612.25, frame, true);
+        check(candidate.positionAtFrame(frame) == 30612.25
+                && Math.abs(candidate.positionAtFrame(frame + 8_333_333L) - 30620.583333) < 1e-6,
+                "Frame clock paints its own vsync position without rounding");
+        candidate.setPlaybackFrame(30700, frame, false);
+        candidate.beginFrame();
+        candidate.invalidations = 0;
+        for (int i = 0; i < 600; i++) candidate.setPlaybackFrame(30700, frame + i * 8_333_333L);
+        check(candidate.invalidations == 0 && candidate.positionAtFrame(frame + 600 * 8_333_333L) == 30700,
+                "Paused frame clock avoids 600 redundant redraws");
+        candidate.setPlaybackFrame(30800, frame);
+        check(candidate.invalidations == 1, "Paused frame seek redraws immediately");
+        // getDrawingTime() can lead the frame-callback time by one interval; the host's time
+        // still paints its own frame, and a frame without a host tick stays on that clock.
+        long hostFrame = 900_000_000_000L + 333_333L;
+        SystemClock.now = 900_008L;
+        candidate.setPlaybackFrame(40000.5, hostFrame, true);
+        check(candidate.positionAtFrame(candidate.frameTimeNanos()) == 40000.5,
+                "Host frame time paints its own frame when the drawing time leads it");
+        SystemClock.now = 900_016L;
+        check(Math.abs(candidate.positionAtFrame(candidate.frameTimeNanos()) - 40008.5) < 1e-6,
+                "A frame without a host tick continues on the host clock");
+        candidate.setPlaybackPosition(30500, false);
         for (String kind : List.of("wave", "glow", "effect", "pulse", "whisper")) {
             candidate.setPreview(List.of(new PreviewLine(kind, false)), 30000, 0, 50000, false);
             candidate.invalidations = 0; candidate.setPlaybackPosition(30000, false);

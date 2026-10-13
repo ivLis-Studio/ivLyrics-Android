@@ -138,6 +138,10 @@ public final class LyricsView extends View {
     private long visualCenterIndexCacheEndMs = Long.MAX_VALUE;
     private int visualCenterIndexCacheValue;
     private long positionMs;
+    /** Playback position at the frame's vsync, without rounding; continuous fill and bounce only. */
+    private double framePositionMs;
+    /** Choreographer frame time supplied with {@link #framePositionMs}; System.nanoTime() clock. */
+    private long hostFrameTimeNanos;
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
     private String emptyFallbackMessage = AppI18n.t("en", "lyrics.empty_none");
@@ -590,8 +594,24 @@ public final class LyricsView extends View {
 
     void setPlaybackPosition(long positionMs) {
         long nextPositionMs = Math.max(0L, positionMs);
+        updatePlaybackPosition(nextPositionMs, nextPositionMs);
+    }
+
+    /**
+     * Playback position at a Choreographer frame time. Discrete line and glyph states
+     * use its whole milliseconds; the continuous fill edge and bounce use the exact value,
+     * so every display frame paints the position of its own vsync.
+     */
+    void setPlaybackFrame(double positionMs, long frameTimeNanos) {
+        double exact = Double.isFinite(positionMs) ? Math.max(0d, positionMs) : 0d;
+        hostFrameTimeNanos = frameTimeNanos;
+        updatePlaybackPosition((long) Math.floor(exact), exact);
+    }
+
+    private void updatePlaybackPosition(long nextPositionMs, double nextFramePositionMs) {
         if (lines.isEmpty()) {
             this.positionMs = nextPositionMs;
+            framePositionMs = nextFramePositionMs;
             // Empty content is independent of playback; loading drives its own animation.
             // Still notice system motion changes while its fixed loading frame is idle.
             if (isLoadingEmptyMessage()
@@ -600,7 +620,7 @@ public final class LyricsView extends View {
             }
             return;
         }
-        if (this.positionMs == nextPositionMs && !smoothNextSeekCenter) {
+        if (this.positionMs == nextPositionMs && framePositionMs == nextFramePositionMs && !smoothNextSeekCenter) {
             return;
         }
         boolean smoothSeekCenter = smoothNextSeekCenter && centerInitialized;
@@ -627,6 +647,7 @@ public final class LyricsView extends View {
             lastFrameMs = 0L;
         }
         this.positionMs = nextPositionMs;
+        framePositionMs = nextFramePositionMs;
         postInvalidateOnAnimation();
     }
 
@@ -965,9 +986,12 @@ public final class LyricsView extends View {
         }
         StringBuilder line = frameProbeLine;
         line.setLength(0);
-        line.append("LV vsync=").append(getDrawingTime()).append(" draw=");
+        line.append("LV vsync=").append(getDrawingTime()).append(" hostMs=");
+        LyricsFrameProbe.appendFixed(line, hostFrameTimeNanos / 1_000_000d, 4);
+        line.append(" draw=");
         LyricsFrameProbe.appendFixed(line, startNs / 1_000_000d, 3);
-        line.append(" pos=").append(positionMs);
+        line.append(" pos=").append(positionMs).append(" posExact=");
+        LyricsFrameProbe.appendFixed(line, framePositionMs, 4);
         line.append(" active=").append(activeIndex).append(" target=").append(targetIndex).append(" center=");
         LyricsFrameProbe.appendFixed(line, animatedCenterIndex, 4);
         line.append(" fillPx=");
@@ -3734,16 +3758,19 @@ public final class LyricsView extends View {
     }
 
     private float segmentFillFraction(TextSegment segment) {
+        // The exact frame position: whole milliseconds give the same result as before.
+        double position = framePositionMs;
         if (isWordDisplayGranularity()) {
-            return positionMs >= segment.fillStartTimeMs ? 1f : 0f;
+            return position >= segment.fillStartTimeMs ? 1f : 0f;
         }
-        if (positionMs >= segment.fillEndTimeMs) {
+        if (position >= segment.fillEndTimeMs) {
             return 1f;
         }
-        if (positionMs <= segment.fillStartTimeMs || segment.fillEndTimeMs <= segment.fillStartTimeMs) {
+        if (position <= segment.fillStartTimeMs || segment.fillEndTimeMs <= segment.fillStartTimeMs) {
             return 0f;
         }
-        return clamp((positionMs - segment.fillStartTimeMs) / (float) (segment.fillEndTimeMs - segment.fillStartTimeMs));
+        return clamp((float) ((position - segment.fillStartTimeMs)
+                / (double) (segment.fillEndTimeMs - segment.fillStartTimeMs)));
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
@@ -4639,7 +4666,7 @@ public final class LyricsView extends View {
         }
         // Each source unit owns its hold/release window. A subsequent character,
         // row, or simultaneous vocal must not abruptly cut off that movement.
-        return KaraokeMotion.evaluate(segment.motionProfile, positionMs, group.textSize, karaokeBounceResult);
+        return KaraokeMotion.evaluate(segment.motionProfile, framePositionMs, group.textSize, karaokeBounceResult);
     }
 
     private int inactiveColor(float distance) {

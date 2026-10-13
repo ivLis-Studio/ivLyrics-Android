@@ -99,7 +99,8 @@ public final class KaraokeMotionRegression {
     }
 
     private boolean frameAnimationsEnabled = true, lineMode, karaokeBounceEffectEnabled = true;
-    private long positionMs;
+    // The renderer evaluates motion at the frame's exact playback position.
+    private double framePositionMs;
     private final KaraokeMotion.Values karaokeBounceResult = new KaraokeMotion.Values();
     private boolean isLineDisplayGranularity() { return lineMode; }
     private static final class DrawGroup { float textSize = 25f; }
@@ -126,7 +127,7 @@ public final class KaraokeMotionRegression {
         TextSegment segment = new TextSegment("아", 0, 1, 1000, 2800);
         segment.motionProfile = prepareMotionPlan(List.of(segment), sources).profile(0, 1, 1000, 2800);
         DrawGroup lead = new DrawGroup(), secondVoice = new DrawGroup();
-        positionMs = 2000;
+        framePositionMs = 2000;
         float lifted = karaokeBounce(segment, lead).offsetY;
         check("Held source remains lifted through its own end", lifted < -2f);
         close("Multivocal strength is equal", lifted, karaokeBounce(segment, secondVoice).offsetY, .000001);
@@ -136,9 +137,9 @@ public final class KaraokeMotionRegression {
         check("User-disabled bounce has no motion", !karaokeBounce(segment, lead).active);
         karaokeBounceEffectEnabled = true; frameAnimationsEnabled = false;
         check("Reduced motion has no timed movement", !karaokeBounce(segment, lead).active);
-        frameAnimationsEnabled = true; positionMs = 900;
+        frameAnimationsEnabled = true; framePositionMs = 900;
         check("Backward seek before onset is idle", !karaokeBounce(segment, lead).active);
-        positionMs = 2000;
+        framePositionMs = 2000;
         close("Seek returns to original source envelope", lifted, karaokeBounce(segment, lead).offsetY, .000001);
         TextSegment word = new TextSegment("abcdefgh", 7, 8, 1000, 2600);
         TextSegment wrapped = createSplitSegment(word, List.of("e", "f", "g", "h"), 4);

@@ -119,6 +119,22 @@ final class TrackSnapshot {
         return clampPosition(positionMs + Math.round(elapsed * playbackSpeed));
     }
 
+    /**
+     * Position at a Choreographer frame time (System.nanoTime() clock), without rounding.
+     * The snapshot counts elapsedRealtime(), so the frame time moves onto that clock with
+     * the current offset between the two. A paused snapshot returns its exact position.
+     */
+    double positionAtFrame(long frameTimeNanos) {
+        if (!playing) {
+            return clampPosition(positionMs);
+        }
+        long elapsedRealtimeOffsetNanos = SystemClock.elapsedRealtimeNanos() - System.nanoTime();
+        double frameElapsedRealtimeMs = (frameTimeNanos + elapsedRealtimeOffsetNanos) / 1_000_000d;
+        double elapsed = Math.max(0d, frameElapsedRealtimeMs - lastPositionUpdateElapsedMs);
+        double position = positionMs + elapsed * playbackSpeed;
+        return durationMs > 0 ? Math.max(0d, Math.min(durationMs, position)) : Math.max(0d, position);
+    }
+
     TrackSnapshot withIsrc(String value) {
         return new TrackSnapshot(title, artist, album, packageName, mediaId, value, durationMs,
                 positionMs, lastPositionUpdateElapsedMs, playbackSpeed, playing, artwork, artworkUri,

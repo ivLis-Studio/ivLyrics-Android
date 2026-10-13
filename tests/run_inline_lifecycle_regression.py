@@ -18,7 +18,8 @@ def declaration(signature):
         depth += (source[cursor] == "{") - (source[cursor] == "}")
         cursor += 1
     return source[start:cursor]
-method = declaration("@Override void render(Engine state)") + "\n" + declaration("@Override void updatePosition(Engine state)")
+method = (declaration("@Override void render(Engine state)") + "\n"
+          + declaration("@Override void updatePosition(Engine state, long frameTimeNanos)"))
 detect_language = declaration("String detectLanguage(LyricsResult value)")
 work = REPORTS / "inline-lifecycle"
 work.mkdir(parents=True, exist_ok=True)
@@ -37,7 +38,9 @@ public final class InlineLifecycleRegression {
         void setVisibility(int value) { visibility = value; }
         void setContentDescription(String value) { }
         void render(Engine state) { }
-        void updatePosition(Engine state) { }
+        void updatePosition(Engine state, long frameTimeNanos) { }
+        /** Outside a display frame, as from render() or the hidden-surface poll. */
+        final void updatePosition(Engine state) { updatePosition(state, 0L); }
     }
     static class SystemClock {
         static long now = 100;
@@ -77,12 +80,15 @@ public final class InlineLifecycleRegression {
         String sourceLanguage = "en";
         boolean loading, pronunciationLoading, translationLoading;
         long position() { return 1000; }
+        double positionAtFrame(long frameTimeNanos) { return 1000.25; }
         String ui(String key) { return key; }
 ''' + detect_language + r'''
     }
     static class MainLyricPreviewView {
         List<PreviewLine> rows = Collections.emptyList();
-        int sets, clears, ticks;
+        int sets, clears, ticks, frames;
+        double framePosition;
+        long frameTime;
         static class PreviewLine {
             final String text;
             PreviewLine(String text, boolean original) { this.text = text; }
@@ -93,6 +99,9 @@ public final class InlineLifecycleRegression {
             rows = value; sets++;
         }
         void setPlaybackPosition(long position, boolean playing) { ticks++; }
+        void setPlaybackFrame(double position, long frameTimeNanos, boolean playing) {
+            frames++; framePosition = position; frameTime = frameTimeNanos;
+        }
         void setTypographySettings(Object settings) { }
         void setKaraokeDisplayGranularity(String value) { }
         void setKaraokeBounceEffectEnabled(boolean value) { }
@@ -149,6 +158,10 @@ public final class InlineLifecycleRegression {
                 && view.preview.sets == 2 && view.preview.rows.size() == 1);
         view.updatePosition(state);
         check("normal playback still reuses row", view.preview.sets == 2 && view.preview.ticks == 1);
+        view.updatePosition(state, 16_666_667L);
+        check("display frame reuses row with its exact clock", view.preview.sets == 2 && view.preview.ticks == 1
+                && view.preview.frames == 1 && view.preview.framePosition == 1000.25
+                && view.preview.frameTime == 16_666_667L);
     }
     static void returnsFromMissingTrackAndToggle() {
         Inline view = new Inline(); Engine state = new Engine();
