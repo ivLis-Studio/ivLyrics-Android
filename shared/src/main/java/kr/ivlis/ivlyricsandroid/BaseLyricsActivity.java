@@ -14271,9 +14271,18 @@ public class BaseLyricsActivity extends Activity implements
             }
             return;
         }
-        if (lyricsPageVisible && lyricsView != null) {
+        if (lyricsView != null && (lyricsPageVisible || isClosingLyricsPageShown())) {
             lyricsView.setPlaybackFrame(positionMs, frameTimeNanos);
         }
+    }
+
+    /**
+     * A closed lyrics page slides away for its close animation and is hidden only when that
+     * ends. Until then it still shows the lyrics, which follow the frame clock as they did
+     * while it was open.
+     */
+    private boolean isClosingLyricsPageShown() {
+        return lyricsPage != null && lyricsPage.getVisibility() == View.VISIBLE && lyricsView.isShown();
     }
 
     /**

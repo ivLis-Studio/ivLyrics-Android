@@ -133,6 +133,49 @@ public final class RenderIdleRegression {
         void shrinkTextToFit(String text, float width, float initial, float min) {}
         void resetPaintEffects() {}
     }
+    /** The page's views as the per-frame feed sees them; feeds count each delivered clock. */
+    static class View {
+        static final int VISIBLE = 0, INVISIBLE = 4, GONE = 8;
+        int visibility = GONE;
+        int getVisibility() { return visibility; }
+    }
+    static class FedLyricsView extends View {
+        boolean shown;
+        int feeds;
+        double position = -1;
+        long frameTime = -1;
+        boolean isShown() { return shown; }
+        void setPlaybackFrame(double positionMs, long frameTimeNanos) { feeds++; position = positionMs; frameTime = frameTimeNanos; }
+        void setPlaybackPosition(long positionMs) { feeds++; position = positionMs; frameTime = 0; }
+    }
+    static abstract class FeedFields {
+        boolean lyricsPageVisible, pictureInPicture, landscape;
+        final View lyricsPage = new View();
+        final FedLyricsView lyricsView = new FedLyricsView(), landscapeLyricsView = new FedLyricsView(),
+                pictureInPictureLyricsView = new FedLyricsView();
+        boolean isPictureInPictureUiActive() { return pictureInPicture; }
+        boolean isLandscapeLayout() { return landscape; }
+        abstract void tick(double positionMs, long frameTimeNanos);
+        /** The lyrics page as the open/close transition leaves it: open, sliding away or hidden. */
+        void page(boolean open, int visibility) {
+            lyricsPageVisible = open;
+            lyricsPage.visibility = visibility;
+            lyricsView.shown = visibility == View.VISIBLE;
+        }
+        /** Display frames at 120 Hz from frame time 1000 ms, playing; returns the portrait feeds. */
+        int frames(int count, double startMs) {
+            int before = lyricsView.feeds;
+            for (int i = 0; i < count; i++) {
+                long frameTime = 1_000_000_000L + Math.round(i * 1e9 / 120d);
+                tick(startMs + i * 1000d / 120d, frameTime);
+                if (lyricsView.feeds == before + i + 1) {
+                    check(lyricsView.frameTime == frameTime || lyricsView.frameTime == 0,
+                            "A fed lyrics view receives this frame's clock");
+                }
+            }
+            return lyricsView.feeds - before;
+        }
+    }
 
     // INSERT_PRODUCTION_DECLARATIONS
 
@@ -296,8 +339,49 @@ public final class RenderIdleRegression {
         }
     }
 
+    /** The close slides the page away for 280 ms (34 frames at 120 Hz) before it is hidden. */
+    static void closingPageFeed() {
+        FeedFields baseline = new BaselineFeed(), candidate = new CandidateFeed();
+        for (FeedFields feed : List.of(baseline, candidate)) {
+            feed.page(true, View.VISIBLE);
+            check(feed.frames(12, 9000.25) == 12, "The open lyrics page is fed every frame");
+            check(feed.landscapeLyricsView.feeds == 0 && feed.pictureInPictureLyricsView.feeds == 0,
+                    "Only the visible renderer is fed");
+        }
+        baseline.page(false, View.VISIBLE);
+        candidate.page(false, View.VISIBLE);
+        int baselineClosing = baseline.frames(34, 9100.25);
+        int candidateClosing = candidate.frames(34, 9100.25);
+        check(baselineClosing == 0, "Frozen feed stopped as soon as the close began");
+        check(candidateClosing == 34 && candidate.lyricsView.position == 9100.25 + 33 * 1000d / 120d,
+                "A closed page keeps its frame clock while it slides away");
+        for (FeedFields feed : List.of(baseline, candidate)) {
+            feed.page(false, View.GONE);
+            check(feed.frames(120, 9400.25) == 0, "A hidden page is not fed");
+            feed.page(false, View.INVISIBLE);
+            check(feed.frames(12, 9600.25) == 0, "A page hidden beneath vinyl mode is not fed");
+        }
+        candidate.page(false, View.VISIBLE);
+        candidate.lyricsView.shown = false;
+        check(candidate.frames(12, 9700.25) == 0, "A lyrics view not on screen is not fed");
+        for (FeedFields feed : List.of(baseline, candidate)) {
+            feed.page(false, View.GONE);
+            feed.landscape = true;
+            feed.frames(6, 9800.25);
+            check(feed.landscapeLyricsView.feeds == 6, "Landscape still feeds its own renderer");
+            feed.landscape = false;
+            feed.pictureInPicture = true;
+            feed.page(false, View.VISIBLE);
+            check(feed.frames(6, 9900.25) == 0 && feed.pictureInPictureLyricsView.feeds == 6,
+                    "Picture-in-picture feeds only its renderer");
+            feed.pictureInPicture = false;
+        }
+        System.out.println("FEED closing_page_frames=34 baseline_fed=" + baselineClosing
+                + " candidate_fed=" + candidateClosing + " hidden_page_fed=0");
+    }
+
     public static void main(String[] args) {
-        offsetCache(); idlePolicies(); gradientsAndFrameReads();
+        offsetCache(); idlePolicies(); gradientsAndFrameReads(); closingPageFeed();
         System.out.println("Render idle regression: " + checks + " assertions passed.");
     }
 }

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Compare offset reads, idle rendering and loading geometry with frozen production code."""
+"""Compare offset reads, idle rendering, loading geometry and the frame feed with frozen production code."""
 from pathlib import Path
 import subprocess
 
 from regression_runtime import ROOT, SHARED, REPORTS, java_tool, json_jar
 
 BASELINE = "02ebb13f030650d50b7c5d59c7571b1c413f4d63"
+# The frame feed is compared with main before the smooth-lyrics work.
+FEED_BASELINE = "291b1e696ebc85ff879e69ecdf271fc5fd1c9093"
 
 
 def source(name, baseline):
@@ -77,18 +79,38 @@ def empty_renderer(baseline):
     return "static final class " + ("BaselineEmpty" if baseline else "CandidateEmpty") + " extends EmptyFields {" + declarations + "}"
 
 
+def feed(baseline):
+    """The page's per-frame feed of the lyrics renderers, called once per display frame."""
+    if baseline:
+        value = subprocess.check_output([
+            "git", "show", f"{FEED_BASELINE}:shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java"
+        ], cwd=ROOT, text=True)
+        declarations = declaration(value, "private void setLyricsPlaybackPositionOnActiveView(long positionMs)")
+        tick = "setLyricsPlaybackPositionOnActiveView((long) positionMs);"
+    else:
+        value = source("BaseLyricsActivity", False)
+        declarations = "\n".join(declaration(value, signature) for signature in (
+            "private void setLyricsFramePositionOnActiveView(double positionMs, long frameTimeNanos)",
+            "private boolean isClosingLyricsPageShown()",
+        ))
+        tick = "setLyricsFramePositionOnActiveView(positionMs, frameTimeNanos);"
+    return ("static final class " + ("BaselineFeed" if baseline else "CandidateFeed") + " extends FeedFields {"
+            + declarations + "\nvoid tick(double positionMs, long frameTimeNanos) {" + tick + "}\n}")
+
+
 work = REPORTS / "render-idle"
 work.mkdir(parents=True, exist_ok=True)
 test = work / "RenderIdleRegression.java"
 template = Path(__file__).with_name("RenderIdleRegression.java.in").read_text()
 test.write_text(template.replace("// INSERT_PRODUCTION_DECLARATIONS", "\n".join(
-    factory(baseline) for factory in (offsets, preview, empty_renderer) for baseline in (True, False)
+    factory(baseline) for factory in (offsets, preview, empty_renderer, feed) for baseline in (True, False)
 )))
 dependency = str(json_jar())
 subprocess.run([java_tool("javac"), "-cp", dependency, "-d", str(work), str(test)], check=True)
 result = subprocess.run([java_tool("java"), "-cp", str(work) + ":" + dependency,
                          "RenderIdleRegression"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-report = (f"Frozen baseline: {BASELINE}\nProduction methods with synthetic Android collaborators; actual JSON parser.\n"
+report = (f"Frozen baseline: {BASELINE} (frame feed: {FEED_BASELINE})\n"
+          "Production methods with synthetic Android collaborators; actual JSON parser.\n"
           + result.stdout)
 (work / "result.txt").write_text(report)
 print(report, end="")

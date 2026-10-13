@@ -62,6 +62,10 @@ cleanup, paused seeks/resume and effects, motion-setting changes while paused,
 empty/loading states, and loading gradient geometry across size/alpha changes.
 It counts JSON parsing, invalidation requests, gradient allocation and preference
 reads using synthetic Android collaborators and the pinned JSON dependency.
+It also runs the page's per-frame feed of the lyrics renderers against `291b1e6`:
+a closed lyrics page keeps receiving each frame's clock while its close animation
+slides it away (the frozen feed stopped as soon as the close began), while a hidden
+page, a page beneath vinyl mode, landscape and picture-in-picture are fed as before.
 The preview's frame-synchronized clock is also covered: a position supplied with a
 Choreographer frame time paints exactly that position (even when the drawing time leads
 it by one frame), a frame without a host tick continues on the same clock, and a
