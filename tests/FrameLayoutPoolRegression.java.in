@@ -9,6 +9,21 @@ public final class FrameLayoutPoolRegression {
     static final class DrawGroup {}
     static int assertions;
 
+    /** onSizeChanged's collaborators, counted; the production method is extracted below. */
+    static class ResizeFields {
+        final Map<String, List<Object>> rowLayoutCache = new HashMap<>();
+        int rowPrewarmIndex = 7;
+        int reflowClears;
+        int frameGroupClears;
+        int hitTargetReleases;
+        int prewarmSchedules;
+        protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {}
+        void clearRowReflow() { reflowClears++; }
+        void invalidateFrameGroupCache() { frameGroupClears++; }
+        void releaseHitTargets() { hitTargetReleases++; }
+        void scheduleRowPrewarm() { prewarmSchedules++; }
+    }
+
     // INSERT_PRODUCTION_DECLARATIONS
 
     static void check(boolean condition, String message) {
@@ -86,10 +101,37 @@ public final class FrameLayoutPoolRegression {
         check(renderer.allReleased(), "Large retained capacity contains no result references after clear");
     }
 
+    /** A page whose top padding follows a drag changes only the lyrics view's height, each frame. */
+    static void heightOnlyResizeKeepsWrappedRows() {
+        BaselineResize baseline = new BaselineResize();
+        baseline.rowLayoutCache.put("line:0:w:1184", new ArrayList<>());
+        baseline.onSizeChanged(1280, 2400, 1280, 2472);
+        check(baseline.rowLayoutCache.isEmpty() && baseline.prewarmSchedules == 1,
+                "Frozen baseline re-wrapped every row on each height change");
+
+        CandidateResize view = new CandidateResize();
+        view.rowLayoutCache.put("line:0:w:1184", new ArrayList<>());
+        view.onSizeChanged(1280, 2400, 1280, 2472);
+        check(view.rowLayoutCache.size() == 1, "A height-only resize keeps wrapped rows");
+        check(view.prewarmSchedules == 0 && view.rowPrewarmIndex == 7,
+                "A height-only resize starts no background re-wrap");
+        check(view.reflowClears == 1 && view.frameGroupClears == 1 && view.hitTargetReleases == 1,
+                "A height-only resize still resets reflow, frame groups and hit targets");
+        view.onSizeChanged(1000, 2400, 1280, 2400);
+        check(view.rowLayoutCache.isEmpty() && view.prewarmSchedules == 1 && view.rowPrewarmIndex == 0,
+                "A width change re-wraps every row");
+        check(view.reflowClears == 2 && view.frameGroupClears == 2 && view.hitTargetReleases == 2,
+                "A width change resets reflow, frame groups and hit targets");
+        view.onSizeChanged(1000, 2400, 1000, 2400);
+        check(view.reflowClears == 2 && view.prewarmSchedules == 1, "An unchanged size does nothing");
+    }
+
     public static void main(String[] args) {
         baselineOverflows();
         expandedFramesReuseAndRelease();
         ordinaryAndExactBoundaryFrames();
-        System.out.println("Frame layout pool: " + assertions + " assertions passed; baseline eleventh-row overflow reproduced.");
+        heightOnlyResizeKeepsWrappedRows();
+        System.out.println("Frame layout pool: " + assertions + " assertions passed; baseline eleventh-row overflow"
+                + " and per-height-change re-wrap reproduced.");
     }
 }

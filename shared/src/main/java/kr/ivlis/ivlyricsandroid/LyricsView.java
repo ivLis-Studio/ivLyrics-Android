@@ -1066,11 +1066,16 @@ public final class LyricsView extends View {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
         if (width != oldWidth || height != oldHeight) {
             clearRowReflow();
-            rowLayoutCache.clear();
+            // Wrapped rows depend on the width (part of their cache key), never on the height.
+            // A page whose top padding follows a drag changes only the height, every frame;
+            // re-wrapping every visible row each time made those frames several times slower.
+            if (width != oldWidth) {
+                rowLayoutCache.clear();
+                rowPrewarmIndex = 0;
+                scheduleRowPrewarm();
+            }
             invalidateFrameGroupCache();
             releaseHitTargets();
-            rowPrewarmIndex = 0;
-            scheduleRowPrewarm();
         }
     }
 

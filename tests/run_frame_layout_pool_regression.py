@@ -71,17 +71,33 @@ def renderer(value, name):
     """
 
 
+def resize(value, name):
+    method = declaration(value, "protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight)")
+    return "static final class " + name + "Resize extends ResizeFields {\n" + method + "\n}\n"
+
+
+# Wrapped rows are cached under a key that carries the content width, and wrapping never reads
+# the view height, so a height-only resize may keep them (see the resize checks).
+cached_rows = declaration(source, "private List<TextRow> cachedRows(")
+assert '":w:" + Math.round(contentWidth())' in cached_rows, "row cache key carries the content width"
+for signature in ("private List<TextRow> cachedRows(", "private List<TextRow> wrapSegments(",
+                  "private List<TextRow> wrapIndividualSegments(", "private List<TextRow> wrapWordUnits(",
+                  "private List<TextSegment> buildSegments(", "private float contentWidth("):
+    assert "getHeight()" not in declaration(source, signature), signature + " reads no view height"
+
+
 work = REPORTS / "frame-layout-pool"
 work.mkdir(parents=True, exist_ok=True)
 test = work / "FrameLayoutPoolRegression.java"
 template = Path(__file__).with_name("FrameLayoutPoolRegression.java.in").read_text()
 test.write_text(template.replace("// INSERT_PRODUCTION_DECLARATIONS",
-        renderer(baseline, "Baseline") + renderer(source, "Candidate")))
+        renderer(baseline, "Baseline") + renderer(source, "Candidate")
+        + resize(baseline, "Baseline") + resize(source, "Candidate")))
 subprocess.run([java_tool("javac"), "-d", str(work), str(test)], check=True)
 result = subprocess.run([java_tool("java"), "-cp", str(work), "FrameLayoutPoolRegression"],
                         text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 report = (f"Frozen baseline: {BASELINE}\n"
-          "Production onDraw range, LineLayout and FrameLineLayouts; synthetic row data only.\n"
+          "Production onDraw range, LineLayout, FrameLineLayouts and onSizeChanged; synthetic row data only.\n"
           + result.stdout)
 (work / "result.txt").write_text(report)
 print(report, end="")

@@ -51,8 +51,10 @@ The frame-layout-pool regression reproduces the eleventh-row overflow in frozen
 commit `1c8314c`, then runs the current production frame bounds and layout pool.
 It covers long sparse overlaps, normal/manual scrolling, backward seeks, capacity
 growth, object reuse and release of stale lyric references after shrinking or
-clearing a frame. It requires only a JDK and does not claim Android pixel or
-physical-device validation.
+clearing a frame. It also runs the production `onSizeChanged`: a height-only resize
+(the lyrics page's top padding follows a sheet drag) keeps the wrapped rows, whose
+cache key carries the width, while a width change still re-wraps them. It requires
+only a JDK and does not claim Android pixel or physical-device validation.
 
 The render-idle regression compares production methods with frozen commit
 `02ebb13`. It checks immediate offset preference changes and malformed JSON
