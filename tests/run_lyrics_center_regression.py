@@ -54,8 +54,15 @@ signatures = [
     "private void prepareAnchorOffsets(List<LineLayout> layouts, int anchorIndex, float blockGap)",
     "private float distanceBetween(LineLayout previous, LineLayout next, float blockGap)",
     "private void updatePlaybackPosition(long nextPositionMs, double nextFramePositionMs)",
+    "private void clearRowTravel()",
+    "private float updateRowTravel(",
+    "private float scrollOffsetAt(FrameLineLayouts layouts, float center, float blockGap)",
+    "private float rowTravelOffset(int rowIndex, long frameNanos)",
+    "private double travelWindowMs(List<DisplayLine> displayLines, int targetIndex)",
 ]
 production = "\n\n".join(declaration(source, signature) for signature in signatures)
+# The row travel spring/cascade is package-private production code; nest it verbatim.
+production += "\n\nstatic " + declaration((SHARED / "LyricsLineMotion.java").read_text(), "final class LyricsLineMotion {")
 baseline = subprocess.check_output(["git", "show", "3f238d1a503b2b400cbebd369857428ab837ae83:shared/src/main/java/kr/ivlis/ivlyricsandroid/LyricsView.java"], cwd=ROOT, text=True)
 production += "\n" + declaration(baseline, "private float offsetFromAnchor(List<LineLayout> layouts, int anchorIndex, int targetIndex, float blockGap)")
 production = production.replace("return previous.height * 0.5f + blockGap + next.height * 0.5f;", "distanceCalls++; return previous.height * 0.5f + blockGap + next.height * 0.5f;")
@@ -72,7 +79,7 @@ result = subprocess.run([java_tool("java"), "-cp", str(WORK), "LyricsCenterRegre
 report = (f"Source: {SOURCE}\n"
           f"Source SHA256: {hashlib.sha256(source.encode()).hexdigest()}\n"
           f"Production declarations SHA256: {hashlib.sha256(production.encode()).hexdigest()}\n"
-          "Scope: production remap/reflow/easing/row-distance/cleanup functions; fixed block heights, no Android rasterization.\n"
+          "Scope: production remap/reflow/easing/row-distance/cleanup and row-travel functions; fixed block heights, no Android rasterization.\n"
           + result.stdout)
 (WORK / "result.txt").write_text(report)
 print(report, end="")

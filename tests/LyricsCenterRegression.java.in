@@ -37,7 +37,14 @@ public final class LyricsCenterRegression extends TestView {
     private boolean vocalAnchorOffsetInitialized;
     private int retainedVocalAnchorSourceIndex, rowPrewarmIndex;
     private float retainedVocalAnchorOffsetPx;
+    // Row travel state used by the extracted production travel functions.
+    private static final int TRAVEL_REST = 0, TRAVEL_TARGET = 1, TRAVEL_FOLLOW = 2, MAX_ROW_SHIFTS = 8;
+    private boolean centerSnapped;
+    private final List<LyricsLineMotion.Shift> rowShifts = new ArrayList<>();
+    private int rowTravelMode = TRAVEL_REST;
+    private float rowTravelCenter = Float.NaN;
     private double framePositionMs;
+    private float scrollPixelsPerIndex = 1f;
     private static int assertions;
     private static final float GAP = 32f;
     private static final float CENTER_Y = 960f;
@@ -80,10 +87,15 @@ public final class LyricsCenterRegression extends TestView {
         final Object line;
         final InterludeInfo interludeInfo;
         RowReflow reflow;
+        long start = -1L;
         DisplayLine(int source, boolean virtual, InterludeInfo interlude) {
             sourceIndex = source; line = virtual ? null : new Object(); interludeInfo = interlude;
         }
         boolean isInterlude() { return interludeInfo != null; }
+        boolean isTimed() { return true; }
+        long startTimeMs() {
+            return start >= 0L ? start : isInterlude() ? interludeInfo.startTimeMs : 1000L + sourceIndex * 4000L;
+        }
     }
     static final class LineLayout {
         int index;
@@ -443,6 +455,196 @@ public final class LyricsCenterRegression extends TestView {
         System.out.println("PASS short 501ms interlude: centering retarget preserves monotonic row motion");
     }
 
+
+    private FrameLineLayouts travelRows(int count, float height, int anchor) {
+        FrameLineLayouts rows = new FrameLineLayouts();
+        for (int i = 0; i < count; i++) rows.add(new LineLayout(i, height));
+        prepareAnchorOffsets(rows, anchor, GAP);
+        return rows;
+    }
+
+    /** onDraw's row placement: the resting layout plus the row's remaining travel. */
+    private float travelY(FrameLineLayouts rows, int row, float restingCenter, long nanos) {
+        return CENTER_Y + layoutAt(rows, row).anchorOffset - scrollOffsetAt(rows, restingCenter, GAP)
+                + rowTravelOffset(row, nanos);
+    }
+
+    private static List<DisplayLine> timedLines(int count, long spacingMs) {
+        List<DisplayLine> result = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            DisplayLine line = lyric(i);
+            line.start = 1000L + i * spacingMs;
+            result.add(line);
+        }
+        return result;
+    }
+
+    private void playbackTarget(int target) {
+        frameAnimationsEnabled = true;
+        centerInitialized = true;
+        centerSnapped = false;
+        manualScrollActive = false;
+        smoothSeekCenterActive = false;
+        centerTransitionTargetIndex = target;
+    }
+
+    /** At rest on 1, then a one-line advance to 2 planned at t1. */
+    private void advance(List<DisplayLine> lines, FrameLineLayouts rows, long t0, long t1) {
+        clearRowTravel();
+        setCenter(1f, 1f, 1);
+        playbackTarget(1);
+        updateRowTravel(lines, rows, t0, GAP);
+        playbackTarget(2);
+        updateRowTravel(lines, rows, t1, GAP);
+    }
+
+    private void monotonicLanding(FrameLineLayouts rows, int count, float rest, long from, float[] startY, String name) {
+        for (int r = 0; r < count; r++) {
+            float target = rowY(rows, r, rest);
+            float previous = startY[r];
+            for (long t = from; t <= from + 1000L * 1_000_000L; t += 1_000_000L) {
+                float y = travelY(rows, r, rest, t);
+                require(y <= previous + .0001f && y >= target - .0001f, name + ": monotonic travel without overshoot, row " + r);
+                previous = y;
+            }
+            equal(target, previous, .0002f, name + ": row lands on the resting geometry");
+        }
+    }
+
+    private void rowTravel() {
+        final long ms = 1_000_000L;
+        final int count = 9;
+        final float pitch = 100f + GAP;
+        FrameLineLayouts rows = travelRows(count, 100f, 1);
+        List<DisplayLine> lines = timedLines(count, 4000L);
+        long t0 = 5_000L * ms, t1 = t0 + 8_333_333L;
+
+        clearRowTravel();
+        setCenter(1f, 1f, 1);
+        playbackTarget(1);
+        float rest = updateRowTravel(lines, rows, t0, GAP);
+        require(rest == 1f && rowShifts.isEmpty(), "first frame rests without travel");
+        float[] startY = new float[count];
+        for (int r = 0; r < count; r++) {
+            startY[r] = travelY(rows, r, rest, t0);
+            require(Float.floatToIntBits(rowY(rows, r, 1f)) == Float.floatToIntBits(startY[r]),
+                    "resting rows keep the exact previous geometry");
+        }
+
+        playbackTarget(2);
+        rest = updateRowTravel(lines, rows, t1, GAP);
+        require(rest == 2f && rowShifts.size() == 1 && rowShifts.get(0).cascade, "one-line advance plans one cascaded shift");
+        equal(1f, animatedCenterIndex, 0f, "row travel never moves the presentation center");
+        equal(pitch, rowShifts.get(0).offsetPx, .0001f, "rows travel exactly one row pitch");
+        LyricsLineMotion.Timing timing = LyricsLineMotion.timing(4000d);
+        equal(560f, (float) timing.durationMs, 0f, "a 4s line gets the full 560ms spring");
+        for (int r = 0; r < count; r++) {
+            equal(startY[r], travelY(rows, r, rest, t1), .0001f, "travel starts at the row's screen Y");
+            long leave = t1 + (long) Math.ceil(LyricsLineMotion.delay(r - 2, timing) * ms);
+            equal(startY[r], travelY(rows, r, rest, leave), .0001f, "row waits for its cascade delay");
+            float moved = startY[r] - travelY(rows, r, rest, leave + ms);
+            require(moved >= 0f && moved < .1f, "row leaves rest with zero velocity, moved " + moved);
+        }
+        long probe = t1 + 100L * ms;
+        for (int r = 0; r <= 2; r++) {
+            equal(travelY(rows, 2, rest, probe) - startY[2], travelY(rows, r, rest, probe) - startY[r], .0001f,
+                    "rows at and above the target move together");
+        }
+        for (int r = 3; r < count; r++) {
+            float moved = startY[r] - travelY(rows, r, rest, probe);
+            float movedAbove = startY[r - 1] - travelY(rows, r - 1, rest, probe);
+            require(moved <= movedAbove + .0001f && (movedAbove < .5f || moved < movedAbove - .5f),
+                    "each row below trails the row above it");
+        }
+        equal(50f, (float) LyricsLineMotion.delay(1, timing), .0001f, "first trailing step is 50ms");
+        equal(50f + 50f / 1.05f, (float) LyricsLineMotion.delay(2, timing), .0001f, "steps shrink by 1/1.05");
+        equal(260f, (float) LyricsLineMotion.delay(40, timing), .0001f, "cascade is capped at 260ms");
+        equal(pitch * (float) (1d - LyricsLineMotion.progress(.5d)), travelY(rows, 2, rest, t1 + 280L * ms) - rowY(rows, 2, 2f),
+                .001f, "anchor follows the critically damped spring");
+        monotonicLanding(rows, count, rest, t1, startY, "advance");
+
+        // A second advance while rows are still moving keeps each row's position and velocity.
+        advance(lines, rows, t0, t1);
+        long t2 = t1 + 150L * ms;
+        float[] beforeY = new float[count], beforeV = new float[count];
+        for (int r = 0; r < count; r++) {
+            beforeY[r] = travelY(rows, r, 2f, t2);
+            beforeV[r] = beforeY[r] - travelY(rows, r, 2f, t2 - ms);
+        }
+        playbackTarget(3);
+        rest = updateRowTravel(lines, rows, t2, GAP);
+        require(rest == 3f && rowShifts.size() == 2, "retarget adds a second shift");
+        for (int r = 0; r < count; r++) {
+            equal(beforeY[r], travelY(rows, r, rest, t2), .001f, "retarget keeps the row's screen Y");
+            equal(beforeV[r], travelY(rows, r, rest, t2 + ms) - travelY(rows, r, rest, t2), .05f,
+                    "retarget keeps the row's velocity");
+        }
+        monotonicLanding(rows, count, rest, t2, beforeY, "retarget");
+
+        // A rapid passage scales the whole budget so every row lands before the next line.
+        List<DisplayLine> rapid = timedLines(count, 450L);
+        advance(rapid, rows, t0, t1);
+        require(rowShifts.size() == 1 && rowShifts.get(0).cascade, "rapid line still cascades");
+        for (int r = 0; r < count; r++) {
+            equal(0f, rowTravelOffset(r, t1 + (450L - 24L) * ms), 0f, "rapid line: every row lands before the next");
+        }
+        advance(timedLines(count, 60L), rows, t0, t1);
+        require(rowShifts.isEmpty(), "lines 60ms apart snap without travel");
+
+        // Snaps, disabled motion and multi-line jumps.
+        advance(lines, rows, t0, t1);
+        centerSnapped = true;
+        updateRowTravel(lines, rows, t1 + 9L * ms, GAP);
+        require(rowShifts.isEmpty(), "a presentation snap drops travel");
+        centerSnapped = false;
+        updateRowTravel(lines, rows, t1 + 18L * ms, GAP);
+        require(rowShifts.isEmpty(), "the frame after a snap rests");
+        advance(lines, rows, t0, t1);
+        frameAnimationsEnabled = false;
+        updateRowTravel(lines, rows, t1 + 9L * ms, GAP);
+        require(rowShifts.isEmpty(), "reduced motion has no travel");
+        clearRowTravel();
+        setCenter(3f, 3f, 3);
+        playbackTarget(3);
+        updateRowTravel(lines, rows, t0, GAP);
+        playbackTarget(1);
+        updateRowTravel(lines, rows, t1, GAP);
+        require(rowShifts.size() == 1 && !rowShifts.get(0).cascade, "backward two-line change travels without cascade");
+
+        // Manual browsing: entering it keeps rows in place, then rows follow the finger rigidly.
+        advance(lines, rows, t0, t1);
+        long t3 = t1 + 120L * ms;
+        float[] y3 = new float[count];
+        for (int r = 0; r < count; r++) y3[r] = travelY(rows, r, 2f, t3);
+        manualScrollActive = true;
+        animatedCenterIndex = 1.6f;
+        rest = updateRowTravel(lines, rows, t3, GAP);
+        require(rest == 1.6f && rowShifts.size() == 2 && !rowShifts.get(1).cascade, "manual browsing follows its own center");
+        for (int r = 0; r < count; r++) equal(y3[r], travelY(rows, r, rest, t3), .001f, "entering manual browsing keeps rows in place");
+        animatedCenterIndex = 1.9f;
+        rest = updateRowTravel(lines, rows, t3 + 8L * ms, GAP);
+        require(rowShifts.size() == 2, "dragging itself adds no travel");
+        for (int r = 0; r < count; r++) {
+            equal(rowY(rows, r, 1.9f), travelY(rows, r, rest, t3 + 2000L * ms), .0002f, "browsing rows settle under the finger");
+        }
+        manualScrollActive = false;
+
+        // Remapped display rows keep travel on the same rows.
+        advance(lines, rows, t0, t1);
+        List<DisplayLine> withBreak = new ArrayList<>(lines);
+        withBreak.add(1, interlude(0, true, 3000L, 4500L));
+        manualScroller = null;
+        previousFrameLayouts.clear();
+        remapDisplayCenter(lines, withBreak);
+        require(rowTravelCenter == 3f && centerTransitionTargetIndex == 3 && rowShifts.get(0).anchorIndex == 3f,
+                "an inserted row moves the travel center and cascade anchor with their rows");
+        updateRowTravel(withBreak, rows, t1 + 9L * ms, GAP);
+        require(rowShifts.size() == 1, "a remapped target is not a new travel");
+        clearRowTravel();
+        System.out.println("PASS row travel: exact resting geometry, spring with cascade, retarget continuity, rapid budget, snaps, manual follow, remap");
+    }
+
+
     private void anchorOffsetsContract() {
         java.util.Random random = new java.util.Random(128);
         FrameLineLayouts pool = new FrameLineLayouts();
@@ -488,6 +690,7 @@ public final class LyricsCenterRegression extends TestView {
         subject.reflowCleanup();
         subject.insertedRowMotion();
         subject.shortInterludeRetarget();
+        subject.rowTravel();
         System.out.println("LYRICS_CENTER_REGRESSION_PASSED assertions=" + assertions);
     }
 }

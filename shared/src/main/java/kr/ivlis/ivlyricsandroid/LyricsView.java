@@ -62,6 +62,12 @@ public final class LyricsView extends View {
     private static final long LYRICS_CENTERING_MAX_STAGGER_MS = 112L;
     private static final long LYRICS_CENTERING_SETTLE_RESERVE_MS = 24L;
     private static final long LYRICS_CENTERING_MIN_TOTAL_MS = 80L;
+    // Row travel planning: rows rest on the target's layout, follow the manual or
+    // smooth-seek center rigidly, or snap.
+    private static final int TRAVEL_REST = 0;
+    private static final int TRAVEL_TARGET = 1;
+    private static final int TRAVEL_FOLLOW = 2;
+    private static final int MAX_ROW_SHIFTS = 8;
     private static final float[] EFFECT_TRANSLATE_X = {0f, -0.5f, 0.45f, -0.25f};
     private static final float[] EFFECT_TRANSLATE_Y = {0f, 0.25f, -0.25f, -0.35f};
     private static final long INTERLUDE_MIN_DURATION_MS = 500L;
@@ -104,6 +110,7 @@ public final class LyricsView extends View {
     private boolean frameAnimationsEnabled;
     private boolean frameHasLiveEffects;
     private boolean frameProbeEnabled;
+    private long frameProbeHostCallNanos;
     private final StringBuilder frameProbeLine = new StringBuilder(384);
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
@@ -142,6 +149,11 @@ public final class LyricsView extends View {
     private double framePositionMs;
     /** Choreographer frame time supplied with {@link #framePositionMs}; System.nanoTime() clock. */
     private long hostFrameTimeNanos;
+    /** Set by the host for the frame in progress; consumed by that frame's draw. */
+    private boolean hostFrameFresh;
+    /** Drawing time minus the host's frame time, last observed; estimates frames without a host. */
+    private long hostFrameOffsetNanos;
+    private boolean frameUsedHostTime;
     private String emptyMessage = AppI18n.t("en", "status.lyrics_waiting");
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
     private String emptyFallbackMessage = AppI18n.t("en", "lyrics.empty_none");
@@ -170,6 +182,12 @@ public final class LyricsView extends View {
     private int centerTransitionTargetIndex = Integer.MIN_VALUE;
     private long centerTransitionStartUptimeMs;
     private long centerTransitionDurationMs = LYRICS_CENTERING_DURATION_MS;
+    private boolean centerSnapped;
+    // Row travel: shifts still to cover toward the resting layout; presentation keeps
+    // animatedCenterIndex and its own curve.
+    private final List<LyricsLineMotion.Shift> rowShifts = new ArrayList<>();
+    private int rowTravelMode = TRAVEL_REST;
+    private float rowTravelCenter = Float.NaN;
     private final List<DisplayLine> rowReflowLines = new ArrayList<>();
     private boolean rowReflowPending;
     private boolean rowReflowActive;
@@ -246,6 +264,7 @@ public final class LyricsView extends View {
         centerInitialized = false;
         centerTransitionTargetIndex = Integer.MIN_VALUE;
         centerTransitionStartUptimeMs = 0L;
+        clearRowTravel();
         lastFrameMs = 0L;
         animatedVocalAnchorOffsetPx = 0f;
         vocalAnchorTransitionStartPx = 0f;
@@ -605,6 +624,8 @@ public final class LyricsView extends View {
     void setPlaybackFrame(double positionMs, long frameTimeNanos) {
         double exact = Double.isFinite(positionMs) ? Math.max(0d, positionMs) : 0d;
         hostFrameTimeNanos = frameTimeNanos;
+        hostFrameFresh = frameTimeNanos > 0L;
+        if (frameProbeEnabled) frameProbeHostCallNanos = System.nanoTime();
         updatePlaybackPosition((long) Math.floor(exact), exact);
     }
 
@@ -856,6 +877,7 @@ public final class LyricsView extends View {
 
         int activeIndex = findActiveDisplayIndex(displayLines);
         int visualCenterIndex = findVisualCenterDisplayIndex(displayLines, activeIndex);
+        centerSnapped = false;
         updateDisplayCenter(visualCenterIndex, adaptiveCenteringDuration(displayLines, visualCenterIndex));
 
         int anchorIndex = Math.max(0, Math.min(displayLines.size() - 1, (int) Math.floor(animatedCenterIndex)));
@@ -905,12 +927,6 @@ public final class LyricsView extends View {
 
         float centerY = getHeight() * verticalCenterBias;
         float blockGap = Math.max(sp(BLOCK_GAP_SP), getHeight() * 0.037f);
-        float anchorFraction = clamp(animatedCenterIndex - anchorIndex);
-        LineLayout anchorLayout = layoutAt(layouts, anchorIndex);
-        LineLayout nextLayout = layoutAt(layouts, anchorIndex + 1);
-        float scrollOffset = anchorLayout != null && nextLayout != null
-                ? anchorFraction * distanceBetween(anchorLayout, nextLayout, blockGap)
-                : 0f;
         updateScrollPixelsPerIndex(layouts, blockGap);
         float targetVocalAnchorOffset = manualScrollActive
                 ? 0f
@@ -920,11 +936,15 @@ public final class LyricsView extends View {
         prepareRowReflow();
         float reflowRemaining = rowReflowRemaining();
         prepareAnchorOffsets(layouts, anchorIndex, blockGap);
+        long frameNanos = frameTimeNanos();
+        float restingCenter = updateRowTravel(displayLines, layouts, frameNanos, blockGap);
+        float restingScroll = scrollOffsetAt(layouts, restingCenter, blockGap);
 
         beginHitTargetFrame();
         int lyricLayer = canvas.saveLayer(edgeFadeBounds(0f, 0f, getWidth(), getHeight()), null);
         for (LineLayout layout : layouts) {
-            float baselineCenter = anchoredCenterY + layout.anchorOffset - scrollOffset;
+            float baselineCenter = anchoredCenterY + layout.anchorOffset - restingScroll
+                    + rowTravelOffset(layout.index, frameNanos);
             RowReflow reflow = layout.displayLine.reflow;
             if (reflow != null) {
                 baselineCenter += reflow.offset(baselineCenter, reflowRemaining);
@@ -946,7 +966,7 @@ public final class LyricsView extends View {
         applyBottomEdgeFade(canvas);
         canvas.restoreToCount(lyricLayer);
         if (frameProbeEnabled) {
-            logFrameProbe(frameProbeStartNs, activeIndex, visualCenterIndex, layouts);
+            logFrameProbe(frameProbeStartNs, activeIndex, visualCenterIndex, layouts, frameNanos, restingCenter);
         }
 
         boolean activeInterlude = activeIndex >= 0
@@ -958,13 +978,14 @@ public final class LyricsView extends View {
         if (frameAnimationsEnabled
                 && (frameHasLiveEffects || activeInterlude || Math.abs(visualCenterIndex - animatedCenterIndex) > 0.002f)) {
             postInvalidateOnAnimation();
-        } else if (vocalAnchorMoving || rowReflowActive) {
+        } else if (vocalAnchorMoving || rowReflowActive || !rowShifts.isEmpty()) {
             postInvalidateOnAnimation();
         }
     }
 
     /** Debug-only: one line per drawn frame with the values this frame painted. */
-    private void logFrameProbe(long startNs, int activeIndex, int targetIndex, List<LineLayout> layouts) {
+    private void logFrameProbe(long startNs, int activeIndex, int targetIndex, List<LineLayout> layouts,
+            long frameNanos, float restingCenter) {
         LineLayout activeLayout = layoutAt(layouts, activeIndex);
         double fillPx = 0d;
         float lift = 0f;
@@ -986,14 +1007,21 @@ public final class LyricsView extends View {
         }
         StringBuilder line = frameProbeLine;
         line.setLength(0);
-        line.append("LV vsync=").append(getDrawingTime()).append(" hostMs=");
+        line.append("LV vsync=").append(getDrawingTime()).append(" vsyncExact=");
+        LyricsFrameProbe.appendFixed(line, frameNanos / 1_000_000d, 4);
+        line.append(" host=").append(frameUsedHostTime ? 1 : 0).append(" hostMs=");
         LyricsFrameProbe.appendFixed(line, hostFrameTimeNanos / 1_000_000d, 4);
+        line.append(" hostCallAgo=");
+        LyricsFrameProbe.appendFixed(line, (startNs - frameProbeHostCallNanos) / 1_000_000d, 3);
         line.append(" draw=");
         LyricsFrameProbe.appendFixed(line, startNs / 1_000_000d, 3);
         line.append(" pos=").append(positionMs).append(" posExact=");
         LyricsFrameProbe.appendFixed(line, framePositionMs, 4);
         line.append(" active=").append(activeIndex).append(" target=").append(targetIndex).append(" center=");
         LyricsFrameProbe.appendFixed(line, animatedCenterIndex, 4);
+        line.append(" rest=");
+        LyricsFrameProbe.appendFixed(line, restingCenter, 4);
+        line.append(" shifts=").append(rowShifts.size());
         line.append(" fillPx=");
         LyricsFrameProbe.appendFixed(line, fillPx, 3);
         line.append(" lift=");
@@ -1270,6 +1298,7 @@ public final class LyricsView extends View {
             centerTransitionStartUptimeMs = now;
             centerTransitionDurationMs = Math.max(1L, durationMs);
             centerInitialized = true;
+            centerSnapped = true;
             smoothSeekCenterActive = false;
             lastFrameMs = now;
             return;
@@ -1443,6 +1472,140 @@ public final class LyricsView extends View {
         if (manualScroller != null) {
             manualScroller.abortAnimation();
         }
+    }
+
+    /**
+     * The frame time of this draw on the Choreographer frame-callback clock: the host's
+     * time when it ticked this frame (the usual case), otherwise the drawing time moved by
+     * the last observed difference so animations never switch clocks. Call once per draw.
+     */
+    private long frameTimeNanos() {
+        long drawingTimeMs = getDrawingTime();
+        long drawingNanos = drawingTimeMs > 0L ? drawingTimeMs * 1_000_000L : System.nanoTime();
+        frameUsedHostTime = hostFrameFresh;
+        if (hostFrameFresh) {
+            hostFrameFresh = false;
+            // getDrawingTime() may lead the frame-callback time by one frame interval.
+            hostFrameOffsetNanos = Math.max(0L, Math.min(34_000_000L, drawingNanos - hostFrameTimeNanos));
+            return hostFrameTimeNanos;
+        }
+        return drawingNanos - hostFrameOffsetNanos;
+    }
+
+    /**
+     * Plans this frame's row travel and returns the display index the rows rest on.
+     * During playback the rows rest on the centering target and travel there on a
+     * spring; a one-line advance cascades, rows below the target trailing. Manual
+     * scrolling and smooth seeks keep the presentation center, which the rows follow
+     * rigidly as before. Snaps, jumps and disabled animations drop any travel.
+     */
+    private float updateRowTravel(
+            List<DisplayLine> displayLines,
+            FrameLineLayouts layouts,
+            long frameNanos,
+            float blockGap
+    ) {
+        int mode;
+        float center;
+        if (!frameAnimationsEnabled || !centerInitialized || centerSnapped) {
+            mode = TRAVEL_REST;
+            center = animatedCenterIndex;
+        } else if (manualScrollActive || smoothSeekCenterActive
+                || centerTransitionTargetIndex < 0 || centerTransitionTargetIndex >= displayLines.size()) {
+            mode = TRAVEL_FOLLOW;
+            center = animatedCenterIndex;
+        } else {
+            mode = TRAVEL_TARGET;
+            center = centerTransitionTargetIndex;
+        }
+        float previousCenter = rowTravelCenter;
+        int previousMode = rowTravelMode;
+        rowTravelMode = mode;
+        rowTravelCenter = center;
+        for (int index = rowShifts.size() - 1; index >= 0; index--) {
+            if (rowShifts.get(index).finishedAt(frameNanos)) rowShifts.remove(index);
+        }
+        if (mode == TRAVEL_REST || previousMode == TRAVEL_REST || Float.isNaN(previousCenter)
+                || Math.abs(center - previousCenter) > 3.2f) {
+            rowShifts.clear();
+            return center;
+        }
+        if (mode == previousMode && (mode != TRAVEL_TARGET || center == previousCenter)) {
+            return center;
+        }
+        LyricsLineMotion.Timing timing;
+        boolean cascade = false;
+        if (mode == TRAVEL_TARGET && previousMode == TRAVEL_TARGET) {
+            double windowMs = travelWindowMs(displayLines, centerTransitionTargetIndex);
+            if (windowMs > 0d && windowMs < LyricsLineMotion.MIN_TOTAL_MS) {
+                // Too close to the next line for any travel: the rows snap, as before.
+                rowShifts.clear();
+                return center;
+            }
+            timing = LyricsLineMotion.timing(windowMs);
+            cascade = center == previousCenter + 1f;
+        } else {
+            // Entering or leaving a followed center keeps every row where it is.
+            timing = LyricsLineMotion.timing(-1d);
+        }
+        float shift = scrollOffsetAt(layouts, center, blockGap) - scrollOffsetAt(layouts, previousCenter, blockGap);
+        if (Math.abs(shift) >= 0.25f) {
+            if (rowShifts.size() >= MAX_ROW_SHIFTS) rowShifts.clear();
+            rowShifts.add(new LyricsLineMotion.Shift(shift, frameNanos, timing, cascade, center));
+        }
+        return center;
+    }
+
+    /** Distance from the anchor row's baseline center to the fractional display index. */
+    private float scrollOffsetAt(FrameLineLayouts layouts, float center, float blockGap) {
+        if (layouts.isEmpty() || Float.isNaN(center)) {
+            return 0f;
+        }
+        int base = (int) Math.floor(center);
+        LineLayout layout = layoutAt(layouts, base);
+        if (layout != null) {
+            LineLayout next = layoutAt(layouts, base + 1);
+            return next != null
+                    ? layout.anchorOffset + clamp(center - base) * distanceBetween(layout, next, blockGap)
+                    : layout.anchorOffset;
+        }
+        // Outside the prepared rows: continue at the average row pitch.
+        LineLayout edge = center < layouts.get(0).index ? layouts.get(0) : layouts.get(layouts.size() - 1);
+        return edge.anchorOffset + (center - edge.index) * scrollPixelsPerIndex;
+    }
+
+    /** Remaining travel of one display row; zero once every shift has arrived. */
+    private float rowTravelOffset(int rowIndex, long frameNanos) {
+        float offset = 0f;
+        for (int index = 0; index < rowShifts.size(); index++) {
+            offset += rowShifts.get(index).offsetAt(rowIndex, frameNanos);
+        }
+        return offset;
+    }
+
+    /** Time from the target line's start to the next line start; negative for the last line. */
+    private double travelWindowMs(List<DisplayLine> displayLines, int targetIndex) {
+        if (targetIndex < 0 || targetIndex >= displayLines.size()) {
+            return -1d;
+        }
+        DisplayLine target = displayLines.get(targetIndex);
+        if (!target.isTimed()) {
+            return -1d;
+        }
+        long targetStart = target.startTimeMs();
+        for (int index = targetIndex + 1; index < displayLines.size(); index++) {
+            DisplayLine candidate = displayLines.get(index);
+            if (candidate.isTimed() && candidate.startTimeMs() > targetStart) {
+                return candidate.startTimeMs() - targetStart;
+            }
+        }
+        return -1d;
+    }
+
+    private void clearRowTravel() {
+        rowShifts.clear();
+        rowTravelMode = TRAVEL_REST;
+        rowTravelCenter = Float.NaN;
     }
 
     private void updateScrollPixelsPerIndex(List<LineLayout> layouts, float blockGap) {
@@ -4006,6 +4169,14 @@ public final class LyricsView extends View {
         centerTransitionStartIndex = mappedStart;
         centerTransitionTargetIndex = mapping.mapTarget(centerTransitionTargetIndex);
         manualCenterIndex = mapping.map(manualCenterIndex);
+        // Row travel keeps the same rows: its resting center and cascade anchors move
+        // with them; the shifts themselves are pixels.
+        if (!Float.isNaN(rowTravelCenter)) {
+            rowTravelCenter = mapping.map(rowTravelCenter);
+        }
+        for (LyricsLineMotion.Shift shift : rowShifts) {
+            shift.anchorIndex = mapping.map(shift.anchorIndex);
+        }
         currentDisplayLineCount = next.size();
         if (manualScroller != null && !manualScroller.isFinished()) {
             // OverScroller still contains pixels in the old index coordinate system.

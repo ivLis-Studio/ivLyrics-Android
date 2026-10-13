@@ -52,3 +52,16 @@ Canvas rendering, real audio timing, or the device UI. The physical playback
 check remains a separate validation step.
 
 The prepared anchor offsets are compared bit-for-bit with frozen 1.3.18 `offsetFromAnchor` across 1,000 windows that reuse row instances while changing anchor, start index, height, gap and count. The original fractional-center/reflow/seek checks consume the new prepared offsets. Default ten-row geometry computes 9 distances instead of 25; no device FPS claim.
+
+Row travel runs the production planner (`updateRowTravel`, `scrollOffsetAt`,
+`rowTravelOffset`, `travelWindowMs`) with the package-private `LyricsLineMotion`
+nested verbatim, on fixed-height rows and a nanosecond frame clock. Resting rows keep the
+previous geometry bit-for-bit. A one-line advance plans one cascaded shift of exactly
+one row pitch and never moves the presentation center; every row starts at its screen
+Y, waits for its cascade delay (50ms steps shrinking by 1/1.05, capped at 260ms), leaves
+with zero velocity, follows the k = 7.5 / 560ms spring and lands monotonically on the
+previous resting geometry. A second advance during the travel keeps each row's position
+and velocity. A 450ms line scales the budget so every row lands before the next line;
+lines 60ms apart, presentation snaps and reduced motion travel nothing. Entering manual
+browsing keeps rows in place before they follow the finger, and remapped display rows
+keep their travel. These are coordinate/timing checks, not device rendering.
