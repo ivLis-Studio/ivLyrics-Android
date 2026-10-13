@@ -94,6 +94,8 @@ final class MainLyricPreviewView extends View {
     private boolean frameAnimationsEnabled;
     private long frameUptimeMs;
     private long frameWallTimeMs;
+    private boolean frameProbeEnabled;
+    private final StringBuilder frameProbeLine = new StringBuilder(160);
     private String lyricTextAlignment = AiLyricsSettings.LYRICS_ALIGN_CENTER;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
@@ -260,12 +262,19 @@ final class MainLyricPreviewView extends View {
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        frameProbeEnabled = LyricsFrameProbe.enabled(getContext());
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (lines.isEmpty()) {
             return;
         }
 
+        long frameProbeStartNs = frameProbeEnabled ? System.nanoTime() : 0L;
         float totalHeight = desiredContentHeight();
         float top = Math.max(0f, (getHeight() - totalHeight) * 0.5f);
         long position = estimatedPositionMs();
@@ -311,11 +320,40 @@ final class MainLyricPreviewView extends View {
             applyEdgeFadeMask(canvas, left, width);
         }
         canvas.restoreToCount(save);
+        if (frameProbeEnabled) {
+            logFrameProbe(frameProbeStartNs, position);
+        }
 
         if (!externallyDriven && frameAnimationsEnabled && ((playing && lineEndMs > lineStartMs && position < lineEndMs + 700L && (overflow || hasKaraokeLine()))
                 || hasAnimatedLine())) {
             postInvalidateOnAnimation();
         }
+    }
+
+    /** Debug-only: the karaoke values this preview frame painted. */
+    private void logFrameProbe(long startNs, long position) {
+        double fillPx = 0d;
+        float lift = 0f;
+        for (PreviewLine line : lines) {
+            if (!line.hasKaraoke() || isLineDisplayGranularity()) continue;
+            float textSize = sp(textSizeSp(line));
+            for (TextSegment segment : textSegments(line)) {
+                fillPx += segment.textWidth * segmentFillFraction(segment, position);
+                KaraokeMotion.Values bounce = karaokeBounce(segment, position, textSize);
+                if (bounce.active && bounce.offsetY < lift) lift = bounce.offsetY;
+            }
+            break;
+        }
+        StringBuilder line = frameProbeLine;
+        line.setLength(0);
+        line.append("PV").append(externallyDriven ? "x" : "").append(" vsync=").append(getDrawingTime()).append(" draw=");
+        LyricsFrameProbe.appendFixed(line, startNs / 1_000_000d, 3);
+        line.append(" pos=").append(position).append(" fillPx=");
+        LyricsFrameProbe.appendFixed(line, fillPx, 3);
+        line.append(" lift=");
+        LyricsFrameProbe.appendFixed(line, lift, 4);
+        line.append(" us=").append((System.nanoTime() - startNs) / 1000L);
+        LyricsFrameProbe.log(line);
     }
 
     private void drawPreviewLine(

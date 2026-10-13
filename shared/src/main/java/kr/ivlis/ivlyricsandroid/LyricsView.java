@@ -103,6 +103,8 @@ public final class LyricsView extends View {
     private long frameEffectTimeMs;
     private boolean frameAnimationsEnabled;
     private boolean frameHasLiveEffects;
+    private boolean frameProbeEnabled;
+    private final StringBuilder frameProbeLine = new StringBuilder(384);
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
     private final Map<String, String> normalizedSpeakerKeys = new HashMap<>();
     private final Runnable rowPrewarmRunnable = this::prewarmRowLayouts;
@@ -799,8 +801,15 @@ public final class LyricsView extends View {
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        frameProbeEnabled = LyricsFrameProbe.enabled(getContext());
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        long frameProbeStartNs = frameProbeEnabled ? System.nanoTime() : 0L;
         // Every glyph and its fill pass share one monotonic clock and preference
         // snapshot. Settings.Global must not be queried several times per glyph.
         frameEffectTimeMs = SystemClock.uptimeMillis();
@@ -915,6 +924,9 @@ public final class LyricsView extends View {
         }
         applyBottomEdgeFade(canvas);
         canvas.restoreToCount(lyricLayer);
+        if (frameProbeEnabled) {
+            logFrameProbe(frameProbeStartNs, activeIndex, visualCenterIndex, layouts);
+        }
 
         boolean activeInterlude = activeIndex >= 0
                 && activeIndex < displayLines.size()
@@ -928,6 +940,51 @@ public final class LyricsView extends View {
         } else if (vocalAnchorMoving || rowReflowActive) {
             postInvalidateOnAnimation();
         }
+    }
+
+    /** Debug-only: one line per drawn frame with the values this frame painted. */
+    private void logFrameProbe(long startNs, int activeIndex, int targetIndex, List<LineLayout> layouts) {
+        LineLayout activeLayout = layoutAt(layouts, activeIndex);
+        double fillPx = 0d;
+        float lift = 0f;
+        float liftScale = 1f;
+        if (activeLayout != null) {
+            for (DrawGroup group : activeLayout.groups) {
+                if (group.isInterlude() || group.supplement || !group.rendersTimedFill()) continue;
+                for (TextRow row : group.rows) {
+                    for (TextSegment segment : row.segments) {
+                        fillPx += segment.textWidth * segmentFillFraction(segment);
+                        KaraokeMotion.Values bounce = karaokeBounce(segment, group);
+                        if (bounce.active && bounce.offsetY < lift) {
+                            lift = bounce.offsetY;
+                            liftScale = bounce.scale;
+                        }
+                    }
+                }
+            }
+        }
+        StringBuilder line = frameProbeLine;
+        line.setLength(0);
+        line.append("LV vsync=").append(getDrawingTime()).append(" draw=");
+        LyricsFrameProbe.appendFixed(line, startNs / 1_000_000d, 3);
+        line.append(" pos=").append(positionMs);
+        line.append(" active=").append(activeIndex).append(" target=").append(targetIndex).append(" center=");
+        LyricsFrameProbe.appendFixed(line, animatedCenterIndex, 4);
+        line.append(" fillPx=");
+        LyricsFrameProbe.appendFixed(line, fillPx, 3);
+        line.append(" lift=");
+        LyricsFrameProbe.appendFixed(line, lift, 4);
+        line.append(" scale=");
+        LyricsFrameProbe.appendFixed(line, liftScale, 5);
+        line.append(" rows=");
+        for (int index = 0; index < layouts.size(); index++) {
+            LineLayout layout = layouts.get(index);
+            if (Float.isNaN(layout.baselineCenter)) continue;
+            line.append(layout.index).append(':');
+            LyricsFrameProbe.appendFixed(line, layout.baselineCenter, 2).append(',');
+        }
+        line.append(" us=").append((System.nanoTime() - startNs) / 1000L);
+        LyricsFrameProbe.log(line);
     }
 
     @Override

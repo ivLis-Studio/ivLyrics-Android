@@ -1,9 +1,11 @@
 package kr.ivlis.ivlyricsandroid;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.media.MediaMetadata;
@@ -31,9 +33,32 @@ import java.lang.reflect.Method;
 public final class EmbeddedSmokeActivity extends Activity {
     private static final String TAG = "IvLyricsSmoke";
     private static final long WAIT_TIMEOUT_MS = 10000L;
+    /**
+     * Measurement control for the synthetic session while the full page covers this
+     * fixture: {@code am broadcast -a <action> -p <package> --ez play true --el position 4000}.
+     */
+    static final String ACTION_FIXTURE_PLAYBACK = "kr.ivlis.ivlyricsandroid.debug.FIXTURE_PLAYBACK";
+    /** Measurement-only track with many long timed rows; not part of the automated checks. */
+    private static final String DENSE = "three";
+    private static final int DENSE_LINES = 40;
+    private static final long DENSE_DURATION_MS = 140_000L;
     private static MediaSession session;
     private static long lastSeek = -1;
     private final Handler main = new Handler();
+    private final BroadcastReceiver playbackControl = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (session == null || intent == null) return;
+            boolean play = intent.getBooleanExtra("play", false);
+            long position = Math.max(0L, intent.getLongExtra("position", 6000L));
+            if (DENSE.equals(intent.getStringExtra("track"))) {
+                switchToDenseTrack(position);
+                return;
+            }
+            setState(play, position);
+            Log.i(TAG, "FIXTURE_PLAYBACK " + (play ? "play" : "pause") + " " + position);
+        }
+    };
+    private boolean playbackControlRegistered;
     private TextView status;
     private View card;
     private View inline;
@@ -96,6 +121,11 @@ public final class EmbeddedSmokeActivity extends Activity {
                 @Override public void onPause() { setState(false, 6000); }
             });
             session.setActive(true);
+            IntentFilter playbackFilter = new IntentFilter(ACTION_FIXTURE_PLAYBACK);
+            // adb sends the measurement broadcast, so the receiver is exported. API 26-32
+            // ignore the flag; the three-argument overload exists since API 26.
+            registerReceiver(playbackControl, playbackFilter, RECEIVER_EXPORTED);
+            playbackControlRegistered = true;
 
             // Publish before delivering each synthetic track so the shared engine
             // takes its in-memory result path without contacting a lyrics provider.
@@ -134,6 +164,10 @@ public final class EmbeddedSmokeActivity extends Activity {
     @Override protected void onDestroy() {
         destroyed = true;
         main.removeCallbacksAndMessages(null);
+        if (playbackControlRegistered) {
+            unregisterReceiver(playbackControl);
+            playbackControlRegistered = false;
+        }
         if (fixtureSettings != null) fixtureSettings.shutdown();
         super.onDestroy();
     }
@@ -144,7 +178,11 @@ public final class EmbeddedSmokeActivity extends Activity {
             .putString(MediaMetadata.METADATA_KEY_TITLE, "Integration fixture " + suffix)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, "ivLyrics test")
             .putString(MediaMetadata.METADATA_KEY_ALBUM, "Debug only")
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, 24000).build());
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs(suffix)).build());
+    }
+
+    private static long durationMs(String suffix) {
+        return DENSE.equals(suffix) ? DENSE_DURATION_MS : 24000L;
     }
 
     private static void setState(boolean play, long position) {
@@ -156,7 +194,7 @@ public final class EmbeddedSmokeActivity extends Activity {
 
     private TrackSnapshot expectedTrack(String suffix) {
         return new TrackSnapshot("Integration fixture " + suffix, "ivLyrics test", "Debug only",
-                getPackageName(), fixtureUri(suffix), "", 24000L, 6000L,
+                getPackageName(), fixtureUri(suffix), "", durationMs(suffix), 6000L,
                 SystemClock.elapsedRealtime(), 1f, false, null, "");
     }
 
@@ -168,6 +206,7 @@ public final class EmbeddedSmokeActivity extends Activity {
     }
 
     private static LyricsResult fixtureLyrics(TrackSnapshot track, String suffix) {
+        if (DENSE.equals(suffix)) return denseLyrics(track);
         List<LyricsLine> lines = new ArrayList<>();
         String[] text = {"First line for " + suffix, "lead " + suffix,
                 "Next line for " + suffix, "Return to this line for " + suffix};
@@ -192,8 +231,56 @@ public final class EmbeddedSmokeActivity extends Activity {
                 true, track.isrc, track.trackId).withSelection("debug-fixture", "manual");
     }
 
+    /**
+     * Deterministic synthetic rows for frame measurements: 26-40 characters per row,
+     * one timed syllable per character, supplements on every row, a rapid passage
+     * (rows 19-22 every 450 ms) and one pair only 60 ms apart (rows 27-28).
+     */
+    private static LyricsResult denseLyrics(TrackSnapshot track) {
+        String[] words = {"bright", "city", "moving", "tonight", "under", "silver", "rain", "we",
+                "keep", "the", "rhythm", "close", "and", "never", "let", "it", "go", "running",
+                "through", "neon", "streets"};
+        List<LyricsLine> lines = new ArrayList<>();
+        long start = 2000L;
+        for (int i = 0; i < DENSE_LINES; i++) {
+            StringBuilder text = new StringBuilder("Line ").append(i + 1);
+            int word = i * 7;
+            while (text.length() < 26 + (i * 5) % 15) text.append(' ').append(words[word++ % words.length]);
+            String value = text.toString();
+            long gap = i >= 18 && i < 22 ? 450L : i == 26 ? 60L : 3200L;
+            long available = gap >= 1000L ? gap - 200L : gap - 10L;
+            long charMs = Math.max(1L, Math.min(150L, available / value.length()));
+            List<LyricsLine.Syllable> syllables = new ArrayList<>();
+            for (int j = 0; j < value.length(); j++) {
+                syllables.add(new LyricsLine.Syllable(value.substring(j, j + 1),
+                        start + j * charMs, start + (j + 1) * charMs));
+            }
+            lines.add(new LyricsLine(start, start + gap, value, syllables, "", "vocal",
+                    Collections.<LyricsLine.VocalPart>emptyList())
+                    .withSupplements("발음 " + (i + 1), "번역 줄 " + (i + 1)));
+            start += gap;
+        }
+        return new LyricsResult(lines, "Integration fixture", "Synthetic text; debug only; " + DENSE,
+                true, track.isrc, track.trackId).withSelection("debug-fixture", "manual");
+    }
+
+    /** Switches the synthetic session to the dense track, paused at the requested position. */
+    private void switchToDenseTrack(long position) {
+        try {
+            seedLyrics(expectedTrack(DENSE), DENSE);
+            setMetadata(DENSE);
+            setState(false, position);
+            await("dense track metadata", () -> isCurrentTrack(DENSE, position), () -> {
+                seedLyrics(NowPlayingService.getLatestSnapshot(), DENSE);
+                await("dense shared result", () -> matchesFixture(
+                        IvLyricsBridge.cachedLyrics(NowPlayingService.getLatestSnapshot()), DENSE),
+                        () -> Log.i(TAG, "DENSE_READY " + position));
+            });
+        } catch (Throwable error) { fail(error); }
+    }
+
     private static boolean matchesFixture(LyricsResult result, String suffix) {
-        return result != null && result.lines.size() == 4
+        return result != null && result.lines.size() == (DENSE.equals(suffix) ? DENSE_LINES : 4)
                 && "Integration fixture".equals(result.providerLabel)
                 && ("Synthetic text; debug only; " + suffix).equals(result.detail);
     }
@@ -291,7 +378,8 @@ public final class EmbeddedSmokeActivity extends Activity {
     private static String fixtureUri(String suffix) {
         // Canonical 22-character IDs satisfy the production song guard. These
         // synthetic zero IDs are never resolved by a network provider.
-        return "spotify:track:" + ("one".equals(suffix) ? "0000000000000000000001" : "0000000000000000000002");
+        return "spotify:track:" + ("one".equals(suffix) ? "0000000000000000000001"
+                : DENSE.equals(suffix) ? "0000000000000000000003" : "0000000000000000000002");
     }
 
     private static String translation(String suffix, int line) { return "번역 " + suffix + " " + line; }
