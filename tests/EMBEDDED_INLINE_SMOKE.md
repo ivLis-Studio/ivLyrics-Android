@@ -77,3 +77,9 @@ drag, close or pause reveals them again. The
 synthetic session (`--ez play`, `--el position`) or switches to the dense measurement
 track (`--es track three`). Launch the fixture with `--ez reduceMotion true` when
 paused captures must be compared pixel for pixel.
+
+For drag measurements, `kr.ivlis.ivlyricsandroid.debug.SHEET_TOUCH` plays a synthetic
+touch on the sheet through the Activity's own dispatch, with one move per display frame:
+`--ef x 640 --ef y 156` (the drag handle strip above the title), `--el hold 80` before
+moving, `--ef dy 900 --el ms 280` for the motion. `--ez release false` keeps the pointer
+down at the end for a capture, and `--ez up true` lifts it. Each event logs a `TOUCH` line.
