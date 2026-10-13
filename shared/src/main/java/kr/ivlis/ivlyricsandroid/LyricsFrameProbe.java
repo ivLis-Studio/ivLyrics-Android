@@ -1,6 +1,8 @@
 package kr.ivlis.ivlyricsandroid;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.pm.ApplicationInfo;
 import android.util.Log;
 
@@ -22,6 +24,19 @@ final class LyricsFrameProbe {
         ApplicationInfo info = context.getApplicationInfo();
         return info != null && (info.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
                 && Log.isLoggable(TAG, Log.DEBUG);
+    }
+
+    /** The hosting Activity's simple name, so one log separates the page from player surfaces. */
+    static String owner(Context context) {
+        Context current = context;
+        for (int depth = 0; current != null && depth < 16; depth++) {
+            if (current instanceof Activity) return current.getClass().getSimpleName();
+            if (!(current instanceof ContextWrapper)) break;
+            Context base = ((ContextWrapper) current).getBaseContext();
+            if (base == current) break;
+            current = base;
+        }
+        return "none";
     }
 
     static StringBuilder appendFixed(StringBuilder line, double value, int decimals) {

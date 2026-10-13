@@ -53,3 +53,25 @@ synthetic IDs are `spotify:track:0000000000000000000001` and
 This tests the shared Android rendering and media-session path. The module's actual
 Spotify Compose mount, touch handoff, and account/provider behavior still require
 the separate live Spotify QA run. No device result is implied by a passing host build.
+
+## Lyrics sheet over the fixture (frame measurement)
+
+`SheetSmokeActivity` (debug/QA only) opens the shared page above the fixture, in the
+same task and process, as Spotify opens the module's sheet over its player. Its host
+is the Spotify module's own `LyricsSheetTransition`, loaded from the installed module
+debug APK with the QA application's class loader as parent. Build both APKs from the
+same commit, install both, and pass the module's installed path:
+
+```sh
+MODULE=$(adb -s DEVICE_SERIAL shell pm path dev.ivlyrics.spotify.module | sed 's/^package://' | tr -d '\r')
+adb -s DEVICE_SERIAL shell setprop log.tag.IvLyricsFrame DEBUG   # before the fixture starts
+adb -s DEVICE_SERIAL shell am start -n kr.ivlis.ivlyricsandroid.qa/kr.ivlis.ivlyricsandroid.EmbeddedSmokeActivity --es action sheet --es moduleApk "$MODULE"
+```
+
+With the frame probe enabled, `SHEET` lines give each drawn sheet frame's time and
+translation, and `LV`/`PV` lines name their Activity (`owner=`), so the page and the
+player's card and inline preview can be counted separately. The
+`kr.ivlis.ivlyricsandroid.debug.FIXTURE_PLAYBACK` broadcast plays or pauses the
+synthetic session (`--ez play`, `--el position`) or switches to the dense measurement
+track (`--es track three`). Launch the fixture with `--ez reduceMotion true` when
+paused captures must be compared pixel for pixel.

@@ -40,6 +40,8 @@ public final class EmbeddedSmokeActivity extends Activity {
     static final String ACTION_FIXTURE_PLAYBACK = "kr.ivlis.ivlyricsandroid.debug.FIXTURE_PLAYBACK";
     /** Measurement-only track with many long timed rows; not part of the automated checks. */
     private static final String DENSE = "three";
+    /** Launch extra: a static card background, so paused captures can be compared pixel for pixel. */
+    private static final String EXTRA_REDUCE_MOTION = "reduceMotion";
     private static final int DENSE_LINES = 40;
     private static final long DENSE_DURATION_MS = 140_000L;
     private static MediaSession session;
@@ -83,6 +85,7 @@ public final class EmbeddedSmokeActivity extends Activity {
         fixtureSettings.setLanguageRule("en", true, true, "ko");
         fixtureSettings.setPreviewItems(AiLyricsSettings.PREVIEW_ITEM_ORIGINAL);
         fixtureSettings.setLyricsTextAlignment(AiLyricsSettings.LYRICS_ALIGN_LEFT);
+        if (getIntent().getBooleanExtra(EXTRA_REDUCE_MOTION, false)) fixtureSettings.setBackgroundReduceMotion(true);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(24, 72, 24, 24);
@@ -156,9 +159,20 @@ public final class EmbeddedSmokeActivity extends Activity {
         intent.putExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE, true);
         setIntent(intent);
         if ("full".equals(intent.getStringExtra("action"))) IvLyricsBridge.openLyrics(fixtureContext);
+        if ("sheet".equals(intent.getStringExtra("action"))) openSheet(intent);
         if ("card-click".equals(intent.getStringExtra("action")) && card != null) card.performClick();
         if ("inline-click".equals(intent.getStringExtra("action")) && inline != null) inline.performClick();
         if ("settings".equals(intent.getStringExtra("action")) && card != null) card.performLongClick();
+    }
+
+    /** Opens the shared page above this player the way Spotify opens the module's lyrics sheet. */
+    private void openSheet(Intent request) {
+        startActivity(new Intent(this, SheetSmokeActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                .putExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE, true)
+                .putExtra(BaseLyricsActivity.EXTRA_OPEN_LYRICS_PAGE, true)
+                .putExtra(SheetSmokeActivity.EXTRA_MODULE_APK,
+                        request.getStringExtra(SheetSmokeActivity.EXTRA_MODULE_APK)));
     }
 
     @Override protected void onDestroy() {

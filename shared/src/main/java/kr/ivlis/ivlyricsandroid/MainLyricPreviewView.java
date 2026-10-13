@@ -102,6 +102,7 @@ final class MainLyricPreviewView extends View {
     private long frameUptimeMs;
     private long frameWallTimeMs;
     private boolean frameProbeEnabled;
+    private String frameProbeOwner = "";
     private final StringBuilder frameProbeLine = new StringBuilder(160);
     private String lyricTextAlignment = AiLyricsSettings.LYRICS_ALIGN_CENTER;
     private boolean karaokeBounceEffectEnabled = true;
@@ -295,6 +296,7 @@ final class MainLyricPreviewView extends View {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         frameProbeEnabled = LyricsFrameProbe.enabled(getContext());
+        if (frameProbeEnabled) frameProbeOwner = LyricsFrameProbe.owner(getContext());
     }
 
     @Override
@@ -390,6 +392,7 @@ final class MainLyricPreviewView extends View {
         line.append(" lift=");
         LyricsFrameProbe.appendFixed(line, lift, 4);
         line.append(" us=").append((System.nanoTime() - startNs) / 1000L);
+        line.append(" owner=").append(frameProbeOwner);
         LyricsFrameProbe.log(line);
     }
 

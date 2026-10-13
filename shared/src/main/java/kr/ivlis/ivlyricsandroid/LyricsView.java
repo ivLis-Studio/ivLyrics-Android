@@ -110,6 +110,7 @@ public final class LyricsView extends View {
     private boolean frameAnimationsEnabled;
     private boolean frameHasLiveEffects;
     private boolean frameProbeEnabled;
+    private String frameProbeOwner = "";
     private long frameProbeHostCallNanos;
     private final StringBuilder frameProbeLine = new StringBuilder(384);
     private final Map<String, List<TextRow>> rowLayoutCache = new HashMap<>();
@@ -846,6 +847,7 @@ public final class LyricsView extends View {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         frameProbeEnabled = LyricsFrameProbe.enabled(getContext());
+        if (frameProbeEnabled) frameProbeOwner = LyricsFrameProbe.owner(getContext());
     }
 
     @Override
@@ -1040,6 +1042,7 @@ public final class LyricsView extends View {
             LyricsFrameProbe.appendFixed(line, layout.baselineCenter, 2).append(',');
         }
         line.append(" us=").append((System.nanoTime() - startNs) / 1000L);
+        line.append(" owner=").append(frameProbeOwner);
         LyricsFrameProbe.log(line);
     }
 
