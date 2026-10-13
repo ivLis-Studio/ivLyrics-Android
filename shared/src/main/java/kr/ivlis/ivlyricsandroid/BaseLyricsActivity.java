@@ -190,6 +190,8 @@ public class BaseLyricsActivity extends Activity implements
     private final Map<String, TextView> speakerColorValueViews = new LinkedHashMap<>();
     private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
     private final Rect mainPageRevealClip = new Rect();
+    // Set while the resting lyrics page hides this player page entirely (see coverMainPage).
+    private View coveredMainPage;
     private final ExecutorService seekExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService aiModelExecutor = Executors.newSingleThreadExecutor();
@@ -495,6 +497,7 @@ public class BaseLyricsActivity extends Activity implements
     private boolean artworkSwipeDragging;
     private VelocityTracker artworkVelocityTracker;
     private long lastProgressUiUpdateMs;
+    private long playbackFrameTimeNanos;
     private long emptyLyricsPreviewShownAtMs;
     private long pendingSeekPositionMs = -1L;
     private long pendingSeekUptimeMs;
@@ -2112,6 +2115,7 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
+        coveredMainPage = null;
         mainPage = buildMainPage();
         root.addView(mainPage, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -5773,6 +5777,7 @@ public class BaseLyricsActivity extends Activity implements
         rootView.removeView(mainPage);
         rootView.removeView(lyricsPage);
 
+        coveredMainPage = null;
         mainPage = buildMainPage();
         rootView.addView(mainPage, Math.min(mainIndex, rootView.getChildCount()), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -14486,6 +14491,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void updatePlaybackUi(long frameTimeNanos) {
+        playbackFrameTimeNanos = frameTimeNanos;
         TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
         if (snapshot == null || !snapshot.hasUsableMetadata()) {
             return;
@@ -15503,6 +15509,7 @@ public class BaseLyricsActivity extends Activity implements
                         applyMainPageRevealClip(0f);
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
+                        coverMainPage();
                         maybeShowLyricsMetaTip();
                         requestDefaultRemoteFocus(true);
                     })
@@ -16576,6 +16583,7 @@ public class BaseLyricsActivity extends Activity implements
                 .withEndAction(() -> {
                     applyMainPageRevealClip(0f);
                     setLyricsPageCornerRadius(0);
+                    coverMainPage();
                 })
                 .start();
         resetLyricsPageDragTopPadding(true);
@@ -16590,6 +16598,9 @@ public class BaseLyricsActivity extends Activity implements
                 : getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
         int revealHeight = Math.max(0, Math.min(height, Math.round(translationY)));
+        if (revealHeight > 0) {
+            uncoverMainPage();
+        }
         mainPage.setAlpha(1f);
         if (revealHeight >= height - 1) {
             mainPage.setClipBounds(null);
@@ -16603,8 +16614,71 @@ public class BaseLyricsActivity extends Activity implements
         if (mainPage == null) {
             return;
         }
+        uncoverMainPage();
         mainPage.setAlpha(1f);
         mainPage.setClipBounds(null);
+    }
+
+    /**
+     * The lyrics page came to rest fully open, and the player page's reveal clip is empty, so
+     * none of it can show. It stops drawing (embedded mode hides it the same way), and its
+     * progress bar and lyric preview skip their per-frame updates while hidden.
+     */
+    private void coverMainPage() {
+        if (mainPage == null || coveredMainPage == mainPage || IvLyricsBridge.isEmbedded(this)
+                || !lyricsPageVisible || lyricsPage == null || lyricsPage.getVisibility() != View.VISIBLE
+                || Math.abs(lyricsPage.getTranslationY()) > 0.5f || mainPage.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        Rect clip = mainPage.getClipBounds();
+        if (clip == null || !clip.isEmpty()) {
+            return;
+        }
+        coveredMainPage = mainPage;
+        mainPage.setVisibility(View.INVISIBLE);
+        logMainPageCover(true);
+    }
+
+    /** Before any frame that reveals part of the player page: it repaints the current state. */
+    private void uncoverMainPage() {
+        View covered = coveredMainPage;
+        if (covered == null) {
+            return;
+        }
+        coveredMainPage = null;
+        if (covered != mainPage) {
+            return;
+        }
+        if (mainPage.getVisibility() == View.INVISIBLE && !vinylModeVisible) {
+            mainPage.setVisibility(View.VISIBLE);
+        }
+        refreshMainPagePlayback();
+        logMainPageCover(false);
+    }
+
+    /** The per-frame part of updatePlaybackUi for the player page, at the latest frame clock. */
+    private void refreshMainPagePlayback() {
+        TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
+        if (snapshot == null || !snapshot.hasUsableMetadata()) {
+            return;
+        }
+        if (playerProgressView != null && playerProgressView.isShown()) {
+            playerProgressView.setProgress(currentPlaybackPosition(snapshot), snapshot.durationMs);
+        }
+        long frameTimeNanos = playbackFrameTimeNanos;
+        if (frameTimeNanos > 0L) {
+            setLyricPreviewFramePosition(lyricsPlaybackFramePosition(
+                    currentPlaybackFramePosition(snapshot, frameTimeNanos), snapshot.durationMs), frameTimeNanos);
+        }
+    }
+
+    private void logMainPageCover(boolean covered) {
+        if (!LyricsFrameProbe.enabled(this)) {
+            return;
+        }
+        StringBuilder line = new StringBuilder(40).append(covered ? "MAINCOVER" : "MAINUNCOVER").append(" draw=");
+        LyricsFrameProbe.appendFixed(line, System.nanoTime() / 1_000_000d, 3);
+        LyricsFrameProbe.log(line);
     }
 
     private float pageVelocityY() {

@@ -28,6 +28,12 @@ A touch on one of the page's drag handles already resumes them while the sheet s
 hides them, so a drag after a long cover starts from a player that is drawing again; a
 touch that never moves the sheet covers them again when it ends.
 
+In the standalone app the full lyrics page slides over the player page, which stays
+laid out beneath it behind an empty reveal clip. Once the lyrics page rests fully open,
+the player page is hidden as in embedded mode, so its progress bar and lyric preview
+stop drawing. A drag, close or rebuild that reveals any of it shows it again and
+repaints the current playback state in that same frame.
+
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the
 library because the common settings/activity currently call them; Spotify's
