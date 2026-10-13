@@ -19,6 +19,12 @@ gestures. `SpotifyLyricsHost` explicitly registers context and navigation throug
 `IvLyricsHost` before the shared engine initializes. Embedded mode follows this
 registration; a debug-only Activity intent also supports synthetic UI fixtures.
 
+Spotify's player stays drawn beneath the translucent sheet. Once the sheet has drawn
+a frame fully open and at rest, `LyricsSheetTransition` pauses the player's ivLyrics
+card and inline preview through `IvLyricsBridge.coverPlayerSurfaces`. Any drag,
+close, page rebuild or Activity pause uncovers them first; they repaint the current
+playback state for the frame in which the sheet starts to move.
+
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the
 library because the common settings/activity currently call them; Spotify's

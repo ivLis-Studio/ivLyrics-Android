@@ -121,6 +121,13 @@ public final class PlayerBackgroundView extends View {
         requestBlurredArtwork();
     }
 
+    /** The artwork drift kept moving while a covering window stopped this view drawing. */
+    void resumeAfterCover() {
+        // Continue from the drift's position now, as a new artwork does, not from the last frame.
+        motionInitialized = false;
+        lastFrameMs = 0L;
+    }
+
     @Override
     protected void onDetachedFromWindow() {
         artworkGeneration++;

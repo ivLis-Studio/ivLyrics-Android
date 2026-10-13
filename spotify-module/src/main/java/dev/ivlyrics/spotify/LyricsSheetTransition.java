@@ -20,6 +20,8 @@ import kr.ivlis.ivlyricsandroid.LyricsActivityHost;
 public final class LyricsSheetTransition implements LyricsActivityHost {
     private final Activity activity;
     private final float density;
+    // A translucent sheet (API 30+) leaves the player drawn beneath it.
+    private final PlayerSurfaceCover playerCover;
     private View root;
     private ViewOutlineProvider originalOutline;
     private boolean originalClipToOutline;
@@ -45,6 +47,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
         this.activity = activity;
         density = activity.getResources().getDisplayMetrics().density;
         prepareWindow();
+        playerCover = Build.VERSION.SDK_INT >= 30 ? new PlayerSurfaceCover(activity) : null;
         if (Build.VERSION.SDK_INT >= 33) unregisterBack = Api33.registerBack(activity);
         attachRoot(root, true);
     }
@@ -71,6 +74,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
     /** A rebuilt page is already open; only the first root receives the entrance animation. */
     public void attachRoot(View nextRoot, boolean animate) {
         if (destroyed || nextRoot == null || nextRoot == root) return;
+        uncoverPlayer();
         float previousFraction = root == null ? 0f : root.getTranslationY() / sheetHeight();
         cancelPendingOpen();
         cancelAnimator();
@@ -89,6 +93,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
         }
         if (!animate || !ValueAnimator.areAnimatorsEnabled()) {
             setTranslationInternal(0f);
+            restOpen();
             return;
         }
         moving = true;
@@ -112,6 +117,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
     /** Cancels an opening/settling animation at its current position before a drag begins. */
     public void interruptDrag() {
         if (destroyed || closing) return;
+        uncoverPlayer();
         cancelPendingOpen();
         cancelAnimator();
         moving = root != null && root.getTranslationY() > 0.5f;
@@ -132,6 +138,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
 
     public void settle(float velocityY, Runnable finishImmediately) {
         if (destroyed || closing || root == null) return;
+        uncoverPlayer();
         float distance = root.getTranslationY();
         if (distance >= sheetHeight() * 0.30f
                 || (velocityY > 1200f * density && distance > 42f * density)) {
@@ -143,12 +150,14 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
 
     public void settleOpen() {
         if (destroyed || closing || root == null) return;
+        uncoverPlayer();
         cancelPendingOpen();
         animateTo(0f, 210, null);
     }
 
     public void close(Runnable finishImmediately) {
         if (destroyed || closing) return;
+        uncoverPlayer();
         closing = true;
         pendingFinish = finishImmediately;
         cancelPendingOpen();
@@ -175,8 +184,22 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
 
     private void setTranslationInternal(float translationY) {
         if (root == null) return;
-        root.setTranslationY(Math.max(0f, Math.min(sheetHeight(), translationY)));
+        float value = Math.max(0f, Math.min(sheetHeight(), translationY));
+        if (value > 0.5f) uncoverPlayer();
+        root.setTranslationY(value);
         root.invalidateOutline();
+    }
+
+    /** The player beneath must draw live from this frame on. */
+    private void uncoverPlayer() {
+        if (Build.VERSION.SDK_INT >= 30 && playerCover != null) playerCover.uncover();
+    }
+
+    /** Fully open and at rest: the player beneath may stop drawing once this frame is drawn. */
+    private void restOpen() {
+        if (Build.VERSION.SDK_INT >= 30 && playerCover != null && !closing && !destroyed && root != null) {
+            playerCover.settledOpen(root);
+        }
     }
 
     private void animateTo(float destination, long duration, Runnable completion) {
@@ -185,6 +208,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
                 || Math.abs(root.getTranslationY() - destination) < 0.5f) {
             moving = false;
             setTranslationInternal(destination);
+            if (destination == 0f) restOpen();
             if (!destroyed && completion != null) completion.run();
             return;
         }
@@ -201,6 +225,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
                 animator = null;
                 moving = false;
                 setTranslationInternal(destination);
+                if (destination == 0f) restOpen();
                 if (!destroyed && completion != null) completion.run();
             }
         });
@@ -237,6 +262,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
     public void destroy() {
         if (destroyed) return;
         destroyed = true;
+        if (Build.VERSION.SDK_INT >= 30 && playerCover != null) playerCover.release();
         cancelPendingOpen();
         cancelAnimator();
         pendingFinish = null;

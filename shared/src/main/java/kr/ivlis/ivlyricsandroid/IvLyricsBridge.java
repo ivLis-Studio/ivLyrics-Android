@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.Rect;
 import android.media.session.MediaSession;
 import android.media.session.MediaController;
 import android.media.AudioDeviceCallback;
@@ -29,8 +30,10 @@ import android.widget.TextView;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** Shared entry points for in-process player cards, playback, and the full lyrics page. */
 public final class IvLyricsBridge {
@@ -46,6 +49,8 @@ public final class IvLyricsBridge {
     private static String sharedSourceLanguage = "auto";
     private static WeakReference<BaseLyricsActivity> foregroundPage = new WeakReference<>(null);
     private static final List<WeakReference<NativeSurface>> CARDS = new ArrayList<>();
+    /** Host windows open and at rest above the player, keyed by owner; main thread only. */
+    private static final Map<Object, View> PLAYER_COVERS = new IdentityHashMap<>();
     private static final Runnable RELEASE = IvLyricsBridge::releaseIdleEngine;
 
     private static void releaseIdleEngine() {
@@ -131,6 +136,55 @@ public final class IvLyricsBridge {
 
     public static void onMediaSession(MediaSession session) {
         if (session != null) onMediaController(session.getController());
+    }
+
+    /**
+     * A host window that is fully open and at rest above the player (Spotify's translucent
+     * lyrics sheet) stops the player's card and inline preview from drawing frames nobody can
+     * see. A surface pauses only while every on-screen part of it lies within
+     * {@code coveringRoot}'s bounds, in another Activity of the same task. Main thread only.
+     */
+    public static void coverPlayerSurfaces(Object owner, View coveringRoot) {
+        if (owner == null || coveringRoot == null || PLAYER_COVERS.get(owner) == coveringRoot) return;
+        PLAYER_COVERS.put(owner, coveringRoot);
+        refreshPlayerCovers();
+    }
+
+    /**
+     * Ends {@code owner}'s cover. Every surface it paused repaints the current playback state
+     * before the next frame is drawn, so a host window that starts to move in that frame never
+     * reveals a stale surface. Main thread only.
+     */
+    public static void uncoverPlayerSurfaces(Object owner) {
+        if (owner == null || PLAYER_COVERS.remove(owner) == null) return;
+        refreshPlayerCovers();
+    }
+
+    private static void refreshPlayerCovers() {
+        pruneCards();
+        for (WeakReference<NativeSurface> reference : new ArrayList<>(CARDS)) {
+            NativeSurface surface = reference.get();
+            if (surface != null) surface.refreshCover();
+        }
+    }
+
+    private static Activity activityOf(Context context) {
+        Context current = context;
+        for (int depth = 0; current != null && depth < 16; depth++) {
+            if (current instanceof Activity) return (Activity) current;
+            if (!(current instanceof ContextWrapper)) return null;
+            Context base = ((ContextWrapper) current).getBaseContext();
+            if (base == current) return null;
+            current = base;
+        }
+        return null;
+    }
+
+    private static void invalidateTree(View view) {
+        view.invalidate();
+        if (!(view instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) view;
+        for (int index = 0; index < group.getChildCount(); index++) invalidateTree(group.getChildAt(index));
     }
 
     public static void onMediaController(MediaController controller) {
@@ -224,16 +278,101 @@ public final class IvLyricsBridge {
         abstract void render(Engine state);
         /** frameTimeNanos is the Choreographer frame time, or 0 outside a frame. */
         abstract void updatePosition(Engine state, long frameTimeNanos);
+        /** Draw-time state that could not advance while this surface was covered resumes from now. */
+        void resumeAfterCover() {}
         // A visible surface follows every display frame at its vsync time; a hidden one polls.
         private final Choreographer.FrameCallback frameTick = this::tick;
         private final Runnable idleTick = () -> tick(0L);
+        private final int[] coverLocation = new int[2];
+        private final Rect coverVisible = new Rect();
+        // While a host window hides this surface it neither ticks nor passes on its
+        // descendants' invalidations, so nothing beneath the window is drawn.
+        private boolean covered;
+        private boolean frameProbeEnabled;
 
         private void tick(long frameTimeNanos) {
-            if (!isAttachedToWindow()) return;
+            if (!isAttachedToWindow() || covered) return;
+            if (!PLAYER_COVERS.isEmpty() && liesUnderCover()) {
+                // A surface attached or laid out after the window came to rest pauses here.
+                setCovered(true);
+                return;
+            }
             boolean visible = isShown() && getWindowVisibility() == View.VISIBLE;
             if (visible && engine != null) updatePosition(engine, frameTimeNanos);
             if (visible) Choreographer.getInstance().postFrameCallback(frameTick);
             else postDelayed(idleTick, 250L);
+        }
+
+        void refreshCover() {
+            if (!isAttachedToWindow()) return;
+            boolean next = liesUnderCover();
+            if (next != covered) setCovered(next);
+        }
+
+        /**
+         * New content (a track, lyrics, supplements, settings) is laid out and drawn once while
+         * still covered, as before, so the frame that uncovers this surface stays light.
+         */
+        void drawOnceIfCovered() {
+            if (covered && isAttachedToWindow()) invalidateTree(this);
+        }
+
+        private void setCovered(boolean next) {
+            covered = next;
+            stopTicks();
+            if (frameProbeEnabled) logCover(next);
+            if (next) return;
+            // Repaint now: descendants kept their last frames and their own invalidations were
+            // held. When uncovering happens during input or between frames, the frame tick
+            // posted here updates the position at the frame time before that frame is drawn.
+            resumeAfterCover();
+            boolean visible = isShown() && getWindowVisibility() == View.VISIBLE;
+            if (visible && engine != null) updatePosition(engine, 0L);
+            invalidateTree(this);
+            if (visible) Choreographer.getInstance().postFrameCallback(frameTick);
+            else post(idleTick);
+        }
+
+        /** Every on-screen part within a covering window's bounds, in another Activity of the same task. */
+        private boolean liesUnderCover() {
+            if (PLAYER_COVERS.isEmpty() || !isShown() || getWindowVisibility() != View.VISIBLE
+                    || getWidth() <= 0 || getHeight() <= 0) return false;
+            Activity own = activityOf(getContext());
+            if (own == null) return false;
+            for (View root : PLAYER_COVERS.values()) {
+                if (root.getRootView() == getRootView() || !root.isAttachedToWindow() || !root.isShown()
+                        || root.getWindowVisibility() != View.VISIBLE) continue;
+                Activity cover = activityOf(root.getContext());
+                if (cover == null || cover == own || cover.getTaskId() != own.getTaskId()) continue;
+                int[] location = coverLocation;
+                root.getLocationOnScreen(location);
+                int left = location[0];
+                int top = location[1];
+                int right = left + root.getWidth();
+                int bottom = top + root.getHeight();
+                Rect visible = coverVisible;
+                // Nothing of a surface scrolled or clipped away can show; otherwise compare its
+                // visible part, in screen coordinates, with the covering root.
+                if (!getGlobalVisibleRect(visible)) return true;
+                getRootView().getLocationOnScreen(location);
+                visible.offset(location[0], location[1]);
+                if (visible.left >= left && visible.top >= top && visible.right <= right && visible.bottom <= bottom) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override public void onDescendantInvalidated(View child, View target) {
+            // A covered surface keeps its last frame; uncovering redraws every descendant.
+            if (!covered) super.onDescendantInvalidated(child, target);
+        }
+
+        private void logCover(boolean nowCovered) {
+            StringBuilder line = new StringBuilder(64).append(nowCovered ? "COVER" : "UNCOVER")
+                    .append(" surface=").append(getClass().getSimpleName()).append(" draw=");
+            LyricsFrameProbe.appendFixed(line, System.nanoTime() / 1_000_000d, 3);
+            LyricsFrameProbe.log(line);
         }
 
         private void stopTicks() {
@@ -243,12 +382,14 @@ public final class IvLyricsBridge {
 
         @Override protected void onAttachedToWindow() {
             super.onAttachedToWindow();
+            frameProbeEnabled = LyricsFrameProbe.enabled(getContext());
             attach(this);
             stopTicks();
             post(idleTick);
         }
         @Override protected void onDetachedFromWindow() {
             stopTicks();
+            covered = false;
             detach(this);
             super.onDetachedFromWindow();
         }
@@ -306,6 +447,10 @@ public final class IvLyricsBridge {
         @Override void updatePosition(Engine state, long frameTimeNanos) {
             if (frameTimeNanos > 0L) lyrics.setPlaybackFrame(state.positionAtFrame(frameTimeNanos), frameTimeNanos);
             else lyrics.setPlaybackPosition(state.position());
+        }
+        @Override void resumeAfterCover() {
+            background.resumeAfterCover();
+            lyrics.resumeAfterCover();
         }
         @Override void render(Engine state) {
             AiLyricsSettings.Snapshot settings = state.settings.snapshot();
@@ -722,7 +867,9 @@ public final class IvLyricsBridge {
             pruneCards();
             for (WeakReference<NativeSurface> reference : CARDS) {
                 NativeSurface card = reference.get();
-                if (card != null) card.render(this);
+                if (card == null) continue;
+                card.render(this);
+                card.drawOnceIfCovered();
             }
         }
         void release() {

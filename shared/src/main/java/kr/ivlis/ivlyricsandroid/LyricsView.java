@@ -618,6 +618,21 @@ public final class LyricsView extends View {
     }
 
     /**
+     * The host stopped drawing this view while another window covered it. Transitions that a
+     * frame starts when it first sees a change (centering, row travel and reflow, the vocal
+     * anchor) could not run meanwhile, so the next frame shows the resting layout of the
+     * current position, as a seek does, instead of starting them late.
+     */
+    void resumeAfterCover() {
+        clearRowReflow();
+        clearRowTravel();
+        centerInitialized = false;
+        smoothSeekCenterActive = false;
+        vocalAnchorOffsetInitialized = false;
+        lastFrameMs = 0L;
+    }
+
+    /**
      * Playback position at a Choreographer frame time. Discrete line and glyph states
      * use its whole milliseconds; the continuous fill edge and bounce use the exact value,
      * so every display frame paints the position of its own vsync.
