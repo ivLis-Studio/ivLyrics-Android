@@ -961,6 +961,10 @@ public final class LyricsView extends View {
             if (reflow != null) {
                 fadeAlpha *= reflow.opacity(reflowRemaining);
             }
+            if (fadeAlpha <= 0f && !layout.animationActive) {
+                // Fully faded at the top edge and not animating: every paint would be transparent.
+                continue;
+            }
             drawGroups(canvas, layout.groups, baselineCenter, fadeAlpha);
         }
         applyBottomEdgeFade(canvas);
@@ -2674,7 +2678,9 @@ public final class LyricsView extends View {
                     ? baseWaveOffset(segmentKind, group.rowSeed + rowIndex, index, group.textSize)
                     : 0f;
             KaraokeMotion.Values bounce = karaokeBounce(segment, group);
-            int segmentSave = canvas.save();
+            // Only a glyph that moves needs its own canvas state; idle glyphs draw in the row's.
+            boolean transformed = bounce.active || (segment.inlineStyle && group.active && frameAnimationsEnabled);
+            int segmentSave = transformed ? canvas.save() : -1;
             if (segment.inlineStyle) {
                 applyCanvasEffect(
                         canvas,
@@ -2709,7 +2715,9 @@ public final class LyricsView extends View {
                         segmentKind, segmentActiveColor
                 );
             }
-            canvas.restoreToCount(segmentSave);
+            if (segmentSave >= 0) {
+                canvas.restoreToCount(segmentSave);
+            }
             cursor += segment.width;
         }
 
@@ -2790,6 +2798,9 @@ public final class LyricsView extends View {
                 group.activeColor,
                 fadeAlpha * group.completedColorOpacity
         );
+        if (!paintsFill(activeColor, group.active)) {
+            return;
+        }
         boolean rightToLeft = isRightToLeftText(row.text);
 
         int clipSave = canvas.save();
@@ -2844,6 +2855,14 @@ public final class LyricsView extends View {
         canvas.drawText(row.text, left, baseline, textPaint);
         textPaint.setShader(null);
         canvas.restoreToCount(clipSave);
+    }
+
+    /**
+     * A completed row's fill fades to fully transparent. Unless an animated paint effect
+     * adds a shadow with its own alpha, that pass would draw nothing.
+     */
+    private boolean paintsFill(int color, boolean animate) {
+        return Color.alpha(color) > 0 || (animate && frameAnimationsEnabled);
     }
 
     private static boolean isRightToLeftText(String text) {
@@ -2932,6 +2951,9 @@ public final class LyricsView extends View {
                 segmentActiveColor,
                 fadeAlpha * group.completedColorOpacity
         );
+        if (!paintsFill(activeColor, group.active)) {
+            return;
+        }
         float clipRight = safeFill >= 0.995f
                 ? textRight
                 : Math.min(textRight, fillRight + softWidth);

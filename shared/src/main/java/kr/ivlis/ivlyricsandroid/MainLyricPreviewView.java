@@ -882,7 +882,8 @@ final class MainLyricPreviewView extends View {
             float fill = segmentFillFraction(segment, positionMs);
             KaraokeMotion.Values bounce = karaokeBounce(segment, positionMs, textSize);
 
-            int segmentSave = canvas.save();
+            // Only a bouncing glyph needs its own canvas state; idle glyphs draw in the row's.
+            int segmentSave = bounce.active ? canvas.save() : -1;
             if (bounce.active) {
                 float pivotX = cursor + segment.width * 0.5f;
                 float pivotY = baseline + (rowHeight(line) - rubyExtraHeight(line, textSize)
@@ -898,7 +899,9 @@ final class MainLyricPreviewView extends View {
             if (fill > 0f) {
                 drawActiveFill(canvas, segment, cursor, baseline, offsetY, line.kind, textSize, activeColor, fill);
             }
-            canvas.restoreToCount(segmentSave);
+            if (segmentSave >= 0) {
+                canvas.restoreToCount(segmentSave);
+            }
             cursor += segment.width;
         }
         canvas.restoreToCount(rowSave);
