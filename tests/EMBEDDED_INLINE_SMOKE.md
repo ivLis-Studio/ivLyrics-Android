@@ -72,7 +72,8 @@ With the frame probe enabled, `SHEET` lines give each drawn sheet frame's time a
 translation, and `LV`/`PV` lines name their Activity (`owner=`), so the page and the
 player's card and inline preview can be counted separately. While the sheet rests
 fully open, the paused card and inline preview log `COVER`, and `UNCOVER` when a
-drag, close or pause reveals them again. The
+drag, close or pause reveals them again, or as soon as a touch lands on the sheet's
+drag handle (`COVER` again when that touch ends without moving the sheet). The
 `kr.ivlis.ivlyricsandroid.debug.FIXTURE_PLAYBACK` broadcast plays or pauses the
 synthetic session (`--ez play`, `--el position`) or switches to the dense measurement
 track (`--es track three`). Launch the fixture with `--ez reduceMotion true` when

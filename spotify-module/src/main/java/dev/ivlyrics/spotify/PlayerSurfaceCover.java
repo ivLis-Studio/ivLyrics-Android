@@ -27,6 +27,9 @@ final class PlayerSurfaceCover implements Application.ActivityLifecycleCallbacks
     private boolean resumed;
     private boolean covered;
     private boolean released;
+    // A finger is on a drag handle: the player draws, still hidden, so a drag finds it ready.
+    private boolean prewarming;
+    private boolean prewarmFromCover;
 
     PlayerSurfaceCover(Activity activity) {
         this.activity = activity;
@@ -43,8 +46,29 @@ final class PlayerSurfaceCover implements Application.ActivityLifecycleCallbacks
     /** The sheet is about to move, rebuild or close: the player draws live from this frame. */
     void uncover() {
         restingRoot = null;
+        prewarming = false;
         disarm();
         setCovered(false);
+    }
+
+    /** A drag may start soon: the player repaints now, while the resting sheet still hides it. */
+    void prewarm() {
+        if (released || restingRoot == null || prewarming) return;
+        prewarming = true;
+        prewarmFromCover = covered;
+        disarm();
+        setCovered(false);
+    }
+
+    /** The touch ended without moving the sheet (moving it would have called uncover()). */
+    void endPrewarm() {
+        if (!prewarming) return;
+        prewarming = false;
+        View root = restingRoot;
+        if (root == null) return;
+        // The sheet never moved, so the resting frame that covered the player is still on screen.
+        if (prewarmFromCover && canCover(root)) setCovered(true);
+        else arm();
     }
 
     void release() {
@@ -57,7 +81,7 @@ final class PlayerSurfaceCover implements Application.ActivityLifecycleCallbacks
     private void arm() {
         disarm();
         View root = restingRoot;
-        if (root == null || !resumed || covered) return;
+        if (root == null || !resumed || covered || prewarming) return;
         int generation = armGeneration;
         ViewTreeObserver.OnDrawListener listener = new ViewTreeObserver.OnDrawListener() {
             private boolean drawn;
@@ -114,6 +138,8 @@ final class PlayerSurfaceCover implements Application.ActivityLifecycleCallbacks
         // What follows a pause (another Activity, leaving the task, a system finish) can reveal
         // the player without moving the sheet.
         resumed = false;
+        // A touch interrupted by the pause may never report its end; resuming covers again.
+        prewarming = false;
         disarm();
         setCovered(false);
     }

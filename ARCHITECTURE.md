@@ -24,6 +24,9 @@ a frame fully open and at rest, `LyricsSheetTransition` pauses the player's ivLy
 card and inline preview through `IvLyricsBridge.coverPlayerSurfaces`. Any drag,
 close, page rebuild or Activity pause uncovers them first; they repaint the current
 playback state for the frame in which the sheet starts to move.
+A touch on one of the page's drag handles already resumes them while the sheet still
+hides them, so a drag after a long cover starts from a player that is drawing again; a
+touch that never moves the sheet covers them again when it ends.
 
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the

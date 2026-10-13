@@ -10,4 +10,10 @@ public interface LyricsActivityHost {
     void settle(float velocityY, Runnable finishImmediately);
     void close(Runnable finishImmediately);
     void destroy();
+
+    /** A touch began on one of the page's drag handles, so a drag may follow. */
+    default void dragHandlePressed() {}
+
+    /** That touch ended, whether or not it moved the page. */
+    default void dragHandleReleased() {}
 }

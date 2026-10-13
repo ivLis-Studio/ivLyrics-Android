@@ -591,6 +591,7 @@ public class BaseLyricsActivity extends Activity implements
 
     private LyricsActivityHost lyricsActivityHost;
     private boolean hostLyricsDragging;
+    private boolean hostDragHandlePressed;
 
     /** Apps may supply a host window transition without coupling the shared UI to that host. */
     protected LyricsActivityHost createLyricsActivityHost(View root) {
@@ -16183,6 +16184,9 @@ public class BaseLyricsActivity extends Activity implements
                     if (mainPage != null) {
                         mainPage.animate().cancel();
                     }
+                    if (!opensLyrics) {
+                        pressHostDragHandle();
+                    }
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     float dy = event.getRawY() - pageDragStartY;
@@ -16206,6 +16210,7 @@ public class BaseLyricsActivity extends Activity implements
                         settleLyricsDrag(releaseVelocityY);
                     }
                     recyclePageVelocityTracker();
+                    releaseHostDragHandle();
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
@@ -16214,6 +16219,7 @@ public class BaseLyricsActivity extends Activity implements
                         settleLyricsDrag(0f);
                     }
                     recyclePageVelocityTracker();
+                    releaseHostDragHandle();
                     return true;
                 default:
                     return true;
@@ -16254,6 +16260,7 @@ public class BaseLyricsActivity extends Activity implements
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(true);
                     }
+                    pressHostDragHandle();
                     return true;
                 case MotionEvent.ACTION_MOVE: {
                     if (lyricsMetaLongPressTriggered) {
@@ -16283,6 +16290,7 @@ public class BaseLyricsActivity extends Activity implements
                         target.performClick();
                     }
                     recyclePageVelocityTracker();
+                    releaseHostDragHandle();
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
@@ -16296,11 +16304,32 @@ public class BaseLyricsActivity extends Activity implements
                         settleLyricsDrag(0f);
                     }
                     recyclePageVelocityTracker();
+                    releaseHostDragHandle();
                     return true;
                 default:
                     return true;
             }
         });
+    }
+
+    /** A drag of the hosted page may follow this touch; the host can prepare what it reveals. */
+    private void pressHostDragHandle() {
+        // Each touch-down starts a new gesture, even if an earlier one never reported its end.
+        if (lyricsActivityHost == null || !lyricsPageVisible) {
+            return;
+        }
+        hostDragHandlePressed = true;
+        lyricsActivityHost.dragHandlePressed();
+    }
+
+    private void releaseHostDragHandle() {
+        if (!hostDragHandlePressed) {
+            return;
+        }
+        hostDragHandlePressed = false;
+        if (lyricsActivityHost != null) {
+            lyricsActivityHost.dragHandleReleased();
+        }
     }
 
     private static final class AccessibleWebView extends WebView {

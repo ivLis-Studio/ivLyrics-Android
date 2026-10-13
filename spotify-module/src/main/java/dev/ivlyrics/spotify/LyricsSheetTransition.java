@@ -164,6 +164,16 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
         continueClose();
     }
 
+    /** A drag may follow: the player beneath repaints now, while the sheet still hides it. */
+    @Override public void dragHandlePressed() {
+        if (Build.VERSION.SDK_INT >= 30 && playerCover != null && !destroyed && !closing) playerCover.prewarm();
+    }
+
+    /** If that touch never moved the sheet, the player is covered again. */
+    @Override public void dragHandleReleased() {
+        if (Build.VERSION.SDK_INT >= 30 && playerCover != null && !destroyed && !closing) playerCover.endPrewarm();
+    }
+
     private void continueClose() {
         float height = sheetHeight();
         float distance = root == null ? 0f : Math.max(0f, height - root.getTranslationY());
