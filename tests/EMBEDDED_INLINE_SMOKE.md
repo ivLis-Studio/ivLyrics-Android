@@ -84,3 +84,37 @@ touch on the sheet through the Activity's own dispatch, with one move per displa
 `--ef x 640 --ef y 156` (the drag handle strip above the title), `--el hold 80` before
 moving, `--ef dy 900 --el ms 280` for the motion. `--ez release false` keeps the pointer
 down at the end for a capture, and `--ez up true` lifts it. Each event logs a `TOUCH` line.
+
+## Standalone page fixture
+
+`StandaloneSmokeActivity` (debug and `.qa` only) is the standalone app's own page, not
+embedded: the player page with the full lyrics page above it. It plays a synthetic
+`MediaSession` through the controller path the Spotify module uses, so no notification
+listener and no Spotify package take part, and hands the page the synthetic rows of
+`EmbeddedSmokeActivity` (the page has no lyrics repository, so nothing reaches a
+provider). Its settings, secure values, caches and files live in their own namespace;
+placeholder Spotify credentials there satisfy the setup gate.
+
+The gate also requires notification access, which the fixture never takes. Add a
+placeholder entry naming the QA package (no such listener exists, so nothing is bound,
+and the app's real listener stays off; it would publish non-Spotify state over the
+synthetic session), keep the device offline while measuring, and restore both afterwards:
+
+```sh
+ORIG=$(adb -s DEVICE_SERIAL shell settings get secure enabled_notification_listeners | tr -d '\r')
+adb -s DEVICE_SERIAL shell settings put secure enabled_notification_listeners "$ORIG:kr.ivlis.ivlyricsandroid.qa/kr.ivlis.ivlyricsandroid.StandaloneSmokeNoListener"
+adb -s DEVICE_SERIAL shell cmd connectivity airplane-mode enable
+adb -s DEVICE_SERIAL shell am start -W -n kr.ivlis.ivlyricsandroid.qa/kr.ivlis.ivlyricsandroid.StandaloneSmokeActivity --es track three --ez play true --el position 2000
+adb -s DEVICE_SERIAL shell am start -n kr.ivlis.ivlyricsandroid.qa/kr.ivlis.ivlyricsandroid.StandaloneSmokeActivity --ez kr.ivlis.ivlyricsandroid.OPEN_LYRICS_PAGE true
+# afterwards: settings put ... "$ORIG" (or settings delete ... if it was null); airplane-mode disable
+```
+
+`STANDALONE_READY <track> <position>` follows each delivered track. Launch extras choose
+the first track (`--es track three|one`), its state (`--ez play`, `--el position`) and a
+static background (`--ez reduceMotion true`) for pixel comparisons. The broadcast
+`kr.ivlis.ivlyricsandroid.debug.STANDALONE_PLAYBACK` takes the same extras, and
+`kr.ivlis.ivlyricsandroid.debug.STANDALONE_TOUCH` plays the synthetic touch described above
+on this page (`--ef y 156` is the lyrics page's drag strip). With the frame probe enabled,
+`PAGE` lines give each drawn frame's time, the lyrics page translation, whether the player
+page is visible (`main=`), its reveal clip height and the progress bar position; the
+player page's lyric preview logs `PV` lines with `owner=StandaloneSmokeActivity`.

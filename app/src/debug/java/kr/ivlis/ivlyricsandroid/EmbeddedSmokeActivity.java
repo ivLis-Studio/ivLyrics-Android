@@ -195,7 +195,7 @@ public final class EmbeddedSmokeActivity extends Activity {
             .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs(suffix)).build());
     }
 
-    private static long durationMs(String suffix) {
+    static long durationMs(String suffix) {
         return DENSE.equals(suffix) ? DENSE_DURATION_MS : 24000L;
     }
 
@@ -219,7 +219,8 @@ public final class EmbeddedSmokeActivity extends Activity {
         require(matchesFixture(cache.get(track.stableKey()), suffix), "synthetic cache ready: " + suffix);
     }
 
-    private static LyricsResult fixtureLyrics(TrackSnapshot track, String suffix) {
+    /** Synthetic rows for one of this fixture's tracks; StandaloneSmokeActivity shows the same. */
+    static LyricsResult fixtureLyrics(TrackSnapshot track, String suffix) {
         if (DENSE.equals(suffix)) return denseLyrics(track);
         List<LyricsLine> lines = new ArrayList<>();
         String[] text = {"First line for " + suffix, "lead " + suffix,
@@ -389,7 +390,7 @@ public final class EmbeddedSmokeActivity extends Activity {
         });
     }
 
-    private static String fixtureUri(String suffix) {
+    static String fixtureUri(String suffix) {
         // Canonical 22-character IDs satisfy the production song guard. These
         // synthetic zero IDs are never resolved by a network provider.
         return "spotify:track:" + ("one".equals(suffix) ? "0000000000000000000001"
