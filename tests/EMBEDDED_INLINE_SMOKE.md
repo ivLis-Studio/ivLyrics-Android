@@ -115,6 +115,7 @@ static background (`--ez reduceMotion true`) for pixel comparisons. The broadcas
 `kr.ivlis.ivlyricsandroid.debug.STANDALONE_PLAYBACK` takes the same extras, and
 `kr.ivlis.ivlyricsandroid.debug.STANDALONE_TOUCH` plays the synthetic touch described above
 on this page (`--ef y 156` is the lyrics page's drag strip). With the frame probe enabled,
-`PAGE` lines give each drawn frame's time, the lyrics page translation, whether the player
+`PAGE` lines give each drawn frame's time, the lyrics page translation, whether the lyrics
+page is open (`open=`, already 0 while a closed page slides away), whether the player
 page is visible (`main=`), its reveal clip height and the progress bar position; the
 player page's lyric preview logs `PV` lines with `owner=StandaloneSmokeActivity`.

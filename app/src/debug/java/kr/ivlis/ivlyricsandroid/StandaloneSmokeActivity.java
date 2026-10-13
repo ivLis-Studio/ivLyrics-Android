@@ -40,7 +40,8 @@ import java.lang.reflect.Field;
  * synthetic session.
  *
  * <p>With the frame probe enabled it logs one {@code PAGE} line per drawn frame: the
- * Choreographer frame time, the lyrics page's translation, whether the player page is
+ * Choreographer frame time, the lyrics page's translation, whether the lyrics page is open
+ * (a closing page is no longer open while it slides away), whether the player page is
  * visible, its reveal clip height and the progress bar's position.
  */
 public final class StandaloneSmokeActivity extends BaseLyricsActivity {
@@ -83,6 +84,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private boolean destroyed;
     private TouchScript touch;
     private Field lyricsPageField;
+    private Field lyricsPageOpenField;
     private Field mainPageField;
     private Field progressViewField;
     private Field progressPositionField;
@@ -272,6 +274,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private void logPageFrame() {
         if (lyricsPageField == null) {
             lyricsPageField = declaredField(BaseLyricsActivity.class, "lyricsPage");
+            lyricsPageOpenField = declaredField(BaseLyricsActivity.class, "lyricsPageVisible");
             mainPageField = declaredField(BaseLyricsActivity.class, "mainPage");
             progressViewField = declaredField(BaseLyricsActivity.class, "playerProgressView");
             progressPositionField = declaredField(PlayerProgressView.class, "positionMs");
@@ -286,6 +289,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
         line.append(" ty=");
         LyricsFrameProbe.appendFixed(line, page == null || page.getVisibility() != View.VISIBLE
                 ? -1d : page.getTranslationY(), 2);
+        line.append(" open=").append((Boolean) read(lyricsPageOpenField, this) ? 1 : 0);
         line.append(" main=").append(player == null ? -1 : player.getVisibility() == View.VISIBLE ? 1 : 0);
         line.append(" clip=").append(player == null || !player.getClipBounds(probeClip) ? -1 : probeClip.height());
         line.append(" prog=").append(progress == null ? -1L : (Long) read(progressPositionField, progress));
