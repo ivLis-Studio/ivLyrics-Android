@@ -5,6 +5,14 @@ set -uo pipefail
 mkdir -p build/reports/settings-ui
 ivlyrics_ui_remote=/sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions
 
+# sys.boot_completed precedes first-boot package/IME initialization. Leave it
+# time to settle, keep the software keyboard enabled, and avoid competing with
+# the emulator's software renderer for every host CPU during instrumentation.
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell input keyevent KEYCODE_MENU
+adb shell settings put secure show_ime_with_hard_keyboard 1
+sleep 20
+
 # The unified test platform uninstalls the target APK after instrumentation, which
 # removes its scoped external files. Collect finished PNGs while tests are running.
 ivlyrics_ui_collect() {
@@ -17,7 +25,7 @@ ivlyrics_ui_collect() {
   done < <(adb shell ls "$ivlyrics_ui_remote" 2>/dev/null || true)
 }
 
-./gradlew :app:connectedDebugAndroidTest --console=plain &
+./gradlew :app:connectedDebugAndroidTest --console=plain --max-workers=2 &
 ivlyrics_ui_gradle_pid=$!
 while kill -0 "$ivlyrics_ui_gradle_pid" 2>/dev/null; do
   ivlyrics_ui_collect

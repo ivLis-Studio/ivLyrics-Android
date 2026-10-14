@@ -47,6 +47,8 @@ elif sys.argv[1] == 'pull':
     if not path.exists(): sys.exit(1)
     shutil.copyfile(path, sys.argv[3])
     pathlib.Path(os.environ['IVLYRICS_TEST_READY']).touch()
+elif sys.argv[1:3] in (['shell', 'input'], ['shell', 'settings']):
+    pass  # Ephemeral-emulator wake/keyboard preflight.
 else: sys.exit(2)
 """,
                 binary / "sleep": "import time\ntime.sleep(0.02)\n",

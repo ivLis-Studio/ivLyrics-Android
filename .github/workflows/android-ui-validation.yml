@@ -70,6 +70,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          enable-hw-keyboard: false
           disable-animations: true
           emulator-options: -no-window -gpu software -no-snapshot -no-snapshot-save -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/run_settings_ui_validation.sh
