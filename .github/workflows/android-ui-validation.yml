@@ -52,7 +52,9 @@ jobs:
             "platforms;android-36.1" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
 
       - name: Build native UI test application
-        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --console=plain
+        run: |
+          python3 tests/run_settings_ui_regression.py
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --console=plain
 
       - name: Enable emulator acceleration
         shell: bash

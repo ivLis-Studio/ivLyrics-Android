@@ -123,6 +123,7 @@ jobs:
           python3 tests/run_appearance_regression.py
           python3 tests/run_vinyl_regression.py
           python3 tests/run_interlude_handoff_regression.py
+          python3 tests/run_settings_ui_regression.py
 
       - name: Restore release signing key
         shell: bash
