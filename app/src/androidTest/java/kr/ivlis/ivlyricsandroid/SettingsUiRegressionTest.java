@@ -287,6 +287,9 @@ public final class SettingsUiRegressionTest {
         onMain(() -> {
             assertTrue("real target enabled", target.isEnabled());
             Rect desired = new Rect(0, 0, target.getWidth(), target.getHeight());
+            // requestRectangleOnScreen takes content coordinates, not the view's
+            // touch frame. Native EditText can scroll its text horizontally in RTL.
+            desired.offset(target.getScrollX(), target.getScrollY());
             if (target instanceof Switch) {
                 drawSwitch((Switch) target);
                 desired.set(((Switch) target).getThumbDrawable().getBounds());
@@ -297,8 +300,8 @@ public final class SettingsUiRegressionTest {
         screenshot(capturePrefix + "-window-before-tap-" + (++taps));
         final float[] point = new float[2];
         onMain(() -> {
-            Rect visible = new Rect();
-            assertTrue("real-window target visible", target.getLocalVisibleRect(visible));
+            if (target instanceof EditText) assertEditorHitFrame((EditText) target);
+            Rect visible = visibleHitFrame(target);
             assertTrue("actual visible hit height >=48dp: " + visible, visible.height() >= dp(48));
             assertTrue("actual visible hit width >=48dp: " + visible, visible.width() >= dp(48));
             int[] position = new int[2]; target.getLocationOnScreen(position);
@@ -312,7 +315,10 @@ public final class SettingsUiRegressionTest {
                 point[1] = position[1] + thumb.exactCenterY();
             }
             Rect window = new Rect(); target.getRootView().getWindowVisibleDisplayFrame(window);
-            assertTrue("touch center inside real visible window: " + window,
+            android.util.Log.i("SettingsUiRegression", "Native hit frame=" + visible + ", origin="
+                    + position[0] + "," + position[1] + ", scroll=" + target.getScrollX() + "," + target.getScrollY()
+                    + ", point=" + point[0] + "," + point[1] + ", window=" + window);
+            assertTrue("touch center " + point[0] + "," + point[1] + " inside real visible window: " + window,
                     window.contains(Math.round(point[0]), Math.round(point[1])));
             View root = target.getRootView(); int[] origin = new int[2]; root.getLocationOnScreen(origin);
             Rect actualWindow = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
@@ -328,6 +334,28 @@ public final class SettingsUiRegressionTest {
         MotionEvent up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, point[0], point[1], 0);
         instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
+    }
+
+    private Rect visibleHitFrame(View target) {
+        Rect visible = new Rect();
+        assertTrue("real-window target visible", target.getLocalVisibleRect(visible));
+        // getLocalVisibleRect returns scroll-adjusted content coordinates. Undo
+        // only this view's own scroll; keep every ancestor's actual clipping.
+        visible.offset(-target.getScrollX(), -target.getScrollY());
+        assertTrue("visible native touch frame", visible.intersect(0, 0, target.getWidth(), target.getHeight()));
+        return visible;
+    }
+
+    private void assertEditorHitFrame(EditText editor) {
+        Rect frame = visibleHitFrame(editor);
+        int scrollX = editor.getScrollX(), scrollY = editor.getScrollY();
+        try {
+            for (int contentScroll : new int[]{-dp(400), dp(400)}) {
+                editor.scrollTo(contentScroll, scrollY);
+                assertEquals("native editor content scroll must not move its clipped hit frame",
+                        frame, visibleHitFrame(editor));
+            }
+        } finally { editor.scrollTo(scrollX, scrollY); }
     }
 
     private void awaitWindow(View root) {

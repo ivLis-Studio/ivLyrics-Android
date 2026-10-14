@@ -258,7 +258,10 @@ from the activity's framework window insets (not just a successful show request)
 Tests measure 48 dp inputs,
 buttons and visible hit rectangles, text clipping, exactly one dropdown chevron,
 and the actual rendered switch-thumb aspect and drawable padding (including
-disabled-state alpha). Review the images before claiming visual acceptance.
+disabled-state alpha). Native editor checks also verify that positive/negative
+text scrolling does not move the clipped touch frame; pointer coordinates use
+that frame, not the RTL editor's scrolled content rectangle. Review the images
+before claiming visual acceptance.
 
 Screenshots are PNGs in the target app's external files directory. Pull them
 while the emulator and app are still present:

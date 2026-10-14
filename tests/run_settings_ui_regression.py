@@ -32,6 +32,15 @@ assert "applyOverrideConfiguration(config)" not in harness
 assert "new Configuration(base.getResources().getConfiguration())" not in harness
 assert "SettingsUiHarnessActivity.prepareConfiguration(language, fontScale)" in native
 assert "sendPointerSync" in native and "getLocalVisibleRect" in native
+hit_frame = declaration(native, "private Rect visibleHitFrame(")
+assert "visible.offset(-target.getScrollX(), -target.getScrollY())" in hit_frame
+assert "visible.intersect(0, 0, target.getWidth(), target.getHeight())" in hit_frame
+assert "Rect visible = visibleHitFrame(target)" in native
+assert "desired.offset(target.getScrollX(), target.getScrollY())" in native
+assert "assertEditorHitFrame((EditText) target)" in native
+editor_frame = declaration(native, "private void assertEditorHitFrame(")
+assert "new int[]{-dp(400), dp(400)}" in editor_frame and "visibleHitFrame(editor)" in editor_frame
+assert "finally { editor.scrollTo(scrollX, scrollY); }" in editor_frame
 assert 'getExternalFilesDir("ui-regressions")' in native
 assert "peakAlpha * .9f" in native and "aspect >= .88f && aspect <= 1.14f" in native
 assert "genuineWindowCaptures >= 8" in native
