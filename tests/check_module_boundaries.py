@@ -107,8 +107,9 @@ if args.built:
             if variant == "release":
                 dex_entries = [name for name in entries if re.fullmatch(r"classes(?:[0-9]+)?[.]dex", name)]
                 require(bool(dex_entries), f"{product} release APK has executable DEX files")
-                require(not any(b"SettingsUiHarnessActivity" in apk.read(name) for name in dex_entries),
-                        f"{product} release APK excludes the debug settings UI fixture")
+                debug_ui_markers = (b"SettingsUiHarnessActivity", b"SettingsUiRegressionTest")
+                require(not any(marker in apk.read(name) for name in dex_entries for marker in debug_ui_markers),
+                        f"{product} release APK excludes debug settings UI fixtures and tests")
             require(not any(name.startswith("lib/") for name in entries),
                     f"{product} APK has no lib/ native libraries, so its installable ABIs are unchanged")
             manifest_name = "assets/localai/arm64-v8a/manifest.txt"
