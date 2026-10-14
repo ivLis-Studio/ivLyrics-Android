@@ -160,6 +160,13 @@ and system motion gates. LP titles/artists follow the existing metadata translat
 optional simplified title removes release/credit suffixes. Center labels use measured ellipsis
 and a clipped safe area separate from the album arc, with the full translated text accessible.
 
+Instrumental indicators use a 180 ms entry and 320 ms exit. The full-page renderer retains
+only the removed row's drawing, following the next lyric's movement without inserting a display
+row or hit target. Player/inline/LP previews crossfade the last indicator at its rendered baseline
+into the next lyrics. Seeks, track resets and disabled system motion discard retained drawings.
+Both CI and Release run the appearance, LP and interlude regressions; synthetic clock/paint tests
+verify behavior and bounds, not device pixels or frame-rate performance.
+
 - Rendering, ivSync/provider fixes and common UI: edit `shared` once, verify both APKs.
 - Standalone permissions, launcher and initialization: edit `app`.
 - Spotify version mappings, native metadata, card placement and host transitions: edit `spotify-module`.

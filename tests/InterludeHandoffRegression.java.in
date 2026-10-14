@@ -1,0 +1,104 @@
+package kr.ivlis.ivlyricsandroid;
+import java.util.*;
+public final class InterludeHandoffRegression {
+    static int checks;
+    static void check(boolean value) { if(!value)throw new AssertionError("check "+checks); checks++; }
+    static class Canvas {
+        int saves,restores; float scale;
+        int save(){return ++saves;} void restoreToCount(int save){restores++;}
+        void scale(float x,float y,float px,float py){scale=x;}
+    }
+    static class InterludeInfo {
+        long endTimeMs;
+        InterludeInfo(long end){endTimeMs=end;}
+    }
+    static class DisplayLine {
+        final String identity; final boolean interlude; final long end;
+        DisplayLine(String id,boolean interlude,long end){identity=id;this.interlude=interlude;this.end=end;}
+        boolean isInterlude(){return interlude;}
+        long endTimeMs(){return end;}
+    }
+    static class DrawGroup {
+        InterludeInfo interludeInfo;
+        DrawGroup(long end){interludeInfo=new InterludeInfo(end);}
+    }
+    static class LineLayout {
+        int index; DisplayLine displayLine; boolean active; float baselineCenter;
+        List<DrawGroup> groups = Collections.emptyList();
+        LineLayout(int i,DisplayLine line,boolean active,float center){index=i;displayLine=line;this.active=active;baselineCenter=center;
+            if(line.interlude)groups=List.of(new DrawGroup(line.end));}
+    }
+    static class Renderer {
+        boolean frameAnimationsEnabled=true;
+        long positionMs,frameEffectTimeMs;
+        InterludeExit exitingInterlude;
+        float paintedOpacity,paintedY;
+        int draws;
+        int getWidth(){return 400;}
+        boolean sameDisplayIdentity(DisplayLine a,DisplayLine b){return a!=null&&b!=null&&a.identity.equals(b.identity);}
+        void drawInterludeGroup(Canvas canvas,DrawGroup group,float centerY,float opacity){draws++;paintedOpacity=opacity;paintedY=centerY;}
+        // LYRICS_PRODUCTION
+    }
+    static class Typeface {}
+    static class PreviewLine { boolean interlude; PreviewLine(boolean value){interlude=value;} boolean isInterlude(){return interlude;} }
+    static class Preview {
+        boolean frameAnimationsEnabled=true;
+        long frameUptimeMs,lineStartMs;
+        List<PreviewLine> lines=List.of(new PreviewLine(false));
+        PreviewInterlude lastDrawnInterlude,exitingInterlude;
+        // PREVIEW_PRODUCTION
+    }
+    public static void main(String[] args) {
+        DisplayLine before=new DisplayLine("before",false,1000);
+        DisplayLine breakRow=new DisplayLine("gap",true,4000);
+        DisplayLine following=new DisplayLine("next",false,7000);
+        List<LineLayout> old=List.of(new LineLayout(0,before,false,80),new LineLayout(1,breakRow,true,200),new LineLayout(2,following,false,320));
+        List<LineLayout> current=List.of(new LineLayout(0,before,false,20),new LineLayout(1,following,true,220));
+        Renderer view=new Renderer(); view.positionMs=4000; view.frameEffectTimeMs=10000;
+        view.captureExitingInterlude(old,current);
+        check(view.exitingInterlude!=null);
+        check(current.size()==2 && current.get(1).active); // Next lyric starts immediately; no extra layout or active row.
+        float lastOpacity=1;
+        for(int elapsed=0;elapsed<=328;elapsed+=8) {
+            view.frameEffectTimeMs=10000+elapsed; view.positionMs=4000+elapsed;
+            Canvas canvas=new Canvas();
+            view.drawExitingInterlude(canvas,current);
+            check(current.size()==2 && current.get(1).baselineCenter==220);
+            if(elapsed<320) {
+                check(view.exitingInterlude!=null);
+                check(view.paintedOpacity<=lastOpacity && lastOpacity-view.paintedOpacity<0.05);
+                check(view.paintedY<=200 && view.paintedY>=100);
+                check(canvas.saves==canvas.restores);
+                if(elapsed==0)check(view.paintedY==200); // Begins in its last row, even if the lyric geometry has changed.
+                lastOpacity=view.paintedOpacity;
+            } else check(view.exitingInterlude==null);
+        }
+        view.positionMs=6000; view.captureExitingInterlude(old,current); check(view.exitingInterlude==null);
+        view.positionMs=4000; view.frameAnimationsEnabled=false; view.captureExitingInterlude(old,current); check(view.exitingInterlude==null);
+        view.frameAnimationsEnabled=true; view.captureExitingInterlude(old,current);
+        view.positionMs=3990; view.drawExitingInterlude(new Canvas(),current); check(view.exitingInterlude==null);
+        view.positionMs=4000; old.get(1).active=false;
+        view.captureExitingInterlude(old,current); check(view.exitingInterlude==null); // A suppressed marker over another voice never ghosts.
+        Preview preview=new Preview();
+        preview.lineStartMs=4000; preview.frameUptimeMs=10000;
+        preview.lastDrawnInterlude=new Preview.PreviewInterlude("Break",4000);
+        preview.lastDrawnInterlude.baseline=60;
+        preview.updatePreviewInterludeExit(4000);
+        check(preview.exitingInterlude!=null && preview.exitingInterlude.baseline==60);
+        for(int elapsed=0;elapsed<=328;elapsed+=8) {
+            preview.frameUptimeMs=10000+elapsed; preview.updatePreviewInterludeExit(4000+elapsed);
+            check(preview.lines.size()==1 && !preview.lines.get(0).interlude);
+            if(elapsed<320) {
+                check(preview.exitingInterlude!=null);
+                float out=InterludeTransition.exit(elapsed,true),in=1-out;
+                check(Math.abs(out+in-1)<0.0001f);
+            } else check(preview.exitingInterlude==null);
+        }
+        preview.lastDrawnInterlude=new Preview.PreviewInterlude("Break",4000); preview.frameAnimationsEnabled=false;
+        preview.updatePreviewInterludeExit(4000); check(preview.exitingInterlude==null);
+        preview.frameAnimationsEnabled=true; preview.lastDrawnInterlude=new Preview.PreviewInterlude("Break",4000);
+        preview.updatePreviewInterludeExit(9000); check(preview.exitingInterlude==null);
+        System.out.println("Interlude handoff: "+checks+" production checks passed; 120 Hz fade, unchanged lyric rows/anchors, preview/LP, seeks and reduced motion");
+    }
+}
+

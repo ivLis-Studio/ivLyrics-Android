@@ -120,6 +120,9 @@ jobs:
           python3 tests/run_metadata_refresh_loading_regression.py
           python3 tests/run_ai_models_regression.py
           python3 tests/run_openai_connections_regression.py
+          python3 tests/run_appearance_regression.py
+          python3 tests/run_vinyl_regression.py
+          python3 tests/run_interlude_handoff_regression.py
 
       - name: Restore release signing key
         shell: bash

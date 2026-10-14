@@ -133,6 +133,7 @@ public final class LyricsView extends View {
     private List<DisplayLine> cachedDisplayLines = Collections.emptyList();
     private List<DisplayLine> activeDisplayIndexCacheLines;
     private FrameLineLayouts previousFrameLayouts = new FrameLineLayouts();
+    private InterludeExit exitingInterlude;
     private FrameLineLayouts nextFrameLayouts = new FrameLineLayouts();
     private boolean displayLineCacheValid;
     private long displayLineCacheStartMs = Long.MIN_VALUE;
@@ -247,6 +248,7 @@ public final class LyricsView extends View {
     void setResult(LyricsResult result) {
         clearRowReflow();
         boolean softUpdate = canSoftUpdateResult(result);
+        if (!softUpdate) exitingInterlude = null;
         if (result == null || result.lines.isEmpty()) {
             lines = Collections.emptyList();
             emptyMessage = result == null || result.detail.isEmpty() ? emptyFallbackMessage : result.detail;
@@ -953,6 +955,7 @@ public final class LyricsView extends View {
             );
         }
         layouts.finishFrame();
+        captureExitingInterlude(previousFrameLayouts, layouts);
         FrameLineLayouts reusableFrameLayouts = previousFrameLayouts;
         previousFrameLayouts = layouts;
         nextFrameLayouts = reusableFrameLayouts;
@@ -999,6 +1002,7 @@ public final class LyricsView extends View {
             }
             drawGroups(canvas, layout.groups, baselineCenter, fadeAlpha);
         }
+        drawExitingInterlude(canvas, layouts);
         applyBottomEdgeFade(canvas);
         canvas.restoreToCount(lyricLayer);
         if (frameProbeEnabled) {
@@ -1012,7 +1016,8 @@ public final class LyricsView extends View {
         // Playback-driven fill/motion is invalidated by the host's frame clock.
         // Continue locally only for wall-clock effects, interludes and layout settling.
         if (frameAnimationsEnabled
-                && (frameHasLiveEffects || activeInterlude || Math.abs(visualCenterIndex - animatedCenterIndex) > 0.002f)) {
+                && (frameHasLiveEffects || activeInterlude || exitingInterlude != null
+                || Math.abs(visualCenterIndex - animatedCenterIndex) > 0.002f)) {
             postInvalidateOnAnimation();
         } else if (vocalAnchorMoving || rowReflowActive || !rowShifts.isEmpty()) {
             postInvalidateOnAnimation();
@@ -2586,8 +2591,10 @@ public final class LyricsView extends View {
 
     private void drawInterludeGroup(Canvas canvas, DrawGroup group, float centerY, float fadeAlpha) {
         InterludeInfo info = group.interludeInfo == null ? InterludeInfo.none() : group.interludeInfo;
+        float enterOpacity = InterludeTransition.enter(info.startTimeMs, framePositionMs, frameAnimationsEnabled);
+        fadeAlpha *= enterOpacity;
         int color = scaleAlpha(group.active ? group.activeColor : group.inactiveColor, fadeAlpha);
-        long now = SystemClock.uptimeMillis();
+        long now = frameAnimationsEnabled ? SystemClock.uptimeMillis() : 0L;
         float barWidth = sp(3.2f);
         float gap = sp(3.8f);
         float minHeight = sp(7f);
@@ -2604,6 +2611,9 @@ public final class LyricsView extends View {
             labelWidth = textPaint.measureText(label);
         }
         float left = alignedContentLeft(iconWidth + (showLabel ? labelGap + labelWidth : 0f));
+        int entrySave = canvas.save();
+        float scale = InterludeTransition.scale(enterOpacity);
+        canvas.scale(scale, scale, left + (iconWidth + (showLabel ? labelGap + labelWidth : 0f)) * 0.5f, centerY);
 
         interludePaint.setShader(null);
         interludePaint.setStyle(Paint.Style.FILL);
@@ -2618,6 +2628,7 @@ public final class LyricsView extends View {
         }
 
         if (!showLabel) {
+            canvas.restoreToCount(entrySave);
             return;
         }
 
@@ -2626,6 +2637,74 @@ public final class LyricsView extends View {
         float labelLeft = left + iconWidth + labelGap;
         canvas.drawText(label, labelLeft, baseline, textPaint);
         resetPaintEffects();
+        canvas.restoreToCount(entrySave);
+    }
+
+    private void captureExitingInterlude(List<LineLayout> previous, List<LineLayout> next) {
+        if (!frameAnimationsEnabled) {
+            exitingInterlude = null;
+            return;
+        }
+        for (LineLayout old : previous) {
+            if (old.displayLine == null || !old.displayLine.isInterlude() || !old.active
+                    || Float.isNaN(old.baselineCenter) || old.groups.isEmpty()
+                    || !InterludeTransition.canExit(old.displayLine.endTimeMs(), positionMs, true)) continue;
+            boolean retained = false;
+            for (LineLayout current : next) retained |= sameDisplayIdentity(old.displayLine, current.displayLine);
+            if (retained) continue;
+            DisplayLine follow = null;
+            float gap = 0f;
+            for (LineLayout candidate : previous) {
+                if (candidate.index <= old.index || candidate.displayLine == null || candidate.displayLine.isInterlude()
+                        || Float.isNaN(candidate.baselineCenter)) continue;
+                for (LineLayout current : next) {
+                    if (sameDisplayIdentity(candidate.displayLine, current.displayLine)) {
+                        follow = current.displayLine;
+                        gap = old.baselineCenter - candidate.baselineCenter;
+                        break;
+                    }
+                }
+                if (follow != null) break;
+            }
+            exitingInterlude = new InterludeExit(old.groups.get(0), old.baselineCenter, follow, gap, frameEffectTimeMs);
+            break;
+        }
+    }
+
+    private void drawExitingInterlude(Canvas canvas, List<LineLayout> layouts) {
+        InterludeExit exit = exitingInterlude;
+        if (exit == null) return;
+        float opacity = InterludeTransition.exit(frameEffectTimeMs - exit.startedMs, frameAnimationsEnabled);
+        if (opacity <= 0f || positionMs < exit.group.interludeInfo.endTimeMs
+                || positionMs > exit.group.interludeInfo.endTimeMs + 1000L) {
+            exitingInterlude = null;
+            return;
+        }
+        float centerY = exit.centerY;
+        for (LineLayout layout : layouts) {
+            if (exit.follow != null && sameDisplayIdentity(exit.follow, layout.displayLine)
+                    && !Float.isNaN(layout.baselineCenter)) {
+                float followingCenter = layout.baselineCenter + exit.gap;
+                centerY = exit.centerY + (followingCenter - exit.centerY) * (1f - opacity);
+                break;
+            }
+        }
+        int save = canvas.save();
+        float scale = InterludeTransition.scale(opacity);
+        canvas.scale(scale, scale, getWidth() * 0.5f, centerY);
+        drawInterludeGroup(canvas, exit.group, centerY, opacity);
+        canvas.restoreToCount(save);
+    }
+
+    private static final class InterludeExit {
+        final DrawGroup group;
+        final float centerY;
+        final DisplayLine follow;
+        final float gap;
+        final long startedMs;
+        InterludeExit(DrawGroup group, float centerY, DisplayLine follow, float gap, long startedMs) {
+            this.group = group; this.centerY = centerY; this.follow = follow; this.gap = gap; this.startedMs = startedMs;
+        }
     }
 
     private String interludeLabel(String kind) {
@@ -4426,6 +4505,7 @@ public final class LyricsView extends View {
     }
 
     private void invalidateFrameGroupCache() {
+        exitingInterlude = null;
         previousFrameLayouts.clearReferences();
         nextFrameLayouts.clearReferences();
     }

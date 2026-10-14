@@ -7,6 +7,7 @@ Run these commands from the repository root:
 python3 tests/run_lyrics_center_regression.py
 python3 tests/run_appearance_regression.py
 python3 tests/run_vinyl_regression.py
+python3 tests/run_interlude_handoff_regression.py
 python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
@@ -28,6 +29,13 @@ python3 tests/run_metadata_refresh_loading_regression.py
 python3 tests/check_module_boundaries.py --built
 python3 -m unittest discover -s .github/scripts -p 'test_release_metadata.py'
 ```
+
+The appearance regression executes the real settings persistence/export/import and original-row
+filter, plus the emitted video JavaScript's resize/ready/error paths. The LP regression runs the
+production label bounds, translated accessibility text and spin clock with synthetic collaborators.
+The interlude regression replays a 120 Hz handoff through the actual full-page retention and
+preview methods, including seeks, reduced motion and unchanged lyric row/anchor geometry.
+These three checks also run before release signing in Android Release.
 
 `shared/src/test` contains the common JUnit checks, including initialization of
 every language table. The host-side regressions execute production Java or

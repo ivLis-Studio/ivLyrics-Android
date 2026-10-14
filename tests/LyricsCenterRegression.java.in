@@ -44,6 +44,7 @@ public final class LyricsCenterRegression extends TestView {
     private int rowTravelMode = TRAVEL_REST;
     private float rowTravelCenter = Float.NaN;
     private double framePositionMs;
+    private Object exitingInterlude;
     private float scrollPixelsPerIndex = 1f;
     private static int assertions;
     private static final float GAP = 32f;

@@ -94,6 +94,8 @@ final class MainLyricPreviewView extends View {
     private long hostFrameOffsetNanos;
     private long lineStartMs;
     private long lineEndMs;
+    private PreviewInterlude lastDrawnInterlude;
+    private PreviewInterlude exitingInterlude;
     private boolean playing;
     private boolean compactLayout;
     private boolean externallyDriven;
@@ -154,6 +156,8 @@ final class MainLyricPreviewView extends View {
     }
 
     void clear() {
+        lastDrawnInterlude = null;
+        exitingInterlude = null;
         setPreview(Collections.emptyList(), 0L, 0L, 0L, false);
     }
 
@@ -303,6 +307,8 @@ final class MainLyricPreviewView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (lines.isEmpty()) {
+            lastDrawnInterlude = null;
+            exitingInterlude = null;
             return;
         }
 
@@ -317,6 +323,7 @@ final class MainLyricPreviewView extends View {
         frameWallTimeMs = System.currentTimeMillis();
         float left = getPaddingLeft();
         float width = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
+        updatePreviewInterludeExit((long) position);
         boolean overflow = measureLineWidths(width);
 
         int save = overflow
@@ -332,6 +339,10 @@ final class MainLyricPreviewView extends View {
             int alpha = line.isCultural()
                     ? Math.round(255f * culturalAnnotationOpacity / 100f)
                     : line.primary ? 244 : 208;
+            if (exitingInterlude != null) {
+                alpha = Math.round(alpha * (1f - InterludeTransition.exit(
+                        frameUptimeMs - exitingInterlude.startedMs, frameAnimationsEnabled)));
+            }
             textPaint.setColor(Color.argb(alpha, 255, 255, 255));
 
             textPaint.getFontMetrics(textFontMetrics);
@@ -345,15 +356,26 @@ final class MainLyricPreviewView extends View {
                     : measuredLineWidths[index];
             float x = xForText(textWidth, width, left, progress);
             drawPreviewLine(canvas, line, x, baseline, textSize, alpha, position, left, width);
+            if (line.isInterlude()) {
+                if (lastDrawnInterlude == null || !lastDrawnInterlude.label.equals(line.text)
+                        || lastDrawnInterlude.endMs != lineEndMs) {
+                    lastDrawnInterlude = new PreviewInterlude(line.text, lineEndMs);
+                }
+                lastDrawnInterlude.baseline = baseline;
+                lastDrawnInterlude.textSize = textSize;
+                lastDrawnInterlude.typeface = textPaint.getTypeface();
+            }
             top += rowHeight;
             if (index + 1 < lines.size()) {
                 top += sp(rowGapSp());
             }
         }
+        drawPreviewInterludeExit(canvas, left, width);
         if (overflow) {
             applyEdgeFadeMask(canvas, left, width);
         }
         canvas.restoreToCount(save);
+        if (exitingInterlude != null && frameAnimationsEnabled) postInvalidateOnAnimation();
         if (frameProbeEnabled) {
             logFrameProbe(frameProbeStartNs, position, frameProbeHostTime, frameNanos);
         }
@@ -408,7 +430,12 @@ final class MainLyricPreviewView extends View {
             float width
     ) {
         if (line.isInterlude()) {
-            drawInterludeLine(canvas, line.text, baseline, textSize, normalAlpha, left, width);
+            float opacity = InterludeTransition.enter(lineStartMs, positionMs, frameAnimationsEnabled);
+            int save = canvas.save();
+            float scale = InterludeTransition.scale(opacity);
+            canvas.scale(scale, scale, left + width * 0.5f, baseline - textSize * 0.36f);
+            drawInterludeLine(canvas, line.text, baseline, textSize, Math.round(normalAlpha * opacity), left, width);
+            canvas.restoreToCount(save);
             return;
         }
         if (line.isLoading()) {
@@ -455,7 +482,7 @@ final class MainLyricPreviewView extends View {
 
         shapePaint.setShader(null);
         shapePaint.setStyle(Paint.Style.FILL);
-        shapePaint.setColor(Color.argb(Math.min(255, alpha + 4), 255, 255, 255));
+        shapePaint.setColor(Color.argb(Math.max(0, Math.min(255, alpha)), 255, 255, 255));
         for (int index = 0; index < 4; index++) {
             float phase = positiveSin(now + index * 145L, 980L);
             float height = minHeight + (maxHeight - minHeight) * (0.2f + phase * 0.8f);
@@ -467,6 +494,47 @@ final class MainLyricPreviewView extends View {
             textPaint.setColor(Color.argb(alpha, 255, 255, 255));
             canvas.drawText(label, start + iconWidth + labelGap, baseline, textPaint);
         }
+    }
+
+    private void updatePreviewInterludeExit(long position) {
+        boolean hasInterlude = false;
+        for (PreviewLine line : lines) hasInterlude |= line.isInterlude();
+        if (!frameAnimationsEnabled || hasInterlude) exitingInterlude = null;
+        if (!hasInterlude && lastDrawnInterlude != null) {
+            if (InterludeTransition.canExit(lastDrawnInterlude.endMs, position, frameAnimationsEnabled)
+                    && lineStartMs >= lastDrawnInterlude.endMs && lineStartMs <= lastDrawnInterlude.endMs + 400L) {
+                exitingInterlude = lastDrawnInterlude;
+                exitingInterlude.startedMs = frameUptimeMs;
+            }
+            lastDrawnInterlude = null;
+        }
+        if (exitingInterlude != null && (position < exitingInterlude.endMs
+                || InterludeTransition.exit(frameUptimeMs - exitingInterlude.startedMs, frameAnimationsEnabled) <= 0f)) {
+            exitingInterlude = null;
+        }
+    }
+
+    private void drawPreviewInterludeExit(Canvas canvas, float left, float width) {
+        PreviewInterlude exit = exitingInterlude;
+        if (exit == null) return;
+        float opacity = InterludeTransition.exit(frameUptimeMs - exit.startedMs, frameAnimationsEnabled);
+        textPaint.setTextSize(exit.textSize);
+        textPaint.setTypeface(exit.typeface);
+        int save = canvas.save();
+        float scale = InterludeTransition.scale(opacity);
+        canvas.scale(scale, scale, left + width * 0.5f, exit.baseline - exit.textSize * 0.36f);
+        drawInterludeLine(canvas, exit.label, exit.baseline, exit.textSize, Math.round(244 * opacity), left, width);
+        canvas.restoreToCount(save);
+    }
+
+    private static final class PreviewInterlude {
+        final String label;
+        final long endMs;
+        float baseline;
+        float textSize;
+        Typeface typeface;
+        long startedMs;
+        PreviewInterlude(String label, long endMs) { this.label = label; this.endMs = endMs; }
     }
 
     private void drawLoadingLine(
