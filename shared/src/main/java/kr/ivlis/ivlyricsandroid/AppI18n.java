@@ -145,8 +145,37 @@ final class AppI18n {
         addLocalAiStrings(languages);
         addAppearanceStrings(languages);
         addVinylControlStrings(languages);
+        addLyricsRegenerateStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addLyricsRegenerateStrings(Map<String, Map<String, String>> languages) {
+        String[][] rows = {
+                {"ko", "번역·발음 재생성"},
+                {"en", "Regenerate translation & pronunciation"},
+                {"zh-CN", "重新生成翻译和发音"},
+                {"zh-TW", "重新產生翻譯與發音"},
+                {"ja", "翻訳・発音を再生成"},
+                {"hi", "अनुवाद और उच्चारण दोबारा बनाएँ"},
+                {"es", "Regenerar traducción y pronunciación"},
+                {"fr", "Régénérer la traduction et la prononciation"},
+                {"ar", "إعادة إنشاء الترجمة والنطق"},
+                {"fa", "تولید دوبارهٔ ترجمه و تلفظ"},
+                {"de", "Übersetzung und Aussprache neu erstellen"},
+                {"ru", "Создать перевод и произношение заново"},
+                {"sv", "Skapa översättning och uttal på nytt"},
+                {"pt", "Regenerar tradução e pronúncia"},
+                {"bn", "অনুবাদ ও উচ্চারণ আবার তৈরি করুন"},
+                {"cs", "Znovu vytvořit překlad a výslovnost"},
+                {"it", "Rigenera traduzione e pronuncia"},
+                {"th", "สร้างคำแปลและคำอ่านใหม่"},
+                {"vi", "Tạo lại bản dịch và cách phát âm"},
+                {"id", "Buat ulang terjemahan dan pelafalan"},
+                {"ms", "Jana semula terjemahan dan sebutan"},
+                {"tr", "Çeviri ve telaffuzu yeniden oluştur"}
+        };
+        for (String[] row : rows) languages.get(row[0]).put("lyrics.regenerate_supplements", row[1]);
     }
 
     private static void addVinylControlStrings(Map<String, Map<String, String>> languages) {

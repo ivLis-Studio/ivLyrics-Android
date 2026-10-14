@@ -8,7 +8,7 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -17,6 +17,9 @@ import android.text.style.StyleSpan;
 import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
@@ -81,39 +84,55 @@ final class SettingsAppearance {
         view.setSplitTrack(false);
         view.setSwitchMinWidth(dp(context, 44));
         view.setSwitchPadding(dp(context, 14));
-        // StateListDrawable keeps Android's checked, disabled, keyboard and accessibility behavior.
-        StateListDrawable thumb = new StateListDrawable();
-        thumb.addState(new int[]{android.R.attr.state_checked}, circle(context, ACCENT, 20));
-        thumb.addState(new int[]{}, circle(context, 0xFF8B8A93, 20));
-        view.setThumbDrawable(thumb);
-        StateListDrawable track = new StateListDrawable();
-        track.addState(new int[]{android.R.attr.state_checked}, switchTrack(context, ACCENT_SOFT));
-        track.addState(new int[]{}, switchTrack(context, CONTROL));
-        view.setTrackDrawable(track);
-        view.setThumbTintList(null);
-        view.setTrackTintList(null);
-        view.setMinHeight(dp(context, 44));
+        // Keep the platform's matching optical insets and intrinsic sizes. Switch draws
+        // the thumb at max(trackHeight, thumbHeight): a 20dp oval on a 26dp track
+        // became a 20x26 ellipse. Tinting native drawables preserves circular geometry.
+        view.setThumbTintList(states(0x558B8A93, ACCENT, 0xFF8B8A93));
+        view.setTrackTintList(states(0x331B1B21, 0x80FF6B4A, 0xFF35353D));
+        view.setSingleLine(false);
+        view.setMaxLines(Integer.MAX_VALUE);
+        view.setEllipsize(null);
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setMinHeight(dp(context, 48));
+        view.setMinimumHeight(dp(context, 48));
+        view.setMinimumWidth(dp(context, 48));
     }
 
-    private static GradientDrawable circle(Context context, int color, int size) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColor(color);
-        drawable.setSize(dp(context, size), dp(context, size));
-        return drawable;
+    private static ColorStateList states(int disabled, int checked, int normal) {
+        return new ColorStateList(new int[][]{
+                {-android.R.attr.state_enabled}, {android.R.attr.state_checked}, {}},
+                new int[]{disabled, checked, normal});
     }
 
-    private static GradientDrawable switchTrack(Context context, int color) {
-        GradientDrawable drawable = surface(context, color, 100, color == CONTROL);
-        drawable.setSize(dp(context, 44), dp(context, 26));
-        return drawable;
+    static Button button(Context context, String text, float textSize) {
+        Button button = new Button(context);
+        button.setAllCaps(false);
+        button.setText(text);
+        button.setTextSize(textSize);
+        button.setTypeface(AppFonts.semiBold(context));
+        button.setSingleLine(false);
+        button.setMaxLines(Integer.MAX_VALUE);
+        button.setEllipsize(null);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(context, 48));
+        button.setMinimumHeight(dp(context, 48));
+        button.setMinWidth(dp(context, 48));
+        button.setMinimumWidth(dp(context, 48));
+        button.setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12));
+        button.setTextColor(states(MUTED, TEXT, TEXT));
+        return button;
+    }
+
+    static Drawable actionBackground(Context context, int color, int radius, boolean strong) {
+        return new RippleDrawable(ColorStateList.valueOf(0x30FFFFFF),
+                surface(context, color, radius, strong), null);
     }
 
     static void styleSlider(SeekBar slider) {
         slider.setProgressTintList(ColorStateList.valueOf(ACCENT));
         slider.setProgressBackgroundTintList(ColorStateList.valueOf(CONTROL));
         slider.setThumbTintList(ColorStateList.valueOf(ACCENT));
-        slider.setMinimumHeight(dp(slider.getContext(), 44));
+        slider.setMinimumHeight(dp(slider.getContext(), 48));
     }
 
     static void styleControls(View root) {
@@ -121,19 +140,37 @@ final class SettingsAppearance {
         Context context = root.getContext();
         if (root instanceof Switch) {
             styleSwitch((Switch) root);
+        } else if (root instanceof CheckBox) {
+            CheckBox check = (CheckBox) root;
+            check.setSingleLine(false);
+            check.setEllipsize(null);
+            check.setMinHeight(dp(context, 48));
+            check.setMinWidth(dp(context, 48));
         } else if (root instanceof SeekBar) {
             styleSlider((SeekBar) root);
         } else if (root instanceof EditText) {
             root.setBackground(surface(context, CONTROL, 11, true));
             ((TextView) root).setTextColor(TEXT);
             ((EditText) root).setHintTextColor(MUTED);
+            // TextView's setSingleLine/setInputType reset its line-based min height.
+            // View's minimum height survives both, including later search setup.
+            root.setMinimumHeight(dp(context, 48));
+            root.setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12));
         } else if (root instanceof TextView && (PRIMARY_ACTION.equals(root.getTag()) || SECONDARY_ACTION.equals(root.getTag()))) {
             boolean primary = PRIMARY_ACTION.equals(root.getTag());
             TextView button = (TextView) root;
-            button.setTextColor(primary ? BACKGROUND : TEXT);
-            button.setBackground(surface(context, primary ? TEXT : CONTROL, 11, !primary));
-            button.setMinHeight(dp(context, 44));
+            button.setTextColor(states(MUTED, primary ? BACKGROUND : TEXT, primary ? BACKGROUND : TEXT));
+            button.setBackground(actionBackground(context, primary ? TEXT : CONTROL, 11, !primary));
+            button.setMinHeight(dp(context, 48));
             button.setTextSize(13.5f);
+        }
+        if (root instanceof Button || root instanceof Switch || root instanceof CheckBox || root instanceof EditText || root instanceof SeekBar
+                || root instanceof TextView && root.isClickable()) {
+            ViewGroup.LayoutParams params = root.getLayoutParams();
+            if (params != null && params.height >= 0) params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            if (params != null && params.width > 0 && params.width < dp(context, 48)) params.width = dp(context, 48);
+            root.setMinimumHeight(dp(context, 48));
+            root.setMinimumWidth(dp(context, 48));
         }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;

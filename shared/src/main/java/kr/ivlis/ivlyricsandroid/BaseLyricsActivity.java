@@ -431,6 +431,7 @@ public class BaseLyricsActivity extends Activity implements
     private TextView spotifySetupStatusView;
     private TextView lyricsManualSearchStatusView;
     private TextView culturalAnnotationRegenerateButton;
+    private TextView lyricsRegenerateButton;
     private TextView updateStatusView;
     private TextView creatorPrivacyStatusView;
     private TextView creatorPrivacyAccountButton;
@@ -703,6 +704,7 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        if (!usesLivePlayback()) return;
         if (IvLyricsBridge.isEmbedded(this)) IvLyricsBridge.setLyricsPageForeground(this, true);
         if (!IvLyricsBridge.isEmbedded(this)) SpotifyShortcutOverlayController.setIvLyricsForeground(true);
         NowPlayingService.register(this);
@@ -990,7 +992,7 @@ public class BaseLyricsActivity extends Activity implements
         if (!keepActiveForPictureInPicture) {
             if (!IvLyricsBridge.isEmbedded(this)) SpotifyShortcutOverlayController.setIvLyricsForeground(false);
         }
-        NowPlayingService.requestRefresh(this);
+        if (usesLivePlayback()) NowPlayingService.requestRefresh(this);
         if (!keepActiveForPictureInPicture) {
             NowPlayingService.unregister(this);
             stopPlaybackClock();
@@ -3812,11 +3814,11 @@ public class BaseLyricsActivity extends Activity implements
         tabScrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         tabScrollView.addView(lyricsPopupTabButtonsContainer, new HorizontalScrollView.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(38)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         ));
         panel.addView(tabScrollView, topMargin(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(38)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         ), dp(10)));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_LANGUAGE, ui("lyrics.tab.language"));
         addLyricsPopupTabButton(LYRICS_POPUP_TAB_SYNC, ui("lyrics.tab.sync"));
@@ -3842,7 +3844,7 @@ public class BaseLyricsActivity extends Activity implements
                 dp(42)
         ), dp(10)));
 
-        LinearLayout switchRow = new LinearLayout(this);
+        LinearLayout switchRow = new SettingsControlRow(this);
         switchRow.setOrientation(LinearLayout.HORIZONTAL);
         switchRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams switchRowParams = new LinearLayout.LayoutParams(
@@ -3885,9 +3887,9 @@ public class BaseLyricsActivity extends Activity implements
                 ), dp(10))
         );
 
-        TextView regenerateButton = languageButton(ui("tmi.regenerate"), false);
-        regenerateButton.setOnClickListener(view -> requestAiLyrics(true));
-        lyricsLanguageSettingsContent.addView(regenerateButton, topMargin(matchWrap(), dp(10)));
+        lyricsRegenerateButton = languageButton(ui("lyrics.regenerate_supplements"), false);
+        lyricsRegenerateButton.setOnClickListener(view -> requestAiLyrics(true));
+        lyricsLanguageSettingsContent.addView(lyricsRegenerateButton, topMargin(matchWrap(), dp(10)));
 
         lyricsSyncSettingsContent = buildLyricsSyncSettingsContent();
         panel.addView(lyricsSyncSettingsContent, topMargin(matchWrap(), dp(10)));
@@ -3900,13 +3902,14 @@ public class BaseLyricsActivity extends Activity implements
 
         lyricsManualSearchContent = buildLyricsManualSearchContent();
         panel.addView(lyricsManualSearchContent, topMargin(matchWrap(), dp(10)));
+        SettingsAppearance.styleControls(panel);
         switchLyricsPopupTab(activeLyricsPopupTab);
         return panel;
     }
 
     private GradientDrawable lyricsLanguageSettingsPanelBackground(boolean popup) {
         int color = popup
-                ? Color.argb(236, 18, 20, 30)
+                ? SettingsAppearance.SURFACE
                 : Color.argb(38, 255, 255, 255);
         return roundDrawable(color, dp(14));
     }
@@ -4287,7 +4290,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private LinearLayout buildOffsetButtonRow(int first, int second, int third, OffsetAdjuster adjuster) {
-        LinearLayout row = new LinearLayout(this);
+        LinearLayout row = new SettingsControlRow(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         int[] values = {first, second, third};
@@ -4409,7 +4412,18 @@ public class BaseLyricsActivity extends Activity implements
             int topInset = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                     ? insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout()).top
                     : insets.getSystemWindowInsetTop();
-            view.setPadding(dp(20), topInset + dp(18), dp(20), dp(12));
+            int left = insets.getSystemWindowInsetLeft();
+            int right = insets.getSystemWindowInsetRight();
+            int bottom = insets.getSystemWindowInsetBottom();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets safe = insets.getInsets(WindowInsets.Type.systemBars()
+                        | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                left = safe.left;
+                right = safe.right;
+                bottom = safe.bottom;
+            }
+            shell.setPadding(left, 0, right, bottom);
+            view.setPadding(dp(20), topInset + dp(12), dp(20), dp(12));
             return insets;
         });
 
@@ -4427,7 +4441,7 @@ public class BaseLyricsActivity extends Activity implements
         closeButton.setContentDescription(ui("button.close"));
         closeButton.setBackground(SettingsAppearance.surface(this, SettingsAppearance.CONTROL, 100, true));
         closeButton.setOnClickListener(view -> showSettingsPanel(false));
-        header.addView(closeButton, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        header.addView(closeButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         aiSettingsStatusView = label("", 12.5f, SettingsAppearance.SECONDARY, AppFonts.semiBold(this));
         aiSettingsStatusView.setLineSpacing(dp(2), 1f);
@@ -4437,7 +4451,11 @@ public class BaseLyricsActivity extends Activity implements
         settingsSearchInput.setHint(ui("settings.search"));
         settingsSearchInput.setSingleLine(true);
         settingsSearchInput.setText("");
-        stickyHeader.addView(settingsSearchInput, topMargin(matchWrap(), dp(10)));
+        settingsSearchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        settingsSearchInput.setOnEditorActionListener((view, action, event) -> {
+            hideSettingsKeyboard();
+            return true;
+        });
         settingsSearchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence value, int start, int before, int count) { }
@@ -4453,7 +4471,6 @@ public class BaseLyricsActivity extends Activity implements
         settingsTabsScroll.setClipToPadding(false);
         settingsTabsScroll.addView(settingsTabButtonsContainer, new HorizontalScrollView.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        stickyHeader.addView(settingsTabsScroll, topMargin(matchWrap(), dp(10)));
         buildSettingsTabs();
         View headerDivider = new View(this);
         headerDivider.setBackgroundColor(SettingsAppearance.BORDER);
@@ -4470,6 +4487,10 @@ public class BaseLyricsActivity extends Activity implements
         content.setPadding(dp(20), dp(22), dp(20), dp(60));
         settingsScrollView.addView(content, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // Only the title/close stay fixed: search and tabs can scroll away in
+        // landscape, with a keyboard, or when the system font is enlarged.
+        content.addView(settingsSearchInput, matchWrap());
+        content.addView(settingsTabsScroll, topMargin(matchWrap(), dp(10)));
         settingsCategoryTitleView = null;
 
         settingsGeneralPage = settingsPage();
@@ -4617,7 +4638,7 @@ public class BaseLyricsActivity extends Activity implements
         });
         settingsLyricsPage.addView(syncedLyricsKaraokeSwitch, topMargin(matchWrap(), dp(12)));
 
-        karaokeDisplayGranularityButtonsContainer = new LinearLayout(this);
+        karaokeDisplayGranularityButtonsContainer = new SettingsControlRow(this);
         karaokeDisplayGranularityButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
         settingsLyricsPage.addView(settingGroup(
                 ui("setting.karaoke_display_granularity"),
@@ -4721,7 +4742,7 @@ public class BaseLyricsActivity extends Activity implements
             settingsPlayerPage.addView(landscapeCenterNoLyricsSwitch, topMargin(matchWrap(), dp(12)));
         }
 
-        lyricsAlignmentButtonsContainer = new LinearLayout(this);
+        lyricsAlignmentButtonsContainer = new SettingsControlRow(this);
         lyricsAlignmentButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
         settingsAppearancePage.addView(settingGroup(
                 ui("setting.lyrics_alignment"),
@@ -4748,7 +4769,7 @@ public class BaseLyricsActivity extends Activity implements
             });
             settingsPlayerPage.addView(pipShowArtworkSwitch, topMargin(matchWrap(), dp(12)));
 
-            pipOrientationButtonsContainer = new LinearLayout(this);
+            pipOrientationButtonsContainer = new SettingsControlRow(this);
             pipOrientationButtonsContainer.setOrientation(LinearLayout.HORIZONTAL);
             settingsPlayerPage.addView(settingGroup(
                     ui("setting.pip_orientation"),
@@ -5029,7 +5050,7 @@ public class BaseLyricsActivity extends Activity implements
         openAIConnectionsContainer.setOrientation(LinearLayout.VERTICAL);
         providerDetailsContainer.addView(openAIConnectionsContainer, topMargin(matchWrap(), dp(12)));
 
-        LinearLayout advancedRow = new LinearLayout(this);
+        LinearLayout advancedRow = new SettingsControlRow(this);
         advancedRow.setOrientation(LinearLayout.HORIZONTAL);
         advancedRow.setGravity(Gravity.CENTER_VERTICAL);
         maxTokensInput = settingEditText("", false, false);
@@ -5056,7 +5077,7 @@ public class BaseLyricsActivity extends Activity implements
             });
         }
 
-        LinearLayout actionRow = new LinearLayout(this);
+        LinearLayout actionRow = new SettingsControlRow(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
         providerDetailsContainer.addView(actionRow, topMargin(matchWrap(), dp(18)));
@@ -5199,7 +5220,7 @@ public class BaseLyricsActivity extends Activity implements
         settingsSystemPage.addView(sectionTitle(ui("section.lyrics_cache")), topMargin(matchWrap(), dp(24)));
         settingsSystemPage.addView(sectionDescription(ui("section.lyrics_cache_desc")), topMargin(matchWrap(), dp(8)));
 
-        LinearLayout lyricsCacheRow = new LinearLayout(this);
+        LinearLayout lyricsCacheRow = new SettingsControlRow(this);
         lyricsCacheRow.setOrientation(LinearLayout.HORIZONTAL);
         lyricsCacheRow.setGravity(Gravity.CENTER_VERTICAL);
         settingsSystemPage.addView(lyricsCacheRow, topMargin(matchWrap(), dp(12)));
@@ -5212,7 +5233,7 @@ public class BaseLyricsActivity extends Activity implements
         clearAllLyricsCache.setOnClickListener(view -> clearAllLyricsCacheFromSettings());
         lyricsCacheRow.addView(clearAllLyricsCache, weightedButtonParams(1f, dp(4)));
 
-        LinearLayout utilityRow = new LinearLayout(this);
+        LinearLayout utilityRow = new SettingsControlRow(this);
         utilityRow.setOrientation(LinearLayout.HORIZONTAL);
         utilityRow.setGravity(Gravity.CENTER_VERTICAL);
         settingsSystemPage.addView(utilityRow, topMargin(matchWrap(), dp(12)));
@@ -5325,7 +5346,7 @@ public class BaseLyricsActivity extends Activity implements
         onboardingBody.setPadding(dp(2), 0, dp(2), 0);
         outer.addView(onboardingBody, topMargin(matchWrap(), dp(14)));
 
-        LinearLayout actionRow = new LinearLayout(this);
+        LinearLayout actionRow = new SettingsControlRow(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
         outer.addView(actionRow, topMargin(matchWrap(), dp(18)));
@@ -5528,7 +5549,7 @@ public class BaseLyricsActivity extends Activity implements
         attachSpotifySetupKeyboardScroll(spotifySetupClientSecretInput);
         body.addView(settingField("Client Secret", ui("field.spotify_client_secret_desc"), spotifySetupClientSecretInput), topMargin(matchWrap(), dp(12)));
 
-        LinearLayout actionRow = new LinearLayout(this);
+        LinearLayout actionRow = new SettingsControlRow(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
         body.addView(actionRow, topMargin(matchWrap(), dp(18)));
@@ -5595,7 +5616,7 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         String lang = aiLyricsSettings.snapshot().uiLang;
-        onboardingUiLanguageSelectButton.setText(AppI18n.label(lang) + "  v");
+        onboardingUiLanguageSelectButton.setText(AppI18n.label(lang));
     }
 
     private void showOnboardingUiLanguagePopup(View anchor) {
@@ -5630,8 +5651,8 @@ public class BaseLyricsActivity extends Activity implements
         int visibleCount = Math.min(7, choices.size());
         PopupWindow popup = new PopupWindow(
                 content,
-                Math.max(anchor.getWidth(), dp(220)),
-                Math.min(dp(320), dp(44) * visibleCount + dp(16)),
+                Math.max(1, Math.min(visibleSettingsWindowBounds().width() - dp(16), Math.max(anchor.getWidth(), dp(220)))),
+                Math.max(1, Math.min(visibleSettingsWindowBounds().height() - dp(16), dp(48) * visibleCount + dp(16))),
                 true
         );
         popup.setOutsideTouchable(true);
@@ -5664,14 +5685,11 @@ public class BaseLyricsActivity extends Activity implements
 
         for (LanguageChoice choice : choices) {
             boolean active = sameChoice(choice.code, selected);
-            TextView item = label(choice.label, 13f,
-                    active ? Color.rgb(12, 13, 17) : Color.WHITE,
-                    AppFonts.semiBold(this));
+            TextView item = SettingsAppearance.button(this, choice.label, 14f);
+            item.setSelected(active);
+            item.setTextColor(active ? SettingsAppearance.BACKGROUND : SettingsAppearance.TEXT);
             makeRemoteFocusable(item);
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setSingleLine(true);
-            item.setEllipsize(TextUtils.TruncateAt.END);
-            item.setPadding(dp(12), 0, dp(12), 0);
             item.setBackground(roundDrawable(
                     active ? Color.argb(238, 255, 255, 255) : Color.TRANSPARENT,
                     dp(10)
@@ -5682,7 +5700,7 @@ public class BaseLyricsActivity extends Activity implements
             });
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(42)
+                    ViewGroup.LayoutParams.WRAP_CONTENT
             );
             if (list.getChildCount() > 0) {
                 params.topMargin = dp(4);
@@ -6134,19 +6152,19 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void addSettingsTabButton(String tabId, String text) {
-        TextView button = label(text, 14.5f, SettingsAppearance.SECONDARY, AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, text, 14.5f);
+        button.setMaxWidth(dp(200));
         makeRemoteFocusable(button);
         button.setTag(tabId);
         button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setPadding(dp(16), dp(12), dp(16), dp(12));
         button.setOnClickListener(view -> {
             if (settingsSearchInput != null) settingsSearchInput.setText("");
             switchSettingsTab(tabId);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(44)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
         if (settingsTabButtonsContainer.getChildCount() > 0) {
             params.setMarginStart(dp(6));
@@ -6169,7 +6187,7 @@ public class BaseLyricsActivity extends Activity implements
             settingsCategoryTitleView.setText(settingsTabLabel(next));
         }
         updateSettingsTabButtons();
-        if (SETTINGS_TAB_SYSTEM.equals(next)) {
+        if (SETTINGS_TAB_SYSTEM.equals(next) && usesLivePlayback()) {
             refreshCreatorPrivacy(false);
         }
         if (changed && settingsScrollView != null) {
@@ -6286,8 +6304,24 @@ public class BaseLyricsActivity extends Activity implements
             boolean selected = activeSettingsTab.equals(button.getTag());
             button.setSelected(selected);
             button.setTextColor(selected ? SettingsAppearance.BACKGROUND : SettingsAppearance.SECONDARY);
-            button.setBackground(roundDrawable(selected ? SettingsAppearance.TEXT : Color.TRANSPARENT, dp(100)));
+            button.setBackground(SettingsAppearance.actionBackground(this,
+                    selected ? SettingsAppearance.TEXT : Color.TRANSPARENT, 100, false));
         }
+        scrollSelectedTabIntoView(settingsTabButtonsContainer);
+    }
+
+    private void scrollSelectedTabIntoView(LinearLayout buttons) {
+        if (buttons == null || !(buttons.getParent() instanceof HorizontalScrollView)) return;
+        HorizontalScrollView scroll = (HorizontalScrollView) buttons.getParent();
+        scroll.post(() -> {
+            for (int index = 0; index < buttons.getChildCount(); index++) {
+                View button = buttons.getChildAt(index);
+                if (button.isSelected()) {
+                    scroll.scrollTo(Math.max(0, button.getLeft() - (scroll.getWidth() - button.getWidth()) / 2), 0);
+                    break;
+                }
+            }
+        });
     }
 
     private String normalizeSettingsTab(String tabId) {
@@ -6421,7 +6455,7 @@ public class BaseLyricsActivity extends Activity implements
                     lyricsProviderSettings.moveProvider(config.provider.id, 1);
                     onLyricsProviderSettingsChanged(true);
                 });
-        header.addView(order, new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.addView(order, new LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout titleColumn = new LinearLayout(this);
         titleColumn.setOrientation(LinearLayout.VERTICAL);
@@ -6476,13 +6510,14 @@ public class BaseLyricsActivity extends Activity implements
         order.setOrientation(LinearLayout.VERTICAL);
         TextView up = providerOrderButton("⌃", ui("lyrics_provider.move_up"), providerName, index > 0, moveUp);
         TextView down = providerOrderButton("⌄", ui("lyrics_provider.move_down"), providerName, index < total - 1, moveDown);
-        order.addView(up, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        order.addView(down, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        order.addView(up, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        order.addView(down, new LinearLayout.LayoutParams(dp(48), dp(48)));
         return order;
     }
 
     private TextView providerOrderButton(String symbol, String action, String providerName, boolean enabled, Runnable callback) {
-        TextView button = label(symbol, 20f, SettingsAppearance.SECONDARY, AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, symbol, 20f);
+        button.setPadding(0, 0, 0, 0);
         makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER);
         button.setContentDescription(providerName + ", " + action);
@@ -6567,7 +6602,7 @@ public class BaseLyricsActivity extends Activity implements
         body.setOrientation(LinearLayout.VERTICAL);
         group.addView(body, topMargin(matchWrap(), dp(10)));
 
-        LinearLayout nav = new LinearLayout(this);
+        LinearLayout nav = new SettingsControlRow(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER_VERTICAL);
         group.addView(nav, topMargin(matchWrap(), dp(12)));
@@ -6710,7 +6745,7 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        LinearLayout firstRow = new LinearLayout(this);
+        LinearLayout firstRow = new SettingsControlRow(this);
         firstRow.setOrientation(LinearLayout.HORIZONTAL);
         firstRow.setGravity(Gravity.CENTER_VERTICAL);
         content.addView(firstRow, topMargin(matchWrap(), dp(10)));
@@ -6723,7 +6758,7 @@ public class BaseLyricsActivity extends Activity implements
         cloudSettingsUploadButton.setOnClickListener(view -> uploadCloudSettings());
         firstRow.addView(cloudSettingsUploadButton, weightedButtonParams(1f, dp(4)));
 
-        LinearLayout secondRow = new LinearLayout(this);
+        LinearLayout secondRow = new SettingsControlRow(this);
         secondRow.setOrientation(LinearLayout.HORIZONTAL);
         secondRow.setGravity(Gravity.CENTER_VERTICAL);
         content.addView(secondRow, topMargin(matchWrap(), dp(8)));
@@ -6993,7 +7028,7 @@ public class BaseLyricsActivity extends Activity implements
         creatorPrivacyStatusView.setLineSpacing(dp(2), 1f);
         content.addView(creatorPrivacyStatusView, topMargin(matchWrap(), dp(2)));
 
-        LinearLayout actions = new LinearLayout(this);
+        LinearLayout actions = new SettingsControlRow(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         content.addView(actions, topMargin(matchWrap(), dp(10)));
@@ -7325,7 +7360,7 @@ public class BaseLyricsActivity extends Activity implements
         pollinationsAuthCodeView.setVisibility(View.GONE);
         container.addView(pollinationsAuthCodeView, topMargin(matchWrap(), dp(10)));
 
-        LinearLayout firstRow = new LinearLayout(this);
+        LinearLayout firstRow = new SettingsControlRow(this);
         firstRow.setOrientation(LinearLayout.HORIZONTAL);
         firstRow.setGravity(Gravity.CENTER_VERTICAL);
         container.addView(firstRow, topMargin(matchWrap(), dp(10)));
@@ -7338,7 +7373,7 @@ public class BaseLyricsActivity extends Activity implements
         pollinationsAuthOpenButton.setOnClickListener(view -> openPollinationsLoginPage());
         firstRow.addView(pollinationsAuthOpenButton, weightedButtonParams(1f, dp(4)));
 
-        LinearLayout secondRow = new LinearLayout(this);
+        LinearLayout secondRow = new SettingsControlRow(this);
         secondRow.setOrientation(LinearLayout.HORIZONTAL);
         secondRow.setGravity(Gravity.CENTER_VERTICAL);
         container.addView(secondRow, topMargin(matchWrap(), dp(8)));
@@ -7590,7 +7625,7 @@ public class BaseLyricsActivity extends Activity implements
         value.setBackground(roundDrawable(Color.argb(38, 255, 255, 255), dp(9)));
         value.setPadding(dp(12), 0, dp(12), 0);
         value.setHint("#000000");
-        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         valueParams.leftMargin = dp(10);
         previewRow.addView(value, valueParams);
         content.addView(previewRow, topMargin(matchWrap(), dp(12)));
@@ -7816,15 +7851,15 @@ public class BaseLyricsActivity extends Activity implements
         body.addView(titleColumn, new LinearLayout.LayoutParams(
                 stacked ? ViewGroup.LayoutParams.MATCH_PARENT : dp(84), ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        LinearLayout controls = new LinearLayout(this);
+        LinearLayout controls = new SettingsControlRow(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setGravity(Gravity.CENTER_VERTICAL);
         controls.addView(sizeSeekBar, new LinearLayout.LayoutParams(0, dp(44), 1f));
-        LinearLayout weightButtons = new LinearLayout(this);
+        LinearLayout weightButtons = new SettingsControlRow(this);
         weightButtons.setOrientation(LinearLayout.HORIZONTAL);
         weightButtons.setPadding(dp(3), dp(3), dp(3), dp(3));
         weightButtons.setBackground(roundDrawable(SettingsAppearance.CONTROL, dp(11)));
-        controls.addView(weightButtons, new LinearLayout.LayoutParams(dp(126), dp(44)));
+        controls.addView(weightButtons, new LinearLayout.LayoutParams(dp(126), ViewGroup.LayoutParams.WRAP_CONTENT));
         rebuildTypographyWeightButtons(weightButtons, slot);
         body.addView(controls, stacked ? topMargin(matchWrap(), dp(5))
                 : new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -8041,7 +8076,7 @@ public class BaseLyricsActivity extends Activity implements
                 rebuildTypographyWeightButtons(container, slot);
                 showSavedToast(ui("toast.typography_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (index > 0) {
                 params.setMarginStart(dp(3));
             }
@@ -8083,22 +8118,22 @@ public class BaseLyricsActivity extends Activity implements
             type |= InputType.TYPE_TEXT_VARIATION_PASSWORD;
         }
         input.setInputType(type);
+        input.setMinHeight(dp(multiLine ? 72 : 48));
+        input.setMinimumHeight(dp(multiLine ? 72 : 48));
+        input.setPadding(dp(12), dp(12), dp(12), dp(12));
         return input;
     }
 
     private TextView primaryButton(String label) {
-        TextView view = label(label, 13f, Color.rgb(12, 13, 17), AppFonts.bold(this));
+        TextView view = SettingsAppearance.button(this, label, 13.5f);
         view.setTag(SettingsAppearance.PRIMARY_ACTION);
         makeRemoteFocusable(view);
-        view.setGravity(Gravity.CENTER);
-        view.setBackground(roundDrawable(Color.argb(238, 255, 255, 255), dp(8)));
-        view.setPadding(dp(12), 0, dp(12), 0);
-        view.setMinHeight(dp(42));
+        SettingsAppearance.styleControls(view);
         return view;
     }
 
     private LinearLayout addChoiceGridRow(LinearLayout container) {
-        LinearLayout row = new LinearLayout(this);
+        LinearLayout row = new SettingsControlRow(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -8112,7 +8147,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private LinearLayout.LayoutParams choiceGridButtonParams(int index, int heightDp) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(heightDp), 1f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         params.leftMargin = index % 2 == 0 ? 0 : dp(8);
         return params;
     }
@@ -8179,7 +8214,7 @@ public class BaseLyricsActivity extends Activity implements
             order.getChildAt(index).setOnLongClickListener(startProviderDrag);
         }
         installProviderAccessibilityActions(order, provider, providerIndex, snapshot.aiProviderOrder.size());
-        header.addView(order, new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.addView(order, new LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -8191,8 +8226,7 @@ public class BaseLyricsActivity extends Activity implements
                 14.5f, SettingsAppearance.TEXT, AppFonts.semiBold(this));
         textColumn.addView(title, matchWrap());
         TextView description = label(providerDescription(provider), 12f, SettingsAppearance.MUTED, AppFonts.regular(this));
-        description.setMaxLines(2);
-        description.setEllipsize(TextUtils.TruncateAt.END);
+        description.setLineSpacing(dp(2), 1f);
         textColumn.addView(description, topMargin(matchWrap(), dp(2)));
         if (provider.localModel) {
             // Translation runs on the phone itself, so the card says up front that it needs a high-end device.
@@ -8697,13 +8731,34 @@ public class BaseLyricsActivity extends Activity implements
                     snapshot.culturalAnnotationsEnabled ? View.VISIBLE : View.GONE
             );
         }
+        updateLyricsRegenerateActions();
+    }
+
+    private void updateLyricsRegenerateActions() {
+        boolean hasLyrics = currentTrack != null && currentBaseLyricsResult != null
+                && !currentBaseLyricsResult.lines.isEmpty() && !lyricsLookupInFlight;
+        boolean busy = aiLyricsGenerating || lyricsSupplementPronunciationLoading
+                || lyricsSupplementTranslationLoading || lyricsSupplementFuriganaLoading;
+        if (lyricsRegenerateButton != null) {
+            lyricsRegenerateButton.setEnabled(hasLyrics && !busy && !lyricsCulturalAnnotationsLoading);
+            lyricsRegenerateButton.setText(busy ? ui("status.ai_generating") : ui("lyrics.regenerate_supplements"));
+            lyricsRegenerateButton.setAlpha(lyricsRegenerateButton.isEnabled() ? 1f : 0.5f);
+            lyricsRegenerateButton.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        }
+        if (culturalAnnotationRegenerateButton != null) {
+            culturalAnnotationRegenerateButton.setEnabled(hasLyrics && !lyricsCulturalAnnotationsLoading && !busy);
+            culturalAnnotationRegenerateButton.setText(lyricsCulturalAnnotationsLoading
+                    ? ui("loading.cultural_annotations")
+                    : ui("tmi.regenerate") + " · " + ui("loading.cultural_annotations"));
+            culturalAnnotationRegenerateButton.setAlpha(culturalAnnotationRegenerateButton.isEnabled() ? 1f : 0.5f);
+        }
     }
 
     private void updateUiLanguageSelect(String selectedLang) {
         if (uiLanguageSelectButton == null) {
             return;
         }
-        uiLanguageSelectButton.setText(AppI18n.label(selectedLang) + "  v");
+        uiLanguageSelectButton.setText(AppI18n.label(selectedLang));
     }
 
     private void showSettingsUiLanguagePopup(View anchor) {
@@ -8729,7 +8784,7 @@ public class BaseLyricsActivity extends Activity implements
         if (outputLanguageSelectButton == null) {
             return;
         }
-        outputLanguageSelectButton.setText(outputLanguageSelectLabel(selectedLang) + "  v");
+        outputLanguageSelectButton.setText(outputLanguageSelectLabel(selectedLang));
     }
 
     private void showSettingsOutputLanguagePopup(View anchor) {
@@ -8748,7 +8803,7 @@ public class BaseLyricsActivity extends Activity implements
         if (pronunciationNotationSelectButton == null) {
             return;
         }
-        pronunciationNotationSelectButton.setText(pronunciationNotationLabel(notation) + "  v");
+        pronunciationNotationSelectButton.setText(pronunciationNotationLabel(notation));
     }
 
     private void showPronunciationNotationPopup(View anchor) {
@@ -8873,7 +8928,7 @@ public class BaseLyricsActivity extends Activity implements
                 applyLyricsTextAlignmentSetting(snapshot);
                 showSavedToast(ui("toast.lyrics_alignment_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (index > 0) {
                 params.setMarginStart(dp(4));
             }
@@ -8905,7 +8960,7 @@ public class BaseLyricsActivity extends Activity implements
                 setKaraokeDisplayGranularityOnViews(snapshot.karaokeDisplayGranularity);
                 showSavedToast(ui("toast.settings_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (index > 0) {
                 params.setMarginStart(dp(4));
             }
@@ -9009,7 +9064,7 @@ public class BaseLyricsActivity extends Activity implements
                 updatePictureInPictureParamsIfNeeded();
                 showSavedToast(ui("toast.pip_settings_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (index > 0) {
                 params.leftMargin = dp(8);
             }
@@ -9049,7 +9104,7 @@ public class BaseLyricsActivity extends Activity implements
                 applyLyricsTextAlignmentSetting(snapshot);
                 showSavedToast(ui("toast.pip_settings_saved"));
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (index > 0) {
                 params.setMarginStart(dp(4));
             }
@@ -9450,7 +9505,7 @@ public class BaseLyricsActivity extends Activity implements
         youtubeBackgroundAttachedToPictureInPicture = false;
     }
 
-    private void showVideoSelectionDialog() {
+    protected void showVideoSelectionDialog() {
         if (currentTrack == null || !currentTrack.hasUsableMetadata() || youtubeBackgroundRepository == null) {
             showSavedToast(ui("toast.current_track_missing"));
             return;
@@ -9765,15 +9820,15 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsPopupTabButtonsContainer == null) {
             return;
         }
-        TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, text, 14f);
+        button.setMaxWidth(dp(200));
         makeRemoteFocusable(button);
         button.setTag(tabId);
         button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setPadding(dp(10), 0, dp(10), 0);
+        button.setPadding(dp(16), dp(12), dp(16), dp(12));
         button.setMinWidth(dp(72));
         button.setOnClickListener(view -> switchLyricsPopupTab(tabId));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         if (lyricsPopupTabButtonsContainer.getChildCount() > 0) {
             params.leftMargin = dp(8);
         }
@@ -9814,6 +9869,7 @@ public class BaseLyricsActivity extends Activity implements
             }
         }
         updateLyricsPopupTabButtons();
+        scrollSelectedTabIntoView(lyricsPopupTabButtonsContainer);
         updateLyricsSyncSettingsUi();
         updateVideoSyncSettingsUi();
         resizeLyricsMetaMenuPopupForActiveTab(true);
@@ -9958,7 +10014,7 @@ public class BaseLyricsActivity extends Activity implements
                 }).setNegativeButton(android.R.string.cancel, null).show();
     }
 
-    private void performManualLrclibSearch() {
+    protected void performManualLrclibSearch() {
         if (manualLrclibSearchInFlight) {
             return;
         }
@@ -10264,7 +10320,7 @@ public class BaseLyricsActivity extends Activity implements
         if (sourceLanguageSelectButton == null) {
             return;
         }
-        sourceLanguageSelectButton.setText(sourceLanguageLabel(selectedRuleSourceLang) + "  v");
+        sourceLanguageSelectButton.setText(sourceLanguageLabel(selectedRuleSourceLang));
     }
 
     private void showLyricsSourceLanguagePopup(View anchor) {
@@ -10291,26 +10347,21 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private TextView settingsChoiceButton(String text, boolean selected) {
-        TextView button = label(text, 13.5f, selected ? SettingsAppearance.BACKGROUND : SettingsAppearance.SECONDARY,
-                AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, text, 13.5f);
         makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER);
         button.setSelected(selected);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
         button.setContentDescription(text);
-        button.setPadding(dp(6), 0, dp(6), 0);
-        button.setBackground(roundDrawable(selected ? SettingsAppearance.TEXT : SettingsAppearance.CONTROL, dp(8)));
+        button.setTextColor(selected ? SettingsAppearance.BACKGROUND : SettingsAppearance.TEXT);
+        button.setBackground(SettingsAppearance.actionBackground(this,
+                selected ? SettingsAppearance.TEXT : SettingsAppearance.CONTROL, 8, false));
         return button;
     }
 
     private TextView languageButton(String text, boolean selected) {
-        TextView button = label(text, 12f, Color.WHITE, AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, text, 13f);
         makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
-        button.setPadding(dp(8), 0, dp(8), 0);
         setSelectableButtonState(button, selected, 11f);
         return button;
     }
@@ -10320,22 +10371,19 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void setSelectableButtonState(TextView button, boolean selected, float radiusDp) {
+        button.setSelected(selected);
         button.setTextColor(selected ? Color.rgb(12, 13, 17) : Color.WHITE);
-        button.setBackground(roundDrawable(
-                selected ? Color.argb(238, 255, 255, 255) : Color.argb(34, 255, 255, 255),
-                dp(radiusDp)
+        button.setBackground(SettingsAppearance.actionBackground(this,
+                selected ? SettingsAppearance.TEXT : SettingsAppearance.CONTROL,
+                Math.round(radiusDp), false
         ));
     }
 
     private TextView settingsSelectButton(String text) {
-        TextView button = label(text, 14.5f, SettingsAppearance.TEXT, AppFonts.semiBold(this));
+        TextView button = SettingsAppearance.button(this, text, 14.5f);
         makeRemoteFocusable(button);
         button.setGravity(Gravity.CENTER_VERTICAL);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
-        button.setMinHeight(dp(44));
-        button.setPadding(dp(12), 0, dp(12), 0);
-        button.setBackground(SettingsAppearance.surface(this, SettingsAppearance.CONTROL, 11, false));
+        button.setBackground(SettingsAppearance.actionBackground(this, SettingsAppearance.CONTROL, 11, false));
         button.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, SettingsAppearance.chevron(this), null);
         button.setCompoundDrawablePadding(dp(10));
         return button;
@@ -10568,6 +10616,7 @@ public class BaseLyricsActivity extends Activity implements
             return false;
         });
         popupContent.setPadding(dp(16), dp(10), dp(16), dp(10));
+        popupContent.setBackground(SettingsAppearance.surface(this, SettingsAppearance.SURFACE, 18, false));
         popupContent.setClipChildren(false);
         popupContent.setClipToPadding(false);
 
@@ -10584,12 +10633,10 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        int width = Math.min(
-                getResources().getDisplayMetrics().widthPixels - dp(isLandscapeLayout() ? 56 : 32),
-                dp(isLandscapeLayout() ? 480 : 430)
-        );
+        int width = Math.min(visibleSettingsWindowBounds().width() - dp(16),
+                dp(isLandscapeLayout() ? 480 : 430));
         int popupTop = lyricsMetaMenuPopupTop(anchor);
-        lyricsMetaMenuPopupWidthPx = Math.max(dp(280), width);
+        lyricsMetaMenuPopupWidthPx = Math.max(1, width);
         int popupHeight = lyricsMetaMenuPopupHeight(lyricsMetaMenuPopupWidthPx, popupTop);
         lyricsMetaMenuPopupTopPx = popupTop;
         lyricsMetaMenuPopup = new PopupWindow(
@@ -10599,7 +10646,9 @@ public class BaseLyricsActivity extends Activity implements
                 true
         );
         lyricsMetaMenuPopup.setOutsideTouchable(true);
-        lyricsMetaMenuPopup.setBackgroundDrawable(roundDrawable(Color.TRANSPARENT, dp(18)));
+        lyricsMetaMenuPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
+        lyricsMetaMenuPopup.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        lyricsMetaMenuPopup.setBackgroundDrawable(roundDrawable(SettingsAppearance.SURFACE, dp(18)));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             lyricsMetaMenuPopup.setElevation(dp(14));
         }
@@ -10623,15 +10672,23 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private int lyricsMetaMenuPopupTop(View anchor) {
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        int top = isLandscapeLayout() ? dp(20) : statusBarInsetPx() + dp(24);
+        android.graphics.Rect visible = visibleSettingsWindowBounds();
+        int top = visible.top + dp(12);
         if (anchor != null && anchor.getWindowToken() != null) {
             int[] location = new int[2];
             anchor.getLocationOnScreen(location);
             top = location[1] + anchor.getHeight() + dp(10);
         }
-        int maxTop = Math.max(dp(12), screenHeight - dp(isLandscapeLayout() ? 390 : 470));
-        return Math.max(dp(12), Math.min(top, maxTop));
+        int maxTop = Math.max(visible.top, visible.bottom - dp(isLandscapeLayout() ? 230 : 380));
+        return Math.max(visible.top, Math.min(top, maxTop));
+    }
+
+    private android.graphics.Rect visibleSettingsWindowBounds() {
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        getWindow().getDecorView().getWindowVisibleDisplayFrame(bounds);
+        if (bounds.isEmpty()) bounds.set(0, 0, getResources().getDisplayMetrics().widthPixels,
+                getResources().getDisplayMetrics().heightPixels);
+        return bounds;
     }
 
     private int lyricsMetaMenuPopupHeight(int width, int top) {
@@ -10642,16 +10699,16 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private int lyricsMetaMenuPopupMaxHeight(int top) {
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenHeight = visibleSettingsWindowBounds().bottom;
         int bottomMargin = dp(isLandscapeLayout() ? 14 : 22);
-        return Math.max(dp(180), screenHeight - top - bottomMargin);
+        return Math.max(1, screenHeight - top - bottomMargin);
     }
 
     private int measureLyricsMetaMenuPopupHeight(int popupWidth) {
         if (lyricsLanguageSettingsPanel == null) {
             return dp(260);
         }
-        int panelWidth = Math.max(dp(160), popupWidth - dp(32));
+        int panelWidth = Math.max(1, popupWidth - dp(32));
         int widthSpec = View.MeasureSpec.makeMeasureSpec(panelWidth, View.MeasureSpec.EXACTLY);
         int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
         lyricsLanguageSettingsPanel.measure(widthSpec, heightSpec);
@@ -11040,6 +11097,7 @@ public class BaseLyricsActivity extends Activity implements
         switchLyricsPopupTab(activeLyricsPopupTab);
         updateLyricsSyncSettingsUi();
         updateVideoSyncSettingsUi();
+        updateLyricsRegenerateActions();
     }
 
     private void updateLyricsLanguageButtonState() {
@@ -12953,6 +13011,8 @@ public class BaseLyricsActivity extends Activity implements
             settingsPanel.animate().alpha(1f).setDuration(180L).start();
             requestDefaultRemoteFocus(true);
         } else {
+            hideSettingsKeyboard();
+            settingsPanel.clearFocus();
             settingsPanel.animate()
                     .alpha(0f)
                     .setDuration(160L)
@@ -12971,9 +13031,21 @@ public class BaseLyricsActivity extends Activity implements
         return aiLyricsSettings != null && aiLyricsSettings.snapshot().hasSpotifyApiCredentials();
     }
 
-    private boolean isInitialSetupComplete() {
+    private void hideSettingsKeyboard() {
+        android.view.inputmethod.InputMethodManager keyboard =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null && settingsSearchInput != null) {
+            keyboard.hideSoftInputFromWindow(settingsSearchInput.getWindowToken(), 0);
+            settingsSearchInput.clearFocus();
+        }
+    }
+
+    protected boolean isInitialSetupComplete() {
         return isSpotifyApiConfigured() && NowPlayingService.isNotificationAccessEnabled(this);
     }
+
+    /** Debug-only offline UI fixtures override this; normal app/host playback is unchanged. */
+    protected boolean usesLivePlayback() { return true; }
 
     private boolean isSpotifySetupPanelVisible() {
         return spotifySetupPanel != null && spotifySetupPanel.getVisibility() == View.VISIBLE;
@@ -13383,7 +13455,7 @@ public class BaseLyricsActivity extends Activity implements
                 : roundDrawable(Color.TRANSPARENT, dp(12)));
     }
 
-    private void requestAiLyrics(boolean clearCache) {
+    protected void requestAiLyrics(boolean clearCache) {
         long generation = ++aiSupplementGeneration;
         pronunciationLoadingProviderName = "";
         translationLoadingProviderName = "";
@@ -13534,7 +13606,7 @@ public class BaseLyricsActivity extends Activity implements
         @Override public void onAiCulturalAnnotationsError(String key, String requestKey, String message) {}
     }
 
-    private void requestCulturalAnnotations(boolean clearCache) {
+    protected void requestCulturalAnnotations(boolean clearCache) {
         if (currentTrack == null
                 || currentBaseLyricsResult == null
                 || currentBaseLyricsResult.lines.isEmpty()
@@ -13940,6 +14012,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void updateLyricsSupplementLoadingIndicator(boolean visible) {
+        updateLyricsRegenerateActions();
         setLoadingIndicatorVisible(lyricsSupplementLoadingIndicator, visible, true);
         setLoadingIndicatorVisible(landscapeLyricsSupplementLoadingIndicator, visible, true);
     }
@@ -13990,6 +14063,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void setLyricsResultOnViews(LyricsResult result) {
+        updateLyricsRegenerateActions();
         if (IvLyricsBridge.isEmbedded(this)) {
             IvLyricsBridge.publishLyrics(currentTrack, result, effectiveSelectedSourceLang());
         }
@@ -17505,13 +17579,10 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private TextView debugButton(String label) {
-        TextView view = label(label, 13f, Color.WHITE, AppFonts.semiBold(this));
+        TextView view = SettingsAppearance.button(this, label, 13.5f);
         view.setTag(SettingsAppearance.SECONDARY_ACTION);
         makeRemoteFocusable(view);
-        view.setGravity(Gravity.CENTER);
-        view.setBackground(roundDrawable(Color.argb(42, 255, 255, 255), dp(9)));
-        view.setPadding(dp(12), 0, dp(12), 0);
-        view.setMinHeight(dp(42));
+        SettingsAppearance.styleControls(view);
         return view;
     }
 
@@ -17611,7 +17682,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private LinearLayout.LayoutParams weightedButtonParams(float weight, int sideMargin) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), weight);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight);
         params.leftMargin = sideMargin;
         params.rightMargin = sideMargin;
         return params;
