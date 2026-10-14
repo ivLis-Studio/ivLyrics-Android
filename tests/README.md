@@ -85,6 +85,13 @@ the page is shown. Touches outside a slide must match the frozen methods frame b
 A title tap that moved the page a few pixels now settles it back, and a drag that begins
 while the module's sheet is closing leaves the page's top padding alone. Each run's
 outcome is written to `build/reports/regressions/render-idle/page-slides-result.txt`.
+The in-app browser sheet's open, back-close, handle drag-close and settle-back slides are
+played the same way, with each gesture on its handle or its web page. Every run must
+come to rest; a tap or jitter leaves the slide as it was, and reaches neither the page
+nor the handle's click. Touches outside a slide must match `291b1e6` frame by frame,
+including the events the page receives. A handle tap that moved the sheet now settles it
+back. A close that ended a Discord login is left to finish, because that login cannot
+resume.
 This exercises the page logic only, not Android touch dispatch or device timing.
 
 The inline hook regression runs production Xposed callbacks against synthetic

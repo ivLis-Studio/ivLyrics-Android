@@ -136,6 +136,11 @@ PAGE_METHODS = (
     "private void clearMainPageRevealClip()",
     "private float pageVelocityY()",
     "private void recyclePageVelocityTracker()",
+    "private void showInAppBrowser(boolean show)",
+    "private void attachInAppBrowserSwipe(View view)",
+    "private void attachInAppBrowserContentSwipe(AccessibleWebView view)",
+    "private void applyInAppBrowserDragTranslation(float translationY)",
+    "private void settleInAppBrowserDrag(float velocityY)",
 )
 # Methods some revisions lack. A missing one with a body is stubbed as that revision behaved;
 # the others are only called by revisions that have them.
@@ -155,16 +160,28 @@ PAGE_OPTIONAL = {
     "private int beginLyricsPageSlide()": None,
     "private void endLyricsPageSlide(int slide)": None,
     "private void stopLyricsPageSlide()": None,
+    "private void beginInAppBrowserTouch()": None,
+    "private void carrySlidingInAppBrowser(float rawY, boolean dragging)": None,
+    "private void endSlidingInAppBrowserTouch(float velocityY)": None,
+    "private void settleInAppBrowserLeftMidway(float velocityY)": None,
+    "private boolean isInAppBrowserSliding()": None,
+    "private int beginInAppBrowserSlide()": None,
+    "private void endInAppBrowserSlide(int slide)": None,
+    "private void stopInAppBrowserSlide()": None,
 }
 PAGE_BRIDGE = """
     void open() { showLyricsPage(true); }
     void close() { showLyricsPage(false); }
+    void openBrowser() { showInAppBrowser(true); }
+    void closeBrowser() { showInAppBrowser(false); }
     void attach() {
         preview.setOnClickListener(view -> showLyricsPage(true));
         attachPageSwipe(preview, true, true);
         attachPageSwipe(pageRoot, true, false);
         attachPageSwipe(header, false, false);
         attachLyricsMetaSwipe(title);
+        attachInAppBrowserSwipe(browserHandle);
+        attachInAppBrowserContentSwipe(browserContent);
     }
     void feed(double positionMs, long frameTimeNanos) { setLyricsFramePositionOnActiveView(positionMs, frameTimeNanos); }
     boolean coversPlayer() { return COVERS; }

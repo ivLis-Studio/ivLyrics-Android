@@ -3,9 +3,10 @@ import java.util.*;
 /**
  * Plays the standalone lyrics page's open, close and settle slides with touches landing on the
  * page's drag handle, its title and the player page during them, through the production page
- * and gesture methods. View, ViewPropertyAnimator (AccelerateDecelerate, end actions skipped
- * on cancel), MotionEvent, VelocityTracker and the 120 Hz frame clock are synthetic: this does
- * not claim Android touch dispatch, Canvas pixels or device timing.
+ * and gesture methods, and the in-app browser sheet's slides with touches on its handle and its
+ * web page. View, ViewPropertyAnimator (AccelerateDecelerate, end actions skipped on cancel),
+ * MotionEvent, VelocityTracker and the 120 Hz frame clock are synthetic: this does not claim
+ * Android touch dispatch, Canvas pixels or device timing.
  */
 public final class PageSlideRegression {
     static int checks;
@@ -79,6 +80,7 @@ public final class PageSlideRegression {
             }
             return true;
         }
+        boolean canScrollVertically(int direction) { return false; }
         void setOnTouchListener(OnTouchListener listener) { touchListener = listener; }
         void setOnClickListener(OnClickListener listener) { clickListener = listener; }
         void setOnLongClickListener(OnLongClickListener listener) {}
@@ -105,6 +107,19 @@ public final class PageSlideRegression {
         int frames;
         LyricsView() { super("lyricsView"); }
         void setPlaybackFrame(double positionMs, long frameTimeNanos) { frames++; }
+    }
+
+    /** The browser's WebView: counts the touch events its listener lets through to the page. */
+    static final class AccessibleWebView extends View {
+        boolean scrollable;
+        int pageEvents;
+        AccessibleWebView() { super("browserContent"); }
+        @Override boolean canScrollVertically(int direction) { return direction < 0 && scrollable; }
+    }
+
+    static final class CreatorPrivacyRepository {
+        int cancels;
+        void cancelDiscordLogin() { cancels++; }
     }
 
     /** Android's translation animation: from the value when translationY() is called, AccelerateDecelerate. */
@@ -193,9 +208,11 @@ public final class PageSlideRegression {
     static final class MotionEvent {
         static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3;
         final int action; final float rawY; final double time;
+        final float rawX = 640f;
         MotionEvent(int action, float rawY, double time) { this.action = action; this.rawY = rawY; this.time = time; }
         int getActionMasked() { return action; }
         float getRawY() { return rawY; }
+        float getRawX() { return rawX; }
     }
 
     /** Least-squares slope of the samples in the last 100 ms, like Android's default horizon. */
@@ -270,6 +287,10 @@ public final class PageSlideRegression {
         final View preview = new View("preview");
         final View pageRoot = new View("pageRoot");
         final LyricsView lyricsView = new LyricsView();
+        final View inAppBrowserPage = new View("browser");
+        final View browserHandle = new View("browserHandle");
+        final AccessibleWebView browserContent = new AccessibleWebView();
+        final CreatorPrivacyRepository creatorPrivacyRepository = new CreatorPrivacyRepository();
         View debugPanel;
         View coveredMainPage;
         LyricsView pictureInPictureLyricsView, landscapeLyricsView;
@@ -278,8 +299,11 @@ public final class PageSlideRegression {
         boolean vinylModeVisible, lyricsMetaLongPressTriggered;
         boolean lyricsPageSliding, pageSlideTouch, pageSlideCarried;
         int lyricsPageSlide;
+        boolean inAppBrowserVisible, creatorPrivacyLoginInProgress;
+        boolean inAppBrowserSliding, inAppBrowserSlideTouch, inAppBrowserSlideCarried, inAppBrowserCloseEndedLogin;
+        int inAppBrowserSlide;
         long lastBackPressElapsedMs;
-        float pageDragStartY, pageDragStartTranslationY;
+        float pageDragStartX, pageDragStartY, pageDragStartTranslationY;
         int lyricsPageCornerRadiusDp = -1;
         int lyricsPageContentTopPaddingPx;
         ValueAnimator lyricsPageContentPaddingAnimator;
@@ -293,6 +317,9 @@ public final class PageSlideRegression {
             lyricsView.parentView = lyricsPageContent;
             header.parentView = lyricsPageContent;
             title.parentView = header;
+            inAppBrowserPage.setVisibility(View.GONE);
+            browserHandle.parentView = inAppBrowserPage;
+            browserContent.parentView = inAppBrowserPage;
             lyricsPageContentTopPaddingPx = dp(LYRICS_PAGE_TOP_PADDING_EXPANDED_DP);
             lyricsPageContent.setPadding(dp(24), lyricsPageContentTopPaddingPx, dp(24), dp(22));
         }
@@ -310,11 +337,15 @@ public final class PageSlideRegression {
         void handleLyricsMetaLongPress(View target) { metaLongPresses++; }
         void finishHostedLyricsImmediately() {}
         void finish() {}
+        void updateCreatorPrivacyControls() {}
+        void updateInAppBrowserSheetLayout() {}
         void refreshMainPagePlayback() { refreshes++; }
         void logMainPageCover(boolean covered) { if (covered) covers++; else uncovers++; }
 
         abstract void open();
         abstract void close();
+        abstract void openBrowser();
+        abstract void closeBrowser();
         abstract void attach();
         abstract void feed(double positionMs, long frameTimeNanos);
         abstract boolean coversPlayer();
@@ -325,9 +356,11 @@ public final class PageSlideRegression {
     /** One drawn frame. */
     static final class Frame {
         double time; float ty; boolean pageShown, open; int main, clip, padding, radius; boolean fed;
+        float browserTy; boolean browserShown, browserOpen;
         String key(boolean withMain) {
-            return String.format(Locale.ROOT, "%s ty=%.3f open=%b clip=%d pad=%d radius=%d%s",
-                    pageShown ? "shown" : "gone", ty, open, clip, padding, radius, withMain ? " main=" + main : "");
+            return String.format(Locale.ROOT, "%s ty=%.3f open=%b clip=%d pad=%d radius=%d%s browser=%s/%.3f/%b",
+                    pageShown ? "shown" : "gone", ty, open, clip, padding, radius, withMain ? " main=" + main : "",
+                    browserShown ? "shown" : "gone", browserTy, browserOpen);
         }
     }
 
@@ -367,7 +400,9 @@ public final class PageSlideRegression {
             for (Touch touch : new ArrayList<>(touches)) {
                 if (touch.time <= now + 1e-9) {
                     touches.remove(touch);
-                    touch.target.touchListener.onTouch(touch.target, new MotionEvent(touch.action, touch.y, now));
+                    boolean consumed = touch.target.touchListener.onTouch(touch.target, new MotionEvent(touch.action, touch.y, now));
+                    // An event its listener does not consume reaches the WebView's page.
+                    if (!consumed && touch.target instanceof AccessibleWebView) ((AccessibleWebView) touch.target).pageEvents++;
                 }
             }
             for (Object[] entry : new ArrayList<>(Clock.delayed)) {
@@ -387,6 +422,9 @@ public final class PageSlideRegression {
             record.padding = page.lyricsPageContent.paddingTop;
             record.radius = page.lyricsPageCornerRadiusDp;
             record.fed = page.lyricsView.frames > before;
+            record.browserShown = page.inAppBrowserPage.visibility == View.VISIBLE;
+            record.browserTy = record.browserShown ? page.inAppBrowserPage.translationY : -1f;
+            record.browserOpen = page.inAppBrowserVisible;
             frames.add(record);
         }
         boolean animating() {
@@ -432,14 +470,18 @@ public final class PageSlideRegression {
 
     /** A drag of the open page's handle by dy over ms, released: how a drag-close or settle starts. */
     static double handleDrag(Run run, double start, float dy, double ms) {
-        run.touch(start, MotionEvent.ACTION_DOWN, 600f, run.page.header);
+        return drag(run, run.page.header, start, dy, ms);
+    }
+
+    static double drag(Run run, View view, double start, float dy, double ms) {
+        run.touch(start, MotionEvent.ACTION_DOWN, 600f, view);
         int steps = (int) Math.ceil(ms / FRAME_MS);
         for (int i = 1; i <= steps; i++) {
             double progress = Math.min(1, i * FRAME_MS / ms);
-            run.touch(start + i * FRAME_MS, MotionEvent.ACTION_MOVE, (float) (600f + dy * progress), run.page.header);
+            run.touch(start + i * FRAME_MS, MotionEvent.ACTION_MOVE, (float) (600f + dy * progress), view);
         }
         double release = start + (steps + 1) * FRAME_MS;
-        run.touch(release, MotionEvent.ACTION_UP, 600f + dy, run.page.header);
+        run.touch(release, MotionEvent.ACTION_UP, 600f + dy, view);
         return release;
     }
 
@@ -724,11 +766,228 @@ public final class PageSlideRegression {
         System.out.printf(Locale.ROOT, "Drag during the sheet's close: frozen baseline top padding jumps %d px, candidate %d px%n", jumps[0], jumps[1]);
     }
 
+    static final String B_OPEN = "browser-open", B_BACK = "browser-back-close", B_DRAG_CLOSE = "browser-drag-close",
+            B_SETTLE = "browser-settle-back";
+    static final String[] BROWSER_SLIDES = {B_BACK, B_DRAG_CLOSE, B_OPEN, B_SETTLE};
+    static final String[] BROWSER_TARGETS = {"handle", "content"};
+
+    /** The in-app browser at rest for the slide (optionally a Discord login), and when the slide starts. */
+    static double prepareBrowser(Run run, String slide, boolean login) {
+        Runnable open = () -> {
+            if (login) run.page.creatorPrivacyLoginInProgress = true;
+            run.page.openBrowser();
+        };
+        if (B_OPEN.equals(slide)) {
+            run.at(100, open);
+            return 100 + FRAME_MS * 0.5;
+        }
+        run.at(0, open);
+        run.advance(800);
+        switch (slide) {
+            case B_BACK:
+                run.at(900, run.page::closeBrowser);
+                return 900 + FRAME_MS * 0.5;
+            case B_DRAG_CLOSE:
+                return drag(run, run.page.browserHandle, 900, 1400f, 280);
+            default:
+                return drag(run, run.page.browserHandle, 900, 300f, 200);
+        }
+    }
+
+    static long browserSlideDuration(String slide) {
+        switch (slide) {
+            case B_OPEN: return 320L;
+            case B_SETTLE: return 210L;
+            default: return 260L;
+        }
+    }
+
+    static String browserRest(Run run) {
+        PageFields page = run.page;
+        View browser = page.inAppBrowserPage;
+        if (run.animating()) return "moving";
+        if (browser.visibility == View.GONE && !page.inAppBrowserVisible && browser.translationY == 0f) return "closed";
+        if (browser.visibility == View.VISIBLE && page.inAppBrowserVisible && Math.abs(browser.translationY) <= 0.5f) return "open";
+        return String.format(Locale.ROOT, "STUCK(ty=%.1f shown=%b open=%b)", browser.translationY,
+                browser.visibility == View.VISIBLE, page.inAppBrowserVisible);
+    }
+
+    static float maxBrowserStep(List<Frame> frames, int from) {
+        float max = 0f;
+        for (int i = Math.max(1, from); i < frames.size(); i++) {
+            Frame previous = frames.get(i - 1), current = frames.get(i);
+            if (previous.browserShown && current.browserShown) max = Math.max(max, Math.abs(current.browserTy - previous.browserTy));
+        }
+        return max;
+    }
+
+    static Run playBrowser(java.util.function.Supplier<PageFields> factory, String slide, double point, String targetName,
+                           String kind, boolean login) {
+        Run run = new Run(factory.get());
+        double start = prepareBrowser(run, slide, login);
+        run.gestureStart = start + browserSlideDuration(slide) * point;
+        if (targetName != null) {
+            gesture(run, "handle".equals(targetName) ? run.page.browserHandle : run.page.browserContent, run.gestureStart, kind);
+        }
+        run.advance(start + 1600);
+        return run;
+    }
+
+    static boolean sameFrames(Run a, Run b) {
+        if (a.frames.size() != b.frames.size()) return false;
+        for (int i = 0; i < a.frames.size(); i++) {
+            if (!a.frames.get(i).key(true).equals(b.frames.get(i).key(true))) return false;
+        }
+        return true;
+    }
+
+    /** The browser sheet's interrupted slides: the baseline gets stuck, the candidate always rests without a jump. */
+    static void interruptedBrowserSlides(java.util.function.Supplier<PageFields> baseline,
+                                         java.util.function.Supplier<PageFields> candidate) {
+        Map<String, Run> references = new HashMap<>();
+        float slideStep = 0f;
+        for (String slide : BROWSER_SLIDES) {
+            Run reference = playBrowser(candidate, slide, 0, null, null, false);
+            references.put(slide, reference);
+            slideStep = Math.max(slideStep, maxBrowserStep(reference.frames, 0));
+            check(!browserRest(reference).startsWith("STUCK"), slide + " reference rests: " + browserRest(reference));
+        }
+        float allowedStep = Math.max(slideStep, (float) (600 / 200.0 * FRAME_MS)) + 0.5f;
+        int baselineStuck = 0, runs = 0, untouched = 0, carried = 0;
+        StringBuilder table = new StringBuilder();
+        for (String slide : BROWSER_SLIDES) {
+            for (int p = 0; p < POINTS.length; p++) {
+                for (String targetName : BROWSER_TARGETS) {
+                    for (String kind : GESTURES) {
+                        String label = slide + " " + POINT_NAMES[p] + " " + targetName + " " + kind;
+                        Run before = playBrowser(baseline, slide, POINTS[p], targetName, kind, false);
+                        String beforeRest = browserRest(before);
+                        if (beforeRest.startsWith("STUCK")) baselineStuck++;
+                        Run after = playBrowser(candidate, slide, POINTS[p], targetName, kind, false);
+                        runs++;
+                        String afterRest = browserRest(after);
+                        int touched = frameAt(after, after.gestureStart);
+                        check("open".equals(afterRest) || "closed".equals(afterRest), label + " comes to rest: " + afterRest);
+                        check(maxBrowserStep(after.frames, touched) <= allowedStep, label + " has no jump: "
+                                + maxBrowserStep(after.frames, touched) + " > " + allowedStep);
+                        check(after.page.browserContent.pageEvents == 0 && after.page.browserHandle.clicks == 0,
+                                label + " reaches neither the web page nor a handle click");
+                        boolean same = sameFrames(after, references.get(slide));
+                        if (TAP.equals(kind) || JITTER.equals(kind)) check(same, label + " leaves the slide exactly as it was");
+                        if (same) untouched++; else carried++;
+                        table.append(String.format(Locale.ROOT, "  %-44s before=%-34s after=%s%n", label, beforeRest,
+                                afterRest + (same ? " (slide untouched)" : " (carried)")));
+                    }
+                }
+            }
+        }
+        check(baselineStuck > 0, "the frozen baseline reproduces stuck browser sheets");
+        System.out.print(table);
+        System.out.printf(Locale.ROOT, "Interrupted browser slides: %d runs; frozen baseline stuck in %d; candidate always at rest "
+                + "(%d left the slide untouched, %d carried), max step %.1f px%n", runs, baselineStuck, untouched, carried, allowedStep);
+    }
+
+    /** Browser touches that do not land during a slide behave exactly as before. */
+    static void normalBrowserPaths(java.util.function.Supplier<PageFields> baseline,
+                                   java.util.function.Supplier<PageFields> candidate) {
+        List<String> names = new ArrayList<>();
+        List<java.util.function.Consumer<Run>> scripts = new ArrayList<>();
+        java.util.function.Consumer<Run> open = run -> run.at(0, run.page::openBrowser);
+        names.add("open"); scripts.add(open);
+        names.add("open, back-close"); scripts.add(run -> { open.accept(run); run.at(900, run.page::closeBrowser); });
+        names.add("open, handle drag-close"); scripts.add(run -> { open.accept(run); drag(run, run.page.browserHandle, 900, 1400f, 280); });
+        names.add("open, handle settle-back"); scripts.add(run -> { open.accept(run); drag(run, run.page.browserHandle, 900, 300f, 200); });
+        names.add("open, handle fling close"); scripts.add(run -> { open.accept(run); drag(run, run.page.browserHandle, 900, 200f, 40); });
+        names.add("open, handle tap"); scripts.add(run -> { open.accept(run); gesture(run, run.page.browserHandle, 900, TAP); });
+        names.add("open, page tap"); scripts.add(run -> { open.accept(run); gesture(run, run.page.browserContent, 900, TAP); });
+        names.add("open, page pull-down closes"); scripts.add(run -> { open.accept(run); drag(run, run.page.browserContent, 900, 1400f, 280); });
+        names.add("open, page pull-down settles back"); scripts.add(run -> { open.accept(run); drag(run, run.page.browserContent, 900, 300f, 200); });
+        names.add("open, page scroll up"); scripts.add(run -> { open.accept(run); gesture(run, run.page.browserContent, 900, DRAG_UP); });
+        names.add("open, scrolled page drag down"); scripts.add(run -> {
+            open.accept(run);
+            run.page.browserContent.scrollable = true;
+            gesture(run, run.page.browserContent, 900, DRAG_DOWN);
+        });
+        names.add("open, close, reopen"); scripts.add(run -> {
+            open.accept(run); run.at(900, run.page::closeBrowser); run.at(1500, run.page::openBrowser);
+        });
+        names.add("login open, back-close"); scripts.add(run -> {
+            run.at(0, () -> { run.page.creatorPrivacyLoginInProgress = true; run.page.openBrowser(); });
+            run.at(900, run.page::closeBrowser);
+        });
+        for (int i = 0; i < names.size(); i++) {
+            Run before = new Run(baseline.get());
+            scripts.get(i).accept(before);
+            before.advance(3000);
+            Run after = new Run(candidate.get());
+            scripts.get(i).accept(after);
+            after.advance(3000);
+            check(sameFrames(before, after), "browser " + names.get(i) + ": identical frames");
+            check(before.page.browserHandle.clicks == after.page.browserHandle.clicks
+                    && before.page.browserContent.pageEvents == after.page.browserContent.pageEvents
+                    && before.page.creatorPrivacyRepository.cancels == after.page.creatorPrivacyRepository.cancels,
+                    "browser " + names.get(i) + ": same handle clicks, page events and login cancels");
+            String rest = browserRest(after);
+            check("open".equals(rest) || "closed".equals(rest), "browser " + names.get(i) + " rests: " + rest);
+        }
+        System.out.printf(Locale.ROOT, "Normal browser paths: %d scripts identical per frame to the frozen baseline "
+                + "(sheet translation and state, handle clicks, events reaching the page, login cancels)%n", names.size());
+    }
+
+    /** A handle tap whose finger moved a few pixels used to leave the browser that far down. */
+    static void browserHandleJitterAtRest(java.util.function.Supplier<PageFields> baseline,
+                                          java.util.function.Supplier<PageFields> candidate) {
+        String[] rests = new String[2];
+        for (int i = 0; i < 2; i++) {
+            Run run = new Run((i == 0 ? baseline : candidate).get());
+            run.at(0, run.page::openBrowser);
+            run.advance(800);
+            View handle = run.page.browserHandle;
+            run.touch(900, MotionEvent.ACTION_DOWN, 600f, handle);
+            run.touch(900 + FRAME_MS, MotionEvent.ACTION_MOVE, 612f, handle);
+            run.touch(900 + 2 * FRAME_MS, MotionEvent.ACTION_MOVE, 622f, handle);
+            run.touch(980, MotionEvent.ACTION_UP, 622f, handle);
+            run.advance(2600);
+            rests[i] = browserRest(run);
+            check(handle.clicks == 1, "the handle tap still clicks");
+            if (i == 1) {
+                check(maxBrowserStep(run.frames, frameAt(run, 900)) <= 12.5f, "the handle tap settles back without a jump");
+            }
+        }
+        check(rests[0].startsWith("STUCK"), "frozen baseline leaves the browser down after a handle tap: " + rests[0]);
+        check("open".equals(rests[1]), "a handle tap settles the browser back open: " + rests[1]);
+        System.out.printf(Locale.ROOT, "Browser handle jitter at rest: frozen baseline %s, candidate %s%n", rests[0], rests[1]);
+    }
+
+    /** A drag midway through a close: an ordinary browser is carried, one whose close ended a Discord login is not. */
+    static void closingLoginBrowser(java.util.function.Supplier<PageFields> baseline,
+                                    java.util.function.Supplier<PageFields> candidate) {
+        Run reference = playBrowser(candidate, B_BACK, 0, null, null, true);
+        for (String targetName : BROWSER_TARGETS) {
+            Run login = playBrowser(candidate, B_BACK, 0.5, targetName, DRAG_UP, true);
+            Run plain = playBrowser(candidate, B_BACK, 0.5, targetName, DRAG_UP, false);
+            Run before = playBrowser(baseline, B_BACK, 0.5, targetName, DRAG_UP, true);
+            check(sameFrames(login, reference) && "closed".equals(browserRest(login)),
+                    targetName + ": the login browser's close finishes untouched");
+            check(login.page.creatorPrivacyRepository.cancels == 1 && login.page.browserContent.pageEvents == 0,
+                    targetName + ": the login is canceled once and the page gets nothing");
+            check(!sameFrames(plain, playBrowser(candidate, B_BACK, 0, null, null, false)),
+                    targetName + ": an ordinary browser's close is carried");
+            System.out.printf(Locale.ROOT, "Drag up midway through a login browser's close (%s): frozen baseline %s, "
+                    + "candidate %s untouched; an ordinary browser is carried and %s%n",
+                    targetName, browserRest(before), browserRest(login), browserRest(plain));
+        }
+    }
+
     public static void main(String[] args) {
         interruptedSlides(BaselinePage::new, CandidatePage::new);
         normalPaths(BaselinePage::new, CandidatePage::new);
         titleJitterAtRest(BaselinePage::new, CandidatePage::new);
         closingSheetDrag(BaselinePage::new, CandidatePage::new);
+        interruptedBrowserSlides(BaselinePage::new, CandidatePage::new);
+        normalBrowserPaths(BaselinePage::new, CandidatePage::new);
+        browserHandleJitterAtRest(BaselinePage::new, CandidatePage::new);
+        closingLoginBrowser(BaselinePage::new, CandidatePage::new);
         System.out.println("PageSlideRegression: " + checks + " checks passed");
     }
 }

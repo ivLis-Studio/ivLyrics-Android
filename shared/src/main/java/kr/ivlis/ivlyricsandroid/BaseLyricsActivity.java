@@ -492,6 +492,14 @@ public class BaseLyricsActivity extends Activity implements
     private boolean pageSlideTouch;
     // That touch became a drag before the slide ended and carries the page from where it was.
     private boolean pageSlideCarried;
+    // The same for the in-app browser sheet: its own open, close or settle slide is running,
+    // the current touch on its handle or content began during it, and whether it carries it.
+    private boolean inAppBrowserSliding;
+    private int inAppBrowserSlide;
+    private boolean inAppBrowserSlideTouch;
+    private boolean inAppBrowserSlideCarried;
+    // The running close ended a Discord login, which cannot resume, so no touch takes it over.
+    private boolean inAppBrowserCloseEndedLogin;
     private float mainMetaTouchStartX;
     private float mainMetaTouchStartY;
     private int lyricsPageCornerRadiusDp = -1;
@@ -2174,6 +2182,7 @@ public class BaseLyricsActivity extends Activity implements
 
         inAppBrowserPage = buildInAppBrowserPage();
         inAppBrowserPage.setVisibility(View.GONE);
+        stopInAppBrowserSlide();
         root.addView(inAppBrowserPage, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -15603,6 +15612,7 @@ public class BaseLyricsActivity extends Activity implements
                 creatorPrivacyRepository.cancelDiscordLogin();
             }
             updateCreatorPrivacyControls();
+            inAppBrowserCloseEndedLogin = true;
         }
         if (inAppBrowserPage == null || show == inAppBrowserVisible) {
             return;
@@ -15611,7 +15621,9 @@ public class BaseLyricsActivity extends Activity implements
         inAppBrowserVisible = show;
         int height = getResources().getDisplayMetrics().heightPixels;
         inAppBrowserPage.animate().cancel();
+        int slide = beginInAppBrowserSlide();
         if (show) {
+            inAppBrowserCloseEndedLogin = false;
             updateInAppBrowserSheetLayout();
             inAppBrowserPage.setVisibility(View.VISIBLE);
             inAppBrowserPage.bringToFront();
@@ -15619,6 +15631,7 @@ public class BaseLyricsActivity extends Activity implements
             inAppBrowserPage.animate()
                     .translationY(0f)
                     .setDuration(320L)
+                    .withEndAction(() -> endInAppBrowserSlide(slide))
                     .start();
             return;
         }
@@ -15626,6 +15639,7 @@ public class BaseLyricsActivity extends Activity implements
                 .translationY(height)
                 .setDuration(260L)
                 .withEndAction(() -> {
+                    endInAppBrowserSlide(slide);
                     inAppBrowserPage.setVisibility(View.GONE);
                     inAppBrowserPage.setTranslationY(0f);
                 })
@@ -15961,35 +15975,41 @@ public class BaseLyricsActivity extends Activity implements
                     pageDragStartY = event.getRawY();
                     pageDragStartTranslationY = inAppBrowserPage == null ? 0f : inAppBrowserPage.getTranslationY();
                     pageDragging = false;
-                    if (inAppBrowserPage != null) {
-                        inAppBrowserPage.animate().cancel();
-                    }
+                    beginInAppBrowserTouch();
                     return true;
                 case MotionEvent.ACTION_MOVE: {
                     float dy = event.getRawY() - pageDragStartY;
                     if (Math.abs(dy) > dp(10)) {
                         pageDragging = true;
                     }
-                    if (inAppBrowserVisible) {
+                    if (inAppBrowserSlideTouch) {
+                        carrySlidingInAppBrowser(event.getRawY(), Math.abs(dy) > dp(10));
+                    } else if (inAppBrowserVisible) {
                         applyInAppBrowserDragTranslation(Math.max(0f, pageDragStartTranslationY + dy));
                     }
                     return true;
                 }
                 case MotionEvent.ACTION_UP: {
                     float releaseVelocityY = pageVelocityY();
-                    if (pageDragging && inAppBrowserVisible) {
+                    if (inAppBrowserSlideTouch) {
+                        endSlidingInAppBrowserTouch(releaseVelocityY);
+                    } else if (pageDragging && inAppBrowserVisible) {
                         settleInAppBrowserDrag(releaseVelocityY);
                     } else {
                         target.performClick();
                     }
+                    settleInAppBrowserLeftMidway(releaseVelocityY);
                     recyclePageVelocityTracker();
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
                     pageDragging = false;
-                    if (inAppBrowserVisible) {
+                    if (inAppBrowserSlideTouch) {
+                        endSlidingInAppBrowserTouch(0f);
+                    } else if (inAppBrowserVisible) {
                         settleInAppBrowserDrag(0f);
                     }
+                    settleInAppBrowserLeftMidway(0f);
                     recyclePageVelocityTracker();
                     return true;
                 default:
@@ -16012,13 +16032,17 @@ public class BaseLyricsActivity extends Activity implements
                     pageDragStartY = event.getRawY();
                     pageDragStartTranslationY = inAppBrowserPage == null ? 0f : inAppBrowserPage.getTranslationY();
                     pageDragging = false;
-                    if (inAppBrowserPage != null) {
-                        inAppBrowserPage.animate().cancel();
-                    }
-                    return false;
+                    beginInAppBrowserTouch();
+                    // A touch on a sliding sheet belongs to the slide: the page gets no tap or scroll.
+                    return inAppBrowserSlideTouch;
                 case MotionEvent.ACTION_MOVE: {
                     float dx = event.getRawX() - pageDragStartX;
                     float dy = event.getRawY() - pageDragStartY;
+                    if (inAppBrowserSlideTouch) {
+                        carrySlidingInAppBrowser(event.getRawY(),
+                                Math.abs(dy) > dp(14) && Math.abs(dy) > Math.abs(dx) * 1.2f);
+                        return true;
+                    }
                     if (!pageDragging) {
                         boolean downwardIntent = dy > dp(14) && dy > Math.abs(dx) * 1.2f;
                         if (!inAppBrowserVisible || !downwardIntent || target.canScrollVertically(-1)) {
@@ -16036,6 +16060,13 @@ public class BaseLyricsActivity extends Activity implements
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
+                    if (inAppBrowserSlideTouch) {
+                        float releaseVelocityY = pageVelocityY();
+                        endSlidingInAppBrowserTouch(releaseVelocityY);
+                        settleInAppBrowserLeftMidway(releaseVelocityY);
+                        recyclePageVelocityTracker();
+                        return true;
+                    }
                     if (!pageDragging) {
                         target.performClick();
                         recyclePageVelocityTracker();
@@ -16049,6 +16080,13 @@ public class BaseLyricsActivity extends Activity implements
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
+                    if (inAppBrowserSlideTouch) {
+                        endSlidingInAppBrowserTouch(0f);
+                        settleInAppBrowserLeftMidway(0f);
+                        pageDragging = false;
+                        recyclePageVelocityTracker();
+                        return true;
+                    }
                     if (pageDragging && inAppBrowserVisible) {
                         settleInAppBrowserDrag(0f);
                     }
@@ -16056,7 +16094,7 @@ public class BaseLyricsActivity extends Activity implements
                     recyclePageVelocityTracker();
                     return false;
                 default:
-                    return false;
+                    return inAppBrowserSlideTouch;
             }
         });
     }
@@ -16080,10 +16118,105 @@ public class BaseLyricsActivity extends Activity implements
             showInAppBrowser(false);
             return;
         }
+        // Only a settle that moves the sheet is a slide; from rest nothing moves.
+        int slide = translationY > 0.5f ? beginInAppBrowserSlide() : -1;
+        if (slide < 0) {
+            stopInAppBrowserSlide();
+        }
         inAppBrowserPage.animate()
                 .translationY(0f)
                 .setDuration(210L)
+                .withEndAction(() -> endInAppBrowserSlide(slide))
                 .start();
+    }
+
+    /**
+     * As {@link #beginPageTouch} for the in-app browser sheet's handle and page: a touch-down
+     * stops the sheet's motion, except while it slides open, closed or back on its own, which
+     * stopping left it wherever it was.
+     */
+    private void beginInAppBrowserTouch() {
+        inAppBrowserSlideCarried = false;
+        inAppBrowserSlideTouch = isInAppBrowserSliding();
+        if (inAppBrowserSlideTouch) {
+            return;
+        }
+        if (inAppBrowserPage != null) {
+            inAppBrowserPage.animate().cancel();
+        }
+        stopInAppBrowserSlide();
+    }
+
+    /**
+     * As {@link #carrySlidingLyricsPage}: once that touch is a drag while the slide still runs,
+     * the sheet stops where the slide has brought it and follows the finger from there. A close
+     * that ended a Discord login is left to finish, since that login could not resume.
+     */
+    private void carrySlidingInAppBrowser(float rawY, boolean dragging) {
+        if (!inAppBrowserSlideCarried) {
+            if (!dragging || !isInAppBrowserSliding() || (!inAppBrowserVisible && inAppBrowserCloseEndedLogin)) {
+                return;
+            }
+            inAppBrowserPage.animate().cancel();
+            stopInAppBrowserSlide();
+            inAppBrowserVisible = true;
+            inAppBrowserSlideCarried = true;
+            pageDragStartY = rawY;
+            pageDragStartTranslationY = inAppBrowserPage.getTranslationY();
+        }
+        if (inAppBrowserVisible) {
+            applyInAppBrowserDragTranslation(pageDragStartTranslationY + (rawY - pageDragStartY));
+        }
+    }
+
+    /** That touch ends: a sheet it carries settles by the usual rule; otherwise its slide went on. */
+    private void endSlidingInAppBrowserTouch(float velocityY) {
+        boolean carried = inAppBrowserSlideCarried;
+        inAppBrowserSlideTouch = false;
+        inAppBrowserSlideCarried = false;
+        if (carried && inAppBrowserVisible) {
+            settleInAppBrowserDrag(velocityY);
+        }
+    }
+
+    /**
+     * No touch on the sheet ends with it between its rest states. If neither its own slide nor
+     * a settle moves it on (a handle tap drags it by the finger's few pixels of travel), it
+     * settles from where it is.
+     */
+    private void settleInAppBrowserLeftMidway(float velocityY) {
+        if (inAppBrowserPage == null || inAppBrowserSliding || inAppBrowserPage.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (!inAppBrowserVisible) {
+            // A close that something stopped: it continues from where it is.
+            inAppBrowserVisible = true;
+            showInAppBrowser(false);
+        } else if (inAppBrowserPage.getTranslationY() > 0.5f) {
+            settleInAppBrowserDrag(velocityY);
+        }
+    }
+
+    /** The sheet is moving on its own (open, close or settle), not following a finger. */
+    private boolean isInAppBrowserSliding() {
+        return inAppBrowserSliding && inAppBrowserPage != null && inAppBrowserPage.getVisibility() == View.VISIBLE;
+    }
+
+    private int beginInAppBrowserSlide() {
+        inAppBrowserSliding = true;
+        return ++inAppBrowserSlide;
+    }
+
+    private void endInAppBrowserSlide(int slide) {
+        if (slide == inAppBrowserSlide) {
+            inAppBrowserSliding = false;
+        }
+    }
+
+    /** The slide was canceled, or the sheet was rebuilt at rest. */
+    private void stopInAppBrowserSlide() {
+        inAppBrowserSlide++;
+        inAppBrowserSliding = false;
     }
 
     private boolean shouldOpenBrowserNavigationExternally(String url) {

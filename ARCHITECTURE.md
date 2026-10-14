@@ -37,6 +37,9 @@ A touch that lands while the lyrics page slides open, closed or back does not st
 slide. If it moves like a drag (12 dp) before the slide ends, the page follows it from
 where it is and settles by the usual rule on release; otherwise the slide finishes as
 it would have, and the touch triggers nothing else.
+The in-app browser sheet follows the same rule, using its handle's and page's own drag
+thresholds. A touch on a sliding sheet never reaches the web page. A close that ended a
+Discord login always finishes, since that login cannot resume.
 
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the
