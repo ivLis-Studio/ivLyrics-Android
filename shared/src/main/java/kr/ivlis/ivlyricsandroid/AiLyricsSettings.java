@@ -182,6 +182,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY, KEY_TYPOGRAPHY_SETTINGS,
             KEY_VINYL_ALBUM_SIZE_PERCENT, KEY_VINYL_RECORD_SIZE_PERCENT, KEY_VINYL_ANIMATIONS_ENABLED,
             KEY_VINYL_CENTER_ROTATION_ENABLED, KEY_VINYL_LYRICS_ENABLED, KEY_VINYL_TONEARM_STYLE,
+            RecordRotation.SPEED_KEY, RecordRotation.CHANGE_KEY, RecordRotation.SIMPLE_TITLE_KEY,
             KEY_VINYL_TONEARM_FINISH, KEY_VINYL_TONEARM_SIZE_PERCENT, KEY_SPEAKER_COLOR_SETTINGS,
             KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, KEY_LYRICS_TEXT_ALIGNMENT,
             AppearanceOptions.FALLBACK, AppearanceOptions.TITLE_ACTION, AppearanceOptions.VIDEO_ASPECT,
@@ -576,6 +577,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     void setVinylAnimationsEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_VINYL_ANIMATIONS_ENABLED, enabled).apply();
     }
+
+    void setVinylTrackChanges(boolean enabled) { prefs.edit().putBoolean(RecordRotation.CHANGE_KEY, enabled).apply(); }
+    void setVinylRotationSpeed(int percent) { prefs.edit().putInt(RecordRotation.SPEED_KEY, RecordRotation.speed(percent)).apply(); }
+    void setVinylSimplifiedTitle(boolean enabled) { prefs.edit().putBoolean(RecordRotation.SIMPLE_TITLE_KEY, enabled).apply(); }
 
     void setVinylCenterRotationEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_VINYL_CENTER_ROTATION_ENABLED, enabled).apply();
@@ -1200,7 +1205,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getBoolean(KEY_VINYL_LYRICS_ENABLED, true),
                 prefs.getString(KEY_VINYL_TONEARM_STYLE, VINYL_TONEARM_STYLE_S),
                 prefs.getString(KEY_VINYL_TONEARM_FINISH, VINYL_TONEARM_FINISH_WHITE),
-                prefs.getInt(KEY_VINYL_TONEARM_SIZE_PERCENT, 100)
+                prefs.getInt(KEY_VINYL_TONEARM_SIZE_PERCENT, 100),
+                prefs.getBoolean(RecordRotation.CHANGE_KEY, true),
+                prefs.getInt(RecordRotation.SPEED_KEY, 100),
+                prefs.getBoolean(RecordRotation.SIMPLE_TITLE_KEY, false)
         );
     }
 
@@ -2195,6 +2203,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String tonearmStyle;
         final String tonearmFinish;
         final int tonearmSizePercent;
+        final boolean trackChangesEnabled;
+        final int rotationSpeedPercent;
+        final boolean simplifiedTitle;
 
         VinylSettings(
                 int albumSizePercent,
@@ -2206,6 +2217,13 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 String tonearmFinish,
                 int tonearmSizePercent
         ) {
+            this(albumSizePercent, recordSizePercent, animationsEnabled, centerRotationEnabled, lyricsEnabled,
+                    tonearmStyle, tonearmFinish, tonearmSizePercent, true, 100, false);
+        }
+
+        VinylSettings(int albumSizePercent, int recordSizePercent, boolean animationsEnabled,
+                boolean centerRotationEnabled, boolean lyricsEnabled, String tonearmStyle, String tonearmFinish,
+                int tonearmSizePercent, boolean trackChangesEnabled, int rotationSpeedPercent, boolean simplifiedTitle) {
             this.albumSizePercent = clampInt(albumSizePercent, 70, 140);
             this.recordSizePercent = clampInt(recordSizePercent, 70, 140);
             this.animationsEnabled = animationsEnabled;
@@ -2214,6 +2232,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.tonearmStyle = normalizeVinylTonearmStyle(tonearmStyle);
             this.tonearmFinish = normalizeVinylTonearmFinish(tonearmFinish);
             this.tonearmSizePercent = clampInt(tonearmSizePercent, 80, 120);
+            this.trackChangesEnabled = trackChangesEnabled;
+            this.rotationSpeedPercent = RecordRotation.speed(rotationSpeedPercent);
+            this.simplifiedTitle = simplifiedTitle;
         }
 
         static VinylSettings defaults() {

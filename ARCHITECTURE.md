@@ -154,6 +154,12 @@ and the empty-lyrics notice can be hidden without hiding loading indicators. Tit
 the previous return-to-Spotify default, with disabled, album and current-source navigation
 choices. Those choices use ACTION_VIEW destinations, never transport/playback commands.
 
+LP spinning uses a monotonic phase clock at 9 degrees/second at 100%, with a 25–200% speed
+control. The track-change animation switch is independent, within the existing animation
+and system motion gates. LP titles/artists follow the existing metadata translations; an
+optional simplified title removes release/credit suffixes. Center labels use measured ellipsis
+and a clipped safe area separate from the album arc, with the full translated text accessible.
+
 - Rendering, ivSync/provider fixes and common UI: edit `shared` once, verify both APKs.
 - Standalone permissions, launcher and initialization: edit `app`.
 - Spotify version mappings, native metadata, card placement and host transitions: edit `spotify-module`.

@@ -6,6 +6,7 @@ Run these commands from the repository root:
 ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug :spotify-module:lintDebug :app:assembleDebug :app:assembleQa :spotify-module:assembleDebug
 python3 tests/run_lyrics_center_regression.py
 python3 tests/run_appearance_regression.py
+python3 tests/run_vinyl_regression.py
 python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py

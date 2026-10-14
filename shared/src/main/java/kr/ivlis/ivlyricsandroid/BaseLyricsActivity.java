@@ -359,6 +359,10 @@ public class BaseLyricsActivity extends Activity implements
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
     private Switch vinylAnimationsSwitch;
+    private Switch vinylTrackChangesSwitch;
+    private Switch vinylSimplifiedTitleSwitch;
+    private SeekBar vinylRotationSpeedSeekBar;
+    private TextView vinylRotationSpeedValueView;
     private Switch vinylCenterRotationSwitch;
     private Switch vinylLyricsSwitch;
     private Switch lyricsTrackBackgroundOverrideSwitch;
@@ -1435,6 +1439,7 @@ public class BaseLyricsActivity extends Activity implements
                     ? currentArtworkBitmap
                     : snapshot.artwork;
             vinylPlayerModeView.setTrack(snapshot, vinylArtwork, trackChanged);
+            updateVinylDisplayMetadata(vinylPlayerModeView, snapshot);
         }
         if (trackChanged) {
             // A seek belongs to the track it was issued for. Clear it before
@@ -2258,6 +2263,7 @@ public class BaseLyricsActivity extends Activity implements
         view.setLoadingText(vinylLoadingText(), false);
         if (currentTrack != null && currentTrack.hasUsableMetadata()) {
             view.setTrack(currentTrack, currentArtworkBitmap, false);
+            updateVinylDisplayMetadata(view, currentTrack);
             view.setPlayback(
                     currentPlaybackPosition(currentTrack),
                     currentTrack.durationMs,
@@ -2281,6 +2287,7 @@ public class BaseLyricsActivity extends Activity implements
         if (show) {
             cancelArtworkLongPress();
             vinylPlayerModeView.setTrack(currentTrack, currentArtworkBitmap, false);
+            updateVinylDisplayMetadata(vinylPlayerModeView, currentTrack);
             vinylPlayerModeView.setPlayback(
                     currentPlaybackPosition(currentTrack),
                     currentTrack.durationMs,
@@ -6022,6 +6029,38 @@ public class BaseLyricsActivity extends Activity implements
                 buildSliderRow(vinylTonearmSizeSeekBar, vinylTonearmSizeValueView)
         ), topMargin(matchWrap(), dp(12)));
 
+        vinylTrackChangesSwitch = settingSwitch(ui("vinyl.track_changes"), ui("vinyl.track_changes_desc"));
+        vinylTrackChangesSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setVinylTrackChanges(checked);
+            applyVinylSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        addSearchableVinylToggle(vinylTrackChangesSwitch);
+        vinylSimplifiedTitleSwitch = settingSwitch(ui("vinyl.simple_title"), ui("vinyl.simple_title_desc"));
+        vinylSimplifiedTitleSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setVinylSimplifiedTitle(checked);
+            applyVinylSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        addSearchableVinylToggle(vinylSimplifiedTitleSwitch);
+        vinylRotationSpeedSeekBar = new SeekBar(this);
+        vinylRotationSpeedSeekBar.setMax(175);
+        vinylRotationSpeedValueView = label("", 12f, SettingsAppearance.SECONDARY, AppFonts.semiBold(this));
+        vinylRotationSpeedSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                int speed = progress + 25;
+                vinylRotationSpeedValueView.setText(speed + "%");
+                if (!fromUser || suppressSettingsEvents || aiLyricsSettings == null) return;
+                aiLyricsSettings.setVinylRotationSpeed(speed);
+                applyVinylSettings(aiLyricsSettings.snapshot());
+            }
+            @Override public void onStopTrackingTouch(SeekBar bar) { showSavedToast(ui("toast.settings_saved")); }
+        });
+        settingsPlayerPage.addView(settingGroup(ui("vinyl.rotation_speed"), ui("vinyl.rotation_speed_desc"),
+                buildSliderRow(vinylRotationSpeedSeekBar, vinylRotationSpeedValueView)), topMargin(matchWrap(), dp(12)));
+
         vinylAnimationsSwitch = settingSwitch(
                 ui("vinyl.settings.animations"),
                 ui("vinyl.settings.animations_desc")
@@ -6064,6 +6103,12 @@ public class BaseLyricsActivity extends Activity implements
                 buildTypographySettingsList(AiLyricsSettings.VINYL_TYPOGRAPHY_SLOTS),
                 topMargin(matchWrap(), dp(12))
         );
+    }
+
+    private void addSearchableVinylToggle(Switch toggle) {
+        LinearLayout group = new LinearLayout(this);
+        group.addView(toggle, matchWrap());
+        settingsPlayerPage.addView(group, topMargin(matchWrap(), dp(12)));
     }
 
     private LinearLayout settingsPage() {
@@ -11065,6 +11110,13 @@ public class BaseLyricsActivity extends Activity implements
         lyricsTitleView.setText(title);
         lyricsArtistView.setText(artist);
         updatePictureInPictureMetadataText(title, artist);
+        updateVinylDisplayMetadata(vinylPlayerModeView, snapshot);
+    }
+
+    private void updateVinylDisplayMetadata(VinylPlayerModeView view, TrackSnapshot snapshot) {
+        if (view == null || snapshot == null || !snapshot.hasUsableMetadata()) return;
+        view.setDisplayMetadata(snapshot.stableKey(), nonEmpty(translatedTrackTitle, snapshot.title),
+                nonEmpty(translatedTrackArtist, snapshot.artist));
     }
 
     private void updatePictureInPictureMetadataText(String title, String artist) {
@@ -11092,6 +11144,13 @@ public class BaseLyricsActivity extends Activity implements
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
         rebuildLanguageSettingsUi(snapshot);
         if (vinylAlbumSizeSeekBar != null) {
+            boolean previousVinylSuppression = suppressSettingsEvents;
+            suppressSettingsEvents = true;
+            if (vinylTrackChangesSwitch != null) vinylTrackChangesSwitch.setChecked(snapshot.vinyl.trackChangesEnabled);
+            if (vinylSimplifiedTitleSwitch != null) vinylSimplifiedTitleSwitch.setChecked(snapshot.vinyl.simplifiedTitle);
+            if (vinylRotationSpeedSeekBar != null) vinylRotationSpeedSeekBar.setProgress(snapshot.vinyl.rotationSpeedPercent - 25);
+            if (vinylRotationSpeedValueView != null) vinylRotationSpeedValueView.setText(snapshot.vinyl.rotationSpeedPercent + "%");
+            suppressSettingsEvents = previousVinylSuppression;
             vinylAlbumSizeSeekBar.setProgress(snapshot.vinyl.albumSizePercent - 70);
         }
         if (vinylAlbumSizeValueView != null) {

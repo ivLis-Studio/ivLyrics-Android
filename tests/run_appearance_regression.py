@@ -24,6 +24,8 @@ methods = "\n".join(declaration(settings, signature) for signature in (
     "String videoFallback()", "String titleTapAction()", "String videoAspect()",
     "boolean videoEdgeToEdge()", "boolean landscapeShowOriginal()", "boolean landscapeShowArtwork()",
     "boolean showLyricsNotFound()", "void setAppearanceChoice(", "void setAppearanceToggle("))
+methods += "\n" + "\n".join(declaration(settings, signature) for signature in (
+    "void setVinylTrackChanges(", "void setVinylRotationSpeed(", "void setVinylSimplifiedTitle("))
 filtering = declaration(renderer, "private List<DrawGroup> visibleLyricGroups(")
 work = REPORTS / "appearance"
 work.mkdir(parents=True, exist_ok=True)
@@ -78,6 +80,9 @@ public final class AppearanceRegression {
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ORIGINAL,false);
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ARTWORK,false);
         settings.setAppearanceToggle(AppearanceOptions.EMPTY_NOTICE,false);
+        settings.setVinylTrackChanges(false);
+        settings.setVinylRotationSpeed(175);
+        settings.setVinylSimplifiedTitle(true);
         settings.prefs.edit().putString("api_keys","private").apply();
         JSONObject exported = settings.exportCloudSettings();
         check(!exported.has("api_keys"));
@@ -90,6 +95,9 @@ public final class AppearanceRegression {
         check(!restored.landscapeShowOriginal() && !restored.landscapeShowArtwork() && !restored.showLyricsNotFound());
         check(restored.prefs.getString(Settings.KEY_BACKGROUND_MODE,"").equals("video-background"));
         check(restored.prefs.data.get(Settings.KEY_BACKGROUND_BRIGHTNESS).equals(30));
+        check(restored.prefs.data.get(RecordRotation.CHANGE_KEY).equals(false));
+        check(restored.prefs.data.get(RecordRotation.SPEED_KEY).equals(175));
+        check(restored.prefs.data.get(RecordRotation.SIMPLE_TITLE_KEY).equals(true));
         restored.setAppearanceChoice(AppearanceOptions.VIDEO_ASPECT,"stretch");
         check(restored.videoAspect().equals("stretch"));
         Renderer renderer = new Renderer();
@@ -109,7 +117,7 @@ target = work / "AppearanceRegression.java"
 target.write_text(fixture)
 dependencies = classpath(work, json_jar())
 subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "-cp", dependencies, "-d", str(work),
-                str(SHARED / "AppearanceOptions.java"), str(target)], check=True)
+                str(SHARED / "AppearanceOptions.java"), str(SHARED / "RecordRotation.java"), str(target)], check=True)
 result = subprocess.run([java_tool("java"), "-cp", dependencies, "kr.ivlis.ivlyricsandroid.AppearanceRegression"],
                         text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 (work / "result.txt").write_text(result.stdout)

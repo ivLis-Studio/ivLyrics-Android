@@ -1,0 +1,79 @@
+package kr.ivlis.ivlyricsandroid;
+import java.util.*;
+public class VinylRendererRegression {
+    static int checks;
+    static void check(boolean v) { if(!v) throw new AssertionError("check "+checks); checks++; }
+    static class SystemClock { static long now; static long uptimeMillis() { return now; } }
+    static class Paint {
+        static class FontMetrics { float ascent=-8,descent=2; }
+        enum Align {CENTER}
+    }
+    static class TextPaint {
+        float size; void setTextSize(float v){size=v;} void setTypeface(Object f){}
+        void setTextAlign(Paint.Align a){} void setColor(int c){}
+        Paint.FontMetrics getFontMetrics(){ Paint.FontMetrics f=new Paint.FontMetrics(); f.ascent=-size*.8f; f.descent=size*.2f; return f; }
+        float measureText(String text){return text.codePointCount(0,text.length())*size*.6f;}
+    }
+    static class AppFonts { static Object bold(Object c){return null;} static Object regular(Object c){return null;} }
+    static class TextUtils {
+        enum TruncateAt {END}
+        static CharSequence ellipsize(String text,TextPaint paint,float width,TruncateAt mode) {
+            if(paint.measureText(text)<=width) return text;
+            int end=text.length();
+            while(end>0 && paint.measureText(text.substring(0,end)+"…")>width) end=text.offsetByCodePoints(end,-1);
+            return text.substring(0,end)+"…";
+        }
+    }
+    static class Canvas {
+        float left,right,top,bottom,drawWidth; String text;
+        int save(){return 1;} void restoreToCount(int n){}
+        void clipRect(float left,float top,float right,float bottom){this.left=left;this.right=right;this.top=top;this.bottom=bottom;}
+        void drawText(String text,float x,float y,TextPaint paint){this.text=text;drawWidth=paint.measureText(text);}
+    }
+    static class VisualTrack {
+        final String key,title,artist;
+        VisualTrack(String k,String t,String a){key=k;title=t;artist=a;}
+        VisualTrack withLabels(String t,String a){return new VisualTrack(key,t,a);}
+    }
+    static class Renderer {
+        final TextPaint textPaint=new TextPaint();
+        final RecordRotation rotation=new RecordRotation();
+        VisualTrack displayedTrack,incomingTrack; String accessible;
+        boolean master=true,motion=true,playing=true,spinActive=true,scrubbingTonearm;
+        float spinDegrees;
+        Object getContext(){return null;}
+        boolean animationsEnabled(){return master&&motion;}
+        void invalidate(){}
+        void setContentDescription(String value){accessible=value;}
+        // PRODUCTION
+    }
+    public static void main(String[] args) {
+        Renderer view = new Renderer();
+        for(float radius:new float[]{12,24,40,80,160}) {
+            for(String text:new String[]{"Very long record title repeated repeated repeated", "星降る夜に願いをかけた長い曲名", "가나다라마바사아자차카타파하 아주 긴 제목"}) {
+                Canvas canvas=new Canvas();
+                view.drawSafeRecordText(canvas,text,100,100,50,0,true,radius);
+                check(canvas.drawWidth<=canvas.right-canvas.left+0.01f);
+                check(canvas.left>=100-radius*.53f && canvas.right<=100+radius*.53f);
+                check(canvas.text.length()<text.length());
+            }
+        }
+        view.displayedTrack=new VisualTrack("track","Raw title","Raw artist");
+        view.incomingTrack=new VisualTrack("next","Other title","Other artist");
+        view.setDisplayMetadata("track","번역된 제목 전체","번역된 가수");
+        check(view.displayedTrack.title.equals("번역된 제목 전체"));
+        check(view.accessible.equals("번역된 제목 전체. 번역된 가수"));
+        check(view.incomingTrack.title.equals("Other title"));
+        view.setDisplayMetadata("stale","Stale","Stale"); check(view.displayedTrack.title.equals("번역된 제목 전체"));
+        SystemClock.now=100; view.updateSpin();
+        SystemClock.now=1100; view.updateSpin(); check(Math.abs(view.spinDegrees-9)<0.001);
+        view.rotation.setSpeed(200);
+        SystemClock.now=2100; view.updateSpin(); check(Math.abs(view.spinDegrees-27)<0.001);
+        view.playing=false; SystemClock.now=3100; view.updateSpin(); check(Math.abs(view.spinDegrees-27)<0.001);
+        view.playing=true; view.motion=false; SystemClock.now=4100; view.updateSpin(); check(Math.abs(view.spinDegrees-27)<0.001);
+        view.motion=true; SystemClock.now=5100; view.updateSpin(); check(Math.abs(view.spinDegrees-45)<0.001);
+        view.scrubbingTonearm=true; SystemClock.now=6100; view.updateSpin(); check(Math.abs(view.spinDegrees-45)<0.001);
+        System.out.println("LP production renderer regression: "+checks+" checks passed (synthetic paint/clock)");
+    }
+}
+

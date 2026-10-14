@@ -144,8 +144,42 @@ final class AppI18n {
         addSpotifyOpenFailureTranslations(languages);
         addLocalAiStrings(languages);
         addAppearanceStrings(languages);
+        addVinylControlStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addVinylControlStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {"vinyl.track_changes", "vinyl.track_changes_desc", "vinyl.rotation_speed", "vinyl.rotation_speed_desc", "vinyl.simple_title", "vinyl.simple_title_desc"};
+        String[][] rows = {
+                {"en", "Animate track changes", "Animate the sleeve and record when changing tracks. Record spinning stays independent.", "Record rotation speed", "100% keeps the original speed: one revolution every 40 seconds.", "Simplify LP titles", "Remove version and featured-artist qualifiers from the record label."},
+                {"ko", "곡 변경 애니메이션", "곡이 바뀔 때 앨범과 레코드를 움직입니다. 레코드 회전과는 별개입니다.", "레코드 회전 속도", "100%는 기존 속도입니다. 40초에 한 바퀴 회전합니다.", "LP 제목 간소화", "레코드 라벨에서 버전이나 피처링 정보를 뺍니다."},
+                {"zh-CN", "切歌动画", "切换歌曲时移动封套和唱片，与唱片旋转无关。", "唱片旋转速度", "100% 保持原来的速度：每 40 秒转一圈。", "简化 LP 标题", "从唱片标签中移除版本和客串歌手信息。"},
+                {"zh-TW", "切歌動畫", "切換歌曲時移動封套和唱片，與唱片旋轉無關。", "唱片旋轉速度", "100% 保持原來的速度：每 40 秒轉一圈。", "簡化 LP 標題", "從唱片標籤中移除版本和客串歌手資訊。"},
+                {"ja", "曲変更のアニメーション", "曲の変更時にジャケットとレコードを動かします。回転とは別の設定です。", "レコードの回転速度", "100% は従来の速度です。40秒で1周します。", "LPのタイトルを簡略化", "レコードのラベルからバージョンや参加アーティストの情報を省きます。"},
+                {"hi", "गाना बदलने का ऐनिमेशन", "गाना बदलते समय कवर और रिकॉर्ड को हिलाएँ। रिकॉर्ड का घूमना अलग रहता है।", "रिकॉर्ड घूमने की गति", "100% पर पुरानी गति रहती है: हर 40 सेकंड में एक चक्कर।", "LP के शीर्षक छोटे करें", "रिकॉर्ड लेबल से संस्करण और अतिथि कलाकार की जानकारी हटाएँ।"},
+                {"es", "Animar cambios de canción", "Anima la funda y el disco al cambiar de canción. El giro del disco es independiente.", "Velocidad de giro del disco", "100% mantiene la velocidad original: una vuelta cada 40 segundos.", "Simplificar títulos del LP", "Quita la versión y los artistas invitados de la etiqueta del disco."},
+                {"fr", "Animer les changements de titre", "Anime la pochette et le disque au changement de titre. La rotation reste indépendante.", "Vitesse de rotation du disque", "100% conserve la vitesse d’origine : un tour toutes les 40 secondes.", "Simplifier les titres du LP", "Retire les mentions de version et d’artistes invités de l’étiquette."},
+                {"ar", "تحريك تغيير الأغنية", "تحريك الغلاف والأسطوانة عند تغيير الأغنية. دوران الأسطوانة مستقل.", "سرعة دوران الأسطوانة", "100% تحافظ على السرعة الأصلية: دورة كل 40 ثانية.", "تبسيط عناوين LP", "إزالة معلومات النسخة والفنانين الضيوف من ملصق الأسطوانة."},
+                {"fa", "پویانمایی تغییر آهنگ", "هنگام تغییر آهنگ، جلد و صفحه حرکت کنند. چرخش صفحه مستقل است.", "سرعت چرخش صفحه", "100% سرعت اصلی را نگه می‌دارد: یک دور در هر 40 ثانیه.", "ساده‌سازی عنوان‌های LP", "اطلاعات نسخه و هنرمندان مهمان را از برچسب صفحه حذف می‌کند."},
+                {"de", "Titelwechsel animieren", "Hülle und Platte beim Titelwechsel bewegen. Die Drehung bleibt unabhängig.", "Drehgeschwindigkeit der Platte", "100% behält das ursprüngliche Tempo: eine Umdrehung in 40 Sekunden.", "LP-Titel vereinfachen", "Versionsangaben und Gastkünstler vom Plattenlabel entfernen."},
+                {"ru", "Анимация смены трека", "Движение конверта и пластинки при смене трека. Вращение настраивается отдельно.", "Скорость вращения пластинки", "100% сохраняет прежнюю скорость: один оборот за 40 секунд.", "Упрощать названия на LP", "Убирать сведения о версии и приглашённых артистах с этикетки."},
+                {"sv", "Animera låtbyten", "Animera omslaget och skivan vid låtbyte. Skivans rotation är oberoende.", "Skivans rotationshastighet", "100% behåller ursprunglig hastighet: ett varv på 40 sekunder.", "Förenkla LP-titlar", "Ta bort versionsuppgifter och gästartister från skivans etikett."},
+                {"pt", "Animar mudanças de faixa", "Anima a capa e o disco ao mudar de faixa. A rotação é independente.", "Velocidade de rotação do disco", "100% mantém a velocidade original: uma volta a cada 40 segundos.", "Simplificar títulos do LP", "Remove informações de versão e artistas convidados do rótulo do disco."},
+                {"bn", "গান বদলের অ্যানিমেশন", "গান বদলালে কভার ও রেকর্ড নড়বে। রেকর্ডের ঘূর্ণন আলাদা থাকে।", "রেকর্ড ঘোরার গতি", "100% আগের গতি রাখে: প্রতি 40 সেকেন্ডে একবার ঘোরে।", "LP-এর শিরোনাম সহজ করুন", "রেকর্ডের লেবেল থেকে সংস্করণ ও অতিথি শিল্পীর তথ্য সরান।"},
+                {"cs", "Animovat změny skladeb", "Pohyb obalu a desky při změně skladby. Otáčení desky zůstává nezávislé.", "Rychlost otáčení desky", "100% zachovává původní rychlost: jedna otáčka za 40 sekund.", "Zjednodušit názvy na LP", "Odstranit z etikety údaje o verzi a hostujících interpretech."},
+                {"it", "Animare i cambi di brano", "Anima la copertina e il disco al cambio di brano. La rotazione resta indipendente.", "Velocità di rotazione del disco", "100% mantiene la velocità originale: un giro ogni 40 secondi.", "Semplifica i titoli del LP", "Rimuove versione e artisti ospiti dall’etichetta del disco."},
+                {"th", "ภาพเคลื่อนไหวเมื่อเปลี่ยนเพลง", "ขยับปกและแผ่นเมื่อเปลี่ยนเพลง การหมุนแผ่นตั้งค่าแยกกัน", "ความเร็วการหมุนแผ่น", "100% ใช้ความเร็วเดิม คือหนึ่งรอบทุก 40 วินาที", "ย่อชื่อเพลงใน LP", "ตัดข้อมูลเวอร์ชันและศิลปินรับเชิญออกจากฉลากแผ่น"},
+                {"vi", "Chuyển động khi đổi bài", "Di chuyển bìa và đĩa khi đổi bài. Việc quay đĩa được điều khiển riêng.", "Tốc độ quay đĩa", "100% giữ tốc độ ban đầu: một vòng mỗi 40 giây.", "Rút gọn tên bài trên LP", "Bỏ thông tin phiên bản và nghệ sĩ khách mời khỏi nhãn đĩa."},
+                {"id", "Animasi pergantian lagu", "Gerakkan sampul dan piringan saat mengganti lagu. Putaran piringan tetap terpisah.", "Kecepatan putaran piringan", "100% mempertahankan kecepatan awal: satu putaran setiap 40 detik.", "Sederhanakan judul LP", "Hapus keterangan versi dan artis tamu dari label piringan."},
+                {"ms", "Animasi pertukaran lagu", "Gerakkan kulit dan rekod semasa bertukar lagu. Putaran rekod kekal berasingan.", "Kelajuan putaran rekod", "100% mengekalkan kelajuan asal: satu putaran setiap 40 saat.", "Ringkaskan tajuk LP", "Buang maklumat versi dan artis jemputan daripada label rekod."},
+                {"tr", "Parça geçişlerini canlandır", "Parça değişince kılıfı ve plağı hareket ettir. Plak dönüşü bağımsız kalır.", "Plak dönüş hızı", "100% özgün hızı korur: her 40 saniyede bir tur.", "LP başlıklarını sadeleştir", "Plak etiketinden sürüm ve konuk sanatçı bilgilerini kaldır."}
+        };
+        for (String[] row : rows) {
+            Map<String, String> copy = new LinkedHashMap<>(languages.get(row[0]));
+            for (int index = 0; index < keys.length; index++) copy.put(keys[index], row[index + 1]);
+            languages.put(row[0], Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addAppearanceStrings(Map<String, Map<String, String>> languages) {

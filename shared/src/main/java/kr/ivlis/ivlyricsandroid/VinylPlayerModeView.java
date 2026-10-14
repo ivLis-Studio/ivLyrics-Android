@@ -14,6 +14,8 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
+import android.text.TextPaint;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -120,6 +122,10 @@ final class VinylPlayerModeView extends FrameLayout {
 
     void setTrack(TrackSnapshot snapshot, Bitmap artwork, boolean animateChange) {
         surface.setTrack(snapshot, artwork, animateChange);
+    }
+
+    void setDisplayMetadata(String trackKey, String title, String artist) {
+        surface.setDisplayMetadata(trackKey, title, artist);
     }
 
     void setArtwork(String trackKey, Bitmap artwork) {
@@ -354,7 +360,7 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint groovePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
         private final Path tonearmPath = new Path();
         private final Path labelArcPath = new Path();
         private final Matrix bitmapMatrix = new Matrix();
@@ -378,6 +384,8 @@ final class VinylPlayerModeView extends FrameLayout {
         private boolean spinActive;
         private boolean trackHandoffCommitted;
         private boolean animationsEnabled = true;
+        private boolean trackChangesEnabled = true;
+        private boolean simplifiedTitle;
         private boolean centerRotationEnabled = true;
         private boolean lyricsEnabled = true;
         private boolean culturalAnnotationsVisible;
@@ -386,7 +394,7 @@ final class VinylPlayerModeView extends FrameLayout {
         private String tonearmStyle = AiLyricsSettings.VINYL_TONEARM_STYLE_S;
         private String tonearmFinish = AiLyricsSettings.VINYL_TONEARM_FINISH_WHITE;
         private float tonearmScale = 1f;
-        private long spinFrameUptimeMs;
+        private final RecordRotation rotation = new RecordRotation();
         private float spinDegrees;
         private boolean scrubbingTonearm;
         private boolean coverPressed;
@@ -435,23 +443,33 @@ final class VinylPlayerModeView extends FrameLayout {
         }
 
         boolean animationsEnabled() {
-            return animationsEnabled;
+            return animationsEnabled && MotionPreferences.animationsEnabled(getContext());
         }
 
         void setCustomization(AiLyricsSettings.VinylSettings settings) {
             AiLyricsSettings.VinylSettings safe = settings == null
                     ? AiLyricsSettings.VinylSettings.defaults()
                     : settings;
+            updateSpin(); // Finish the elapsed interval at the previous speed and motion preference.
             albumScale = safe.albumSizePercent / 100f;
             recordScale = safe.recordSizePercent / 100f;
             animationsEnabled = safe.animationsEnabled;
+            trackChangesEnabled = safe.trackChangesEnabled;
+            simplifiedTitle = safe.simplifiedTitle;
+            rotation.setSpeed(safe.rotationSpeedPercent);
             centerRotationEnabled = safe.centerRotationEnabled;
             lyricsEnabled = safe.lyricsEnabled;
             tonearmStyle = safe.tonearmStyle;
             tonearmFinish = safe.tonearmFinish;
             tonearmScale = safe.tonearmSizePercent / 100f;
-            spinFrameUptimeMs = 0L;
-            if (!animationsEnabled) {
+            if (!trackChangesEnabled && trackAnimator != null) {
+                trackAnimator.cancel();
+                trackAnimator = null;
+                if (incomingTrack != null) displayedTrack = incomingTrack;
+                incomingTrack = null;
+                trackProgress = 0f;
+            }
+            if (!animationsEnabled()) {
                 if (trackAnimator != null) trackAnimator.cancel();
                 if (playAnimator != null) playAnimator.cancel();
                 if (tonearmAnimator != null) tonearmAnimator.cancel();
@@ -545,7 +563,10 @@ final class VinylPlayerModeView extends FrameLayout {
                 invalidate();
                 return;
             }
-            if (!animationsEnabled || !animateChange || !isShown()) {
+            if (!RecordRotation.animateTrackChange(animationsEnabled, trackChangesEnabled,
+                    MotionPreferences.animationsEnabled(getContext()), animateChange, isShown())) {
+                if (trackAnimator != null) trackAnimator.cancel();
+                trackAnimator = null;
                 displayedTrack = next;
                 incomingTrack = null;
                 trackProgress = 0f;
@@ -598,6 +619,7 @@ final class VinylPlayerModeView extends FrameLayout {
         }
 
         void setPlayback(long positionMs, long durationMs, boolean playing) {
+            updateSpin();
             this.positionMs = Math.max(0L, positionMs);
             this.durationMs = Math.max(0L, durationMs);
             if (this.playing != playing) {
@@ -619,7 +641,7 @@ final class VinylPlayerModeView extends FrameLayout {
             if (playAnimator != null) playAnimator.cancel();
             if (tonearmAnimator != null) tonearmAnimator.cancel();
             tonearmAnimator = null;
-            if (!animationsEnabled) {
+            if (!animationsEnabled()) {
                 playAnimator = null;
                 playProgress = targetPlaying ? 1f : 0f;
                 tonearmEngagement = targetPlaying ? 1f : 0f;
@@ -679,7 +701,7 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private void animateTonearmEngagement(float target, long durationMs) {
             if (tonearmAnimator != null) tonearmAnimator.cancel();
-            if (!animationsEnabled) {
+            if (!animationsEnabled()) {
                 tonearmEngagement = target;
                 invalidate();
                 return;
@@ -754,7 +776,7 @@ final class VinylPlayerModeView extends FrameLayout {
             }
             drawTonearm(canvas, geometry.record);
 
-            if (animationsEnabled && (spinActive || trackAnimator != null || entranceAnimator != null)) {
+            if (animationsEnabled() && (spinActive || trackAnimator != null || entranceAnimator != null)) {
                 postInvalidateOnAnimation();
             }
         }
@@ -1001,13 +1023,13 @@ final class VinylPlayerModeView extends FrameLayout {
 
             drawCircularLabel(canvas, track, bounds, labelRadius, alpha);
 
-            drawCenteredText(canvas, ellipsize(track.title, 18), bounds.centerX(),
+            drawSafeRecordText(canvas, RecordRotation.displayTitle(track.title, simplifiedTitle), bounds.centerX(),
                     bounds.centerY() - labelRadius * 0.26f,
                     Math.max(dp(9), bounds.width() * 0.0455f),
-                    withAlpha(mixColor(track.accentColor, Color.WHITE, 0.18f), alpha), true);
-            drawCenteredText(canvas, ellipsize(track.artist, 20), bounds.centerX(),
+                    withAlpha(mixColor(track.accentColor, Color.WHITE, 0.18f), alpha), true, labelRadius);
+            drawSafeRecordText(canvas, track.artist, bounds.centerX(),
                     bounds.centerY() + labelRadius * 0.30f,
-                    Math.max(dp(6.5f), bounds.width() * 0.0245f), Color.argb(Math.round(alpha * 0.82f), 255, 255, 255), false);
+                    Math.max(dp(6.5f), bounds.width() * 0.0245f), Color.argb(Math.round(alpha * 0.82f), 255, 255, 255), false, labelRadius);
             paint.setColor(Color.argb(alpha, 210, 210, 210));
             canvas.drawCircle(bounds.centerX(), bounds.centerY(), Math.max(dp(2), bounds.width() * 0.008f), paint);
             paint.setAlpha(255);
@@ -1600,11 +1622,31 @@ final class VinylPlayerModeView extends FrameLayout {
 
         private void updateSpin() {
             long now = SystemClock.uptimeMillis();
-            if (spinFrameUptimeMs == 0L) spinFrameUptimeMs = now;
-            long elapsed = Math.max(0L, now - spinFrameUptimeMs);
-            spinFrameUptimeMs = now;
-            if (animationsEnabled && spinActive && !scrubbingTonearm) {
-                spinDegrees = (spinDegrees + elapsed * 0.009f) % 360f;
+            spinDegrees = (float) rotation.advance(now, animationsEnabled() && playing && spinActive && !scrubbingTonearm);
+        }
+
+        private void drawSafeRecordText(Canvas canvas, String text, float x, float y, float size, int color,
+                boolean bold, float radius) {
+            textPaint.setTextSize(Math.min(size, radius * (bold ? 0.23f : 0.14f)));
+            textPaint.setTypeface(bold ? AppFonts.bold(getContext()) : AppFonts.regular(getContext()));
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            textPaint.setColor(color);
+            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            float halfWidth = radius * 0.52f;
+            int save = canvas.save();
+            canvas.clipRect(x - halfWidth, y - radius * 0.17f, x + halfWidth, y + radius * 0.17f);
+            String label = TextUtils.ellipsize(text, textPaint, halfWidth * 2f, TextUtils.TruncateAt.END).toString();
+            canvas.drawText(label, x, y - (metrics.ascent + metrics.descent) * 0.5f, textPaint);
+            canvas.restoreToCount(save);
+        }
+
+        void setDisplayMetadata(String trackKey, String title, String artist) {
+            if (displayedTrack != null && displayedTrack.key.equals(trackKey)) displayedTrack = displayedTrack.withLabels(title, artist);
+            if (incomingTrack != null && incomingTrack.key.equals(trackKey)) incomingTrack = incomingTrack.withLabels(title, artist);
+            if ((displayedTrack != null && displayedTrack.key.equals(trackKey))
+                    || (incomingTrack != null && incomingTrack.key.equals(trackKey))) {
+                setContentDescription(title + ". " + artist); // Full labels remain accessible after ellipsis/simplification.
+                invalidate();
             }
         }
 
@@ -1740,6 +1782,10 @@ final class VinylPlayerModeView extends FrameLayout {
             VisualTrack withArtwork(Bitmap nextArtwork) {
                 return new VisualTrack(key, title, artist, album, nextArtwork,
                         accentColor(nextArtwork, key));
+            }
+
+            VisualTrack withLabels(String title, String artist) {
+                return new VisualTrack(key, title, artist, album, artwork, accentColor);
             }
 
             VisualTrack withFallbackArtwork(Bitmap fallback) {

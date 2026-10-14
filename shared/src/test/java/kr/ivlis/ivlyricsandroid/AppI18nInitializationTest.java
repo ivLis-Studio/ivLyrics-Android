@@ -24,4 +24,17 @@ public final class AppI18nInitializationTest {
             }
         }
     }
+
+    @Test public void vinylControlsHaveTranslationsInEveryLanguage() {
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            for (String suffix : new String[]{"track_changes", "track_changes_desc", "rotation_speed",
+                    "rotation_speed_desc", "simple_title", "simple_title_desc"}) {
+                String key = "vinyl." + suffix;
+                String value = AppI18n.t(language.code, key);
+                org.junit.Assert.assertNotEquals(key, value);
+                org.junit.Assert.assertFalse(value.trim().isEmpty());
+                if (!"en".equals(language.code)) org.junit.Assert.assertNotEquals(AppI18n.t("en", key), value);
+            }
+        }
+    }
 }
