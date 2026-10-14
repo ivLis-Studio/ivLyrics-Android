@@ -252,6 +252,9 @@ including tapped controls and the software keyboard. Files ending in
 `-software-root-diagnostic.png` always use `View.draw` on the actual window tree;
 they are useful even after an emulator GPU failure but do not replace genuine
 window screenshot/visual acceptance. The suite requires genuine captures too.
+The keyboard phase restores the real window, taps its native search editor,
+waits for a focused/active input connection, and requires actual IME visibility
+from the activity's framework window insets (not just a successful show request).
 Tests measure 48 dp inputs,
 buttons and visible hit rectangles, text clipping, exactly one dropdown chevron,
 and the actual rendered switch-thumb aspect and drawable padding (including
@@ -267,7 +270,9 @@ adb pull /sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions ./ui
 AGP's connected-test UTP teardown uninstalls the target and test APKs in the
 current CI setup, removing app-specific external files. Collect this directory
 while tests are running (before teardown), not just after Gradle returns; use
-the CI capture helper for continuous pulls. The log records each saved absolute
+the CI capture helper for continuous pulls. Capture streams use `*.png.tmp`
+and are renamed to `*.png` only after close; collect only completed `*.png`
+files to avoid racing partially written evidence. The log records each saved absolute
 path. Hardware/GPU screenshots remain distinct from software diagnostics.
 
 The test reports are under `app/build/reports/androidTests/connected/debug` and

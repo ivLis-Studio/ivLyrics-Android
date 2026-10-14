@@ -16,6 +16,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
@@ -147,11 +148,20 @@ public final class SettingsUiRegressionTest {
             assertControls(results);
             search.setText("");
             restore(panel, oldWidth, oldHeight);
-            search.requestFocus();
-            ((android.view.inputmethod.InputMethodManager) activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE))
-                    .showSoftInput(search, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
         });
-        awaitKeyboard();
+        // The component metrics above temporarily relayout the production tree.
+        // Let its real window restore, then enter the editor through native touch.
+        // requestFocus/showSoftInput in the restoration pass races ViewRoot's
+        // input connection (PHASE_CLIENT_VIEW_SERVED on the emulator).
+        EditText search = (EditText) activity.view("settingsSearchInput");
+        tap(search);
+        awaitInputConnection(search);
+        onMain(() -> {
+            InputMethodManager input = activity.getSystemService(InputMethodManager.class);
+            boolean requested = input.showSoftInput(search, InputMethodManager.SHOW_IMPLICIT);
+            android.util.Log.i("SettingsUiRegression", "Served search IME request accepted=" + requested);
+        });
+        awaitKeyboard(search);
         onMain(() -> {
             assertMinimum(activity.view("settingsSearchInput"), "search with IME");
             ScrollView scroll = (ScrollView) activity.value("settingsScrollView");
@@ -162,18 +172,52 @@ public final class SettingsUiRegressionTest {
         assertTrue("genuine emulator-window screenshots are required for visual acceptance", genuineWindowCaptures >= 8);
     }
 
-    private void awaitKeyboard() {
+    private void awaitInputConnection(EditText search) {
         long deadline = SystemClock.uptimeMillis() + 4000;
+        String lastState = "";
+        while (SystemClock.uptimeMillis() < deadline) {
+            final boolean[] ready = new boolean[1];
+            final String[] state = new String[1];
+            onMain(() -> {
+                InputMethodManager input = activity.getSystemService(InputMethodManager.class);
+                boolean active = input.isActive(search), accepting = input.isAcceptingText();
+                ready[0] = search.isAttachedToWindow() && search.hasWindowFocus() && search.hasFocus()
+                        && active && accepting && !search.isLayoutRequested();
+                state[0] = "attached=" + search.isAttachedToWindow() + ", windowFocused=" + search.hasWindowFocus()
+                        + ", editorFocused=" + search.hasFocus() + ", active=" + active
+                        + ", acceptingText=" + accepting + ", layoutRequested=" + search.isLayoutRequested();
+            });
+            if (!state[0].equals(lastState)) android.util.Log.i("SettingsUiRegression", "Search input connection: " + state[0]);
+            lastState = state[0];
+            if (ready[0]) return;
+            SystemClock.sleep(50);
+        }
+        screenshot(capturePrefix + "-window-search-input-connection-failure");
+        fail("Native search tap did not establish an input connection: " + lastState);
+    }
+
+    private void awaitKeyboard(EditText search) {
+        long deadline = SystemClock.uptimeMillis() + 4000;
+        String lastState = "";
         while (SystemClock.uptimeMillis() < deadline) {
             final boolean[] visible = new boolean[1];
+            final String[] state = new String[1];
             onMain(() -> {
                 WindowInsets insets = activity.getWindow().getDecorView().getRootWindowInsets();
                 visible[0] = insets != null && insets.isVisible(WindowInsets.Type.ime());
+                InputMethodManager input = activity.getSystemService(InputMethodManager.class);
+                state[0] = "imeVisible=" + visible[0] + ", imeInsets="
+                        + (insets == null ? "none" : insets.getInsets(WindowInsets.Type.ime()))
+                        + ", editorFocused=" + search.hasFocus() + ", windowFocused=" + search.hasWindowFocus()
+                        + ", active=" + input.isActive(search) + ", acceptingText=" + input.isAcceptingText();
             });
+            if (!state[0].equals(lastState)) android.util.Log.i("SettingsUiRegression", "Keyboard settling: " + state[0]);
+            lastState = state[0];
             if (visible[0]) return;
             SystemClock.sleep(50);
         }
-        fail("Software keyboard did not appear; run emulator with a software IME enabled");
+        screenshot(capturePrefix + "-window-keyboard-visibility-failure");
+        fail("Software keyboard did not appear; run emulator with a software IME enabled: " + lastState);
     }
 
     private void verifyRealWindowTaps(String prefix, String language) {
@@ -457,10 +501,16 @@ public final class SettingsUiRegressionTest {
         File directory = instrumentation.getTargetContext().getExternalFilesDir("ui-regressions");
         assertNotNull(directory);
         if (!directory.isDirectory()) assertTrue(directory.mkdirs());
-        try (FileOutputStream stream = new FileOutputStream(new File(directory, name + ".png"))) {
-            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)); captures++;
-            android.util.Log.i("SettingsUiRegression", "Saved " + new File(directory, name + ".png").getAbsolutePath());
+        File temporary = new File(directory, name + ".png.tmp");
+        File complete = new File(directory, name + ".png");
+        // UTP removes app-scoped storage at teardown. The concurrent CI collector
+        // pulls only *.png, so publish that name only after the stream is closed.
+        try (FileOutputStream stream = new FileOutputStream(temporary)) {
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
         } catch (java.io.IOException error) { throw new AssertionError(name, error); }
+        assertTrue("publish completed PNG " + name, temporary.renameTo(complete));
+        captures++;
+        android.util.Log.i("SettingsUiRegression", "Saved " + complete.getAbsolutePath());
     }
 
     private int dp(int value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }

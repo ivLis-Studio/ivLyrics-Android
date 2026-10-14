@@ -36,6 +36,18 @@ assert 'getExternalFilesDir("ui-regressions")' in native
 assert "peakAlpha * .9f" in native and "aspect >= .88f && aspect <= 1.14f" in native
 assert "genuineWindowCaptures >= 8" in native
 assert "software-root-diagnostic" in native
+assert "search.requestFocus()" not in native, "keyboard test must enter the real editor through native touch"
+assert "tap(search);\n        awaitInputConnection(search);" in native
+connection = declaration(native, "private void awaitInputConnection(")
+assert "input.isActive(search)" in connection and "input.isAcceptingText()" in connection
+assert "search.hasWindowFocus()" in connection and "search.hasFocus()" in connection
+keyboard = declaration(native, "private void awaitKeyboard(")
+assert "insets.isVisible(WindowInsets.Type.ime())" in keyboard, "a request is not keyboard visibility"
+capture = declaration(native, "private void write(")
+assert 'name + ".png.tmp"' in capture
+assert "new FileOutputStream(temporary)" in capture
+assert capture.index("catch (java.io.IOException") < capture.index("temporary.renameTo(complete)")
+assert capture.index("temporary.renameTo(complete)") < capture.index('"Saved " + complete.getAbsolutePath()')
 for signature in ("private View providerButton(", "private View buildLyricsProviderSettingsCard("):
     assert "ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)" not in declaration(source, signature)
 
