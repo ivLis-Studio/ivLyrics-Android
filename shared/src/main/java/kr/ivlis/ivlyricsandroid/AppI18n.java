@@ -175,7 +175,11 @@ final class AppI18n {
                 {"ms", "Jana semula terjemahan dan sebutan"},
                 {"tr", "Çeviri ve telaffuzu yeniden oluştur"}
         };
-        for (String[] row : rows) languages.get(row[0]).put("lyrics.regenerate_supplements", row[1]);
+        for (String[] row : rows) {
+            Map<String, String> copy = new LinkedHashMap<>(languages.get(row[0]));
+            copy.put("lyrics.regenerate_supplements", row[1]);
+            languages.put(row[0], Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addVinylControlStrings(Map<String, Map<String, String>> languages) {

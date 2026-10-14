@@ -23,6 +23,7 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     public int culturalActions;
     public int videoActions;
     public int searchActions;
+    public int metadataActions;
 
     @Override protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
@@ -53,6 +54,7 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     @Override protected void requestCulturalAnnotations(boolean clearCache) { culturalActions++; }
     @Override protected void showVideoSelectionDialog() { videoActions++; }
     @Override protected void performManualLrclibSearch() { searchActions++; }
+    @Override protected void requestMetadataTranslation(boolean clearCache) { metadataActions++; }
 
     @Override protected void onCreate(Bundle savedState) {
         String language = getIntent().getStringExtra("uiLanguage");

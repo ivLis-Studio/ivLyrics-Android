@@ -13119,7 +13119,7 @@ public class BaseLyricsActivity extends Activity implements
         requestDefaultRemoteFocus(true);
     }
 
-    private void requestMetadataTranslation(boolean clearCache) {
+    protected void requestMetadataTranslation(boolean clearCache) {
         long generation = ++aiMetadataGeneration;
         setMetadataTranslationLoading(false);
         if (currentTrack == null || !currentTrack.hasUsableMetadata() || aiLyricsRepository == null || aiLyricsSettings == null) {

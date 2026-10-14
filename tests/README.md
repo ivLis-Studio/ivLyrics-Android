@@ -221,3 +221,46 @@ Detailed scopes:
 `python3 tests/run_sync_metadata_reporting_regression.py` compiles the production sync-data fetch/HTTP/parser and frozen `1888014` baseline against an in-memory URL transport. It compares result payloads and privacy GET counts and verifies acknowledged metadata reuse only within one load, changed fields, cache clearing during a response, cancellation, malformed/error/negative responses, raw caches, and contributor privacy refresh. No real API or device is used. Requires the same JDK, compiled shared classes, Android SDK, and pinned JSON dependency as the other repository regressions. Both CI workflows run it.
 
 The render-idle regression also compares preview ruby draw arguments with frozen 1.3.18 source across font, text size, density, ruby/source replacement, alpha and playback fill changes; it counts text measurement calls without claiming device raster/FPS equivalence.
+
+## Native settings and track-popup UI
+
+`python3 tests/run_settings_ui_regression.py` runs SDK-independent contracts against
+the production regeneration-state method and all 22 production locale tables. It
+also guards the input-height order, single dropdown chevron and debug-only offline
+callback boundaries. This is not a native layout or visual acceptance test.
+
+Run the actual Android widgets on an API 35 emulator with a software keyboard:
+
+```sh
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=kr.ivlis.ivlyricsandroid.SettingsUiRegressionTest
+```
+
+Runner: `androidx.test.runner.AndroidJUnitRunner`. The unexported
+`SettingsUiHarnessActivity` is in `app/src/debug` only. It builds the production
+`BaseLyricsActivity` settings and track popup, uses isolated fixture preferences,
+and intercepts live playback, AI/metadata generation, video selection and LRCLIB
+search at debug overrides. No Spotify installation, account, API key or real
+repository request is needed. Actual `MotionEvent` taps verify saved switch state,
+regeneration loading/duplicate-click protection, and video/search callback wiring.
+
+Five scenarios cover Korean 320×640 dp portrait, Korean 568×320 dp landscape at
+1.6× font, English 280 dp width at 1.8×, German landscape at 2× and Arabic RTL at
+1.6×. Native view captures named `settings-*`/`track-*` use those deterministic
+component dimensions. Separate `window-*` captures are real emulator windows,
+including tapped controls and the software keyboard. Tests measure 48 dp inputs,
+buttons and visible hit rectangles, text clipping, exactly one dropdown chevron,
+and the actual rendered switch-thumb aspect and drawable padding (including
+disabled-state alpha). Review the images before claiming visual acceptance.
+
+Screenshots are PNGs in the target app's external files directory. Pull them
+while the emulator and app are still present:
+
+```sh
+adb pull /sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions ./ui-regressions
+```
+
+The test reports are under `app/build/reports/androidTests/connected/debug` and
+`app/build/outputs/androidTest-results/connected/debug`. This harness does not
+prove OEM/Samsung rasterization, a real LSPatch host's native loading, Spotify
+authentication, or device playback behavior.

@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.text.Layout;
 import android.view.Surface;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -54,6 +55,7 @@ public final class SettingsUiRegressionTest {
         instrumentation.waitForIdleSync();
         assertEquals(fontScale, activity.getResources().getConfiguration().fontScale, 0.01f);
         final String prefix = language + "-" + width + "x" + height + "-font" + fontScale;
+        verifyRealWindowTaps(prefix, language);
         onMain(() -> {
             assertFalse(((AiLyricsSettings) activity.value("aiLyricsSettings")).snapshot().hasApiKey());
             assertFalse(activity.usesLivePlayback());
@@ -154,6 +156,96 @@ public final class SettingsUiRegressionTest {
             SystemClock.sleep(50);
         }
         fail("Software keyboard did not appear; run emulator with a software IME enabled");
+    }
+
+    private void verifyRealWindowTaps(String prefix, String language) {
+        onMain(() -> activity.settings("general"));
+        Switch metadata = (Switch) activity.view("metadataTranslationSwitch");
+        boolean before = metadata.isChecked();
+        tap(metadata);
+        onMain(() -> {
+            assertEquals("native switch changed through touch", !before, metadata.isChecked());
+            assertEquals("production settings listener saved toggle", !before,
+                    ((AiLyricsSettings) activity.value("aiLyricsSettings")).snapshot().metadataTranslationEnabled);
+            assertThumb(metadata);
+        });
+        screenshot(prefix + "-window-general-toggled");
+
+        onMain(() -> activity.popup("language"));
+        Switch translation = (Switch) activity.view("languageTranslationSwitch");
+        boolean translationBefore = translation.isChecked();
+        tap(translation);
+        onMain(() -> {
+            assertEquals("popup switch changed through touch", !translationBefore, translation.isChecked());
+            assertEquals("production rule listener saved toggle", !translationBefore,
+                    ((AiLyricsSettings) activity.value("aiLyricsSettings")).snapshot().ruleForSource("ja").translationEnabled);
+            activity.call("setLyricsSupplementLoading", new Class<?>[]{boolean.class, boolean.class}, false, false);
+        });
+        int supplementsBefore = activity.supplementActions;
+        tap(activity.view("lyricsRegenerateButton"));
+        onMain(() -> {
+            assertEquals("real regenerate click reaches the offline generation boundary", supplementsBefore + 1, activity.supplementActions);
+            assertFalse("real click disables duplicate regeneration", activity.view("lyricsRegenerateButton").isEnabled());
+        });
+        screenshot(prefix + "-window-regenerate-tapped-loading");
+        onMain(() -> {
+            activity.call("setLyricsSupplementLoading", new Class<?>[]{boolean.class, boolean.class}, false, false);
+            activity.dismissPopup();
+            activity.popup("video");
+        });
+        View video = findButton(activity.view("videoSyncSettingsContent"), AppI18n.t(language, "video.choose"));
+        assertNotNull("production video selector", video);
+        int videoBefore = activity.videoActions;
+        tap(video);
+        assertEquals("video click reaches offline selector boundary", videoBefore + 1, activity.videoActions);
+        screenshot(prefix + "-window-video-tapped");
+        onMain(() -> { activity.dismissPopup(); activity.popup("lrclib"); });
+        View search = findButton(activity.view("lyricsManualSearchContent"), AppI18n.t(language, "lyrics.lrclib_search.button"));
+        assertNotNull("production LRCLIB search action", search);
+        int searchBefore = activity.searchActions;
+        tap(search);
+        assertEquals("LRCLIB real click is offline", searchBefore + 1, activity.searchActions);
+        onMain(activity::dismissPopup);
+    }
+
+    private View findButton(View root, String text) {
+        if (root instanceof Button && text.contentEquals(((TextView) root).getText())) return root;
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                View found = findButton(group.getChildAt(index), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private void tap(View target) {
+        onMain(() -> {
+            assertTrue("real target enabled", target.isEnabled());
+            target.requestRectangleOnScreen(new Rect(0, 0, target.getWidth(), target.getHeight()), true);
+        });
+        final float[] point = new float[2];
+        onMain(() -> {
+            Rect visible = new Rect();
+            assertTrue("real-window target visible", target.getLocalVisibleRect(visible));
+            assertTrue("actual visible hit height >=48dp: " + visible, visible.height() >= dp(48));
+            assertTrue("actual visible hit width >=48dp: " + visible, visible.width() >= dp(48));
+            int[] position = new int[2]; target.getLocationOnScreen(position);
+            point[0] = position[0] + visible.exactCenterX(); point[1] = position[1] + visible.exactCenterY();
+            Rect window = new Rect(); target.getRootView().getWindowVisibleDisplayFrame(window);
+            assertTrue("touch center inside real visible window: " + window,
+                    window.contains(Math.round(point[0]), Math.round(point[1])));
+            View root = target.getRootView(); int[] origin = new int[2]; root.getLocationOnScreen(origin);
+            assertTrue("actual popup/window not wider than screen", root.getWidth() <= activity.getResources().getDisplayMetrics().widthPixels);
+            assertTrue("actual touch target inside window content", point[0] >= origin[0] && point[0] < origin[0] + root.getWidth()
+                    && point[1] >= origin[1] && point[1] < origin[1] + root.getHeight());
+        });
+        long now = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
+        MotionEvent up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, point[0], point[1], 0);
+        instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
+        down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
     }
 
     private void render(View root, int width, int height) {
