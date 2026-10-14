@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate shared-source ownership and module component isolation, including merged XML."""
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -47,6 +49,23 @@ for name in ("LyricsView.java", "AiLyricsRepository.java", "BaseLyricsActivity.j
                   for path in (ROOT / project / "src").rglob(name)]
     require(not duplicates, f"{name} has one shared implementation (duplicates: {duplicates})")
 
+# Local AI: one native wrapper in :shared, shipped to both APKs as assets rather than lib/ entries.
+require((ROOT / "shared/src/main/cpp/localai/ivlyrics_localai.cpp").is_file(),
+        "Local AI JNI wrapper source lives in :shared")
+for project in ("app", "spotify-module"):
+    gradle = (ROOT / project / "build.gradle").read_text()
+    native_sources = [str(path.relative_to(ROOT)) for path in (ROOT / project / "src").rglob("*")
+                      if path.suffix in (".cpp", ".c", ".so") or path.name == "CMakeLists.txt"]
+    require(not native_sources and not re.search(r"externalNativeBuild|jniLibs", gradle),
+            f":{project} adds no native build or native libraries of its own (found: {native_sources})")
+native_lock = json.loads((ROOT / "shared/tools/local_ai_native.lock.json").read_text())
+require(native_lock and all(spec["url"].startswith("https://") and re.fullmatch(r"[0-9a-f]{64}", spec["sha256"])
+                            for spec in native_lock.values()),
+        f"All {len(native_lock)} Local AI native downloads are SHA-256 pinned")
+require(all("/46ca246de9bb1c35269722a6240d37d9dfd79cad/" in spec["url"] or "/download/b11364/" in spec["url"]
+            for spec in native_lock.values()),
+        "Local AI native downloads come from llama.cpp b11364 (46ca246)")
+
 component_tags = {"activity", "activity-alias", "service", "receiver", "provider"}
 shared_manifest = ET.parse(ROOT / "shared/src/main/AndroidManifest.xml").getroot()
 require(not any(node.tag in component_tags for node in shared_manifest.iter()),
@@ -76,6 +95,31 @@ if args.built:
     metadata = {node.get(android_name) for node in merged.findall("application/meta-data")}
     require({"xposedmodule", "xposedminversion", "xposedscope"}.issubset(metadata),
             "Assembled module retains its LSPosed registration metadata")
+    apks = {"standalone app": sorted((ROOT / "app/build/outputs/apk" / variant).glob("*.apk")),
+            "Spotify module": sorted((ROOT / "spotify-module/build/outputs/apk" / variant).glob("*.apk"))}
+    if variant == "debug":
+        apks["standalone QA app"] = sorted((ROOT / "app/build/outputs/apk/qa").glob("*.apk"))
+    payloads = {}
+    for product, paths in apks.items():
+        require(len(paths) == 1, f"Exactly one {variant} {product} APK is available after assembly")
+        with zipfile.ZipFile(paths[0]) as apk:
+            entries = set(apk.namelist())
+            require(not any(name.startswith("lib/") for name in entries),
+                    f"{product} APK has no lib/ native libraries, so its installable ABIs are unchanged")
+            manifest_name = "assets/localai/arm64-v8a/manifest.txt"
+            require(manifest_name in entries, f"{product} APK carries the Local AI engine manifest")
+            manifest = apk.read(manifest_name).decode()
+            listed = [line.split(" ", 2) for line in manifest.splitlines() if line.strip()]
+            verified = [name for digest, size, name in listed
+                        if f"assets/localai/arm64-v8a/{name}" in entries
+                        and hashlib.sha256(apk.read(f"assets/localai/arm64-v8a/{name}")).hexdigest() == digest
+                        and apk.getinfo(f"assets/localai/arm64-v8a/{name}").file_size == int(size)]
+            names = [name for _, _, name in listed]
+            require(len(verified) == len(listed) and "libivlyrics_localai.so" in names and "libllama.so" in names
+                    and any(name.startswith("libggml-cpu-android_armv8.0") for name in names),
+                    f"{product} APK carries all {len(listed)} Local AI engine libraries with matching SHA-256")
+            payloads[product] = manifest
+    require(len(set(payloads.values())) == 1, "Every APK carries the same Local AI engine build")
 
 webkit_jar = ROOT / "spotify-module/build/generated/private-webkit/webkit-private.jar"
 if args.built:

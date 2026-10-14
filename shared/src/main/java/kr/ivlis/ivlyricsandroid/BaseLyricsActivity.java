@@ -311,6 +311,8 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout providerDetailsContainer;
     private View providerBaseUrlGroup, providerModelGroup, providerAdvancedGroup;
     private boolean providerDetailsExpanded = true;
+    private boolean localAiDetailsExpanded;
+    private LocalAiSettingsView localAiSettingsView;
     private LinearLayout settingsGeneralPage;
     private LinearLayout settingsLyricsPage;
     private LinearLayout settingsProvidersPage;
@@ -8132,7 +8134,8 @@ public class BaseLyricsActivity extends Activity implements
         textColumn.setPadding(dp(4), dp(2), dp(10), dp(2));
         textColumn.setMinimumHeight(dp(44));
         textColumn.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = label(provider.label + (provider.keyless ? "" : selected && providerDetailsExpanded ? "  ⌃" : "  ⌄"),
+        boolean expanded = provider.localModel ? localAiDetailsExpanded : selected && providerDetailsExpanded;
+        TextView title = label(provider.label + (provider.keyless ? "" : expanded ? "  ⌃" : "  ⌄"),
                 14.5f, SettingsAppearance.TEXT, AppFonts.semiBold(this));
         textColumn.addView(title, matchWrap());
         TextView description = label(providerDescription(provider), 12f, SettingsAppearance.MUTED, AppFonts.regular(this));
@@ -8159,7 +8162,15 @@ public class BaseLyricsActivity extends Activity implements
         header.addView(enabledSwitch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
 
         card.setOnDragListener((view, event) -> handleProviderDrag(card, provider.id, event));
-        if (!provider.keyless) {
+        if (provider.localModel) {
+            // Local AI has no API key or model profile: its card opens its own download and memory controls.
+            makeRemoteFocusable(textColumn);
+            textColumn.setContentDescription(provider.label + ", " + providerDescription(provider));
+            textColumn.setOnClickListener(view -> {
+                localAiDetailsExpanded = !localAiDetailsExpanded;
+                buildProviderButtons();
+            });
+        } else if (!provider.keyless) {
             makeRemoteFocusable(textColumn);
             textColumn.setContentDescription(provider.label + ", " + providerDescription(provider));
             textColumn.setOnClickListener(view -> {
@@ -8178,6 +8189,14 @@ public class BaseLyricsActivity extends Activity implements
         if (selected && providerDetailsExpanded && providerDetailsContainer != null) {
             SettingsAppearance.styleControls(providerDetailsContainer);
             card.addView(providerDetailsContainer, topMargin(matchWrap(), dp(12)));
+        }
+        if (provider.localModel && localAiDetailsExpanded) {
+            if (localAiSettingsView == null) {
+                localAiSettingsView = new LocalAiSettingsView(this, aiLyricsSettings);
+            } else if (localAiSettingsView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) localAiSettingsView.getParent()).removeView(localAiSettingsView);
+            }
+            card.addView(localAiSettingsView, topMargin(matchWrap(), dp(12)));
         }
         return card;
     }
@@ -11090,7 +11109,7 @@ public class BaseLyricsActivity extends Activity implements
         if (aiSettingsStatusView != null) {
             String status = ui("status.ai_disabled");
             if (snapshot.enabled()) {
-                status = snapshot.hasAnyTranslationProvider() || snapshot.hasReadyAiProvider()
+                status = snapshot.hasLyricsTranslationProvider() || snapshot.hasReadyAiProvider()
                         ? ui("status.ai_lyrics_active")
                         : ui("status.ai_key_needed");
             }
@@ -12963,7 +12982,9 @@ public class BaseLyricsActivity extends Activity implements
 
         AiLyricsSettings.Snapshot providerSnapshot = aiLyricsSettings.snapshot();
         final TextView providerHint;
-        if (providerSnapshot.hasAnyTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()) {
+        // The hint says only Bing and Google are active, which is not true once Local AI is on.
+        if (providerSnapshot.hasAnyTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()
+                && !providerSnapshot.isAiProviderEnabled(AiLyricsSettings.Provider.LOCAL_AI_ID)) {
             providerHint = label(
                     "✦  " + ui("first_language.ai_provider_hint"),
                     12.5f,
@@ -13185,7 +13206,7 @@ public class BaseLyricsActivity extends Activity implements
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
         boolean canRunTask = (requestedPronunciation && selectedAiReady)
-                || (requestedTranslation && snapshot.hasAnyTranslationProvider());
+                || (requestedTranslation && snapshot.hasLyricsTranslationProvider());
         if (!canRunTask && !snapshot.hasApiKey()) {
             aiLyricsGenerating = false;
             currentLyricsResult = currentBaseLyricsResult;

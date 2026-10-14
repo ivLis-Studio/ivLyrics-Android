@@ -39,8 +39,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The NDK and CMake build the Local AI JNI wrapper (shared/tools/prepare_local_ai.py).
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36.1" "build-tools;36.0.0"
+            "platforms;android-36.1" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
 
       - name: Check source boundaries
         run: python3 tests/check_module_boundaries.py

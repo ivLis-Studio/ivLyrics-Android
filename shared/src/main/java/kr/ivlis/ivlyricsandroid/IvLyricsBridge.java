@@ -820,7 +820,8 @@ public final class IvLyricsBridge {
             pronunciationLoading = rule.pronunciationEnabled && ready;
             translationLoading = rule.translationEnabled
                     && !snapshot.shouldSkipTranslation(sourceLanguage, snapshot.resolveTargetLanguage(sourceLanguage))
-                    && (ready || snapshot.hasKeylessTranslationProvider());
+                    && (ready || snapshot.hasKeylessTranslationProvider()
+                            || snapshot.isAiProviderEnabled(AiLyricsSettings.Provider.LOCAL_AI_ID));
             LyricsResult requestBase = base;
             if (snapshot.enabled() && (pronunciationLoading || translationLoading)) {
                 ai.loadSupplements(track, base, snapshot, sourceLanguage, false, new AiCallback(request, requestBase));

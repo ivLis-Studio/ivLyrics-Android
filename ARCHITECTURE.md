@@ -119,6 +119,30 @@ existing name, size and SHA-256. A manual release run with `publish=false` build
 and uploads signed verification artifacts without changing a GitHub Release.
 No Spotify APK is included or repackaged by this release workflow.
 
+## Local AI translation provider
+
+`local-ai` ("Local AI") translates lyrics on the device with Tencent Hy-MT2 1.8B through
+llama.cpp b11364, matching the desktop provider (`Addon_AI_LocalModel.js`). It lives in `shared`,
+so both APKs carry it. It is translation-only (never titles, artists, pronunciation or research),
+off by default and appended to the end of the unified provider order; while it is off, provider
+cache keys are unchanged.
+
+- `LocalAiTranslator` is the desktop algorithm (vocal parts, markers, repeats, 8-part/480-character
+  blocks, line-by-line fallback). `LocalAiRuntime` owns the single engine: one worker thread, a test
+  translation ahead of lyrics, newest lyrics request first (an identical request joins it), idle
+  release and release after a native failure. Both are plain Java and covered by JVM tests.
+- Model files (Light/Medium/High; mobile defaults to Light) are downloaded only from the provider
+  card, resumable with HTTP Range and checked by size, into the active context's no-backup directory.
+  Inside Spotify that is Spotify's own storage.
+- The engine ships as assets under `localai/arm64-v8a`, not `lib/`, so neither APK's installable ABIs
+  change. `shared/tools/prepare_local_ai.py` (Gradle task `prepareLocalAiNative`) verifies the SHA-256
+  pinned release libraries and headers in `shared/tools/local_ai_native.lock.json`, builds the JNI
+  wrapper in `shared/src/main/cpp/localai` with CMake and the NDK, strips everything and writes a
+  SHA-256 manifest. Builds therefore need the SDK packages `ndk;29.0.14206865` and `cmake;3.31.6`.
+- `LocalAiProvider` extracts and verifies the libraries on first use and loads them by path. The
+  release libraries require Android 9 and arm64-v8a; elsewhere, or when a host process cannot load
+  them (LSPatch), the provider reports an error and the next enabled provider translates.
+
 ## Editing policy
 
 - Rendering, ivSync/provider fixes and common UI: edit `shared` once, verify both APKs.

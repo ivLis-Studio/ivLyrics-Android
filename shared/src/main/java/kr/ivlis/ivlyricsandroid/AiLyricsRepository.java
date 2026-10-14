@@ -76,12 +76,14 @@ final class AiLyricsRepository {
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
     private final SharedPreferences culturalAnnotationPrefs;
+    private final Context localAiContext;
 
     AiLyricsRepository() {
         diskCache = null;
         metadataPrefs = null;
         tmiPrefs = null;
         culturalAnnotationPrefs = null;
+        localAiContext = null;
     }
 
     AiLyricsRepository(Context context) {
@@ -97,6 +99,7 @@ final class AiLyricsRepository {
         culturalAnnotationPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_cultural_annotations", Context.MODE_PRIVATE);
+        localAiContext = context == null ? null : context.getApplicationContext();
     }
 
     void testConnection(AiLyricsSettings.Snapshot settings, java.util.function.Consumer<String> callback) {
@@ -926,7 +929,7 @@ final class AiLyricsRepository {
 
         boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
         boolean selectedAiReady = settings.hasReadyAiProvider();
-        boolean translationReady = settings.hasAnyTranslationProvider();
+        boolean translationReady = settings.hasLyricsTranslationProvider();
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
         if (!selectedAiReady && requestedPronunciation && requestedTranslation && translationReady) {
@@ -1392,6 +1395,10 @@ final class AiLyricsRepository {
                     if (provider == null) {
                         continue;
                     }
+                    if (provider.localModel) {
+                        // Local AI translates lyrics only, never titles or artists.
+                        continue;
+                    }
                     try {
                         if ("deepl".equals(provider.id)) {
                             AiLyricsSettings.Snapshot profile = settings.forProvider(provider.id);
@@ -1819,6 +1826,16 @@ final class AiLyricsRepository {
                             session.setProvider(false, provider.label);
                             reportSupplementProvider(trackKey, callback, false, provider.label);
                             values = translateDeepL(sourceTexts, targetLang, profile, true);
+                        } else if (provider.localModel) {
+                            session.setProvider(false, provider.label);
+                            reportSupplementProvider(trackKey, callback, false, provider.label);
+                            log.write("translation attempt: provider=" + provider.label);
+                            values = LocalAiProvider.translate(localAiContext, settings, sourceTexts, targetLang,
+                                    (row, value) -> {
+                                        session.setTranslationValue(row, value);
+                                        partialDispatcher.request();
+                                    });
+                            log.write("translation response: provider=" + provider.label + " / lines=" + values.size());
                         } else if (provider.keyless) {
                             session.setProvider(false, provider.label);
                             reportSupplementProvider(trackKey, callback, false, provider.label);
@@ -1863,6 +1880,10 @@ final class AiLyricsRepository {
                             break;
                         }
                     } catch (Exception providerError) {
+                        if (LocalAiProvider.isSuperseded(providerError)) {
+                            // A newer request owns the engine and this track is gone: stop without other providers.
+                            throw providerError;
+                        }
                         lastError = providerError;
                         log.write("translation fallback: provider=" + provider.label
                                 + " / error=" + errorMessage(providerError));

@@ -28,6 +28,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_AI_PROVIDER_ORDER = "ai_provider_order_v1";
     static final String KEY_AI_PROVIDER_ENABLED = "ai_provider_enabled_v1";
     static final String KEY_AI_PROVIDER_PROFILES = "ai_provider_profiles_v1";
+    // Device-local like the downloaded model itself, so neither is part of cloud settings sync.
+    static final String KEY_LOCAL_AI_TIER = "local_ai_tier";
+    static final String KEY_LOCAL_AI_IDLE_MINUTES = "local_ai_idle_minutes";
     static final String KEY_PROVIDER = "provider";
     static final String KEY_TARGET_LANG = "target_lang";
     static final String KEY_UI_LANG = "ui_lang";
@@ -464,7 +467,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getBoolean(KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, true),
                 normalizeLyricsTextAlignment(prefs.getString(KEY_LYRICS_TEXT_ALIGNMENT, DEFAULT_LYRICS_TEXT_ALIGNMENT)),
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
-                secureStore.getString(KEY_SPOTIFY_CLIENT_SECRET, "")
+                secureStore.getString(KEY_SPOTIFY_CLIENT_SECRET, ""),
+                localAiTier(),
+                localAiIdleMinutes()
         );
         cachedSnapshot = snapshot;
         return snapshot;
@@ -640,6 +645,27 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setAiProviderOrder(List<String> order) {
         prefs.edit().putString(KEY_AI_PROVIDER_ORDER, providerOrderJson(normalizeAiProviderOrder(order))).apply();
+    }
+
+    String localAiTier() {
+        return LocalAiModels.tier(prefs.getString(KEY_LOCAL_AI_TIER, LocalAiModels.DEFAULT_TIER.id)).id;
+    }
+
+    void setLocalAiTier(String tierId) {
+        prefs.edit().putString(KEY_LOCAL_AI_TIER, LocalAiModels.tier(tierId).id).apply();
+    }
+
+    int localAiIdleMinutes() {
+        try {
+            return LocalAiModels.idleUnloadMinutes(
+                    prefs.getInt(KEY_LOCAL_AI_IDLE_MINUTES, LocalAiModels.DEFAULT_IDLE_UNLOAD_MINUTES));
+        } catch (ClassCastException invalid) {
+            return LocalAiModels.DEFAULT_IDLE_UNLOAD_MINUTES;
+        }
+    }
+
+    void setLocalAiIdleMinutes(int minutes) {
+        prefs.edit().putInt(KEY_LOCAL_AI_IDLE_MINUTES, LocalAiModels.idleUnloadMinutes(minutes)).apply();
     }
 
     void moveAiProvider(String sourceId, String targetId, boolean after) {
@@ -1510,6 +1536,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 true
         ));
         providers.addAll(PROVIDERS);
+        // Added after the existing providers so a saved order keeps its positions; off until enabled.
+        providers.add(new Provider(Provider.LOCAL_AI_ID, "Local AI", "", "", "", "", false, false, true));
         return Collections.unmodifiableList(providers);
     }
 
@@ -1946,6 +1974,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     }
 
     static final class Provider {
+        static final String LOCAL_AI_ID = "local-ai";
+
         final String id;
         final String label;
         final String description;
@@ -1954,8 +1984,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String apiKeyUrl;
         final boolean keyless;
         final boolean defaultEnabled;
+        /** Runs on this device (Local AI): translation only, no API key or profile. */
+        final boolean localModel;
 
-        boolean translationOnly() { return keyless || "deepl".equals(id); }
+        boolean translationOnly() { return keyless || localModel || "deepl".equals(id); }
 
         Provider(String id, String label, String description, String defaultBaseUrl, String defaultModel, String apiKeyUrl) {
             this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, false, false);
@@ -1971,6 +2003,20 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 boolean keyless,
                 boolean defaultEnabled
         ) {
+            this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, keyless, defaultEnabled, false);
+        }
+
+        Provider(
+                String id,
+                String label,
+                String description,
+                String defaultBaseUrl,
+                String defaultModel,
+                String apiKeyUrl,
+                boolean keyless,
+                boolean defaultEnabled,
+                boolean localModel
+        ) {
             this.id = id;
             this.label = label;
             this.description = description;
@@ -1979,6 +2025,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.apiKeyUrl = apiKeyUrl;
             this.keyless = keyless;
             this.defaultEnabled = defaultEnabled;
+            this.localModel = localModel;
         }
     }
 
@@ -2290,6 +2337,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String lyricsTextAlignment;
         final String spotifyClientId;
         final String spotifyClientSecret;
+        final String localAiTier;
+        final int localAiIdleMinutes;
 
         Snapshot(
                 String uiLang,
@@ -2341,7 +2390,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 boolean useSyncCreatorSpeakerColors,
                 String lyricsTextAlignment,
                 String spotifyClientId,
-                String spotifyClientSecret
+                String spotifyClientSecret,
+                String localAiTier,
+                int localAiIdleMinutes
         ) {
             this.uiLang = normalizedUiLanguage(uiLang);
             this.outputLang = normalizeOutputLanguage(outputLang);
@@ -2398,6 +2449,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.lyricsTextAlignment = normalizeLyricsTextAlignment(lyricsTextAlignment);
             this.spotifyClientId = spotifyClientId == null ? "" : spotifyClientId.trim();
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
+            this.localAiTier = LocalAiModels.tier(localAiTier).id;
+            this.localAiIdleMinutes = LocalAiModels.idleUnloadMinutes(localAiIdleMinutes);
         }
 
         boolean enabled() {
@@ -2481,9 +2534,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return (isAiProviderEnabled("deepl") && deepl != null && deepl.hasApiKey()) || hasReadyAiProvider();
         }
 
+        /** Lyric translation can also use Local AI, which never translates titles, artists or other text. */
+        boolean hasLyricsTranslationProvider() {
+            return hasAnyTranslationProvider() || isAiProviderEnabled(Provider.LOCAL_AI_ID);
+        }
+
         Snapshot forProvider(String providerId) {
             Provider candidate = aiProviderById(providerId);
-            if (candidate == null || candidate.keyless) {
+            if (candidate == null || candidate.keyless || candidate.localModel) {
                 return null;
             }
             ProviderProfile profile = providerProfiles.get(candidate.id);
@@ -2544,7 +2602,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     useSyncCreatorSpeakerColors,
                     lyricsTextAlignment,
                     spotifyClientId,
-                    spotifyClientSecret
+                    spotifyClientSecret,
+                    localAiTier,
+                    localAiIdleMinutes
             );
         }
 
@@ -2618,8 +2678,16 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     .append("|tok=").append(maxTokens)
                     .append("|temp=").append(temperature);
             for (String providerId : aiProviderOrder) {
+                boolean localAi = Provider.LOCAL_AI_ID.equals(providerId);
+                if (localAi && !isAiProviderEnabled(providerId)) {
+                    // Added after the other providers: while it is off, existing cache keys stay identical.
+                    continue;
+                }
                 builder.append("|provider=").append(providerId)
                         .append(":enabled=").append(isAiProviderEnabled(providerId));
+                if (localAi) {
+                    builder.append(":tier=").append(localAiTier);
+                }
                 ProviderProfile profile = providerProfiles.get(providerId);
                 if (profile != null) {
                     builder.append(":model=").append(profile.model)

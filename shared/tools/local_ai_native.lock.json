@@ -1,0 +1,38 @@
+{
+  "llama-b11364-bin-android-arm64.tar.gz": {
+    "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11364/llama-b11364-bin-android-arm64.tar.gz",
+    "sha256": "05ede165da27664ab126731dedc0b054468aacc687bb42f308089c4079068d56"
+  },
+  "llama-b11364-bin-macos-arm64.tar.gz": {
+    "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11364/llama-b11364-bin-macos-arm64.tar.gz",
+    "sha256": "3074cb5addc36a790c77120d73b43767c56d13c4238a6c4cdf31203a955914c0"
+  },
+  "llama.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/include/llama.h",
+    "sha256": "d5cf9203bea63b575e76cba4881f29cfd1b611451578b01582b75b72ecbb04bc"
+  },
+  "ggml.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/ggml.h",
+    "sha256": "12ee71f99db7db9b353bc02b1fbb57c344ee17c01ac5fb7952b41a637a747ea9"
+  },
+  "ggml-cpu.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/ggml-cpu.h",
+    "sha256": "316279e004cdeb8e6ef78599acb602bf79a8abdf897fed9fd1914808c1518c6e"
+  },
+  "ggml-backend.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/ggml-backend.h",
+    "sha256": "5791edae1fb7622027621d15bc7a160198bd3b75ed8f96d06cb7b85e2b873756"
+  },
+  "ggml-alloc.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/ggml-alloc.h",
+    "sha256": "d114067f9099c4a0e2bbc0625c676d4894d9cf0ea27168ee072c7de0e71bb51d"
+  },
+  "ggml-opt.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/ggml-opt.h",
+    "sha256": "3586de1bc8a934b5c72339e2b6937b0641e8f149b512231e666f67de0736eea2"
+  },
+  "gguf.h": {
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/46ca246de9bb1c35269722a6240d37d9dfd79cad/ggml/include/gguf.h",
+    "sha256": "e56714aab702e5ce62ee587a409643c08f7e93e8fbb77f48ef7cc85075f96fa4"
+  }
+}

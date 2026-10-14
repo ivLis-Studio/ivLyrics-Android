@@ -38,6 +38,15 @@ Java. When the private WebKit JAR exists, it checks that AndroidX class definiti
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
 
+The `LocalAi*Test` JUnit classes cover the Local AI provider without a model or native
+library: tier files and the mobile default, idle choices, block splitting, markers, vocal
+parts and repeats, the desktop prompts and fallback, language mapping, immediate failures for
+a missing model, an unsupported language or device, request joining and replacement, idle
+release, download resume against a local HTTP server, and every language's strings. The
+boundary check confirms that the native wrapper and its pinned downloads live in `shared`; with
+`--built` it opens each APK, verifies every engine library against the asset manifest's SHA-256
+and confirms that no APK gained `lib/` native libraries.
+
 The lyrics-metadata-cache regression compares the production accessibility label,
 content-end and visual-state methods with frozen commit `cf69ad2`. It runs the
 immutable lyric model and pronunciation normalization directly, including word

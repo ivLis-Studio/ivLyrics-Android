@@ -142,8 +142,21 @@ final class AppI18n {
         addLyricsToolsTranslationOverrides(languages);
         addTranslationQualityOverrides(languages);
         addSpotifyOpenFailureTranslations(languages);
+        addLocalAiStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    private static void addLocalAiStrings(Map<String, Map<String, String>> languages) {
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            LocalAiI18n.apply(language.code, copy);
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addPronunciationNotationStrings(Map<String, Map<String, String>> languages) {
