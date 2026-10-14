@@ -12,6 +12,8 @@ import static org.junit.Assert.assertTrue;
 
 public class LocalAiI18nTest {
     private static final Pattern MODEL_NAMES = Pattern.compile("(?i)Hy-MT|Q4_K|Q6_K|Q8_0|GGUF|Tencent|wllama|jsDelivr|WebGPU");
+    // The desktop strings say "click"; on a touch screen every language says tap or press instead.
+    private static final Pattern CLICK = Pattern.compile("(?iu)click|clic|cliqu|klick|klik|クリック|क्लिक|کلیک|ক্লিক|คลิก|nhấp|tıkla|انقر");
 
     @Test public void everyLanguageHasEveryLocalAiStringWithItsPlaceholders() {
         String[][] placeholders = {
@@ -45,6 +47,31 @@ public class LocalAiI18nTest {
         assertEquals("Download model (1.13GB)", LocalAiModels.format(AppI18n.t("en", "local_ai.download"),
                 "size", LocalAiModels.formatGigabytes(LocalAiModels.LIGHT.sizeBytes)));
         assertTrue(AppI18n.t("ko", "local_ai.not_ready").contains("Local AI"));
+    }
+
+    @Test public void everyLanguageWarnsThatLocalAiNeedsAHighEndDevice() {
+        String key = "local_ai.performance_note";
+        String english = "Speed and stability depend heavily on your device's performance. Not recommended unless your device is high-end.";
+        assertTrue(Arrays.asList(LocalAiI18n.KEYS).contains(key));
+        assertEquals(english, AppI18n.t("en", key));
+        assertEquals("기기 성능에 따라 속도와 안정성이 크게 달라집니다. 고사양 기기가 아니라면 사용을 권장하지 않습니다.",
+                AppI18n.t("ko", key));
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            String value = AppI18n.t(language.code, key);
+            assertNotEquals(language.code, key, value);
+            assertFalse(language.code, value.trim().isEmpty());
+            if (!"en".equals(language.code)) {
+                assertNotEquals(language.code + " is translated", english, value);
+            }
+        }
+    }
+
+    @Test public void deleteConfirmationsSayTapOnATouchScreen() {
+        assertEquals("Tap again to delete", AppI18n.t("en", "local_ai.confirm_remove"));
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            String value = AppI18n.t(language.code, "local_ai.confirm_remove");
+            assertFalse(language.code + ": " + value, CLICK.matcher(value).find());
+        }
     }
 
     @Test public void theDeviceRequirementsAreTranslatedEverywhereAndKeepTheirTechnicalTerms() {

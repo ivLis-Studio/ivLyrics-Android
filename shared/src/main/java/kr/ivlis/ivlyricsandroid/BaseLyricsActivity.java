@@ -8142,6 +8142,13 @@ public class BaseLyricsActivity extends Activity implements
         description.setMaxLines(2);
         description.setEllipsize(TextUtils.TruncateAt.END);
         textColumn.addView(description, topMargin(matchWrap(), dp(2)));
+        if (provider.localModel) {
+            // Translation runs on the phone itself, so the card says up front that it needs a high-end device.
+            TextView performanceNote = label(ui("local_ai.performance_note"), 11.5f, SettingsAppearance.ACCENT,
+                    AppFonts.regular(this));
+            performanceNote.setLineSpacing(dp(1), 1f);
+            textColumn.addView(performanceNote, topMargin(matchWrap(), dp(4)));
+        }
         if (selected) {
             TextView badge = label(ui("setting.ai_provider_selected"), 11f, SettingsAppearance.MINT, AppFonts.semiBold(this));
             textColumn.addView(badge, topMargin(matchWrap(), dp(3)));
@@ -8165,7 +8172,8 @@ public class BaseLyricsActivity extends Activity implements
         if (provider.localModel) {
             // Local AI has no API key or model profile: its card opens its own download and memory controls.
             makeRemoteFocusable(textColumn);
-            textColumn.setContentDescription(provider.label + ", " + providerDescription(provider));
+            textColumn.setContentDescription(provider.label + ", " + providerDescription(provider) + ", "
+                    + ui("local_ai.performance_note"));
             textColumn.setOnClickListener(view -> {
                 localAiDetailsExpanded = !localAiDetailsExpanded;
                 buildProviderButtons();
