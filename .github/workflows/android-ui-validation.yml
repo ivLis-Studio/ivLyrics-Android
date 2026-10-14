@@ -2,6 +2,24 @@ name: Android UI Validation
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/Settings*.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/LocalAiSettingsView.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java'
+      - 'app/src/debug/**'
+      - 'app/src/androidTest/**'
+      - 'app/build.gradle'
+      - '.github/workflows/android-ui-validation.yml'
+  pull_request:
+    paths:
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/Settings*.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/LocalAiSettingsView.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java'
+      - 'app/src/debug/**'
+      - 'app/src/androidTest/**'
+      - 'app/build.gradle'
+      - '.github/workflows/android-ui-validation.yml'
 
 permissions:
   contents: read
