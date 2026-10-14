@@ -134,8 +134,9 @@ cache keys are unchanged.
 - Model files (Light/Medium/High; mobile defaults to Light) are downloaded only from the provider
   card, resumable with HTTP Range and checked by size, into the active context's no-backup directory.
   Inside Spotify that is Spotify's own storage.
-- The engine ships as assets under `localai/arm64-v8a`, not `lib/`, so neither APK's installable ABIs
-  change. `shared/tools/prepare_local_ai.py` (Gradle task `prepareLocalAiNative`) verifies the SHA-256
+- The engine ships as deflated assets under `localai/arm64-v8a` (`*.so.bin`, since APKs store `*.so`
+  uncompressed), not `lib/`, so neither APK's installable ABIs change. `shared/tools/prepare_local_ai.py`
+  (Gradle task `prepareLocalAiNative`) verifies the SHA-256
   pinned release libraries and headers in `shared/tools/local_ai_native.lock.json`, builds the JNI
   wrapper in `shared/src/main/cpp/localai` with CMake and the NDK, strips everything and writes a
   SHA-256 manifest. Builds therefore need the SDK packages `ndk;29.0.14206865` and `cmake;3.31.6`.

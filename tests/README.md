@@ -47,6 +47,13 @@ boundary check confirms that the native wrapper and its pinned downloads live in
 `--built` it opens each APK, verifies every engine library against the asset manifest's SHA-256
 and confirms that no APK gained `lib/` native libraries.
 
+`python3 tests/run_local_ai_host_check.py MODEL_GGUF [--download-check]` is an opt-in check for
+macOS arm64 (not run in CI). It builds the same JNI wrapper with `clang++` against the pinned
+llama.cpp b11364 macOS release, then translates Japanese lyric lines into Korean through
+`LocalAiRuntime` on the CPU with a downloaded Light model (`Hy-MT2-1.8B-Q4_K_M.gguf`), reporting
+outputs and timings. `--download-check` also resumes a partial Hugging Face download twice and
+compares it with the model file. It does not cover Android's linker, device memory or LSPatch.
+
 The lyrics-metadata-cache regression compares the production accessibility label,
 content-end and visual-state methods with frozen commit `cf69ad2`. It runs the
 immutable lyric model and pronunciation normalization directly, including word

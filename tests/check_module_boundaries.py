@@ -110,14 +110,19 @@ if args.built:
             require(manifest_name in entries, f"{product} APK carries the Local AI engine manifest")
             manifest = apk.read(manifest_name).decode()
             listed = [line.split(" ", 2) for line in manifest.splitlines() if line.strip()]
+            assets = {name: f"assets/localai/arm64-v8a/{name}.bin" for _, _, name in listed}
             verified = [name for digest, size, name in listed
-                        if f"assets/localai/arm64-v8a/{name}" in entries
-                        and hashlib.sha256(apk.read(f"assets/localai/arm64-v8a/{name}")).hexdigest() == digest
-                        and apk.getinfo(f"assets/localai/arm64-v8a/{name}").file_size == int(size)]
+                        if assets[name] in entries
+                        and hashlib.sha256(apk.read(assets[name])).hexdigest() == digest
+                        and apk.getinfo(assets[name]).file_size == int(size)]
             names = [name for _, _, name in listed]
             require(len(verified) == len(listed) and "libivlyrics_localai.so" in names and "libllama.so" in names
                     and any(name.startswith("libggml-cpu-android_armv8.0") for name in names),
                     f"{product} APK carries all {len(listed)} Local AI engine libraries with matching SHA-256")
+            stored = sum(apk.getinfo(path).compress_size for path in assets.values() if path in entries)
+            unpacked = sum(apk.getinfo(path).file_size for path in assets.values() if path in entries)
+            require(stored < unpacked * 0.6,
+                    f"{product} APK stores the Local AI engine compressed ({stored} of {unpacked} bytes)")
             payloads[product] = manifest
     require(len(set(payloads.values())) == 1, "Every APK carries the same Local AI engine build")
 

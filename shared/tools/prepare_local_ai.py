@@ -27,6 +27,8 @@ HEADERS = ["llama.h", "ggml.h", "ggml-cpu.h", "ggml-backend.h", "ggml-alloc.h", 
 LOAD_ORDER = ["libggml-base.so", "libggml.so", "libllama.so", "libivlyrics_localai.so"]
 CPU_VARIANT_PREFIX = "libggml-cpu-android_"
 PREBUILT = {"libggml-base.so", "libggml.so", "libllama.so", "LICENSE"}
+# AGP stores every *.so uncompressed, even under assets; this suffix lets the APK deflate them (~60% smaller).
+ASSET_SUFFIX = ".bin"
 
 
 def sha256(path):
@@ -157,11 +159,12 @@ def main():
     sources[LOAD_ORDER[-1]] = wrapper
     lines = []
     for name in LOAD_ORDER + variants:
-        subprocess.run([str(strip), "--strip-unneeded", "-o", str(output / name), str(sources[name])], check=True)
-        lines.append(f"{sha256(output / name)} {(output / name).stat().st_size} {name}")
+        asset = output / (name + ASSET_SUFFIX)
+        subprocess.run([str(strip), "--strip-unneeded", "-o", str(asset), str(sources[name])], check=True)
+        lines.append(f"{sha256(asset)} {asset.stat().st_size} {name}")
     (output / "manifest.txt").write_text("\n".join(lines) + "\n")
     shutil.copy2(prebuilt / "LICENSE", root / "LICENSE-llama.cpp.txt")
-    total = sum((output / name).stat().st_size for name in LOAD_ORDER + variants)
+    total = sum((output / (name + ASSET_SUFFIX)).stat().st_size for name in LOAD_ORDER + variants)
     print(f"Local AI native assets: {len(lines)} libraries, {total / 1e6:.1f} MB "
           f"(NDK {ndk.name}, {Path(cmake).parent.parent.name} CMake)")
 

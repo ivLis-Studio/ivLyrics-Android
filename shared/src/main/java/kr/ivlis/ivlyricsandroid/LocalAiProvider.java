@@ -31,6 +31,8 @@ import java.util.concurrent.TimeUnit;
  */
 final class LocalAiProvider {
     static final String ASSET_DIRECTORY = "localai/arm64-v8a";
+    /** The APK would store "*.so" assets uncompressed; the suffix keeps them deflated until extraction. */
+    static final String ASSET_SUFFIX = ".bin";
     private static final List<String> LOAD_ORDER =
             Arrays.asList("libggml-base.so", "libggml.so", "libllama.so", "libivlyrics_localai.so");
     private static LocalAiRuntime runtime;
@@ -161,7 +163,7 @@ final class LocalAiProvider {
                 File temporary = new File(directory, entry[2] + ".tmp");
                 MessageDigest digest = sha256Digest();
                 long size = 0;
-                try (InputStream input = assets.open(ASSET_DIRECTORY + "/" + entry[2]);
+                try (InputStream input = assets.open(ASSET_DIRECTORY + "/" + entry[2] + ASSET_SUFFIX);
                         OutputStream output = new FileOutputStream(temporary)) {
                     byte[] buffer = new byte[64 * 1024];
                     int count;

@@ -232,6 +232,7 @@ Java_kr_ivlis_ivlyricsandroid_LocalAiNative_nativeLoad(JNIEnv * env, jclass, jby
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers = 0;
         model_params.load_mode = LLAMA_LOAD_MODE_MMAP;
+        model_params.progress_callback = [](float, void *) { return true; };
         const std::string path = read_bytes(env, model_path);
         engine->model = llama_model_load_from_file(path.c_str(), model_params);
         if (engine->model == nullptr) throw std::runtime_error("The model file could not be loaded.");
