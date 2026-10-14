@@ -72,13 +72,7 @@ jobs:
           profile: pixel_5
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            mkdir -p build/reports/settings-ui
-            set +e
-            ./gradlew :app:connectedDebugAndroidTest --console=plain
-            ivlyrics_ui_status=$?
-            adb pull /sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions build/reports/settings-ui
-            exit "$ivlyrics_ui_status"
+          script: bash .github/scripts/run_settings_ui_validation.sh
 
       - name: Save native UI evidence
         if: always()
