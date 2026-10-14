@@ -2,9 +2,31 @@
 # android-emulator-runner executes script lines separately. Keep failure capture in one shell.
 set -uo pipefail
 
-ivlyrics_ui_status=0
-./gradlew :app:connectedDebugAndroidTest --console=plain || ivlyrics_ui_status=$?
 mkdir -p build/reports/settings-ui
-adb pull /sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions build/reports/settings-ui \
-  || echo "Native UI screenshots were not produced before the failure." >&2
+ivlyrics_ui_remote=/sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions
+
+# The unified test platform uninstalls the target APK after instrumentation, which
+# removes its scoped external files. Collect finished PNGs while tests are running.
+ivlyrics_ui_collect() {
+  local ivlyrics_ui_file
+  while IFS= read -r ivlyrics_ui_file; do
+    ivlyrics_ui_file="${ivlyrics_ui_file%$'\r'}"
+    [[ "$ivlyrics_ui_file" == *.png && "$ivlyrics_ui_file" != */* ]] || continue
+    [[ -f "build/reports/settings-ui/$ivlyrics_ui_file" ]] && continue
+    adb pull "$ivlyrics_ui_remote/$ivlyrics_ui_file" "build/reports/settings-ui/$ivlyrics_ui_file" >/dev/null 2>&1 || true
+  done < <(adb shell ls "$ivlyrics_ui_remote" 2>/dev/null || true)
+}
+
+./gradlew :app:connectedDebugAndroidTest --console=plain &
+ivlyrics_ui_gradle_pid=$!
+while kill -0 "$ivlyrics_ui_gradle_pid" 2>/dev/null; do
+  ivlyrics_ui_collect
+  sleep 5
+done
+ivlyrics_ui_status=0
+wait "$ivlyrics_ui_gradle_pid" || ivlyrics_ui_status=$?
+ivlyrics_ui_collect
+if ! compgen -G 'build/reports/settings-ui/*.png' >/dev/null; then
+  echo "Native UI screenshots were not produced before the failure." >&2
+fi
 exit "$ivlyrics_ui_status"
