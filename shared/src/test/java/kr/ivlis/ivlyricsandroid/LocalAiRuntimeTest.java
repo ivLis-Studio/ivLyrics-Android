@@ -27,6 +27,7 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -36,6 +37,7 @@ public class LocalAiRuntimeTest {
         @Override public String notReady() { return "not ready"; }
         @Override public String downloadBusy() { return "download busy"; }
         @Override public String unsupportedLanguage(String code) { return "cannot translate into " + code; }
+        @Override public String unsupportedDevice(String reason) { return "unsupported device: " + reason; }
     };
 
     @Rule public final TemporaryFolder folder = new TemporaryFolder();
@@ -114,16 +116,26 @@ public class LocalAiRuntimeTest {
     }
 
     @Test public void aDeviceThatCannotRunTheEngineReportsItWithoutLoadingOrDownloading() throws Exception {
-        LocalAiRuntime runtime = runtime("needs arm64", LocalAiModels.LIGHT);
+        LocalAiRuntime runtime = runtime(LocalAiModels.NEEDS_ARM64, LocalAiModels.LIGHT);
         try {
             runtime.translate(Collections.singletonList("君の声"), "ko", MESSAGES, null);
             fail("The device is unsupported");
         } catch (LocalAiRuntime.LocalAiException expected) {
-            assertEquals("needs arm64", expected.getMessage());
+            assertEquals("worded by the request's messages", "unsupported device: local_ai.needs_arm64",
+                    expected.getMessage());
+        }
+        try {
+            runtime.testTranslation("ko", MESSAGES).get(5, TimeUnit.SECONDS);
+            fail("The device is unsupported");
+        } catch (ExecutionException expected) {
+            assertEquals("unsupported device: local_ai.needs_arm64", expected.getCause().getMessage());
         }
         runtime.startDownload();
-        assertEquals(LocalAiRuntime.Phase.ERROR, runtime.status().phase);
-        assertEquals("needs arm64", runtime.status().error);
+        LocalAiRuntime.Status status = runtime.status();
+        assertEquals(LocalAiRuntime.Phase.ERROR, status.phase);
+        assertEquals("the settings card translates the key itself", LocalAiModels.NEEDS_ARM64,
+                status.unsupportedReason);
+        assertNull(status.error);
         assertEquals(0, backend.initializations.get());
         assertEquals(0, backend.connections.get());
     }

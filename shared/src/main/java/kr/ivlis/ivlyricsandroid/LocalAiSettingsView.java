@@ -152,7 +152,7 @@ final class LocalAiSettingsView extends LinearLayout {
 
     private void render() {
         LocalAiRuntime.Status snapshot = runtime.status();
-        boolean supported = LocalAiProvider.unsupportedReason() == null;
+        boolean supported = snapshot.unsupportedReason == null;
         status.setText(statusText(snapshot));
         status.setTextColor(snapshot.phase == LocalAiRuntime.Phase.ERROR ? SettingsAppearance.ACCENT
                 : snapshot.phase == LocalAiRuntime.Phase.READY ? SettingsAppearance.MINT : SettingsAppearance.SECONDARY);
@@ -295,7 +295,8 @@ final class LocalAiSettingsView extends LinearLayout {
             case READY:
                 return LocalAiModels.format(ui("local_ai.status_ready"), "device", snapshot.device);
             case ERROR:
-                return LocalAiModels.format(ui("local_ai.status_error"), "error", snapshot.error);
+                return LocalAiModels.format(ui("local_ai.status_error"), "error",
+                        snapshot.unsupportedReason != null ? ui(snapshot.unsupportedReason) : snapshot.error);
             default:
                 return ui("local_ai.status_not_downloaded");
         }

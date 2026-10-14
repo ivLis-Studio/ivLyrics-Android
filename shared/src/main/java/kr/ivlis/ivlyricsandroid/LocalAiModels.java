@@ -18,6 +18,9 @@ final class LocalAiModels {
     /** "Free memory when idle" choices in minutes; 0 keeps the model loaded. */
     static final int[] IDLE_UNLOAD_MINUTES = {10, 30, 60, 0};
     static final int DEFAULT_IDLE_UNLOAD_MINUTES = 10;
+    /** Why a device cannot run the engine, as i18n keys shown in the current UI language. */
+    static final String NEEDS_ANDROID_9 = "local_ai.needs_android9";
+    static final String NEEDS_ARM64 = "local_ai.needs_arm64";
 
     private LocalAiModels() {
     }

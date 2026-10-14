@@ -95,6 +95,11 @@ final class LocalAiProvider {
                 return LocalAiModels.format(AppI18n.t(uiLang, "local_ai.unsupported_language"),
                         "language", languageLabel(languageCode, uiLang));
             }
+
+            @Override
+            public String unsupportedDevice(String reason) {
+                return AppI18n.t(uiLang, reason);
+            }
         };
     }
 
@@ -108,14 +113,14 @@ final class LocalAiProvider {
         return label == null || label.trim().isEmpty() || label.equalsIgnoreCase(tag) ? tag : label;
     }
 
-    /** Null when this device can run the engine; otherwise why not. */
+    /** Null when this device can run the engine; otherwise the i18n key of why not. */
     static String unsupportedReason() {
         // The b11364 Android libraries use Android 9 relocation packing; older linkers would load them broken.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            return "Local AI needs Android 9 or later.";
+            return LocalAiModels.NEEDS_ANDROID_9;
         }
         if (!Process.is64Bit() || !Arrays.asList(Build.SUPPORTED_64_BIT_ABIS).contains("arm64-v8a")) {
-            return "Local AI needs a 64-bit ARM (arm64-v8a) device.";
+            return LocalAiModels.NEEDS_ARM64;
         }
         return null;
     }

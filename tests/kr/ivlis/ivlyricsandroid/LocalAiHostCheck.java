@@ -52,6 +52,7 @@ public final class LocalAiHostCheck {
             @Override public String notReady() { return "The local model is not ready yet."; }
             @Override public String downloadBusy() { return "Wait for the model download to finish, then try again."; }
             @Override public String unsupportedLanguage(String code) { return "The local model cannot translate into " + code + "."; }
+            @Override public String unsupportedDevice(String reason) { return reason; }
         };
         System.out.println("JDK " + System.getProperty("java.version") + ", " + System.getProperty("os.name") + " "
                 + System.getProperty("os.arch") + ", " + threads + " threads, CPU only (n_gpu_layers 0, no op offload)");

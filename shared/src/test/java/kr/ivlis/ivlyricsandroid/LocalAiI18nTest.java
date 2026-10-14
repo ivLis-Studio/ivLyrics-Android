@@ -2,6 +2,7 @@ package kr.ivlis.ivlyricsandroid;
 
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
@@ -44,5 +45,34 @@ public class LocalAiI18nTest {
         assertEquals("Download model (1.13GB)", LocalAiModels.format(AppI18n.t("en", "local_ai.download"),
                 "size", LocalAiModels.formatGigabytes(LocalAiModels.LIGHT.sizeBytes)));
         assertTrue(AppI18n.t("ko", "local_ai.not_ready").contains("Local AI"));
+    }
+
+    @Test public void theDeviceRequirementsAreTranslatedEverywhereAndKeepTheirTechnicalTerms() {
+        String[][] requirements = {
+                {LocalAiModels.NEEDS_ANDROID_9, "Android 9", "Local AI needs Android 9 or later.",
+                        "Local AI를 사용하려면 Android 9 이상이 필요합니다."},
+                {LocalAiModels.NEEDS_ARM64, "64-bit ARM", "Local AI needs a 64-bit ARM device.",
+                        "Local AI는 64-bit ARM 기기에서만 사용할 수 있습니다."}
+        };
+        assertEquals(22, AppI18n.UI_LANGUAGES.size());
+        for (String[] requirement : requirements) {
+            String key = requirement[0];
+            assertTrue(key, Arrays.asList(LocalAiI18n.KEYS).contains(key));
+            assertEquals(requirement[2], AppI18n.t("en", key));
+            assertEquals(requirement[3], AppI18n.t("ko", key));
+            for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+                String label = language.code + ":" + key;
+                String value = AppI18n.t(language.code, key);
+                assertNotEquals(label, key, value);
+                assertFalse(label, value.trim().isEmpty());
+                assertTrue(label + " keeps " + requirement[1], value.contains(requirement[1]));
+                assertTrue(label + " keeps the product name", value.contains("Local AI"));
+                if (!"en".equals(language.code)) {
+                    assertNotEquals(label + " is translated", requirement[2], value);
+                }
+                // The error a translation request hands to the provider chain uses the same text.
+                assertEquals(label, value, LocalAiProvider.messages(language.code).unsupportedDevice(key));
+            }
+        }
     }
 }

@@ -5,7 +5,9 @@ import java.util.Map;
 /**
  * Local AI provider strings from the desktop ivLyrics language files. The provider name "Local AI"
  * is a product name and stays unlocalized; no string names the model, its files or its vendor.
- * The privacy note drops the desktop engine download, which this app bundles.
+ * The privacy note drops the desktop engine download, which this app bundles. The two device
+ * requirements (local_ai.needs_android9, local_ai.needs_arm64) exist only on mobile and keep
+ * "Android 9" and "64-bit ARM" unlocalized in every language.
  */
 final class LocalAiI18n {
     static final String[] KEYS = {
@@ -35,7 +37,9 @@ final class LocalAiI18n {
             "local_ai.privacy",
             "local_ai.not_ready",
             "local_ai.unsupported_language",
-            "local_ai.download_busy"
+            "local_ai.download_busy",
+            "local_ai.needs_android9",
+            "local_ai.needs_arm64"
     };
 
     private LocalAiI18n() {
@@ -78,7 +82,9 @@ final class LocalAiI18n {
                         "가사는 이 기기에서만 번역되며 외부로 전송되지 않습니다. 모델(Hugging Face)은 처음 한 번만 내려받습니다.",
                         "로컬 모델이 아직 준비되지 않았습니다. 설정 > AI 제공자 > Local AI에서 모델을 먼저 받아 주세요.",
                         "로컬 모델은 {language}(으)로 번역할 수 없습니다.",
-                        "모델 다운로드가 끝난 뒤 다시 시도해 주세요."
+                        "모델 다운로드가 끝난 뒤 다시 시도해 주세요.",
+                        "Local AI를 사용하려면 Android 9 이상이 필요합니다.",
+                        "Local AI는 64-bit ARM 기기에서만 사용할 수 있습니다."
                 };
             case "zh-CN":
                 return new String[]{
@@ -108,7 +114,9 @@ final class LocalAiI18n {
                         "歌词仅在此设备上翻译，绝不会发送到任何地方。模型 (Hugging Face) 只需下载一次。",
                         "本地模型尚未就绪。请先在 设置 > AI 提供商 > Local AI 中下载模型。",
                         "本地模型无法翻译成{language}。",
-                        "请等待模型下载完成后再试。"
+                        "请等待模型下载完成后再试。",
+                        "Local AI 需要 Android 9 或更高版本。",
+                        "Local AI 仅支持 64-bit ARM 设备。"
                 };
             case "zh-TW":
                 return new String[]{
@@ -138,7 +146,9 @@ final class LocalAiI18n {
                         "歌詞只會在此裝置上翻譯，絕不會傳送到任何地方。模型 (Hugging Face) 只需下載一次。",
                         "本機模型尚未就緒。請先在 設定 > AI 提供者 > Local AI 中下載模型。",
                         "本機模型無法翻譯成{language}。",
-                        "請等模型下載完成後再試一次。"
+                        "請等模型下載完成後再試一次。",
+                        "Local AI 需要 Android 9 或以上版本。",
+                        "Local AI 僅支援 64-bit ARM 裝置。"
                 };
             case "ja":
                 return new String[]{
@@ -168,7 +178,9 @@ final class LocalAiI18n {
                         "歌詞はこのデバイス上で翻訳され、外部に送信されることはありません。モデル (Hugging Face) のダウンロードは最初の一度だけです。",
                         "ローカルモデルの準備がまだできていません。設定 > AIプロバイダー > Local AI で先にモデルをダウンロードしてください。",
                         "ローカルモデルは{language}への翻訳に対応していません。",
-                        "モデルのダウンロードが完了してから、もう一度お試しください。"
+                        "モデルのダウンロードが完了してから、もう一度お試しください。",
+                        "Local AI を使うには Android 9 以降が必要です。",
+                        "Local AI は 64-bit ARM デバイスでのみ使用できます。"
                 };
             case "hi":
                 return new String[]{
@@ -198,7 +210,9 @@ final class LocalAiI18n {
                         "लिरिक्स का अनुवाद इसी डिवाइस पर होता है और उन्हें कहीं नहीं भेजा जाता। मॉडल (Hugging Face) सिर्फ़ एक बार डाउनलोड होता है।",
                         "स्थानीय मॉडल अभी तैयार नहीं है। पहले सेटिंग्स > AI प्रदाता > Local AI में इसे डाउनलोड करें।",
                         "स्थानीय मॉडल {language} में अनुवाद नहीं कर सकता।",
-                        "मॉडल डाउनलोड पूरा होने तक प्रतीक्षा करें, फिर दोबारा प्रयास करें।"
+                        "मॉडल डाउनलोड पूरा होने तक प्रतीक्षा करें, फिर दोबारा प्रयास करें।",
+                        "Local AI के लिए Android 9 या उसके बाद का संस्करण ज़रूरी है।",
+                        "Local AI केवल 64-bit ARM डिवाइस पर चलता है।"
                 };
             case "es":
                 return new String[]{
@@ -228,7 +242,9 @@ final class LocalAiI18n {
                         "Las letras se traducen en este dispositivo y nunca se envían a ningún sitio. El modelo (Hugging Face) se descarga una sola vez.",
                         "El modelo local aún no está listo. Descárgalo primero en Ajustes > Proveedores de IA > Local AI.",
                         "El modelo local no puede traducir al {language}.",
-                        "Espera a que termine la descarga del modelo y vuelve a intentarlo."
+                        "Espera a que termine la descarga del modelo y vuelve a intentarlo.",
+                        "Local AI necesita Android 9 o posterior.",
+                        "Local AI solo funciona en dispositivos 64-bit ARM."
                 };
             case "fr":
                 return new String[]{
@@ -258,7 +274,9 @@ final class LocalAiI18n {
                         "Les paroles sont traduites sur cet appareil et ne sont jamais envoyées ailleurs. Le modèle (Hugging Face) n'est téléchargé qu'une seule fois.",
                         "Le modèle local n'est pas encore prêt. Téléchargez-le d'abord dans Paramètres > Fournisseurs d'IA > Local AI.",
                         "Le modèle local ne peut pas traduire en {language}.",
-                        "Attendez la fin du téléchargement du modèle, puis réessayez."
+                        "Attendez la fin du téléchargement du modèle, puis réessayez.",
+                        "Local AI nécessite Android 9 ou une version ultérieure.",
+                        "Local AI fonctionne uniquement sur les appareils 64-bit ARM."
                 };
             case "ar":
                 return new String[]{
@@ -288,7 +306,9 @@ final class LocalAiI18n {
                         "تُترجَم كلمات الأغاني على هذا الجهاز ولا تُرسَل إلى أي مكان. يتم تنزيل النموذج (Hugging Face) مرة واحدة فقط.",
                         "النموذج المحلي غير جاهز بعد. نزّله أولًا من الإعدادات > موفرو الذكاء الاصطناعي > Local AI.",
                         "لا يمكن للنموذج المحلي الترجمة إلى {language}.",
-                        "انتظر حتى يكتمل تنزيل النموذج، ثم حاول مرة أخرى."
+                        "انتظر حتى يكتمل تنزيل النموذج، ثم حاول مرة أخرى.",
+                        "يتطلب Local AI نظام Android 9 أو أحدث.",
+                        "يعمل Local AI على أجهزة 64-bit ARM فقط."
                 };
             case "fa":
                 return new String[]{
@@ -318,7 +338,9 @@ final class LocalAiI18n {
                         "متن ترانه‌ها روی همین دستگاه ترجمه می‌شود و به هیچ جا ارسال نمی‌شود. مدل (Hugging Face) فقط یک بار دانلود می‌شود.",
                         "مدل محلی هنوز آماده نیست. ابتدا آن را از تنظیمات > ارائه‌دهندگان هوش مصنوعی > Local AI دانلود کنید.",
                         "مدل محلی نمی‌تواند به {language} ترجمه کند.",
-                        "صبر کنید تا دانلود مدل تمام شود، سپس دوباره تلاش کنید."
+                        "صبر کنید تا دانلود مدل تمام شود، سپس دوباره تلاش کنید.",
+                        "Local AI به Android 9 یا نسخه‌های جدیدتر نیاز دارد.",
+                        "Local AI فقط روی دستگاه‌های 64-bit ARM کار می‌کند."
                 };
             case "de":
                 return new String[]{
@@ -348,7 +370,9 @@ final class LocalAiI18n {
                         "Songtexte werden auf diesem Gerät übersetzt und nirgendwohin gesendet. Das Modell (Hugging Face) wird nur einmal heruntergeladen.",
                         "Das lokale Modell ist noch nicht bereit. Laden Sie es zuerst unter Einstellungen > KI-Anbieter > Local AI herunter.",
                         "Das lokale Modell unterstützt die Zielsprache {language} nicht.",
-                        "Warten Sie, bis der Modell-Download abgeschlossen ist, und versuchen Sie es dann erneut."
+                        "Warten Sie, bis der Modell-Download abgeschlossen ist, und versuchen Sie es dann erneut.",
+                        "Local AI benötigt Android 9 oder neuer.",
+                        "Local AI läuft nur auf Geräten mit 64-bit ARM."
                 };
             case "ru":
                 return new String[]{
@@ -378,7 +402,9 @@ final class LocalAiI18n {
                         "Тексты песен переводятся на этом устройстве и никуда не отправляются. Модель (Hugging Face) скачивается только один раз.",
                         "Локальная модель ещё не готова. Сначала скачайте её в разделе Настройки > Провайдеры ИИ > Local AI.",
                         "Локальная модель не поддерживает перевод на язык «{language}».",
-                        "Дождитесь окончания скачивания модели и повторите попытку."
+                        "Дождитесь окончания скачивания модели и повторите попытку.",
+                        "Для Local AI нужен Android 9 или новее.",
+                        "Local AI работает только на устройствах с 64-bit ARM."
                 };
             case "sv":
                 return new String[]{
@@ -408,7 +434,9 @@ final class LocalAiI18n {
                         "Låttexter översätts på den här enheten och skickas aldrig någonstans. Modellen (Hugging Face) laddas bara ner en gång.",
                         "Den lokala modellen är inte redo än. Ladda ner den först under Inställningar > AI-leverantörer > Local AI.",
                         "Den lokala modellen kan inte översätta till {language}.",
-                        "Vänta tills modellen har laddats ner och försök sedan igen."
+                        "Vänta tills modellen har laddats ner och försök sedan igen.",
+                        "Local AI kräver Android 9 eller senare.",
+                        "Local AI fungerar bara på enheter med 64-bit ARM."
                 };
             case "pt":
                 return new String[]{
@@ -438,7 +466,9 @@ final class LocalAiI18n {
                         "As letras são traduzidas neste dispositivo e nunca são enviadas a lugar nenhum. O modelo (Hugging Face) é baixado apenas uma vez.",
                         "O modelo local ainda não está pronto. Baixe-o primeiro em Configurações > Provedores de IA > Local AI.",
                         "O modelo local não pode traduzir para o {language}.",
-                        "Aguarde o download do modelo terminar e tente novamente."
+                        "Aguarde o download do modelo terminar e tente novamente.",
+                        "O Local AI requer o Android 9 ou superior.",
+                        "O Local AI só funciona em dispositivos 64-bit ARM."
                 };
             case "bn":
                 return new String[]{
@@ -468,7 +498,9 @@ final class LocalAiI18n {
                         "লিরিক্স এই ডিভাইসেই অনুবাদ হয় এবং কোথাও পাঠানো হয় না। মডেল (Hugging Face) শুধু একবারই ডাউনলোড হয়।",
                         "স্থানীয় মডেল এখনও প্রস্তুত নয়। আগে সেটিংস > এআই প্রদানকারী > Local AI থেকে এটি ডাউনলোড করুন।",
                         "স্থানীয় মডেল {language} ভাষায় অনুবাদ করতে পারে না।",
-                        "মডেল ডাউনলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন, তারপর আবার চেষ্টা করুন।"
+                        "মডেল ডাউনলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন, তারপর আবার চেষ্টা করুন।",
+                        "Local AI ব্যবহার করতে Android 9 বা তার পরের সংস্করণ লাগবে।",
+                        "Local AI শুধু 64-bit ARM ডিভাইসে চলে।"
                 };
             case "cs":
                 return new String[]{
@@ -498,7 +530,9 @@ final class LocalAiI18n {
                         "Texty písní se překládají v tomto zařízení a nikam se neodesílají. Model (Hugging Face) se stahuje jen jednou.",
                         "Místní model ještě není připraven. Nejprve ho stáhněte v Nastavení > Poskytovatelé AI > Local AI.",
                         "Místní model neumí překládat do jazyka {language}.",
-                        "Počkejte na dokončení stahování modelu a zkuste to znovu."
+                        "Počkejte na dokončení stahování modelu a zkuste to znovu.",
+                        "Local AI vyžaduje Android 9 nebo novější.",
+                        "Local AI funguje jen na zařízeních s 64-bit ARM."
                 };
             case "it":
                 return new String[]{
@@ -528,7 +562,9 @@ final class LocalAiI18n {
                         "I testi vengono tradotti su questo dispositivo e non vengono mai inviati altrove. Il modello (Hugging Face) viene scaricato una sola volta.",
                         "Il modello locale non è ancora pronto. Scaricalo prima in Impostazioni > Provider AI > Local AI.",
                         "Il modello locale non può tradurre in {language}.",
-                        "Attendi il termine del download del modello, poi riprova."
+                        "Attendi il termine del download del modello, poi riprova.",
+                        "Local AI richiede Android 9 o versioni successive.",
+                        "Local AI funziona solo su dispositivi 64-bit ARM."
                 };
             case "th":
                 return new String[]{
@@ -558,7 +594,9 @@ final class LocalAiI18n {
                         "เนื้อเพลงจะถูกแปลบนอุปกรณ์นี้และไม่ถูกส่งไปที่ใด โมเดล (Hugging Face) จะดาวน์โหลดเพียงครั้งเดียว",
                         "โมเดลในเครื่องยังไม่พร้อม โปรดดาวน์โหลดก่อนที่ การตั้งค่า > ผู้ให้บริการ AI > Local AI",
                         "โมเดลในเครื่องไม่สามารถแปลเป็นภาษา{language}ได้",
-                        "โปรดรอให้ดาวน์โหลดโมเดลเสร็จก่อน แล้วลองอีกครั้ง"
+                        "โปรดรอให้ดาวน์โหลดโมเดลเสร็จก่อน แล้วลองอีกครั้ง",
+                        "Local AI ต้องใช้ Android 9 ขึ้นไป",
+                        "Local AI ใช้ได้เฉพาะกับอุปกรณ์ 64-bit ARM"
                 };
             case "vi":
                 return new String[]{
@@ -588,7 +626,9 @@ final class LocalAiI18n {
                         "Lời bài hát được dịch trên thiết bị này và không bao giờ được gửi đi đâu. Mô hình (Hugging Face) chỉ cần tải xuống một lần.",
                         "Mô hình cục bộ chưa sẵn sàng. Hãy tải xuống trước trong Cài đặt > Nhà cung cấp AI > Local AI.",
                         "Mô hình cục bộ không thể dịch sang {language}.",
-                        "Vui lòng đợi tải mô hình xong rồi thử lại."
+                        "Vui lòng đợi tải mô hình xong rồi thử lại.",
+                        "Local AI cần Android 9 trở lên.",
+                        "Local AI chỉ chạy trên thiết bị 64-bit ARM."
                 };
             case "id":
                 return new String[]{
@@ -618,7 +658,9 @@ final class LocalAiI18n {
                         "Lirik diterjemahkan di perangkat ini dan tidak pernah dikirim ke mana pun. Model (Hugging Face) hanya diunduh sekali.",
                         "Model lokal belum siap. Unduh terlebih dahulu di Pengaturan > Penyedia AI > Local AI.",
                         "Model lokal tidak dapat menerjemahkan ke bahasa {language}.",
-                        "Tunggu hingga unduhan model selesai, lalu coba lagi."
+                        "Tunggu hingga unduhan model selesai, lalu coba lagi.",
+                        "Local AI memerlukan Android 9 atau yang lebih baru.",
+                        "Local AI hanya berjalan di perangkat 64-bit ARM."
                 };
             case "ms":
                 return new String[]{
@@ -648,7 +690,9 @@ final class LocalAiI18n {
                         "Lirik diterjemah pada peranti ini dan tidak pernah dihantar ke mana-mana. Model (Hugging Face) hanya dimuat turun sekali.",
                         "Model setempat belum sedia. Muat turun model dahulu dalam Tetapan > Penyedia AI > Local AI.",
                         "Model setempat tidak dapat menterjemah ke bahasa {language}.",
-                        "Tunggu sehingga muat turun model selesai, kemudian cuba lagi."
+                        "Tunggu sehingga muat turun model selesai, kemudian cuba lagi.",
+                        "Local AI memerlukan Android 9 atau lebih baharu.",
+                        "Local AI hanya berfungsi pada peranti 64-bit ARM."
                 };
             case "tr":
                 return new String[]{
@@ -678,7 +722,9 @@ final class LocalAiI18n {
                         "Şarkı sözleri bu cihazda çevrilir ve hiçbir yere gönderilmez. Model (Hugging Face) yalnızca bir kez indirilir.",
                         "Yerel model henüz hazır değil. Önce Ayarlar > Yapay Zeka Sağlayıcıları > Local AI bölümünden indirin.",
                         "Yerel model {language} diline çeviri yapamaz.",
-                        "Model indirmesinin bitmesini bekleyin, ardından tekrar deneyin."
+                        "Model indirmesinin bitmesini bekleyin, ardından tekrar deneyin.",
+                        "Local AI için Android 9 veya üzeri gerekir.",
+                        "Local AI yalnızca 64-bit ARM cihazlarda çalışır."
                 };
             case "en":
             default:
@@ -709,7 +755,9 @@ final class LocalAiI18n {
                         "Lyrics are translated on this device and are never sent anywhere. The model (Hugging Face) is downloaded only once.",
                         "The local model is not ready yet. Download it first in Settings > AI Providers > Local AI.",
                         "The local model cannot translate into {language}.",
-                        "Wait for the model download to finish, then try again."
+                        "Wait for the model download to finish, then try again.",
+                        "Local AI needs Android 9 or later.",
+                        "Local AI needs a 64-bit ARM device."
                 };
         }
     }

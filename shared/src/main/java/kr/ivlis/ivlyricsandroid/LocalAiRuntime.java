@@ -49,6 +49,9 @@ final class LocalAiRuntime {
         String downloadBusy();
 
         String unsupportedLanguage(String languageCode);
+
+        /** The text for the unsupported-device reason this runtime was created with. */
+        String unsupportedDevice(String reason);
     }
 
     interface Timer {
@@ -77,16 +80,19 @@ final class LocalAiRuntime {
         final long totalBytes;
         final String device;
         final String error;
+        /** Why this device cannot run the engine (an i18n key), or null; the phase is then ERROR. */
+        final String unsupportedReason;
         private final Set<String> downloadedTiers;
 
         Status(Phase phase, LocalAiModels.Tier tier, long loadedBytes, long totalBytes, String device, String error,
-                Set<String> downloadedTiers) {
+                String unsupportedReason, Set<String> downloadedTiers) {
             this.phase = phase;
             this.tier = tier;
             this.loadedBytes = loadedBytes;
             this.totalBytes = totalBytes;
             this.device = device;
             this.error = error;
+            this.unsupportedReason = unsupportedReason;
             this.downloadedTiers = Collections.unmodifiableSet(downloadedTiers);
         }
 
@@ -171,7 +177,8 @@ final class LocalAiRuntime {
     private Runnable idleCancel;
 
     /**
-     * @param unsupportedReason why this device cannot run the engine, or null when it can
+     * @param unsupportedReason why this device cannot run the engine, or null when it can: an i18n key, so
+     *        requests ({@link Messages#unsupportedDevice}) and the settings card show it in the current UI language
      * @param connector opens download connections; null uses the platform's HttpURLConnection
      */
     LocalAiRuntime(File modelDirectory, Backend backend, Timer timer, ThreadFactory threadFactory, int threads,
@@ -397,7 +404,6 @@ final class LocalAiRuntime {
             long loaded = 0L;
             if (unsupportedReason != null) {
                 phase = Phase.ERROR;
-                message = unsupportedReason;
             } else if (downloadingTier == tier) {
                 phase = Phase.DOWNLOADING;
                 loaded = downloadedBytes;
@@ -412,13 +418,13 @@ final class LocalAiRuntime {
             } else {
                 phase = downloaded.contains(tier.id) ? Phase.DOWNLOADED : Phase.MISSING;
             }
-            return new Status(phase, tier, loaded, tier.sizeBytes, device, message, downloaded);
+            return new Status(phase, tier, loaded, tier.sizeBytes, device, message, unsupportedReason, downloaded);
         }
     }
 
     private void requireReadyLocked(Messages messages) throws LocalAiException {
         if (unsupportedReason != null) {
-            throw new LocalAiException(unsupportedReason);
+            throw new LocalAiException(messages.unsupportedDevice(unsupportedReason));
         }
         if (downloadingTier == tier) {
             throw new LocalAiException(messages.downloadBusy());
