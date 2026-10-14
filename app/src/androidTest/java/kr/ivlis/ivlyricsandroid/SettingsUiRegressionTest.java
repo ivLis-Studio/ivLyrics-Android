@@ -36,8 +36,17 @@ public final class SettingsUiRegressionTest {
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
     private SettingsUiHarnessActivity activity;
     private int captures;
+    private int taps;
+    private String capturePrefix = "startup";
 
     @After public void cleanup() {
+        if (activity != null) {
+            // Capture before dismiss/finish, even if a strict assertion failed.
+            try { screenshot(capturePrefix + "-window-final-or-failure"); }
+            catch (RuntimeException | AssertionError captureFailure) {
+                android.util.Log.e("SettingsUiRegression", "Final evidence capture failed", captureFailure);
+            }
+        }
         if (activity != null) instrumentation.runOnMainSync(() -> { activity.dismissPopup(); activity.finish(); });
         instrumentation.waitForIdleSync();
         instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
@@ -60,6 +69,7 @@ public final class SettingsUiRegressionTest {
         awaitWindow(activity.getWindow().getDecorView());
         assertEquals(fontScale, activity.getResources().getConfiguration().fontScale, 0.01f);
         final String prefix = language + "-" + width + "x" + height + "-font" + fontScale;
+        capturePrefix = prefix;
         screenshot(prefix + "-window-initial");
         verifyRealWindowTaps(prefix, language);
         onMain(() -> {
@@ -230,8 +240,15 @@ public final class SettingsUiRegressionTest {
         awaitWindow(target.getRootView());
         onMain(() -> {
             assertTrue("real target enabled", target.isEnabled());
-            target.requestRectangleOnScreen(new Rect(0, 0, target.getWidth(), target.getHeight()), true);
+            Rect desired = new Rect(0, 0, target.getWidth(), target.getHeight());
+            if (target instanceof Switch) {
+                drawSwitch((Switch) target);
+                desired.set(((Switch) target).getThumbDrawable().getBounds());
+                desired.inset(-dp(16), -dp(16));
+            }
+            target.requestRectangleOnScreen(desired, true);
         });
+        screenshot(capturePrefix + "-window-before-tap-" + (++taps));
         final float[] point = new float[2];
         onMain(() -> {
             Rect visible = new Rect();
@@ -240,6 +257,14 @@ public final class SettingsUiRegressionTest {
             assertTrue("actual visible hit width >=48dp: " + visible, visible.width() >= dp(48));
             int[] position = new int[2]; target.getLocationOnScreen(position);
             point[0] = position[0] + visible.exactCenterX(); point[1] = position[1] + visible.exactCenterY();
+            if (target instanceof Switch) {
+                drawSwitch((Switch) target);
+                Rect thumb = ((Switch) target).getThumbDrawable().getBounds();
+                assertTrue("actual thumb is visible for the native tap: " + thumb + " in " + visible,
+                        visible.contains(Math.round(thumb.exactCenterX()), Math.round(thumb.exactCenterY())));
+                point[0] = position[0] + thumb.exactCenterX();
+                point[1] = position[1] + thumb.exactCenterY();
+            }
             Rect window = new Rect(); target.getRootView().getWindowVisibleDisplayFrame(window);
             assertTrue("touch center inside real visible window: " + window,
                     window.contains(Math.round(point[0]), Math.round(point[1])));
@@ -352,8 +377,7 @@ public final class SettingsUiRegressionTest {
 
     private void assertThumb(Switch toggle) {
         // Draw the production control first, so Switch has assigned its actual thumb bounds.
-        Bitmap control = Bitmap.createBitmap(toggle.getWidth(), toggle.getHeight(), Bitmap.Config.ARGB_8888);
-        toggle.jumpDrawablesToCurrentState(); toggle.draw(new Canvas(control)); control.recycle();
+        drawSwitch(toggle);
         Drawable thumb = toggle.getThumbDrawable();
         assertNotNull("native thumb", thumb);
         Rect padding = new Rect(); thumb.getPadding(padding);
@@ -379,6 +403,11 @@ public final class SettingsUiRegressionTest {
         assertFalse("opaque native thumb ink", ink.isEmpty());
         float aspect = (float) ink.width() / ink.height();
         assertTrue("circular drawn thumb, not old 20x26 ellipse: " + aspect, aspect >= .88f && aspect <= 1.14f);
+    }
+
+    private void drawSwitch(Switch toggle) {
+        Bitmap control = Bitmap.createBitmap(toggle.getWidth(), toggle.getHeight(), Bitmap.Config.ARGB_8888);
+        toggle.jumpDrawablesToCurrentState(); toggle.draw(new Canvas(control)); control.recycle();
     }
 
     private void save(View view, String name) {
