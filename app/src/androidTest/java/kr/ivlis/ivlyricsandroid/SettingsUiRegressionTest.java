@@ -49,6 +49,7 @@ public final class SettingsUiRegressionTest {
     private void scenario(String language, float fontScale, int width, int height, boolean landscape) throws Exception {
         instrumentation.getUiAutomation().setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0);
         instrumentation.waitForIdleSync();
+        SettingsUiHarnessActivity.prepareConfiguration(language, fontScale);
         Intent intent = new Intent(instrumentation.getTargetContext(), SettingsUiHarnessActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uiLanguage", language).putExtra("fontScale", fontScale);
         activity = (SettingsUiHarnessActivity) instrumentation.startActivitySync(intent);

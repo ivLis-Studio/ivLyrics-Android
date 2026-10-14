@@ -26,6 +26,9 @@ assert input_method.index("input.setInputType(type)") < input_method.index("inpu
 for name in ("requestAiLyrics", "requestCulturalAnnotations", "showVideoSelectionDialog", "performManualLrclibSearch", "requestMetadataTranslation"):
     assert "@Override protected void " + name in harness, "offline callback missing: " + name
 assert "usesLivePlayback() { return false; }" in harness
+assert "super.attachBaseContext(base.createConfigurationContext(config))" in harness
+assert "applyOverrideConfiguration(config)" not in harness
+assert "SettingsUiHarnessActivity.prepareConfiguration(language, fontScale)" in native
 assert "sendPointerSync" in native and "getLocalVisibleRect" in native
 assert 'getExternalFilesDir("ui-regressions")' in native
 assert "peakAlpha * .9f" in native and "aspect >= .88f && aspect <= 1.14f" in native

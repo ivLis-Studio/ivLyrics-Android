@@ -18,6 +18,7 @@ import java.util.Locale;
 
 /** Unexported, debug-only offline fixture using the real shared activity and popup. */
 public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
+    private static volatile Configuration launchConfiguration;
     private Context storage;
     public int supplementActions;
     public int culturalActions;
@@ -25,8 +26,21 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     public int searchActions;
     public int metadataActions;
 
+    public static void prepareConfiguration(String language, float fontScale) {
+        Configuration config = new Configuration();
+        config.fontScale = fontScale;
+        config.setLocales(new LocaleList(Locale.forLanguageTag(language)));
+        config.setLayoutDirection(Locale.forLanguageTag(language));
+        launchConfiguration = config;
+    }
+
     @Override protected void attachBaseContext(Context base) {
-        super.attachBaseContext(base);
+        Configuration config = new Configuration(base.getResources().getConfiguration());
+        Configuration requested = launchConfiguration;
+        if (requested != null) config.updateFrom(requested);
+        // Activity/the framework may resolve its theme before onCreate. Give it
+        // configured resources at attachment, never applyOverrideConfiguration late.
+        super.attachBaseContext(base.createConfigurationContext(config));
         storage = new ContextWrapper(base.getApplicationContext()) {
             @Override public Context getApplicationContext() { return this; }
             @Override public SharedPreferences getSharedPreferences(String name, int mode) {
@@ -59,11 +73,6 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     @Override protected void onCreate(Bundle savedState) {
         String language = getIntent().getStringExtra("uiLanguage");
         if (language == null) language = "ko";
-        Configuration config = new Configuration();
-        config.fontScale = getIntent().getFloatExtra("fontScale", 1f);
-        config.setLocales(new LocaleList(Locale.forLanguageTag(language)));
-        config.setLayoutDirection(Locale.forLanguageTag(language));
-        applyOverrideConfiguration(config);
         getIntent().putExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE, true);
         storage.getSharedPreferences(AiLyricsSettings.PREFS_NAME, MODE_PRIVATE).edit().clear().commit();
         AiLyricsSettings settings = new AiLyricsSettings(storage);
