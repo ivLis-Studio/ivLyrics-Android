@@ -11,6 +11,9 @@ public interface LyricsActivityHost {
     void close(Runnable finishImmediately);
     void destroy();
 
+    /** The page is being dismissed; drags no longer move it. */
+    default boolean isClosing() { return false; }
+
     /** A touch began on one of the page's drag handles, so a drag may follow. */
     default void dragHandlePressed() {}
 

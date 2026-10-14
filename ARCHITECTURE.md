@@ -33,6 +33,10 @@ laid out beneath it behind an empty reveal clip. Once the lyrics page rests full
 the player page is hidden as in embedded mode, so its progress bar and lyric preview
 stop drawing. A drag, close or rebuild that reveals any of it shows it again and
 repaints the current playback state in that same frame.
+A touch that lands while the lyrics page slides open, closed or back does not stop the
+slide. If it moves like a drag (12 dp) before the slide ends, the page follows it from
+where it is and settles by the usual rule on release; otherwise the slide finishes as
+it would have, and the touch triggers nothing else.
 
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the

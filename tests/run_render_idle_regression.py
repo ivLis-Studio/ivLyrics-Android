@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Compare offset reads, idle rendering, loading geometry and the frame feed with frozen production code."""
+"""Compare offset reads, idle rendering, loading geometry, the frame feed and the lyrics page's
+interrupted slides with frozen production code."""
 from pathlib import Path
 import subprocess
 
@@ -116,6 +117,90 @@ report = (f"Frozen baseline: {BASELINE} (frame feed: {FEED_BASELINE})\n"
 print(report, end="")
 if result.returncode:
     raise SystemExit(result.returncode)
+
+# The standalone lyrics page's open, close and settle slides with touches landing during them,
+# against main before the smooth-lyrics work.
+PAGE_BASELINE = FEED_BASELINE
+PAGE_METHODS = (
+    "private void showLyricsPage(boolean show)",
+    "private void attachPageSwipe(View view, boolean opensLyrics, boolean tapOpens)",
+    "private void attachLyricsMetaSwipe(View view)",
+    "private void scheduleLyricsMetaLongPress(View target)",
+    "private void cancelLyricsMetaLongPress()",
+    "private void applyLyricsDragTranslation(float translationY)",
+    "private void applyLyricsPageDragTopPadding(float translationY)",
+    "private void resetLyricsPageDragTopPadding(boolean animate)",
+    "private void setLyricsPageContentTopPadding(int topPadding)",
+    "private void settleLyricsDrag(float velocityY)",
+    "private void applyMainPageRevealClip(float translationY)",
+    "private void clearMainPageRevealClip()",
+    "private float pageVelocityY()",
+    "private void recyclePageVelocityTracker()",
+)
+# Methods some revisions lack. A missing one with a body is stubbed as that revision behaved;
+# the others are only called by revisions that have them.
+PAGE_OPTIONAL = {
+    "private void pressHostDragHandle()": "",
+    "private void releaseHostDragHandle()": "",
+    "private void coverMainPage()": "",
+    "private void uncoverMainPage()": "",
+    "private boolean isClosingLyricsPageShown()": "return false;",
+    "private void setLyricsFramePositionOnActiveView(double positionMs, long frameTimeNanos)":
+        "if (lyricsPageVisible) lyricsView.setPlaybackFrame(positionMs, frameTimeNanos);",
+    "private void beginPageTouch()": None,
+    "private void carrySlidingLyricsPage(float rawY)": None,
+    "private void endSlidingPageTouch(float velocityY)": None,
+    "private void settleLyricsPageLeftMidway(float velocityY)": None,
+    "private boolean isLyricsPageSliding()": None,
+    "private int beginLyricsPageSlide()": None,
+    "private void endLyricsPageSlide(int slide)": None,
+    "private void stopLyricsPageSlide()": None,
+}
+PAGE_BRIDGE = """
+    void open() { showLyricsPage(true); }
+    void close() { showLyricsPage(false); }
+    void attach() {
+        preview.setOnClickListener(view -> showLyricsPage(true));
+        attachPageSwipe(preview, true, true);
+        attachPageSwipe(pageRoot, true, false);
+        attachPageSwipe(header, false, false);
+        attachLyricsMetaSwipe(title);
+    }
+    void feed(double positionMs, long frameTimeNanos) { setLyricsFramePositionOnActiveView(positionMs, frameTimeNanos); }
+    boolean coversPlayer() { return COVERS; }
+"""
+
+
+def page(baseline):
+    if baseline:
+        value = subprocess.check_output([
+            "git", "show", f"{PAGE_BASELINE}:shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java"
+        ], cwd=ROOT, text=True)
+    else:
+        value = source("BaseLyricsActivity", False)
+    declarations = [declaration(value, signature) for signature in PAGE_METHODS]
+    for signature, stub in PAGE_OPTIONAL.items():
+        if signature in value:
+            declarations.append(declaration(value, signature))
+        elif stub is not None:
+            declarations.append(signature + " {" + stub + "}")
+    bridge = PAGE_BRIDGE.replace("COVERS", "true" if "private void coverMainPage()" in value else "false")
+    return ("static final class " + ("BaselinePage" if baseline else "CandidatePage") + " extends PageFields {"
+            + "\n".join(declarations) + bridge + "}")
+
+
+slides = work / "PageSlideRegression.java"
+slides.write_text(Path(__file__).with_name("PageSlideRegression.java.in").read_text().replace(
+    "// INSERT_PRODUCTION_DECLARATIONS", "\n".join(page(baseline) for baseline in (True, False))))
+subprocess.run([java_tool("javac"), "-d", str(work), str(slides)], check=True)
+slid = subprocess.run([java_tool("java"), "-cp", str(work), "PageSlideRegression"],
+                      text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+(work / "page-slides-result.txt").write_text(f"Frozen baseline: {PAGE_BASELINE}\n" + slid.stdout)
+# Each run's outcome stays in the report; the summaries and any failure are printed.
+print(f"Page slides (frozen baseline {PAGE_BASELINE[:7]}; per-run table in {work / 'page-slides-result.txt'}):")
+print("".join(line for line in slid.stdout.splitlines(keepends=True) if not line.startswith("  ")), end="")
+if slid.returncode:
+    raise SystemExit(slid.returncode)
 
 # Keep precision-sensitive preview measurement checks on the established CI entry point.
 MEASUREMENT_BASELINE = "3f238d1a503b2b400cbebd369857428ab837ae83"

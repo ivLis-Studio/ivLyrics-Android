@@ -124,7 +124,7 @@ public final class LyricsSheetTransition implements LyricsActivityHost {
         if (root != null) root.invalidateOutline();
     }
 
-    public boolean isClosing() { return closing; }
+    @Override public boolean isClosing() { return closing; }
 
     /** Translation and velocity use physical pixels, matching MotionEvent/VelocityTracker. */
     public void dragTo(float translationY) {

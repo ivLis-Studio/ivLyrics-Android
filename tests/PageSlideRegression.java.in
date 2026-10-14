@@ -1,0 +1,734 @@
+import java.util.*;
+
+/**
+ * Plays the standalone lyrics page's open, close and settle slides with touches landing on the
+ * page's drag handle, its title and the player page during them, through the production page
+ * and gesture methods. View, ViewPropertyAnimator (AccelerateDecelerate, end actions skipped
+ * on cancel), MotionEvent, VelocityTracker and the 120 Hz frame clock are synthetic: this does
+ * not claim Android touch dispatch, Canvas pixels or device timing.
+ */
+public final class PageSlideRegression {
+    static int checks;
+    static void check(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+
+    static final float DENSITY = 3f;
+    static final int SCREEN_W = 1280, SCREEN_H = 2856;
+    static final double FRAME_MS = 1000.0 / 120.0;
+
+    static double accelerateDecelerate(double t) { return Math.cos((t + 1) * Math.PI) / 2 + 0.5; }
+
+    /** Time, animations and delayed runnables; the simulation advances it one display frame at a time. */
+    static final class Clock {
+        static double now;
+        static final List<ViewPropertyAnimator> views = new ArrayList<>();
+        static final List<ValueAnimator> values = new ArrayList<>();
+        static final List<Object[]> delayed = new ArrayList<>();
+        static void reset() { now = 0; views.clear(); values.clear(); delayed.clear(); }
+    }
+
+    static class Rect {
+        int left, top, right, bottom;
+        Rect() {}
+        Rect(Rect other) { set(other.left, other.top, other.right, other.bottom); }
+        void set(int left, int top, int right, int bottom) {
+            this.left = left; this.top = top; this.right = right; this.bottom = bottom;
+        }
+        boolean isEmpty() { return left >= right || top >= bottom; }
+        int height() { return bottom - top; }
+    }
+
+    static class ViewParent {
+        boolean disallowIntercept;
+        void requestDisallowInterceptTouchEvent(boolean value) { disallowIntercept = value; }
+    }
+
+    static class View {
+        static final int VISIBLE = 0, INVISIBLE = 4, GONE = 8;
+        interface OnTouchListener { boolean onTouch(View view, MotionEvent event); }
+        interface OnClickListener { void onClick(View view); }
+        interface OnLongClickListener { boolean onLongClick(View view); }
+        final String name;
+        final ViewParent parent = new ViewParent();
+        View parentView;
+        int visibility = VISIBLE;
+        float translationY, alpha = 1f;
+        Rect clipBounds;
+        int paddingLeft, paddingTop, paddingRight, paddingBottom;
+        OnTouchListener touchListener;
+        OnClickListener clickListener;
+        ViewPropertyAnimator animator;
+        int clicks;
+        View(String name) { this.name = name; }
+        int getVisibility() { return visibility; }
+        void setVisibility(int value) { visibility = value; }
+        float getTranslationY() { return translationY; }
+        void setTranslationY(float value) { translationY = value; }
+        float getAlpha() { return alpha; }
+        void setAlpha(float value) { alpha = value; }
+        int getWidth() { return SCREEN_W; }
+        void setClipBounds(Rect value) { clipBounds = value == null ? null : new Rect(value); }
+        Rect getClipBounds() { return clipBounds == null ? null : new Rect(clipBounds); }
+        void bringToFront() {}
+        ViewParent getParent() { return parent; }
+        boolean isShown() {
+            for (View view = this; view != null; view = view.parentView) {
+                if (view.visibility != VISIBLE) return false;
+            }
+            return true;
+        }
+        void setOnTouchListener(OnTouchListener listener) { touchListener = listener; }
+        void setOnClickListener(OnClickListener listener) { clickListener = listener; }
+        void setOnLongClickListener(OnLongClickListener listener) {}
+        void setClickable(boolean value) {}
+        boolean performClick() {
+            clicks++;
+            if (clickListener != null) clickListener.onClick(this);
+            return true;
+        }
+        int getPaddingLeft() { return paddingLeft; }
+        int getPaddingTop() { return paddingTop; }
+        int getPaddingRight() { return paddingRight; }
+        int getPaddingBottom() { return paddingBottom; }
+        void setPadding(int left, int top, int right, int bottom) {
+            paddingLeft = left; paddingTop = top; paddingRight = right; paddingBottom = bottom;
+        }
+        ViewPropertyAnimator animate() {
+            if (animator == null) animator = new ViewPropertyAnimator(this);
+            return animator;
+        }
+    }
+
+    static final class LyricsView extends View {
+        int frames;
+        LyricsView() { super("lyricsView"); }
+        void setPlaybackFrame(double positionMs, long frameTimeNanos) { frames++; }
+    }
+
+    /** Android's translation animation: from the value when translationY() is called, AccelerateDecelerate. */
+    static final class ViewPropertyAnimator {
+        static final class Running {
+            float from, to; long duration; Runnable endAction; double startTime = -1;
+        }
+        final View view;
+        long duration = 300L;
+        ValueAnimator.AnimatorUpdateListener updateListener;
+        Runnable pendingEndAction;
+        boolean pendingTranslation;
+        float pendingFrom, pendingTo;
+        Running running;
+        ViewPropertyAnimator(View view) { this.view = view; Clock.views.add(this); }
+        ViewPropertyAnimator translationY(float value) {
+            // A new animation of the property cancels the running one; its end action never runs.
+            running = null;
+            pendingTranslation = true;
+            pendingFrom = view.translationY;
+            pendingTo = value;
+            return this;
+        }
+        ViewPropertyAnimator setUpdateListener(ValueAnimator.AnimatorUpdateListener listener) {
+            updateListener = listener;
+            return this;
+        }
+        ViewPropertyAnimator setDuration(long value) { duration = value; return this; }
+        ViewPropertyAnimator withEndAction(Runnable action) { pendingEndAction = action; return this; }
+        void start() {
+            if (pendingTranslation) {
+                Running next = new Running();
+                next.from = pendingFrom;
+                next.to = pendingTo;
+                next.duration = duration;
+                next.endAction = pendingEndAction;
+                running = next;
+            }
+            pendingTranslation = false;
+            pendingEndAction = null;
+        }
+        void cancel() {
+            running = null;
+            pendingTranslation = false;
+            pendingEndAction = null;
+        }
+        void frame(double frameTime) {
+            Running current = running;
+            if (current == null) return;
+            if (current.startTime < 0) current.startTime = frameTime;
+            double fraction = current.duration <= 0 ? 1 : Math.min(1, (frameTime - current.startTime) / current.duration);
+            view.translationY = (float) (current.from + (current.to - current.from) * accelerateDecelerate(fraction));
+            if (updateListener != null) updateListener.onAnimationUpdate(null);
+            if (fraction >= 1 && running == current) {
+                running = null;
+                if (current.endAction != null) current.endAction.run();
+            }
+        }
+    }
+
+    static final class ValueAnimator {
+        interface AnimatorUpdateListener { void onAnimationUpdate(ValueAnimator animation); }
+        final int from, to;
+        long duration = 300L;
+        double startTime = -1;
+        boolean running;
+        Object value;
+        final List<AnimatorUpdateListener> listeners = new ArrayList<>();
+        private ValueAnimator(int from, int to) { this.from = from; this.to = to; value = from; }
+        static ValueAnimator ofInt(int... values) { return new ValueAnimator(values[0], values[values.length - 1]); }
+        void setDuration(long value) { duration = value; }
+        void addUpdateListener(AnimatorUpdateListener listener) { listeners.add(listener); }
+        void start() { running = true; startTime = -1; Clock.values.add(this); }
+        void cancel() { running = false; Clock.values.remove(this); }
+        Object getAnimatedValue() { return value; }
+        void frame(double frameTime) {
+            if (!running) return;
+            if (startTime < 0) startTime = frameTime;
+            double fraction = Math.min(1, (frameTime - startTime) / duration);
+            value = (int) (from + accelerateDecelerate(fraction) * (to - from));
+            for (AnimatorUpdateListener listener : new ArrayList<>(listeners)) listener.onAnimationUpdate(this);
+            if (fraction >= 1) cancel();
+        }
+    }
+
+    static final class MotionEvent {
+        static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3;
+        final int action; final float rawY; final double time;
+        MotionEvent(int action, float rawY, double time) { this.action = action; this.rawY = rawY; this.time = time; }
+        int getActionMasked() { return action; }
+        float getRawY() { return rawY; }
+    }
+
+    /** Least-squares slope of the samples in the last 100 ms, like Android's default horizon. */
+    static final class VelocityTracker {
+        final List<double[]> samples = new ArrayList<>();
+        float velocity;
+        static VelocityTracker obtain() { return new VelocityTracker(); }
+        void addMovement(MotionEvent event) { samples.add(new double[]{event.time, event.rawY}); }
+        void computeCurrentVelocity(int units) {
+            if (samples.isEmpty()) { velocity = 0f; return; }
+            double last = samples.get(samples.size() - 1)[0];
+            double n = 0, st = 0, sy = 0, stt = 0, sty = 0;
+            for (double[] sample : samples) {
+                if (sample[0] < last - 100) continue;
+                n++; st += sample[0]; sy += sample[1]; stt += sample[0] * sample[0]; sty += sample[0] * sample[1];
+            }
+            double denominator = n * stt - st * st;
+            velocity = n < 2 || Math.abs(denominator) < 1e-9 ? 0f : (float) ((n * sty - st * sy) / denominator * units);
+        }
+        float getYVelocity() { return velocity; }
+        void recycle() {}
+    }
+
+    static final class Handler {
+        void postDelayed(Runnable runnable, long delayMs) { Clock.delayed.add(new Object[]{Clock.now + delayMs, runnable}); }
+        void removeCallbacks(Runnable runnable) { Clock.delayed.removeIf(entry -> entry[1] == runnable); }
+    }
+
+    static final class ViewConfiguration { static int getLongPressTimeout() { return 400; } }
+    static final class IvLyricsBridge { static boolean isEmbedded(Object context) { return false; } }
+    static final class DisplayMetrics { final int widthPixels = SCREEN_W, heightPixels = SCREEN_H; final float density = DENSITY; }
+    static final class Resources {
+        final DisplayMetrics metrics = new DisplayMetrics();
+        DisplayMetrics getDisplayMetrics() { return metrics; }
+    }
+
+    interface LyricsActivityHost {
+        void interruptDrag();
+        void dragTo(float translationY);
+        void settle(float velocityY, Runnable finishImmediately);
+        default boolean isClosing() { return false; }
+        default void dragHandlePressed() {}
+        default void dragHandleReleased() {}
+    }
+
+    /** The module's sheet as far as the page sees it: once closing, it ignores drags and settles. */
+    static final class SheetHost implements LyricsActivityHost {
+        final View root;
+        boolean closing;
+        int drags, settles;
+        SheetHost(View root) { this.root = root; }
+        public void interruptDrag() {}
+        public void dragTo(float translationY) { if (closing) return; drags++; root.translationY = translationY; }
+        public void settle(float velocityY, Runnable finishImmediately) { if (!closing) settles++; }
+        public boolean isClosing() { return closing; }
+    }
+
+    /** The activity state the production methods read and write. */
+    abstract static class PageFields {
+        static final int LYRICS_PAGE_TOP_PADDING_EXPANDED_DP = 46;
+        static final int LYRICS_PAGE_TOP_PADDING_COMPACT_DP = 22;
+        static final int LYRICS_PAGE_TOP_PADDING_SHRINK_DISTANCE_DP = 120;
+        final Resources resources = new Resources();
+        final Handler handler = new Handler();
+        final Rect mainPageRevealClip = new Rect();
+        final View rootView = new View("root");
+        final View mainPage = new View("main");
+        final View lyricsPage = new View("lyrics");
+        final View lyricsPageContent = new View("content");
+        final View header = new View("header");
+        final View title = new View("title");
+        final View preview = new View("preview");
+        final View pageRoot = new View("pageRoot");
+        final LyricsView lyricsView = new LyricsView();
+        View debugPanel;
+        View coveredMainPage;
+        LyricsView pictureInPictureLyricsView, landscapeLyricsView;
+        LyricsActivityHost lyricsActivityHost;
+        boolean lyricsPageVisible, pageDragging, hostLyricsDragging, hostDragHandlePressed;
+        boolean vinylModeVisible, lyricsMetaLongPressTriggered;
+        boolean lyricsPageSliding, pageSlideTouch, pageSlideCarried;
+        int lyricsPageSlide;
+        long lastBackPressElapsedMs;
+        float pageDragStartY, pageDragStartTranslationY;
+        int lyricsPageCornerRadiusDp = -1;
+        int lyricsPageContentTopPaddingPx;
+        ValueAnimator lyricsPageContentPaddingAnimator;
+        VelocityTracker pageVelocityTracker;
+        Runnable lyricsMetaLongPressRunnable;
+        int metaTaps, metaLongPresses, covers, uncovers, refreshes;
+
+        PageFields() {
+            lyricsPage.setVisibility(View.GONE);
+            lyricsPageContent.parentView = lyricsPage;
+            lyricsView.parentView = lyricsPageContent;
+            header.parentView = lyricsPageContent;
+            title.parentView = header;
+            lyricsPageContentTopPaddingPx = dp(LYRICS_PAGE_TOP_PADDING_EXPANDED_DP);
+            lyricsPageContent.setPadding(dp(24), lyricsPageContentTopPaddingPx, dp(24), dp(22));
+        }
+        Resources getResources() { return resources; }
+        int dp(int value) { return Math.round(value * DENSITY); }
+        float dp(float value) { return value * DENSITY; }
+        boolean isLandscapeLayout() { return false; }
+        boolean isPictureInPictureUiActive() { return false; }
+        void setLyricsPageCornerRadius(int radiusDp) { lyricsPageCornerRadiusDp = radiusDp; }
+        void maybeShowLyricsMetaTip() {}
+        void dismissLyricsMetaTip() {}
+        void requestDefaultRemoteFocus(boolean force) {}
+        void makeRemoteFocusable(View view) {}
+        void handleLyricsMetaTap() { metaTaps++; }
+        void handleLyricsMetaLongPress(View target) { metaLongPresses++; }
+        void finishHostedLyricsImmediately() {}
+        void finish() {}
+        void refreshMainPagePlayback() { refreshes++; }
+        void logMainPageCover(boolean covered) { if (covered) covers++; else uncovers++; }
+
+        abstract void open();
+        abstract void close();
+        abstract void attach();
+        abstract void feed(double positionMs, long frameTimeNanos);
+        abstract boolean coversPlayer();
+    }
+
+    // INSERT_PRODUCTION_DECLARATIONS
+
+    /** One drawn frame. */
+    static final class Frame {
+        double time; float ty; boolean pageShown, open; int main, clip, padding, radius; boolean fed;
+        String key(boolean withMain) {
+            return String.format(Locale.ROOT, "%s ty=%.3f open=%b clip=%d pad=%d radius=%d%s",
+                    pageShown ? "shown" : "gone", ty, open, clip, padding, radius, withMain ? " main=" + main : "");
+        }
+    }
+
+    static final class Touch {
+        final double time; final int action; final float y; final View target;
+        Touch(double time, int action, float y, View target) { this.time = time; this.action = action; this.y = y; this.target = target; }
+    }
+
+    /** Plays a script of app actions and touches against one page, frame by frame. */
+    static final class Run {
+        final PageFields page;
+        final List<Touch> touches = new ArrayList<>();
+        final List<Object[]> actions = new ArrayList<>();
+        final List<Frame> frames = new ArrayList<>();
+        double gestureStart;
+        int frame;
+        Run(PageFields page) {
+            Clock.reset();
+            this.page = page;
+            page.attach();
+        }
+        Run at(double time, Runnable action) { actions.add(new Object[]{time, action}); return this; }
+        Run touch(double time, int action, float y, View target) { touches.add(new Touch(time, action, y, target)); return this; }
+        double frameTime(int index) { return index * FRAME_MS; }
+        void advance(double untilMs) {
+            while (frameTime(frame) <= untilMs + 1e-9) step();
+        }
+        void step() {
+            double now = frameTime(frame++);
+            Clock.now = now;
+            for (Object[] action : new ArrayList<>(actions)) {
+                if ((Double) action[0] <= now + 1e-9) {
+                    actions.remove(action);
+                    ((Runnable) action[1]).run();
+                }
+            }
+            for (Touch touch : new ArrayList<>(touches)) {
+                if (touch.time <= now + 1e-9) {
+                    touches.remove(touch);
+                    touch.target.touchListener.onTouch(touch.target, new MotionEvent(touch.action, touch.y, now));
+                }
+            }
+            for (Object[] entry : new ArrayList<>(Clock.delayed)) {
+                if ((Double) entry[0] <= now + 1e-9 && Clock.delayed.remove(entry)) ((Runnable) entry[1]).run();
+            }
+            for (ViewPropertyAnimator animator : new ArrayList<>(Clock.views)) animator.frame(now);
+            for (ValueAnimator animator : new ArrayList<>(Clock.values)) animator.frame(now);
+            int before = page.lyricsView.frames;
+            page.feed(now, Math.round(now * 1_000_000d));
+            Frame record = new Frame();
+            record.time = now;
+            record.pageShown = page.lyricsPage.visibility == View.VISIBLE;
+            record.ty = record.pageShown ? page.lyricsPage.translationY : -1f;
+            record.open = page.lyricsPageVisible;
+            record.main = page.mainPage.visibility;
+            record.clip = page.mainPage.clipBounds == null ? -1 : page.mainPage.clipBounds.height();
+            record.padding = page.lyricsPageContent.paddingTop;
+            record.radius = page.lyricsPageCornerRadiusDp;
+            record.fed = page.lyricsView.frames > before;
+            frames.add(record);
+        }
+        boolean animating() {
+            for (ViewPropertyAnimator animator : Clock.views) if (animator.running != null) return true;
+            return !Clock.values.isEmpty();
+        }
+    }
+
+    // Gesture shapes, as the device harness plays them: down, then one move per frame, then up.
+    static final String TAP = "tap", JITTER = "jitter", DRAG_UP = "drag-up", DRAG_DOWN = "drag-down";
+    static final float FINGER_Y = 1500f;
+
+    static void gesture(Run run, View target, double start, String kind) {
+        run.touch(start, MotionEvent.ACTION_DOWN, FINGER_Y, target);
+        double end;
+        switch (kind) {
+            case TAP:
+                end = start + 80;
+                break;
+            case JITTER: {
+                float[] offsets = {14f, -9f, 20f, -16f, 11f, 18f, -4f, 7f, 19f, 3f};
+                for (int i = 0; i < offsets.length; i++) {
+                    run.touch(start + (i + 1) * FRAME_MS, MotionEvent.ACTION_MOVE, FINGER_Y + offsets[i], target);
+                }
+                end = start + (offsets.length + 1) * FRAME_MS;
+                run.touch(end, MotionEvent.ACTION_UP, FINGER_Y + 3f, target);
+                return;
+            }
+            default: {
+                float distance = DRAG_UP.equals(kind) ? -600f : 600f;
+                double duration = 200;
+                int steps = (int) Math.ceil(duration / FRAME_MS);
+                for (int i = 1; i <= steps; i++) {
+                    double progress = Math.min(1, i * FRAME_MS / duration);
+                    run.touch(start + i * FRAME_MS, MotionEvent.ACTION_MOVE, (float) (FINGER_Y + distance * progress), target);
+                }
+                run.touch(start + (steps + 1) * FRAME_MS, MotionEvent.ACTION_UP, FINGER_Y + distance, target);
+                return;
+            }
+        }
+        run.touch(end, MotionEvent.ACTION_UP, FINGER_Y, target);
+    }
+
+    /** A drag of the open page's handle by dy over ms, released: how a drag-close or settle starts. */
+    static double handleDrag(Run run, double start, float dy, double ms) {
+        run.touch(start, MotionEvent.ACTION_DOWN, 600f, run.page.header);
+        int steps = (int) Math.ceil(ms / FRAME_MS);
+        for (int i = 1; i <= steps; i++) {
+            double progress = Math.min(1, i * FRAME_MS / ms);
+            run.touch(start + i * FRAME_MS, MotionEvent.ACTION_MOVE, (float) (600f + dy * progress), run.page.header);
+        }
+        double release = start + (steps + 1) * FRAME_MS;
+        run.touch(release, MotionEvent.ACTION_UP, 600f + dy, run.page.header);
+        return release;
+    }
+
+    static final String OPEN = "open", BACK = "back-close", DRAG_CLOSE = "drag-close", SETTLE = "settle-back";
+
+    /** The page at rest for the slide, and the frame time at which the slide starts. */
+    static double prepare(Run run, String slide) {
+        if (OPEN.equals(slide)) {
+            run.at(100, run.page::open);
+            return 100 + FRAME_MS * 0.5;
+        }
+        run.at(0, run.page::open);
+        run.advance(800);
+        switch (slide) {
+            case BACK:
+                run.at(900, run.page::close);
+                return 900 + FRAME_MS * 0.5;
+            case DRAG_CLOSE:
+                return handleDrag(run, 900, 1400f, 280);
+            default:
+                return handleDrag(run, 900, 300f, 200);
+        }
+    }
+
+    static long slideDuration(String slide) {
+        switch (slide) {
+            case OPEN: return 330L;
+            case SETTLE: return 210L;
+            default: return 280L;
+        }
+    }
+
+    static String restState(Run run) {
+        PageFields page = run.page;
+        if (run.animating()) return "moving";
+        if (page.lyricsPage.visibility == View.GONE && !page.lyricsPageVisible
+                && page.mainPage.visibility == View.VISIBLE && page.mainPage.clipBounds == null) {
+            return "closed";
+        }
+        boolean covered = !page.coversPlayer() || page.mainPage.visibility == View.INVISIBLE;
+        if (page.lyricsPage.visibility == View.VISIBLE && page.lyricsPageVisible
+                && Math.abs(page.lyricsPage.translationY) <= 0.5f && page.lyricsPageCornerRadiusDp == 0
+                && page.lyricsPageContent.paddingTop == page.dp(PageFields.LYRICS_PAGE_TOP_PADDING_EXPANDED_DP)
+                && page.mainPage.clipBounds != null && page.mainPage.clipBounds.isEmpty() && covered) {
+            return "open";
+        }
+        return String.format(Locale.ROOT, "STUCK(ty=%.1f shown=%b open=%b main=%d)", page.lyricsPage.translationY,
+                page.lyricsPage.visibility == View.VISIBLE, page.lyricsPageVisible, page.mainPage.visibility);
+    }
+
+    static float maxStep(List<Frame> frames, int from) {
+        float max = 0f;
+        for (int i = Math.max(1, from); i < frames.size(); i++) {
+            Frame previous = frames.get(i - 1), current = frames.get(i);
+            if (previous.pageShown && current.pageShown) max = Math.max(max, Math.abs(current.ty - previous.ty));
+        }
+        return max;
+    }
+
+    static int maxPaddingStep(List<Frame> frames, int from) {
+        int max = 0;
+        for (int i = Math.max(1, from); i < frames.size(); i++) {
+            Frame previous = frames.get(i - 1), current = frames.get(i);
+            // A hidden page's padding is reset where nobody sees it.
+            if (previous.pageShown && current.pageShown) max = Math.max(max, Math.abs(current.padding - previous.padding));
+        }
+        return max;
+    }
+
+    static int frameAt(Run run, double time) {
+        for (int i = 0; i < run.frames.size(); i++) if (run.frames.get(i).time >= time - 1e-9) return i;
+        return run.frames.size();
+    }
+
+    static Run play(java.util.function.Supplier<PageFields> factory, String slide, double point, String targetName, String kind) {
+        Run run = new Run(factory.get());
+        double start = prepare(run, slide);
+        run.gestureStart = start + slideDuration(slide) * point;
+        if (targetName != null) gesture(run, target(run.page, targetName), run.gestureStart, kind);
+        run.advance(start + 1600);
+        return run;
+    }
+
+    static View target(PageFields page, String name) {
+        switch (name) {
+            case "header": return page.header;
+            case "title": return page.title;
+            case "preview": return page.preview;
+            default: return page.pageRoot;
+        }
+    }
+
+    static final String[] SLIDES = {BACK, DRAG_CLOSE, OPEN, SETTLE};
+    static final double[] POINTS = {0.15, 0.5, 0.85};
+    static final String[] POINT_NAMES = {"early", "mid", "late"};
+    static final String[] TARGETS = {"edge", "preview", "header", "title"};
+    static final String[] GESTURES = {TAP, JITTER, DRAG_UP, DRAG_DOWN};
+
+    /** The interrupted slides: the baseline gets stuck, the candidate always comes to rest without a jump. */
+    static void interruptedSlides(java.util.function.Supplier<PageFields> baseline, java.util.function.Supplier<PageFields> candidate) {
+        Map<String, Run> references = new HashMap<>();
+        float slideStep = 0f;
+        for (String slide : SLIDES) {
+            Run reference = play(candidate, slide, 0, null, null);
+            references.put(slide, reference);
+            slideStep = Math.max(slideStep, maxStep(reference.frames, 0));
+            check(!restState(reference).startsWith("STUCK"), slide + " reference rests: " + restState(reference));
+        }
+        float fingerStep = (float) (600 / 200.0 * FRAME_MS);
+        float allowedStep = Math.max(slideStep, fingerStep) + 0.5f;
+        int baselineStuck = 0, baselineJumps = 0, candidateRuns = 0, carried = 0, untouched = 0;
+        StringBuilder table = new StringBuilder();
+        for (String slide : SLIDES) {
+            Run reference = references.get(slide);
+            for (int p = 0; p < POINTS.length; p++) {
+                for (String targetName : TARGETS) {
+                    for (String kind : GESTURES) {
+                        String label = slide + " " + POINT_NAMES[p] + " " + targetName + " " + kind;
+                        Run before = play(baseline, slide, POINTS[p], targetName, kind);
+                        String beforeRest = restState(before);
+                        int from = frameAt(before, before.gestureStart);
+                        boolean beforeJump = maxStep(before.frames, from) > allowedStep || maxPaddingStep(before.frames, from) > 8;
+                        if (beforeRest.startsWith("STUCK")) baselineStuck++;
+                        if (beforeJump) baselineJumps++;
+
+                        Run after = play(candidate, slide, POINTS[p], targetName, kind);
+                        candidateRuns++;
+                        String afterRest = restState(after);
+                        int touched = frameAt(after, after.gestureStart);
+                        check("open".equals(afterRest) || "closed".equals(afterRest), label + " comes to rest: " + afterRest);
+                        check(maxStep(after.frames, touched) <= allowedStep, label + " has no translation jump: "
+                                + maxStep(after.frames, touched) + " > " + allowedStep);
+                        check(maxPaddingStep(after.frames, touched) <= 8, label + " has no top padding jump: "
+                                + maxPaddingStep(after.frames, touched));
+                        check(after.page.metaTaps == 0 && after.page.metaLongPresses == 0, label + " fires no title tap or long press");
+                        boolean same = after.frames.size() == reference.frames.size();
+                        for (int i = 0; same && i < after.frames.size(); i++) {
+                            same = after.frames.get(i).key(true).equals(reference.frames.get(i).key(true));
+                        }
+                        if (TAP.equals(kind) || JITTER.equals(kind)) {
+                            check(same, label + " leaves the slide exactly as it was");
+                        }
+                        if (same) untouched++; else carried++;
+                        for (Frame frame : after.frames) {
+                            boolean revealed = !frame.pageShown || frame.ty >= 1f;
+                            check(!revealed || frame.main == View.VISIBLE, label + " shows the player wherever it is revealed at " + frame.time);
+                            check(frame.fed == frame.pageShown, label + " feeds the lyrics exactly while the page is shown at " + frame.time);
+                        }
+                        table.append(String.format(Locale.ROOT, "  %-44s before=%-44s after=%s%n", label,
+                                beforeRest + (beforeJump ? " +jump" : ""), afterRest + (same ? " (slide untouched)" : " (carried)")));
+                    }
+                }
+            }
+        }
+        check(baselineStuck > 0, "the frozen baseline reproduces stuck pages");
+        System.out.print(table);
+        System.out.printf(Locale.ROOT, "Interrupted slides: %d runs; frozen baseline stuck in %d and jumped in %d; "
+                        + "candidate always at rest (%d left the slide untouched, %d carried), max step %.1f px%n",
+                candidateRuns, baselineStuck, baselineJumps, untouched, carried, allowedStep);
+    }
+
+    /** Touches that do not land during a slide behave exactly as before (the player cover aside, see coversPlayer). */
+    static void normalPaths(java.util.function.Supplier<PageFields> baseline, java.util.function.Supplier<PageFields> candidate) {
+        List<String> names = new ArrayList<>();
+        List<java.util.function.Consumer<Run>> scripts = new ArrayList<>();
+        names.add("open"); scripts.add(run -> run.at(0, run.page::open));
+        names.add("open, back-close"); scripts.add(run -> { run.at(0, run.page::open); run.at(900, run.page::close); });
+        names.add("open, drag-close"); scripts.add(run -> { run.at(0, run.page::open); handleDrag(run, 900, 1400f, 280); });
+        names.add("open, settle-back"); scripts.add(run -> { run.at(0, run.page::open); handleDrag(run, 900, 300f, 200); });
+        names.add("open, fling close"); scripts.add(run -> { run.at(0, run.page::open); handleDrag(run, 900, 200f, 40); });
+        names.add("open, drag down and back"); scripts.add(run -> {
+            run.at(0, run.page::open);
+            run.touch(900, MotionEvent.ACTION_DOWN, 600f, run.page.header);
+            for (int i = 1; i <= 60; i++) {
+                float y = i <= 30 ? 600f + 500f * i / 30 : 1100f - 400f * (i - 30) / 30;
+                run.touch(900 + i * FRAME_MS, MotionEvent.ACTION_MOVE, y, run.page.header);
+            }
+            run.touch(900 + 61 * FRAME_MS, MotionEvent.ACTION_UP, 700f, run.page.header);
+        });
+        names.add("open, handle tap"); scripts.add(run -> { run.at(0, run.page::open); gesture(run, run.page.header, 900, TAP); });
+        names.add("open, handle drag after rest"); scripts.add(run -> {
+            run.at(0, run.page::open); handleDrag(run, 900, 300f, 200); handleDrag(run, 1500, 1200f, 300);
+        });
+        names.add("open, title drag-close"); scripts.add(run -> {
+            run.at(0, run.page::open);
+            run.touch(900, MotionEvent.ACTION_DOWN, 300f, run.page.title);
+            for (int i = 1; i <= 34; i++) run.touch(900 + i * FRAME_MS, MotionEvent.ACTION_MOVE, 300f + 1400f * i / 34, run.page.title);
+            run.touch(900 + 35 * FRAME_MS, MotionEvent.ACTION_UP, 1700f, run.page.title);
+        });
+        names.add("open, title tap"); scripts.add(run -> { run.at(0, run.page::open); gesture(run, run.page.title, 900, TAP); });
+        names.add("open, title long press"); scripts.add(run -> {
+            run.at(0, run.page::open);
+            run.touch(900, MotionEvent.ACTION_DOWN, 300f, run.page.title);
+            run.touch(1500, MotionEvent.ACTION_UP, 300f, run.page.title);
+        });
+        names.add("preview tap opens"); scripts.add(run -> gesture(run, run.page.preview, 100, TAP));
+        names.add("preview swipe up opens"); scripts.add(run -> gesture(run, run.page.preview, 100, DRAG_UP));
+        names.add("edge swipe up opens"); scripts.add(run -> gesture(run, run.page.pageRoot, 100, DRAG_UP));
+        names.add("edge tap does nothing"); scripts.add(run -> gesture(run, run.page.pageRoot, 100, TAP));
+        names.add("open, close, reopen at rest"); scripts.add(run -> {
+            run.at(0, run.page::open); run.at(900, run.page::close); gesture(run, run.page.preview, 1500, TAP);
+        });
+        boolean compareMain = baseline.get().coversPlayer();
+        for (int i = 0; i < names.size(); i++) {
+            Run before = new Run(baseline.get());
+            scripts.get(i).accept(before);
+            before.advance(3000);
+            Run after = new Run(candidate.get());
+            scripts.get(i).accept(after);
+            after.advance(3000);
+            check(before.frames.size() == after.frames.size(), names.get(i) + ": frame count");
+            for (int f = 0; f < before.frames.size(); f++) {
+                String expected = before.frames.get(f).key(compareMain), actual = after.frames.get(f).key(compareMain);
+                check(expected.equals(actual), names.get(i) + " frame " + f + ": " + expected + " -> " + actual);
+            }
+            check(before.page.metaTaps == after.page.metaTaps && before.page.metaLongPresses == after.page.metaLongPresses
+                    && before.page.preview.clicks == after.page.preview.clicks, names.get(i) + ": same taps and long presses");
+            check(restState(after).equals("open") || restState(after).equals("closed"), names.get(i) + " rests: " + restState(after));
+        }
+        System.out.printf(Locale.ROOT, "Normal paths: %d scripts identical per frame to the frozen baseline (translation, open state, "
+                + "reveal clip, top padding, corner radius%s, taps)%n", names.size(), compareMain ? ", player visibility" : "");
+    }
+
+    /** A title tap whose finger moved a few pixels used to leave the page that far down. */
+    static void titleJitterAtRest(java.util.function.Supplier<PageFields> baseline, java.util.function.Supplier<PageFields> candidate) {
+        for (String kind : new String[]{JITTER, "jitter-long-press"}) {
+            String[] rests = new String[2];
+            for (int i = 0; i < 2; i++) {
+                Run run = new Run((i == 0 ? baseline : candidate).get());
+                run.at(0, run.page::open);
+                run.advance(800);
+                View title = run.page.title;
+                run.touch(900, MotionEvent.ACTION_DOWN, 300f, title);
+                run.touch(900 + FRAME_MS, MotionEvent.ACTION_MOVE, 310f, title);
+                run.touch(900 + 2 * FRAME_MS, MotionEvent.ACTION_MOVE, 318f, title);
+                run.touch(JITTER.equals(kind) ? 980 : 1500, MotionEvent.ACTION_UP, 318f, title);
+                run.advance(2600);
+                rests[i] = restState(run);
+                if (i == 1) {
+                    check(run.page.metaTaps == (JITTER.equals(kind) ? 1 : 0), "title " + kind + " still taps");
+                    check(run.page.metaLongPresses == (JITTER.equals(kind) ? 0 : 1), "title " + kind + " still long-presses");
+                    check(maxStep(run.frames, frameAt(run, 900)) <= 18.5f, "title " + kind + " settles back without a jump");
+                }
+            }
+            check(rests[0].startsWith("STUCK"), "frozen baseline leaves the page down after a title " + kind + ": " + rests[0]);
+            check("open".equals(rests[1]), "title " + kind + " settles the page back open: " + rests[1]);
+            System.out.printf(Locale.ROOT, "Title %s at rest: frozen baseline %s, candidate %s%n", kind, rests[0], rests[1]);
+        }
+    }
+
+    /** A drag that begins while the module's sheet closes: the sheet ignores it, so must the page's top padding. */
+    static void closingSheetDrag(java.util.function.Supplier<PageFields> baseline, java.util.function.Supplier<PageFields> candidate) {
+        int[] jumps = new int[2];
+        List<List<String>> openDrags = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            for (boolean closing : new boolean[]{false, true}) {
+                PageFields page = (i == 0 ? baseline : candidate).get();
+                page.lyricsPage.setVisibility(View.VISIBLE);
+                page.lyricsPageVisible = true;
+                SheetHost host = new SheetHost(page.rootView);
+                host.closing = closing;
+                if (closing) page.rootView.translationY = 1400f;
+                page.lyricsActivityHost = host;
+                Run run = new Run(page);
+                handleDrag(run, 100, 900f, 280);
+                run.advance(900);
+                int maxPadding = maxPaddingStep(run.frames, 0);
+                if (closing) {
+                    jumps[i] = maxPadding;
+                    check(host.drags == 0 && host.settles == 0, "a closing sheet takes no drag");
+                } else {
+                    check(host.drags > 0 && host.settles == 1, "an open sheet follows the drag and settles");
+                    List<String> keys = new ArrayList<>();
+                    for (Frame frame : run.frames) keys.add(frame.key(false));
+                    keys.add("drags=" + host.drags + " sheet=" + page.rootView.translationY);
+                    openDrags.add(keys);
+                }
+            }
+        }
+        check(openDrags.get(0).equals(openDrags.get(1)), "an open sheet's drag is unchanged");
+        check(jumps[1] == 0, "the candidate's padding stays put while the sheet closes: " + jumps[1]);
+        System.out.printf(Locale.ROOT, "Drag during the sheet's close: frozen baseline top padding jumps %d px, candidate %d px%n", jumps[0], jumps[1]);
+    }
+
+    public static void main(String[] args) {
+        interruptedSlides(BaselinePage::new, CandidatePage::new);
+        normalPaths(BaselinePage::new, CandidatePage::new);
+        titleJitterAtRest(BaselinePage::new, CandidatePage::new);
+        closingSheetDrag(BaselinePage::new, CandidatePage::new);
+        System.out.println("PageSlideRegression: " + checks + " checks passed");
+    }
+}

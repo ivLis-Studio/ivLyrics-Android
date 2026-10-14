@@ -484,6 +484,14 @@ public class BaseLyricsActivity extends Activity implements
     private float pageDragStartY;
     private float pageDragStartTranslationY;
     private boolean pageDragging;
+    // The standalone page's own open, close or settle slide is running. Each slide is numbered,
+    // so only the latest one's end action can mark the page as no longer sliding.
+    private boolean lyricsPageSliding;
+    private int lyricsPageSlide;
+    // The current page touch began while that slide ran, so it did not stop it.
+    private boolean pageSlideTouch;
+    // That touch became a drag before the slide ended and carries the page from where it was.
+    private boolean pageSlideCarried;
     private float mainMetaTouchStartX;
     private float mainMetaTouchStartY;
     private int lyricsPageCornerRadiusDp = -1;
@@ -2124,6 +2132,7 @@ public class BaseLyricsActivity extends Activity implements
 
         lyricsPage = buildLyricsPage();
         lyricsPage.setVisibility(View.GONE);
+        stopLyricsPageSlide();
         FrameLayout.LayoutParams lyricsPageParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -5787,6 +5796,7 @@ public class BaseLyricsActivity extends Activity implements
         lyricsPage = buildLyricsPage();
         lyricsPage.setVisibility(View.GONE);
         lyricsPageVisible = false;
+        stopLyricsPageSlide();
         rootView.addView(lyricsPage, Math.min(mainIndex + 1, rootView.getChildCount()), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -12756,6 +12766,7 @@ public class BaseLyricsActivity extends Activity implements
         }
         if (lyricsPage != null) {
             lyricsPage.animate().cancel();
+            stopLyricsPageSlide();
             lyricsPage.setVisibility(View.GONE);
             lyricsPage.setTranslationY(0f);
             lyricsPage.setAlpha(1f);
@@ -15487,6 +15498,7 @@ public class BaseLyricsActivity extends Activity implements
             if (mainPage != null) {
                 clearMainPageRevealClip();
             }
+            stopLyricsPageSlide();
             lyricsPageVisible = false;
             return;
         }
@@ -15498,6 +15510,7 @@ public class BaseLyricsActivity extends Activity implements
         int height = getResources().getDisplayMetrics().heightPixels;
         lyricsPage.animate().cancel();
         mainPage.animate().cancel();
+        int slide = beginLyricsPageSlide();
 
         if (show) {
             resetLyricsPageDragTopPadding(false);
@@ -15515,6 +15528,7 @@ public class BaseLyricsActivity extends Activity implements
                     .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                     .setDuration(330L)
                     .withEndAction(() -> {
+                        endLyricsPageSlide(slide);
                         applyMainPageRevealClip(0f);
                         setLyricsPageCornerRadius(0);
                         resetLyricsPageDragTopPadding(false);
@@ -15533,6 +15547,7 @@ public class BaseLyricsActivity extends Activity implements
                     .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                     .setDuration(280L)
                     .withEndAction(() -> {
+                        endLyricsPageSlide(slide);
                         lyricsPage.setVisibility(View.GONE);
                         lyricsPage.setTranslationY(0f);
                         clearMainPageRevealClip();
@@ -16194,12 +16209,7 @@ public class BaseLyricsActivity extends Activity implements
                             ? rootView.getTranslationY()
                             : (lyricsPage == null ? 0f : lyricsPage.getTranslationY());
                     pageDragging = false;
-                    if (lyricsPage != null) {
-                        lyricsPage.animate().cancel();
-                    }
-                    if (mainPage != null) {
-                        mainPage.animate().cancel();
-                    }
+                    beginPageTouch();
                     if (!opensLyrics) {
                         pressHostDragHandle();
                     }
@@ -16209,7 +16219,9 @@ public class BaseLyricsActivity extends Activity implements
                     if (Math.abs(dy) > dp(12)) {
                         pageDragging = true;
                     }
-                    if (!opensLyrics && lyricsPageVisible) {
+                    if (pageSlideTouch) {
+                        carrySlidingLyricsPage(event.getRawY());
+                    } else if (!opensLyrics && lyricsPageVisible) {
                         float translation = Math.max(0f, pageDragStartTranslationY + dy);
                         applyLyricsDragTranslation(translation);
                     }
@@ -16217,7 +16229,9 @@ public class BaseLyricsActivity extends Activity implements
                 case MotionEvent.ACTION_UP: {
                     float releaseVelocityY = pageVelocityY();
                     float releaseDy = event.getRawY() - pageDragStartY;
-                    if (opensLyrics) {
+                    if (pageSlideTouch) {
+                        endSlidingPageTouch(releaseVelocityY);
+                    } else if (opensLyrics) {
                         if (releaseDy < -dp(56) || (tapOpens && !pageDragging)) {
                             showLyricsPage(true);
                             target.performClick();
@@ -16225,15 +16239,19 @@ public class BaseLyricsActivity extends Activity implements
                     } else if (lyricsPageVisible) {
                         settleLyricsDrag(releaseVelocityY);
                     }
+                    settleLyricsPageLeftMidway(releaseVelocityY);
                     recyclePageVelocityTracker();
                     releaseHostDragHandle();
                     return true;
                 }
                 case MotionEvent.ACTION_CANCEL:
                     pageDragging = false;
-                    if (!opensLyrics && lyricsPageVisible) {
+                    if (pageSlideTouch) {
+                        endSlidingPageTouch(0f);
+                    } else if (!opensLyrics && lyricsPageVisible) {
                         settleLyricsDrag(0f);
                     }
+                    settleLyricsPageLeftMidway(0f);
                     recyclePageVelocityTracker();
                     releaseHostDragHandle();
                     return true;
@@ -16266,13 +16284,14 @@ public class BaseLyricsActivity extends Activity implements
                             ? rootView.getTranslationY()
                             : (lyricsPage == null ? 0f : lyricsPage.getTranslationY());
                     pageDragging = false;
-                    if (lyricsPage != null) {
-                        lyricsPage.animate().cancel();
+                    beginPageTouch();
+                    if (pageSlideTouch) {
+                        // The title slides away beneath the finger: no long press, no click.
+                        cancelLyricsMetaLongPress();
+                        lyricsMetaLongPressTriggered = false;
+                    } else {
+                        scheduleLyricsMetaLongPress(target);
                     }
-                    if (mainPage != null) {
-                        mainPage.animate().cancel();
-                    }
-                    scheduleLyricsMetaLongPress(target);
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(true);
                     }
@@ -16287,7 +16306,9 @@ public class BaseLyricsActivity extends Activity implements
                         pageDragging = true;
                         cancelLyricsMetaLongPress();
                     }
-                    if (lyricsPageVisible) {
+                    if (pageSlideTouch) {
+                        carrySlidingLyricsPage(event.getRawY());
+                    } else if (lyricsPageVisible) {
                         applyLyricsDragTranslation(Math.max(0f, pageDragStartTranslationY + dy));
                     }
                     return true;
@@ -16298,13 +16319,16 @@ public class BaseLyricsActivity extends Activity implements
                     if (target.getParent() != null) {
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
-                    if (lyricsMetaLongPressTriggered) {
+                    if (pageSlideTouch) {
+                        endSlidingPageTouch(releaseVelocityY);
+                    } else if (lyricsMetaLongPressTriggered) {
                         lyricsMetaLongPressTriggered = false;
                     } else if (pageDragging && lyricsPageVisible) {
                         settleLyricsDrag(releaseVelocityY);
                     } else {
                         target.performClick();
                     }
+                    settleLyricsPageLeftMidway(releaseVelocityY);
                     recyclePageVelocityTracker();
                     releaseHostDragHandle();
                     return true;
@@ -16316,9 +16340,12 @@ public class BaseLyricsActivity extends Activity implements
                         target.getParent().requestDisallowInterceptTouchEvent(false);
                     }
                     pageDragging = false;
-                    if (lyricsPageVisible) {
+                    if (pageSlideTouch) {
+                        endSlidingPageTouch(0f);
+                    } else if (lyricsPageVisible) {
                         settleLyricsDrag(0f);
                     }
+                    settleLyricsPageLeftMidway(0f);
                     recyclePageVelocityTracker();
                     releaseHostDragHandle();
                     return true;
@@ -16346,6 +16373,103 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsActivityHost != null) {
             lyricsActivityHost.dragHandleReleased();
         }
+    }
+
+    /**
+     * A touch-down on the page or one of its drag handles stops the page's motion, as it always
+     * has, except while the standalone page slides open, closed or back on its own: stopping
+     * that slide left the page wherever it was. Such a touch leaves the slide running; see
+     * {@link #carrySlidingLyricsPage}.
+     */
+    private void beginPageTouch() {
+        pageSlideCarried = false;
+        pageSlideTouch = isLyricsPageSliding();
+        if (pageSlideTouch) {
+            return;
+        }
+        if (lyricsPage != null) {
+            lyricsPage.animate().cancel();
+        }
+        stopLyricsPageSlide();
+        if (mainPage != null) {
+            mainPage.animate().cancel();
+        }
+    }
+
+    /**
+     * Once a touch that began on the sliding page moves like a drag while the slide still runs,
+     * the page stops where the slide has brought it and follows the finger from there: the
+     * finger's travel before that point does not move it, and its top padding stays as it slid,
+     * so nothing jumps. A touch that has not moved that far leaves the slide alone.
+     */
+    private void carrySlidingLyricsPage(float rawY) {
+        if (!pageSlideCarried) {
+            if (Math.abs(rawY - pageDragStartY) <= dp(12) || !isLyricsPageSliding()) {
+                return;
+            }
+            lyricsPage.animate().cancel();
+            stopLyricsPageSlide();
+            lyricsPageVisible = true;
+            pageSlideCarried = true;
+            pageDragStartY = rawY;
+            pageDragStartTranslationY = lyricsPage.getTranslationY();
+        }
+        if (lyricsPageVisible) {
+            applyLyricsDragTranslation(pageDragStartTranslationY + (rawY - pageDragStartY));
+        }
+    }
+
+    /** That touch ends: a page it carries settles by the usual rule; otherwise its slide went on. */
+    private void endSlidingPageTouch(float velocityY) {
+        boolean carried = pageSlideCarried;
+        pageSlideTouch = false;
+        pageSlideCarried = false;
+        if (carried && lyricsPageVisible) {
+            settleLyricsDrag(velocityY);
+        }
+    }
+
+    /**
+     * No page touch ends with the standalone page between its rest states. If neither its own
+     * slide nor a settle moves it on (a title tap or long press drags it by the finger's few
+     * pixels of travel), it settles from where it is.
+     */
+    private void settleLyricsPageLeftMidway(float velocityY) {
+        if (lyricsActivityHost != null || IvLyricsBridge.isEmbedded(this) || isLandscapeLayout()
+                || lyricsPage == null || mainPage == null || lyricsPageSliding
+                || lyricsPage.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (!lyricsPageVisible) {
+            // A close that something stopped: it continues from where it is.
+            lyricsPageVisible = true;
+            showLyricsPage(false);
+        } else if (lyricsPage.getTranslationY() > 0.5f) {
+            settleLyricsDrag(velocityY);
+        }
+    }
+
+    /** The standalone page is moving on its own (open, close or settle), not following a finger. */
+    private boolean isLyricsPageSliding() {
+        return lyricsPageSliding && lyricsActivityHost == null && lyricsPage != null
+                && lyricsPage.getVisibility() == View.VISIBLE;
+    }
+
+    private int beginLyricsPageSlide() {
+        lyricsPageSliding = true;
+        return ++lyricsPageSlide;
+    }
+
+    private void endLyricsPageSlide(int slide) {
+        if (slide == lyricsPageSlide) {
+            lyricsPageSliding = false;
+        }
+    }
+
+    /** The slide was canceled, or the page was hidden or rebuilt at rest. */
+    private void stopLyricsPageSlide() {
+        lyricsPageSlide++;
+        lyricsPageSliding = false;
     }
 
     private static final class AccessibleWebView extends WebView {
@@ -16488,7 +16612,8 @@ public class BaseLyricsActivity extends Activity implements
 
     private void applyLyricsDragTranslation(float translationY) {
         if (lyricsActivityHost != null) {
-            if (!pageDragging) return;
+            // A closing sheet ignores drags, so the page's top padding must not follow them either.
+            if (!pageDragging || lyricsActivityHost.isClosing()) return;
             if (!hostLyricsDragging) {
                 float dragDistance = translationY - pageDragStartTranslationY;
                 lyricsActivityHost.interruptDrag();
@@ -16508,7 +16633,10 @@ public class BaseLyricsActivity extends Activity implements
         lyricsPage.setAlpha(1f);
         lyricsPage.setTranslationY(boundedTranslation);
         setLyricsPageCornerRadius(boundedTranslation > 1f ? 28 : 0);
-        applyLyricsPageDragTopPadding(boundedTranslation);
+        if (!pageSlideCarried) {
+            // A page carried out of its slide keeps the top padding it slid with.
+            applyLyricsPageDragTopPadding(boundedTranslation);
+        }
         applyMainPageRevealClip(boundedTranslation);
     }
 
@@ -16585,11 +16713,17 @@ public class BaseLyricsActivity extends Activity implements
             showLyricsPage(false);
             return;
         }
+        // Only a settle that moves the page is a slide; from rest nothing moves.
+        int slide = translationY > 0.5f ? beginLyricsPageSlide() : -1;
+        if (slide < 0) {
+            stopLyricsPageSlide();
+        }
         lyricsPage.animate()
                 .translationY(0f)
                 .setUpdateListener(animation -> applyMainPageRevealClip(lyricsPage.getTranslationY()))
                 .setDuration(210L)
                 .withEndAction(() -> {
+                    endLyricsPageSlide(slide);
                     applyMainPageRevealClip(0f);
                     setLyricsPageCornerRadius(0);
                     coverMainPage();

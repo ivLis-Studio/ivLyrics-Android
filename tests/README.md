@@ -72,6 +72,21 @@ it by one frame), a frame without a host tick continues on the same clock, and a
 static pause still avoids redundant redraws.
 It does not measure device FPS or Canvas pixels.
 
+The same entry point plays the standalone lyrics page's open, back-close, drag-close and
+settle-back slides through the production page and gesture methods (synthetic View,
+ViewPropertyAnimator, MotionEvent and a 120 Hz frame clock), with a tap, a jitter, a drag
+up or a drag down landing early, midway or late in the slide on the player page's edge,
+its lyric preview, the page's drag handle or its title. Against `291b1e6`, which froze
+the page wherever such a touch caught it, every run must come to rest fully open or fully
+closed. A tap or jitter leaves the slide frame-for-frame as it was, with no tap action.
+A drag carries the page from where it was without a translation or top-padding jump. The
+player page is shown wherever the page reveals it, and the lyrics are fed exactly while
+the page is shown. Touches outside a slide must match the frozen methods frame by frame.
+A title tap that moved the page a few pixels now settles it back, and a drag that begins
+while the module's sheet is closing leaves the page's top padding alone. Each run's
+outcome is written to `build/reports/regressions/render-idle/page-slides-result.txt`.
+This exercises the page logic only, not Android touch dispatch or device timing.
+
 The inline hook regression runs production Xposed callbacks against synthetic
 Spotify 9.1.80 class shapes, including both upstream menu availability checks,
 DJ/mixing, saved visibility preferences, video restrictions, and menu-scope cleanup.
