@@ -10686,6 +10686,20 @@ public class BaseLyricsActivity extends Activity implements
     private android.graphics.Rect visibleSettingsWindowBounds() {
         android.graphics.Rect bounds = new android.graphics.Rect();
         getWindow().getDecorView().getWindowVisibleDisplayFrame(bounds);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.view.WindowMetrics metrics = getWindowManager().getCurrentWindowMetrics();
+            android.graphics.Rect safe = new android.graphics.Rect(metrics.getBounds());
+            android.graphics.Insets bars = metrics.getWindowInsets().getInsetsIgnoringVisibility(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            safe.left += bars.left;
+            safe.top += bars.top;
+            safe.right -= bars.right;
+            safe.bottom -= bars.bottom;
+            // Focusable popups may reveal navigation/task bars over immersive
+            // lyrics. Reserve their area even while the host currently hides them.
+            if (bounds.isEmpty()) bounds.set(safe);
+            else bounds.intersect(safe);
+        }
         if (bounds.isEmpty()) bounds.set(0, 0, getResources().getDisplayMetrics().widthPixels,
                 getResources().getDisplayMetrics().heightPixels);
         return bounds;

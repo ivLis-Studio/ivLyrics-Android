@@ -1,6 +1,7 @@
 package kr.ivlis.ivlyricsandroid;
 
 import android.app.Instrumentation;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -14,6 +15,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
@@ -29,6 +31,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 /** Measured/drawn production Android controls, not HTML or SDK-free widget mocks. */
+@android.annotation.TargetApi(30)
 public final class SettingsUiRegressionTest {
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
     private SettingsUiHarnessActivity activity;
@@ -54,8 +57,10 @@ public final class SettingsUiRegressionTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uiLanguage", language).putExtra("fontScale", fontScale);
         activity = (SettingsUiHarnessActivity) instrumentation.startActivitySync(intent);
         instrumentation.waitForIdleSync();
+        awaitWindow(activity.getWindow().getDecorView());
         assertEquals(fontScale, activity.getResources().getConfiguration().fontScale, 0.01f);
         final String prefix = language + "-" + width + "x" + height + "-font" + fontScale;
+        screenshot(prefix + "-window-initial");
         verifyRealWindowTaps(prefix, language);
         onMain(() -> {
             assertFalse(((AiLyricsSettings) activity.value("aiLyricsSettings")).snapshot().hasApiKey());
@@ -222,6 +227,7 @@ public final class SettingsUiRegressionTest {
     }
 
     private void tap(View target) {
+        awaitWindow(target.getRootView());
         onMain(() -> {
             assertTrue("real target enabled", target.isEnabled());
             target.requestRectangleOnScreen(new Rect(0, 0, target.getWidth(), target.getHeight()), true);
@@ -238,7 +244,9 @@ public final class SettingsUiRegressionTest {
             assertTrue("touch center inside real visible window: " + window,
                     window.contains(Math.round(point[0]), Math.round(point[1])));
             View root = target.getRootView(); int[] origin = new int[2]; root.getLocationOnScreen(origin);
-            assertTrue("actual popup/window not wider than screen", root.getWidth() <= activity.getResources().getDisplayMetrics().widthPixels);
+            Rect actualWindow = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
+            assertTrue("actual popup/window not wider than current window: " + root.getWidth() + " > " + actualWindow,
+                    root.getWidth() <= actualWindow.width());
             assertTrue("actual touch target inside window content", point[0] >= origin[0] && point[0] < origin[0] + root.getWidth()
                     && point[1] >= origin[1] && point[1] < origin[1] + root.getHeight());
         });
@@ -247,6 +255,48 @@ public final class SettingsUiRegressionTest {
         MotionEvent up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, point[0], point[1], 0);
         instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
+    }
+
+    private void awaitWindow(View root) {
+        AccessibilityServiceInfo service = instrumentation.getUiAutomation().getServiceInfo();
+        service.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
+        instrumentation.getUiAutomation().setServiceInfo(service);
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        int stable = 0, previousWidth = 0, previousHeight = 0;
+        while (SystemClock.uptimeMillis() < deadline) {
+            // Android's first immersive-mode education is a system overlay, not a
+            // production app control. Acknowledge only its specific "Got it" node.
+            for (android.view.accessibility.AccessibilityWindowInfo window : instrumentation.getUiAutomation().getWindows()) {
+                AccessibilityNodeInfo node = window.getRoot();
+                if (node == null) continue;
+                for (String namespace : new String[]{"android", "com.android.systemui"}) {
+                    java.util.List<AccessibilityNodeInfo> education = node.findAccessibilityNodeInfosByViewId(
+                            namespace + ":id/immersive_cling_description");
+                    if (!education.isEmpty()) {
+                        for (AccessibilityNodeInfo button : node.findAccessibilityNodeInfosByViewId(namespace + ":id/ok")) {
+                            button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            button.recycle();
+                        }
+                        stable = 0;
+                    }
+                    for (AccessibilityNodeInfo description : education) description.recycle();
+                }
+                node.recycle(); window.recycle();
+            }
+            final int[] size = new int[2];
+            final boolean[] ready = new boolean[1];
+            onMain(() -> {
+                size[0] = root.getWidth(); size[1] = root.getHeight();
+                Rect actual = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
+                ready[0] = root.hasWindowFocus() && size[0] > 0 && size[1] > 0 && size[0] <= actual.width();
+            });
+            if (ready[0] && size[0] == previousWidth && size[1] == previousHeight) stable++; else stable = 0;
+            if (stable >= 15) return;
+            previousWidth = size[0]; previousHeight = size[1]; SystemClock.sleep(100);
+        }
+        screenshot("unsettled-window-" + SystemClock.uptimeMillis());
+        fail("Native window did not settle/focus before touch injection");
     }
 
     private void render(View root, int width, int height) {

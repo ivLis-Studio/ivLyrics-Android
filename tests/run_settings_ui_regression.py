@@ -28,6 +28,7 @@ for name in ("requestAiLyrics", "requestCulturalAnnotations", "showVideoSelectio
 assert "usesLivePlayback() { return false; }" in harness
 assert "super.attachBaseContext(base.createConfigurationContext(config))" in harness
 assert "applyOverrideConfiguration(config)" not in harness
+assert "new Configuration(base.getResources().getConfiguration())" not in harness
 assert "SettingsUiHarnessActivity.prepareConfiguration(language, fontScale)" in native
 assert "sendPointerSync" in native and "getLocalVisibleRect" in native
 assert 'getExternalFilesDir("ui-regressions")' in native

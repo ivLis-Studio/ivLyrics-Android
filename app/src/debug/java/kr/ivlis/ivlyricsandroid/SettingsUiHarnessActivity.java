@@ -35,9 +35,10 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     }
 
     @Override protected void attachBaseContext(Context base) {
-        Configuration config = new Configuration(base.getResources().getConfiguration());
         Configuration requested = launchConfiguration;
-        if (requested != null) config.updateFrom(requested);
+        // Override only locale/font. Copying the whole device configuration pins
+        // orientation/screen dimensions and breaks real rotation/window metrics.
+        Configuration config = requested == null ? new Configuration() : new Configuration(requested);
         // Activity/the framework may resolve its theme before onCreate. Give it
         // configured resources at attachment, never applyOverrideConfiguration late.
         super.attachBaseContext(base.createConfigurationContext(config));
