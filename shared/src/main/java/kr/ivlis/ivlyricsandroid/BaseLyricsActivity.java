@@ -6483,7 +6483,7 @@ public class BaseLyricsActivity extends Activity implements
             onLyricsProviderSettingsChanged(true);
         });
         header.addView(enabledSwitch, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout types = new LinearLayout(this);
         types.setOrientation(LinearLayout.HORIZONTAL);
@@ -6498,7 +6498,7 @@ public class BaseLyricsActivity extends Activity implements
         String[] typeLabels = {ui("lyrics_provider.karaoke"), ui("lyrics_provider.synced"), ui("lyrics_provider.plain")};
         for (int typeIndex = 0; typeIndex < typeIds.length; typeIndex++) {
             CheckBox chip = buildLyricsProviderTypeSwitch(config, typeIds[typeIndex], typeLabels[typeIndex]);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             if (typeIndex > 0) params.setMarginStart(dp(6));
             types.addView(chip, params);
         }
@@ -6539,6 +6539,10 @@ public class BaseLyricsActivity extends Activity implements
         chip.setTypeface(AppFonts.semiBold(this));
         chip.setGravity(Gravity.CENTER);
         chip.setPadding(dp(10), 0, dp(10), 0);
+        chip.setMinHeight(dp(48));
+        chip.setMinimumHeight(dp(48));
+        chip.setMinWidth(dp(48));
+        chip.setMinimumWidth(dp(48));
         chip.setContentDescription(config.provider.label + ", " + label);
         chip.setChecked(config.allows(type));
         chip.setEnabled(config.enabled);
@@ -8098,8 +8102,8 @@ public class BaseLyricsActivity extends Activity implements
     private EditText settingEditText(String hint, boolean multiLine, boolean secret) {
         EditText input = new EditText(this);
         input.setHint(hint);
-        input.setHintTextColor(Color.argb(110, 255, 255, 255));
-        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(SettingsAppearance.MUTED);
+        input.setTextColor(SettingsAppearance.TEXT);
         input.setTextSize(13f);
         input.setTypeface(AppFonts.regular(this));
         input.setSingleLine(!multiLine);
@@ -8252,7 +8256,7 @@ public class BaseLyricsActivity extends Activity implements
             requestAiLyrics(true);
             showSavedToast(ui("toast.translation_provider_saved"));
         });
-        header.addView(enabledSwitch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        header.addView(enabledSwitch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         card.setOnDragListener((view, event) -> handleProviderDrag(card, provider.id, event));
         if (provider.localModel) {

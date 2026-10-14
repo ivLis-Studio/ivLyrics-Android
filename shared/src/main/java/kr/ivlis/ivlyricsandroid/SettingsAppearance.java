@@ -35,7 +35,7 @@ final class SettingsAppearance {
     static final int BORDER_STRONG = 0x24FFFFFF;
     static final int TEXT = 0xFFF1F0F4;
     static final int SECONDARY = 0xFF8F8E98;
-    static final int MUTED = 0xFF777681;
+    static final int MUTED = 0xFFA3A2AD;
     static final int ACCENT = 0xFFFF6B4A;
     static final int ACCENT_SOFT = 0x29FF6B4A;
     static final int MINT = 0xFF5FCE9B;

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """SDK-free state/localization contracts. Native geometry acceptance is androidTest."""
 import subprocess
+import re
 from regression_runtime import ROOT, SHARED, REPORTS, java_tool
 
 
@@ -33,6 +34,21 @@ assert "SettingsUiHarnessActivity.prepareConfiguration(language, fontScale)" in 
 assert "sendPointerSync" in native and "getLocalVisibleRect" in native
 assert 'getExternalFilesDir("ui-regressions")' in native
 assert "peakAlpha * .9f" in native and "aspect >= .88f && aspect <= 1.14f" in native
+assert "genuineWindowCaptures >= 8" in native
+assert "software-root-diagnostic" in native
+for signature in ("private View providerButton(", "private View buildLyricsProviderSettingsCard("):
+    assert "ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)" not in declaration(source, signature)
+
+def luminance(color):
+    channels = [(color >> shift & 255) / 255 for shift in (16, 8, 0)]
+    linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
+    return sum(value * weight for value, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+tokens = {name: int(value, 16) for name, value in re.findall(r"static final int (\w+) = 0x([A-Fa-f0-9]+);", appearance)}
+for foreground in ("TEXT", "SECONDARY", "MUTED", "ACCENT"):
+    ratio = (luminance(tokens[foreground]) + .05) / (luminance(tokens["SURFACE"]) + .05)
+    assert ratio >= 4.5, f"{foreground} enabled text contrast {ratio:.2f} <4.5"
+print(f"Enabled settings description/hint contrast: {(luminance(tokens['MUTED'])+.05)/(luminance(tokens['SURFACE'])+.05):.2f}:1")
 
 work = REPORTS / "settings-ui"
 work.mkdir(parents=True, exist_ok=True)

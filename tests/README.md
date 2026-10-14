@@ -248,7 +248,11 @@ Five scenarios cover Korean 320×640 dp portrait, Korean 568×320 dp landscape a
 1.6× font, English 280 dp width at 1.8×, German landscape at 2× and Arabic RTL at
 1.6×. Native view captures named `settings-*`/`track-*` use those deterministic
 component dimensions. Separate `window-*` captures are real emulator windows,
-including tapped controls and the software keyboard. Tests measure 48 dp inputs,
+including tapped controls and the software keyboard. Files ending in
+`-software-root-diagnostic.png` always use `View.draw` on the actual window tree;
+they are useful even after an emulator GPU failure but do not replace genuine
+window screenshot/visual acceptance. The suite requires genuine captures too.
+Tests measure 48 dp inputs,
 buttons and visible hit rectangles, text clipping, exactly one dropdown chevron,
 and the actual rendered switch-thumb aspect and drawable padding (including
 disabled-state alpha). Review the images before claiming visual acceptance.
@@ -259,6 +263,12 @@ while the emulator and app are still present:
 ```sh
 adb pull /sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/ui-regressions ./ui-regressions
 ```
+
+AGP's connected-test UTP teardown uninstalls the target and test APKs in the
+current CI setup, removing app-specific external files. Collect this directory
+while tests are running (before teardown), not just after Gradle returns; use
+the CI capture helper for continuous pulls. The log records each saved absolute
+path. Hardware/GPU screenshots remain distinct from software diagnostics.
 
 The test reports are under `app/build/reports/androidTests/connected/debug` and
 `app/build/outputs/androidTest-results/connected/debug`. This harness does not
