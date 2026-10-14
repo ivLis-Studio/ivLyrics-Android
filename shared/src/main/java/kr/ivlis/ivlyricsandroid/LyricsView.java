@@ -165,6 +165,8 @@ public final class LyricsView extends View {
     private boolean karaoke;
     private boolean autoInstrumentalBreakEnabled = true;
     private boolean interludeLabelsEnabled = true;
+    private boolean originalVisible = true;
+    private boolean emptyNoticeVisible = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = false;
     private boolean karaokeBounceEffectEnabled = true;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
@@ -456,6 +458,19 @@ public final class LyricsView extends View {
             return;
         }
         interludeLabelsEnabled = enabled;
+        postInvalidateOnAnimation();
+    }
+
+    void setOriginalVisible(boolean visible) {
+        if (originalVisible == visible) return;
+        originalVisible = visible;
+        rowLayoutCache.clear();
+        invalidateFrameGroupCache();
+        postInvalidateOnAnimation();
+    }
+
+    void setEmptyNoticeVisible(boolean visible) {
+        emptyNoticeVisible = visible;
         postInvalidateOnAnimation();
     }
 
@@ -1790,7 +1805,7 @@ public final class LyricsView extends View {
                 addSupplementGroups(groups, lineIndex, line, completedColorOpacity, distance);
             }
             addCulturalAnnotationGroups(groups, lineIndex, line, highlighted, distance);
-            return groups;
+            return visibleLyricGroups(groups);
         }
 
         List<CulturalAnnotation> lineAnnotations = CulturalAnnotation.forLine(
@@ -1821,6 +1836,12 @@ public final class LyricsView extends View {
         ));
         addSupplementGroups(groups, lineIndex, line, completedColorOpacity, distance);
         addCulturalAnnotationGroups(groups, lineIndex, line, highlighted, distance);
+        return visibleLyricGroups(groups);
+    }
+
+    private List<DrawGroup> visibleLyricGroups(List<DrawGroup> groups) {
+        // Keep generated supplements and their timing even when native/original rows are hidden.
+        if (!originalVisible) groups.removeIf(group -> !group.supplement);
         return groups;
     }
 
@@ -3796,6 +3817,7 @@ public final class LyricsView extends View {
             if (frameAnimationsEnabled) postInvalidateOnAnimation();
             return;
         }
+        if (!emptyNoticeVisible) return;
         float centerX = getWidth() * 0.5f;
         float centerY = getHeight() * verticalCenterBias;
         drawEmptyNoteIcon(canvas, centerX, centerY - sp(14f));

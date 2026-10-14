@@ -109,6 +109,7 @@ public final class RenderIdleRegression {
     static class AppFonts { static Object regular(Object context) { return null; } }
     static class Scroller { void abortAnimation() {} }
     static class EmptyFields {
+        boolean emptyNoticeVisible = true;
         final List<Object> lines = new ArrayList<>();
         long positionMs, lastFrameMs;
         double framePositionMs;

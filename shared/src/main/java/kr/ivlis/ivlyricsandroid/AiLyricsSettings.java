@@ -183,7 +183,10 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_VINYL_ALBUM_SIZE_PERCENT, KEY_VINYL_RECORD_SIZE_PERCENT, KEY_VINYL_ANIMATIONS_ENABLED,
             KEY_VINYL_CENTER_ROTATION_ENABLED, KEY_VINYL_LYRICS_ENABLED, KEY_VINYL_TONEARM_STYLE,
             KEY_VINYL_TONEARM_FINISH, KEY_VINYL_TONEARM_SIZE_PERCENT, KEY_SPEAKER_COLOR_SETTINGS,
-            KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, KEY_LYRICS_TEXT_ALIGNMENT
+            KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, KEY_LYRICS_TEXT_ALIGNMENT,
+            AppearanceOptions.FALLBACK, AppearanceOptions.TITLE_ACTION, AppearanceOptions.VIDEO_ASPECT,
+            AppearanceOptions.VIDEO_EDGES, AppearanceOptions.LANDSCAPE_ORIGINAL,
+            AppearanceOptions.LANDSCAPE_ARTWORK, AppearanceOptions.EMPTY_NOTICE
     )));
     private static final Set<String> CLOUD_FLOAT_SETTING_KEYS = Collections.singleton(KEY_TEMPERATURE);
 
@@ -892,6 +895,30 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setBackgroundMode(String mode) {
         prefs.edit().putString(KEY_BACKGROUND_MODE, normalizeBackgroundMode(mode)).apply();
+    }
+
+    String videoFallback() { return AppearanceOptions.fallback(prefs.getString(AppearanceOptions.FALLBACK, "")); }
+    String titleTapAction() { return AppearanceOptions.titleAction(prefs.getString(AppearanceOptions.TITLE_ACTION, "")); }
+    String videoAspect() { return AppearanceOptions.aspect(prefs.getString(AppearanceOptions.VIDEO_ASPECT, "")); }
+    boolean videoEdgeToEdge() { return prefs.getBoolean(AppearanceOptions.VIDEO_EDGES, false); }
+    boolean landscapeShowOriginal() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ORIGINAL, true); }
+    boolean landscapeShowArtwork() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ARTWORK, true); }
+    boolean showLyricsNotFound() { return prefs.getBoolean(AppearanceOptions.EMPTY_NOTICE, true); }
+
+    void setAppearanceChoice(String key, String value) {
+        if (AppearanceOptions.FALLBACK.equals(key)) value = AppearanceOptions.fallback(value);
+        else if (AppearanceOptions.TITLE_ACTION.equals(key)) value = AppearanceOptions.titleAction(value);
+        else if (AppearanceOptions.VIDEO_ASPECT.equals(key)) value = AppearanceOptions.aspect(value);
+        else throw new IllegalArgumentException(key);
+        prefs.edit().putString(key, value).apply();
+    }
+
+    void setAppearanceToggle(String key, boolean value) {
+        if (!AppearanceOptions.VIDEO_EDGES.equals(key) && !AppearanceOptions.LANDSCAPE_ORIGINAL.equals(key)
+                && !AppearanceOptions.LANDSCAPE_ARTWORK.equals(key) && !AppearanceOptions.EMPTY_NOTICE.equals(key)) {
+            throw new IllegalArgumentException(key);
+        }
+        prefs.edit().putBoolean(key, value).apply();
     }
 
     boolean playerCardBackgroundEnabled() {

@@ -2632,6 +2632,28 @@ final class LyricsRepository {
         );
     }
 
+    /** Resolve the album only on an explicit tap. This never starts playback or changes the queue. */
+    void resolveAlbumDestination(String trackId, java.util.function.Consumer<String> callback) {
+        if (trackId == null || !trackId.matches("[A-Za-z0-9]{22}") || executor.isShutdown()) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        executor.execute(() -> {
+            String destination = "";
+            try {
+                String token = getSpotifyAccessToken(false, message -> {});
+                if (!token.isEmpty()) {
+                    JSONObject response = new JSONObject(get(SPOTIFY_TRACK_BASE + trackId,
+                            Collections.singletonMap("Authorization", "Bearer " + token)));
+                    JSONObject album = response.optJSONObject("album");
+                    if (album != null) destination = AppearanceOptions.spotifyDestination(album.optString("uri"), true);
+                }
+            } catch (Exception ignored) {}
+            String resolved = destination;
+            mainHandler.post(() -> callback.accept(resolved));
+        });
+    }
+
     private SpotifyTrackMatch fetchSpotifyTrackById(
             String token,
             String trackId,

@@ -146,6 +146,14 @@ cache keys are unchanged.
 
 ## Editing policy
 
+Appearance controls live in shared settings and cloud sync. Video fallback selects the existing
+album, blurred-gradient or solid renderer; video dimming has no overlay at 100%. Fit/Fill/Stretch
+and landscape edge-to-edge video affect only the background; controls keep their safe-area
+insets. Landscape original lyrics and cover visibility are independent of generated supplements,
+and the empty-lyrics notice can be hidden without hiding loading indicators. Title taps retain
+the previous return-to-Spotify default, with disabled, album and current-source navigation
+choices. Those choices use ACTION_VIEW destinations, never transport/playback commands.
+
 - Rendering, ivSync/provider fixes and common UI: edit `shared` once, verify both APKs.
 - Standalone permissions, launcher and initialization: edit `app`.
 - Spotify version mappings, native metadata, card placement and host transitions: edit `spotify-module`.

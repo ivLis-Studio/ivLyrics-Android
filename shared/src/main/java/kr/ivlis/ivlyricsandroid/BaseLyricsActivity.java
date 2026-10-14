@@ -319,6 +319,7 @@ public class BaseLyricsActivity extends Activity implements
     private EditText settingsSearchInput;
     private LinearLayout settingsSearchResults;
     private LinearLayout settingsAppearancePage;
+    private View lyricsBackgroundShade;
     private LinearLayout settingsPlayerPage;
     private LinearLayout settingsAiPage;
     private LinearLayout settingsSystemPage;
@@ -2132,6 +2133,10 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            applyAppearanceInsets(insets);
+            return insets;
+        });
 
         coveredMainPage = null;
         mainPage = buildMainPage();
@@ -3473,6 +3478,7 @@ public class BaseLyricsActivity extends Activity implements
         FrameLayout page = new FrameLayout(this);
 
         View lyricsShade = new View(this);
+        lyricsBackgroundShade = lyricsShade;
         lyricsShade.setBackgroundColor(Color.argb(54, 6, 7, 12));
         page.addView(lyricsShade, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -4827,6 +4833,7 @@ public class BaseLyricsActivity extends Activity implements
         ), topMargin(matchWrap(), dp(12)));
 
         backgroundBrightnessSeekBar = new SeekBar(this);
+        buildMobileAppearanceSettings();
         backgroundBrightnessSeekBar.setMax(100);
         backgroundBrightnessValueView = label("", 12f, Color.argb(180, 255, 255, 255), AppFonts.semiBold(this));
         backgroundBrightnessSeekBar.setOnSeekBarChangeListener(new SimpleSeekBarChangeListener() {
@@ -9106,7 +9113,8 @@ public class BaseLyricsActivity extends Activity implements
         }
         suppressSettingsEvents = false;
         boolean videoMode = AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(background.mode);
-        boolean solidMode = AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(background.mode);
+        boolean solidMode = AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(background.mode)
+                || (videoMode && AiLyricsSettings.BACKGROUND_MODE_SOLID.equals(aiLyricsSettings.videoFallback()));
         setBackgroundOptionVisibility(backgroundVideoScaleGroup, videoMode);
         setBackgroundOptionVisibility(backgroundSolidColorGroup, solidMode);
         if (backgroundBrightnessValueView != null) {
@@ -9188,15 +9196,136 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         if (backgroundView != null) {
-            backgroundView.setBackgroundSettings(settings);
+            backgroundView.setBackgroundSettings(fallbackBackgroundSettings(settings));
         }
         if (pictureInPictureBackgroundView != null) {
-            pictureInPictureBackgroundView.setBackgroundSettings(settings);
+            pictureInPictureBackgroundView.setBackgroundSettings(fallbackBackgroundSettings(settings));
         }
         if (youtubeBackgroundView != null) {
             youtubeBackgroundView.setBackgroundSettings(settings);
+            youtubeBackgroundView.setVideoAspect(aiLyricsSettings.videoAspect());
         }
+        applyMobileAppearance();
         syncYouTubeBackgroundState();
+    }
+
+    private AiLyricsSettings.BackgroundSettings fallbackBackgroundSettings(AiLyricsSettings.BackgroundSettings settings) {
+        if (!AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(settings.mode)) return settings;
+        return new AiLyricsSettings.BackgroundSettings(aiLyricsSettings.videoFallback(), settings.brightness,
+                settings.blur, settings.noise, settings.reduceMotion, settings.solidColor, settings.videoScale);
+    }
+
+    private void applyMobileAppearance() {
+        if (aiLyricsSettings == null) return;
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (lyricsBackgroundShade != null) {
+            // Video dimming belongs to the background layer, never the foreground content.
+            lyricsBackgroundShade.setBackgroundColor(isVideoBackgroundMode() ? Color.TRANSPARENT : Color.argb(54, 6, 7, 12));
+        }
+        if (lyricsView != null) {
+            lyricsView.setOriginalVisible(!landscape || aiLyricsSettings.landscapeShowOriginal());
+            lyricsView.setEmptyNoticeVisible(aiLyricsSettings.showLyricsNotFound());
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setOriginalVisible(aiLyricsSettings.landscapeShowOriginal());
+            landscapeLyricsView.setEmptyNoticeVisible(aiLyricsSettings.showLyricsNotFound());
+        }
+        if (pictureInPictureLyricsView != null) pictureInPictureLyricsView.setEmptyNoticeVisible(aiLyricsSettings.showLyricsNotFound());
+        if (landscape && artworkView != null) artworkView.setVisibility(aiLyricsSettings.landscapeShowArtwork() ? View.VISIBLE : View.GONE);
+        if (landscape && lyricsArtworkView != null) lyricsArtworkView.setVisibility(aiLyricsSettings.landscapeShowArtwork() ? View.VISIBLE : View.GONE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && getWindow() != null) {
+            WindowManager.LayoutParams attributes = getWindow().getAttributes();
+            attributes.layoutInDisplayCutoutMode = landscape && aiLyricsSettings.videoEdgeToEdge()
+                    ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            getWindow().setAttributes(attributes);
+        }
+        if (rootView != null) rootView.requestApplyInsets();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void applyAppearanceInsets(WindowInsets insets) {
+        if (aiLyricsSettings == null || getResources().getConfiguration().orientation != Configuration.ORIENTATION_LANDSCAPE
+                || isPictureInPictureUiActive()) return;
+        int left, right, top, bottom;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.graphics.Insets safe = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            left = safe.left; right = safe.right; top = safe.top; bottom = safe.bottom;
+        } else {
+            left = insets.getSystemWindowInsetLeft(); right = insets.getSystemWindowInsetRight();
+            top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                left = Math.max(left, insets.getDisplayCutout().getSafeInsetLeft());
+                right = Math.max(right, insets.getDisplayCutout().getSafeInsetRight());
+            }
+        }
+        if (mainPage != null) mainPage.setPadding(dp(22) + left, dp(16) + top, dp(22) + right, dp(16) + bottom);
+        if (lyricsPage != null) lyricsPage.setPadding(left, 0, right, bottom);
+        if (settingsPanel != null) settingsPanel.setPadding(left, 0, right, bottom);
+        if (youtubeBackgroundView != null && !youtubeBackgroundAttachedToPictureInPicture) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) youtubeBackgroundView.getLayoutParams();
+            boolean edges = aiLyricsSettings.videoEdgeToEdge();
+            params.setMargins(edges ? 0 : left, edges ? 0 : top, edges ? 0 : right, edges ? 0 : bottom);
+            youtubeBackgroundView.setLayoutParams(params);
+        }
+    }
+
+    private void buildMobileAppearanceSettings() {
+        addAppearanceChoices(AppearanceOptions.FALLBACK, "appearance.fallback",
+                new String[]{AiLyricsSettings.BACKGROUND_MODE_GRADIENT, AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT, AiLyricsSettings.BACKGROUND_MODE_SOLID},
+                new String[]{backgroundModeLabel(AiLyricsSettings.BACKGROUND_MODE_GRADIENT), backgroundModeLabel(AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT), backgroundModeLabel(AiLyricsSettings.BACKGROUND_MODE_SOLID)});
+        addAppearanceChoices(AppearanceOptions.TITLE_ACTION, "appearance.title_tap",
+                new String[]{"player", "disabled", "album", "context"},
+                new String[]{ui("appearance.title_player"), ui("appearance.title_disabled"), ui("appearance.title_album"), ui("appearance.title_context")});
+        addAppearanceChoices(AppearanceOptions.VIDEO_ASPECT, "appearance.video_aspect", new String[]{"fit", "fill", "stretch"},
+                new String[]{ui("appearance.video_fit"), ui("appearance.video_fill"), ui("appearance.video_stretch")});
+        addAppearanceToggle(AppearanceOptions.VIDEO_EDGES, "appearance.video_edges", aiLyricsSettings.videoEdgeToEdge());
+        addAppearanceToggle(AppearanceOptions.LANDSCAPE_ORIGINAL, "appearance.landscape_original", aiLyricsSettings.landscapeShowOriginal());
+        addAppearanceToggle(AppearanceOptions.LANDSCAPE_ARTWORK, "appearance.landscape_artwork", aiLyricsSettings.landscapeShowArtwork());
+        addAppearanceToggle(AppearanceOptions.EMPTY_NOTICE, "appearance.empty_notice", aiLyricsSettings.showLyricsNotFound());
+    }
+
+    private String appearanceChoice(String key) {
+        if (AppearanceOptions.FALLBACK.equals(key)) return aiLyricsSettings.videoFallback();
+        if (AppearanceOptions.TITLE_ACTION.equals(key)) return aiLyricsSettings.titleTapAction();
+        return aiLyricsSettings.videoAspect();
+    }
+
+    private void addAppearanceChoices(String key, String labelKey, String[] values, String[] labels) {
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.VERTICAL);
+        Runnable[] renderChoices = new Runnable[1];
+        renderChoices[0] = () -> {
+            choices.removeAllViews();
+            for (int index = 0; index < values.length; index++) {
+                String value = values[index];
+                TextView button = settingsChoiceButton(labels[index], value.equals(appearanceChoice(key)));
+                button.setOnClickListener(view -> {
+                    aiLyricsSettings.setAppearanceChoice(key, value);
+                    renderChoices[0].run();
+                    updateBackgroundSettingsUi(aiLyricsSettings.snapshot(), false);
+                    applyBackgroundSettings(aiLyricsSettings.snapshot());
+                    showSavedToast(ui("toast.settings_saved"));
+                });
+                choices.addView(button, topMargin(matchWrap(), dp(6)));
+            }
+        };
+        renderChoices[0].run();
+        settingsAppearancePage.addView(settingGroup(ui(labelKey), "", choices), topMargin(matchWrap(), dp(12)));
+    }
+
+    private void addAppearanceToggle(String key, String labelKey, boolean checked) {
+        Switch toggle = settingSwitch(ui(labelKey), "");
+        toggle.setChecked(checked);
+        toggle.setOnCheckedChangeListener((button, value) -> {
+            if (suppressSettingsEvents) return;
+            aiLyricsSettings.setAppearanceToggle(key, value);
+            applyMobileAppearance();
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        LinearLayout group = new LinearLayout(this);
+        group.addView(toggle, matchWrap());
+        settingsAppearancePage.addView(group, topMargin(matchWrap(), dp(12)));
     }
 
     private boolean isVideoBackgroundMode() {
@@ -10296,12 +10425,41 @@ public class BaseLyricsActivity extends Activity implements
                     return true;
             }
         });
-        view.setOnClickListener(target -> openSpotifyForCurrentTrack());
+        view.setOnClickListener(target -> handleLyricsMetaTap());
     }
 
     private void handleLyricsMetaTap() {
         dismissLyricsMetaTip();
-        openSpotifyForCurrentTrack();
+        String action = aiLyricsSettings.titleTapAction();
+        if ("disabled".equals(action)) return;
+        if ("player".equals(action)) {
+            openSpotifyForCurrentTrack();
+            return;
+        }
+        String destination = NowPlayingService.navigationDestination("album".equals(action));
+        if (!destination.isEmpty()) {
+            openSpotifyDestination(destination);
+        } else if ("album".equals(action) && currentTrack != null && lyricsRepository != null) {
+            String trackKey = currentTrack.stableKey();
+            String trackId = nonEmpty(currentTrack.trackId, currentResolvedSpotifyTrackId);
+            lyricsRepository.resolveAlbumDestination(trackId, uri -> {
+                if (currentTrack == null || !trackKey.equals(currentTrack.stableKey())
+                        || !"album".equals(aiLyricsSettings.titleTapAction())) return;
+                if (uri.isEmpty()) showSavedToast(ui("toast.spotify_open_failed"));
+                else openSpotifyDestination(uri);
+            });
+        } else {
+            showSavedToast(ui("appearance.context_unavailable"));
+        }
+    }
+
+    private void openSpotifyDestination(String uri) {
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
+        intent.setPackage(currentTrack != null && isSpotifyPackage(currentTrack.packageName)
+                ? currentTrack.packageName : "com.spotify.music");
+        if (tryStartActivity(intent)) {
+            if (IvLyricsBridge.isEmbedded(this)) finish();
+        } else showSavedToast(ui("toast.spotify_open_failed"));
     }
 
     private void handleLyricsMetaLongPress(View target) {
@@ -14621,6 +14779,10 @@ public class BaseLyricsActivity extends Activity implements
             clearPreviewRowsCache();
             String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
             boolean loading = isLoadingLyricsPreview(detail);
+            if (!loading && aiLyricsSettings != null && !aiLyricsSettings.showLyricsNotFound()) {
+                clearLyricPreviewViews();
+                return;
+            }
             if (currentLyricsResult != null && !loading && shouldHideEmptyLyricsPreview(detail)) {
                 clearLyricPreviewViews();
                 return;

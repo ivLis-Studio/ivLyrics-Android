@@ -87,6 +87,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private boolean lastVisibleState;
     private long suppressHardSyncUntilElapsedMs;
     private int videoScalePercent = 100;
+    private String videoAspect = "fill";
 
     public YouTubeBackgroundView(Context context) {
         super(context);
@@ -158,7 +159,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
         AiLyricsSettings.BackgroundSettings safeSettings = settings == null
                 ? new AiLyricsSettings.BackgroundSettings(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 30, 20, false, false, "#1e3a8a", 100)
                 : settings;
-        int dimAlpha = Math.max(42, Math.min(220, Math.round(214f - safeSettings.brightness * 1.28f)));
+        int dimAlpha = AppearanceOptions.videoDimAlpha(safeSettings.brightness);
         dimView.setBackgroundColor(Color.argb(dimAlpha, 0, 0, 0));
         setVideoScalePercent(safeSettings.videoScale);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -185,9 +186,15 @@ public final class YouTubeBackgroundView extends FrameLayout {
         }
         String scale = String.format(Locale.US, "%.3f", videoScalePercent / 100f);
         webView.evaluateJavascript(
-                "document.documentElement.style.setProperty('--video-scale','" + scale + "');",
+                "document.documentElement.style.setProperty('--video-scale','" + scale + "');"
+                        + "document.documentElement.dataset.aspect='" + videoAspect + "';",
                 null
         );
+    }
+
+    void setVideoAspect(String aspect) {
+        videoAspect = AppearanceOptions.aspect(aspect);
+        applyVideoScaleToWebView();
     }
 
     void setVideoBackgroundEnabled(boolean enabled) {
@@ -357,16 +364,19 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private String buildHtml(String videoId) {
         String safeVideoId = videoId == null ? "" : videoId.replace("\\", "").replace("'", "");
         String initialScale = String.format(Locale.US, "%.3f", videoScalePercent / 100f);
-        return "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        return "<!doctype html><html data-aspect=\"" + videoAspect + "\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;}"
                 + ":root{--video-scale:" + initialScale + ";}"
                 + "#wrap{position:fixed;inset:0;overflow:hidden;background:transparent;}"
                 + "#stage{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.7778vh;min-height:100vh;transform:translate3d(-50%,-50%,0) scale(var(--video-scale));overflow:hidden;background:transparent;transition:transform .18s ease;will-change:transform;}"
+                + "html[data-aspect=fit] #stage{width:min(100vw,177.7778vh);height:min(56.25vw,100vh);min-width:0;min-height:0;}"
+                + "html[data-aspect=stretch] #stage{width:100vw;height:56.25vw;min-width:0;min-height:0;transform:translate3d(-50%,-50%,0) scale(var(--video-scale)) scaleY(var(--video-stretch));}"
                 + "#player,#stage iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;transform:none!important;pointer-events:none!important;border:0!important;outline:0!important;}"
                 + "*{-webkit-tap-highlight-color:transparent!important;user-select:none!important;-webkit-user-select:none!important;}</style></head>"
                 + "<body><div id=\"wrap\"><div id=\"stage\"><div id=\"player\"></div></div></div>"
                 + "<script src=\"https://www.youtube.com/iframe_api\"></script>"
                 + "<script>"
+                + "function resizeVideo(){document.documentElement.style.setProperty('--video-stretch',String(innerHeight/(innerWidth*9/16)));}resizeVideo();addEventListener('resize',resizeVideo);"
                 + "var player=null,ready=false,lastCaptionDisable=0,lastSeekAt=0,lastDesired={videoId:'" + safeVideoId + "',startSeconds:0};"
                 + "var adPatterns=[/doubleclick\\.net/i,/googlesyndication\\.com/i,/googleads\\.g\\.doubleclick\\.net/i,/pagead(?!.*youtube\\.com\\/iframe)/i,/tpc\\.googlesyndication\\.com/i,/pubads\\.g\\.doubleclick\\.net/i,/securepubads\\.g\\.doubleclick\\.net/i,/gvt\\d+\\.com\\/ads/i,/manifest\\.googlevideo\\.com\\/api\\/manifest\\/ads/i,/googlevideo\\.com\\/videoplayback.*[&?](ctier|oad|adformat)=/i,/googlevideo\\.com\\/initplayback.*[&?](ctier|oad|adformat)=/i,/youtube\\.com\\/pagead/i,/youtube\\.com\\/ptracking/i,/youtube\\.com\\/api\\/stats\\/(ads|qoe|watchtime|playback)/i,/youtubei\\/v1\\/log_event/i,/youtubei\\/v1\\/player.*adformat/i,/youtube\\.com\\/get_video_info.*adformat/i,/youtube\\.com\\/yva_/i,/yt\\d?\\.ggpht\\.com\\/ad/i,/ytimg\\.com\\/.*ad/i,/yt3\\.ggpht\\.com\\/ytc\\/.*ad/i,/s0\\.2mdn\\.net/i,/gstaticadssl\\.googleapis\\.com/i];"
                 + "function isAdUrl(u){try{u=(typeof u==='string'?u:(u&&u.url)||'');return !!u&&adPatterns.some(function(p){return p.test(u);});}catch(e){return false;}}"
@@ -384,7 +394,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{host:'https://www.youtube-nocookie.com',videoId:'" + safeVideoId + "',"
                 + "playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,rel:0,iv_load_policy:3,cc_load_policy:0,mute:1,playsinline:1,modestbranding:1,autohide:1,showinfo:0,enablecastapi:0,allowfullscreen:0,disable_polymer:1,suppress_ads:1,adformat:'0_0',widget_referrer:'https://xpui.app.spotify.com',origin:'https://xpui.app.spotify.com',fflags:'disable_persistent_ads=true&kevlar_allow_multistep_video_ads=false&enable_desktop_ad_controls=false&html5_disable_ads=true&disable_new_pause_state3_player_ads=true&player_ads_enable_gcf=false&web_player_disable_afa=true&preskip_button_style_ads_backend=false&html5_player_enable_ads_client=false'},"
                 + "events:{onReady:function(e){player=e.target;ready=true;sanitizeIframe();try{player.mute();player.playVideo();}catch(x){}disableCaptions();setTimeout(disableCaptions,250);setTimeout(disableCaptions,1000);setTimeout(disableCaptions,2500);try{AndroidYouTubeBackground.onReady();}catch(x){}},"
-                + "onStateChange:function(e){sanitizeIframe();disableCaptions();suppressAds();if(!isAdPlayback())restorePlaybackRate();},onError:function(){reloadDesired();}}});setInterval(function(){if(player&&ready){sanitizeIframe();suppressAds();}},400);}"
+                + "onStateChange:function(e){sanitizeIframe();disableCaptions();suppressAds();if(!isAdPlayback())restorePlaybackRate();},onError:function(){try{AndroidYouTubeBackground.onUnavailable();}catch(x){}}}});setInterval(function(){if(player&&ready){sanitizeIframe();suppressAds();}},400);}"
                 + "window.ivLyricsSyncVideo=function(playerSeconds,playing,firstLyricSeconds,offsetSeconds,hasCaption,captionStart,autoUnknown,enabled,allowHardSync){"
                 + "if(!enabled||!player||!ready||!player.getPlayerState)return;"
                 + "try{var now=Date.now();if(now-lastCaptionDisable>5000){lastCaptionDisable=now;disableCaptions();}"
@@ -402,6 +412,13 @@ public final class YouTubeBackgroundView extends FrameLayout {
     }
 
     private final class Bridge {
+        @JavascriptInterface
+        public void onUnavailable() {
+            handler.post(() -> {
+                playerReady = false;
+                ensureVisibleState();
+            });
+        }
         @JavascriptInterface
         public void onReady() {
             handler.post(() -> {

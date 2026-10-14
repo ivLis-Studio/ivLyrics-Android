@@ -146,6 +146,18 @@ public final class NowPlayingService extends NotificationListenerService {
         return true;
     }
 
+    static String navigationDestination(boolean album) {
+        MediaController controller = activeController;
+        if (controller == null) return "";
+        MediaMetadata metadata = controller.getMetadata();
+        PlaybackState state = controller.getPlaybackState();
+        Bundle extras = state == null ? null : state.getExtras();
+        String key = album ? "album_uri" : "context_uri";
+        String value = firstNamedPlaybackValue(metadata, extras, key);
+        if (value.isEmpty()) value = firstNamedPlaybackValue(metadata, extras, album ? "album.uri" : "context.uri");
+        return AppearanceOptions.spotifyDestination(value, album);
+    }
+
     /** Uses Spotify's own media session; no notification-listener permission is needed. */
     static void attachEmbeddedController(MediaController controller) {
         MAIN.post(() -> {
