@@ -156,7 +156,7 @@ final class LocalAiProvider {
         if (!installed.isFile()) {
             deleteTree(directory);
             if (!directory.mkdirs() && !directory.isDirectory()) {
-                throw new IOException("Could not create " + directory);
+                throw new IOException("Could not install the Local AI engine.");
             }
             for (String[] entry : entries) {
                 File target = new File(directory, entry[2]);
@@ -174,14 +174,14 @@ final class LocalAiProvider {
                     }
                 }
                 if (size != Long.parseLong(entry[1]) || !hex(digest.digest()).equals(entry[0])) {
-                    throw new IOException("The Local AI engine file " + entry[2] + " is damaged.");
+                    throw new IOException("The Local AI engine in this app is damaged.");
                 }
                 if (!temporary.renameTo(target)) {
-                    throw new IOException("Could not install " + entry[2]);
+                    throw new IOException("Could not install the Local AI engine.");
                 }
                 // Android 14+ refuses dynamically loaded code that its app can still write.
                 if (!target.setReadOnly()) {
-                    throw new IOException("Could not protect " + entry[2]);
+                    throw new IOException("Could not install the Local AI engine.");
                 }
             }
             if (!installed.createNewFile() && !installed.isFile()) {

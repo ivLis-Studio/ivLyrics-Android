@@ -55,7 +55,7 @@ final class LocalAiDownloader {
         }
         File directory = target.getParentFile();
         if (directory != null && !directory.isDirectory() && !directory.mkdirs()) {
-            throw new IOException("Could not create " + directory);
+            throw new IOException("Could not create the model folder.");
         }
         File partial = partialFile(target);
         long existing = partial.isFile() ? partial.length() : 0L;
@@ -193,7 +193,7 @@ final class LocalAiDownloader {
 
     private static void deleteOrThrow(File file) throws IOException {
         if (file.exists() && !file.delete()) {
-            throw new IOException("Could not delete " + file);
+            throw new IOException("Could not replace the previous download.");
         }
     }
 }

@@ -46,7 +46,10 @@ final class LocalAiNative implements LocalAiRuntime.Backend {
         }
     }
 
+    // The libraries come from this APK's own assets, verified against their SHA-256 and read-only in
+    // app-private storage; System.loadLibrary cannot reach them because they are not packaged in lib/.
     @Override
+    @SuppressWarnings("UnsafeDynamicallyLoadedCode")
     public void initialize() throws IOException {
         synchronized (LOCK) {
             if (initialized) {
