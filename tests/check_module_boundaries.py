@@ -104,6 +104,11 @@ if args.built:
         require(len(paths) == 1, f"Exactly one {variant} {product} APK is available after assembly")
         with zipfile.ZipFile(paths[0]) as apk:
             entries = set(apk.namelist())
+            if variant == "release":
+                dex_entries = [name for name in entries if re.fullmatch(r"classes(?:[0-9]+)?[.]dex", name)]
+                require(bool(dex_entries), f"{product} release APK has executable DEX files")
+                require(not any(b"SettingsUiHarnessActivity" in apk.read(name) for name in dex_entries),
+                        f"{product} release APK excludes the debug settings UI fixture")
             require(not any(name.startswith("lib/") for name in entries),
                     f"{product} APK has no lib/ native libraries, so its installable ABIs are unchanged")
             manifest_name = "assets/localai/arm64-v8a/manifest.txt"
