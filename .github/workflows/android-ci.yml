@@ -103,7 +103,8 @@ jobs:
           export IVLYRICS_RELEASE_KEY_PASSWORD=ci-test-only
           ./gradlew :app:assembleRelease :spotify-module:assembleRelease \
             -PivLyricsRequireReleaseSigning=true --console=plain
-          python3 .github/scripts/collect_release_apks.py --tag v0.0.0-ci \
+          ivlyrics_ci_version="$(sed -n 's/^ivLyricsVersionName=//p' gradle.properties)"
+          python3 .github/scripts/collect_release_apks.py --tag "v${ivlyrics_ci_version}" \
             --output build/reports/release-packaging
           python3 tests/check_module_boundaries.py --built --variant release
 
