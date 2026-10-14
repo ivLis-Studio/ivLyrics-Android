@@ -278,6 +278,8 @@ public final class SettingsUiRegressionTest {
                     && point[1] >= origin[1] && point[1] < origin[1] + root.getHeight());
         });
         long now = SystemClock.uptimeMillis();
+        android.util.Log.i("SettingsUiRegression", "Injecting native touch " + point[0] + "," + point[1]
+                + "; active=" + activeWindowOwner());
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
         MotionEvent up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, point[0], point[1], 0);
         instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
@@ -305,7 +307,9 @@ public final class SettingsUiRegressionTest {
                             namespace + ":id/immersive_cling_description");
                     if (!education.isEmpty()) {
                         for (AccessibilityNodeInfo button : node.findAccessibilityNodeInfosByViewId(namespace + ":id/ok")) {
-                            button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            boolean acknowledged = button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            android.util.Log.i("SettingsUiRegression", "Immersive education acknowledgement: "
+                                    + namespace + ", accepted=" + acknowledged);
                             button.recycle();
                         }
                         stable = 0;
@@ -322,10 +326,12 @@ public final class SettingsUiRegressionTest {
                 Rect actual = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
                 ready[0] = root.hasWindowFocus() && size[0] > 0 && size[1] > 0 && size[0] <= actual.width();
                 state[0] = "focused=" + root.hasWindowFocus() + ", root=" + size[0] + "x" + size[1]
+                        + ", activityDecorFocused=" + activity.getWindow().getDecorView().hasWindowFocus()
                         + ", currentWindow=" + actual + ", resources="
                         + activity.getResources().getDisplayMetrics().widthPixels + "x"
                         + activity.getResources().getDisplayMetrics().heightPixels;
             });
+            state[0] += ", active=" + activeWindowOwner();
             if (!state[0].equals(lastState)) android.util.Log.i("SettingsUiRegression", "Window settling: " + state[0]);
             lastState = state[0];
             if (ready[0] && size[0] == previousWidth && size[1] == previousHeight) stable++; else stable = 0;
@@ -334,6 +340,14 @@ public final class SettingsUiRegressionTest {
         }
         screenshot("unsettled-window-" + SystemClock.uptimeMillis());
         fail("Native window did not settle/focus before touch injection: " + lastState);
+    }
+
+    private String activeWindowOwner() {
+        AccessibilityNodeInfo root = instrumentation.getUiAutomation().getRootInActiveWindow();
+        if (root == null) return "none";
+        String owner = String.valueOf(root.getPackageName()) + "/" + root.getClassName() + "#" + root.getWindowId();
+        root.recycle();
+        return owner;
     }
 
     private void render(View root, int width, int height) {
