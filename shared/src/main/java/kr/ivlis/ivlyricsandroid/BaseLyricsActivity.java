@@ -4470,7 +4470,22 @@ public class BaseLyricsActivity extends Activity implements
         // follows later size changes.
         settingsPreviewInline = getResources().getConfiguration().screenHeightDp < 600;
 
-        FrameLayout panel = new FrameLayout(this);
+        FrameLayout panel = new FrameLayout(this) {
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                // A short window (landscape, split screen, large text) keeps the live preview in the
+                // page instead of pinning it above the scroll area. Decide before the children are
+                // measured so the very first layout at a new size is already right.
+                if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+                    boolean inline = MeasureSpec.getSize(heightMeasureSpec) < dp(600);
+                    if (inline != settingsPreviewInline) {
+                        settingsPreviewInline = inline;
+                        placeSettingsPreviewHost();
+                    }
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
         panel.setVisibility(View.GONE);
         panel.setBackgroundColor(palette.bg);
         // Touches on empty parts of the panel must not reach the player underneath.
@@ -4533,15 +4548,6 @@ public class BaseLyricsActivity extends Activity implements
         settingsBuildingSection = "";
         buildSettingsHomeMenus();
 
-        panel.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            // A short window (landscape, split screen, large text) keeps the live preview in the page
-            // instead of pinning it above the scroll area.
-            boolean inline = bottom - top < dp(600);
-            if (inline != settingsPreviewInline) {
-                settingsPreviewInline = inline;
-                view.post(this::placeSettingsPreviewHost);
-            }
-        });
         populateAiSettingsUi();
         showSettingsRoute(settingsRoute, true);
         return panel;
