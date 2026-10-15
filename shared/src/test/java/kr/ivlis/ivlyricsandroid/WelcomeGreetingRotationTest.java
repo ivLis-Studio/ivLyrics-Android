@@ -92,4 +92,21 @@ public final class WelcomeGreetingRotationTest {
         assertNull(restored.pending);
         assertTrue(restored.rotation.isKorean());
     }
+
+    @Test public void phaseExitSettlesToUiLanguageEvenAfterAResumablePause() {
+        Fixture fixture = new Fixture(false, false);
+        fixture.rotation.setActive(true);
+        fixture.advance();
+        assertTrue("presentation has rotated away from the English UI language", fixture.korean);
+        fixture.rotation.setActive(false);
+        assertFalse(fixture.rotation.hasLanguageInteraction());
+        fixture.rotation.interactWithLanguage("en");
+        fixture.rotation.setActive(false);
+        assertFalse(fixture.korean);
+        assertFalse(fixture.animate);
+        assertTrue(fixture.rotation.hasLanguageInteraction());
+        fixture.rotation.setActive(true);
+        assertNull("returning to welcome cannot restart rotation", fixture.pending);
+        assertFalse(fixture.rotation.isKorean());
+    }
 }

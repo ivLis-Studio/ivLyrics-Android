@@ -6508,11 +6508,17 @@ public class BaseLyricsActivity extends Activity implements
 
     private void showOnboardingStep(int step) {
         rememberSpotifySetupDraft();
-        if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
+        int nextStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, step));
+        if (onboardingGreetingRotation != null) {
+            // Leaving welcome settles in the selected UI language for the rest of this flow.
+            // Background/focus pauses continue to use the resumable setActive(false) path.
+            if (nextStep > 0) onboardingGreetingRotation.interactWithLanguage(aiLyricsSettings.snapshot().uiLang);
+            onboardingGreetingRotation.setActive(false);
+        }
         onboardingGreetingView = null;
         onboardingGreetingEnglish = null;
         onboardingGreetingKorean = null;
-        onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, step));
+        onboardingStep = nextStep;
         if (onboardingBody == null) {
             return;
         }

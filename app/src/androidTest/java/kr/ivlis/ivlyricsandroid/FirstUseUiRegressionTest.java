@@ -139,6 +139,33 @@ public final class FirstUseUiRegressionTest {
         capture("ko-welcome-selected-restored-dark");
     }
 
+    @Test public void welcomeNextBackWithoutLanguageSelectionStaysStopped() throws Exception {
+        launch("en", 1f, true, false, "dark", true);
+        java.util.Map<String, ?> preferences = activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll();
+        onMain(() -> assertFalse(((WelcomeGreetingRotation) activity.value("onboardingGreetingRotation")).hasLanguageInteraction()));
+        // Leave while the presentation says Korean but the persisted UI language is English.
+        awaitGreeting(true);
+        tap(activity.view("onboardingNextButton"));
+        assertGreetingScheduled(false);
+        onMain(() -> {
+            assertEquals(1, activity.value("onboardingStep"));
+            WelcomeGreetingRotation rotation = (WelcomeGreetingRotation) activity.value("onboardingGreetingRotation");
+            assertTrue(rotation.hasLanguageInteraction());
+            assertFalse("phase exit settles to the UI language", rotation.isKorean());
+        });
+        tap(activity.view("onboardingBackButton"));
+        assertGreetingStopped(false);
+        recreateFirstUseActivity();
+        SystemClock.sleep(WelcomeGreetingRotation.INTERVAL_MS + 400);
+        assertGreetingStopped(false);
+        onMain(() -> {
+            assertEquals(0, activity.value("onboardingStep"));
+            assertEquals(preferences, activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll());
+            assertEquals(ui("button.next"), ((TextView) activity.view("onboardingNextButton")).getText().toString());
+        });
+        capture("en-welcome-next-back-without-language-restored-dark");
+    }
+
     @Test public void welcomeLifecycleVisibilityAndAccessibilityCancelTimers() throws Exception {
         launch("ko", 1.6f, true, true, "dark", true);
         assertControls(activity.view("spotifySetupPanel"));
@@ -149,12 +176,6 @@ public final class FirstUseUiRegressionTest {
         // At large text in landscape the title can scroll fully offscreen.
         reveal(activity.view("onboardingGreetingView"));
         assertGreetingScheduled(true);
-        tap(activity.view("onboardingNextButton"));
-        assertGreetingScheduled(false);
-        tap(activity.view("onboardingBackButton"));
-        reveal(activity.view("onboardingGreetingView"));
-        assertGreetingScheduled(true);
-
         assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME));
         SystemClock.sleep(300);
         assertGreetingScheduled(false);
@@ -194,6 +215,10 @@ public final class FirstUseUiRegressionTest {
             shellOutput("null".equals(animatorScale) ? "settings delete global animator_duration_scale"
                     : "settings put global animator_duration_scale " + animatorScale);
         }
+        tap(activity.view("onboardingNextButton"));
+        assertGreetingScheduled(false);
+        tap(activity.view("onboardingBackButton"));
+        assertGreetingStopped(true);
         onMain(() -> activity.finish());
         assertGreetingScheduled(false);
     }
