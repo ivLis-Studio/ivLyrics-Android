@@ -4465,7 +4465,10 @@ public class BaseLyricsActivity extends Activity implements
         }
         // Rebuilt with the current palette the next time its card opens.
         localAiSettingsView = null;
-        settingsPreviewInline = false;
+        // Decide from the configuration up front so the first layout of a short window (landscape,
+        // split screen) already keeps the preview in the page; the layout listener below still
+        // follows later size changes.
+        settingsPreviewInline = getResources().getConfiguration().screenHeightDp < 600;
 
         FrameLayout panel = new FrameLayout(this);
         panel.setVisibility(View.GONE);
