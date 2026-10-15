@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics – sledování médií</string>
+    <string name="service_label_spotify_detector">ivLyrics – detekce Spotify</string>
+    <string name="accessibility_service_description">Rozpozná, kdy je otevřený Spotify, aby ivLyrics zobrazoval svého zástupce jen uvnitř Spotify.</string>
+</resources>

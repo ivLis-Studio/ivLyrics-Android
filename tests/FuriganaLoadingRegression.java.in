@@ -149,7 +149,7 @@ public final class FuriganaLoadingRegression {
     private LyricsResult currentLyricsResult;
     private String ui(String key) { return key; }
     private String aiProviderLoadingText(String format, String fallback) { return fallback; }
-    private boolean isLoadingLyricsPreview(String detail) { return false; }
+    private boolean isLoadingLyricsPreview(LyricsResult result) { return false; }
     private String lyricsLoadingText() { return "lyrics loading"; }
     // INSERT_SUPPLEMENT_LOADING_TEXT
     // INSERT_VINYL_LOADING_TEXT

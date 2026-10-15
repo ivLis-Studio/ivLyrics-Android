@@ -1,3 +1,6 @@
 <resources>
+    <!-- Shown in Android system settings, so these follow the phone's language. -->
+    <string name="service_label_media_listener">ivLyrics media listener</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify detector</string>
     <string name="accessibility_service_description">Detects when Spotify is open so ivLyrics can show its shortcut only inside Spotify.</string>
 </resources>

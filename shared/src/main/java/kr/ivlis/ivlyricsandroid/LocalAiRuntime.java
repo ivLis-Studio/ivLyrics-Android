@@ -73,25 +73,46 @@ final class LocalAiRuntime {
         }
     }
 
+    /**
+     * A failure of the engine, the model or a download. Its message keeps the technical detail for
+     * logs; {@link #key} (an i18n key) words it for the user, with {@link #httpStatus} as "{status}".
+     */
+    static final class Failure extends IOException {
+        final String key;
+        final int httpStatus;
+
+        Failure(String key, int httpStatus, Throwable cause) {
+            super(describe(cause), cause);
+            this.key = key;
+            this.httpStatus = httpStatus;
+        }
+    }
+
     static final class Status {
         final Phase phase;
         final LocalAiModels.Tier tier;
         final long loadedBytes;
         final long totalBytes;
         final String device;
+        /** The technical detail of the last failure, for logs only. */
         final String error;
+        /** The i18n key that words that failure for the user, and its HTTP status ({status}) or 0. */
+        final String errorKey;
+        final int errorStatus;
         /** Why this device cannot run the engine (an i18n key), or null; the phase is then ERROR. */
         final String unsupportedReason;
         private final Set<String> downloadedTiers;
 
         Status(Phase phase, LocalAiModels.Tier tier, long loadedBytes, long totalBytes, String device, String error,
-                String unsupportedReason, Set<String> downloadedTiers) {
+                String errorKey, int errorStatus, String unsupportedReason, Set<String> downloadedTiers) {
             this.phase = phase;
             this.tier = tier;
             this.loadedBytes = loadedBytes;
             this.totalBytes = totalBytes;
             this.device = device;
             this.error = error;
+            this.errorKey = errorKey;
+            this.errorStatus = errorStatus;
             this.unsupportedReason = unsupportedReason;
             this.downloadedTiers = Collections.unmodifiableSet(downloadedTiers);
         }
@@ -168,6 +189,8 @@ final class LocalAiRuntime {
     private LocalAiModels.Tier loadedTier;
     private LocalAiModels.Tier loadingTier;
     private String error;
+    private String errorKey;
+    private int errorStatus;
     private LocalAiModels.Tier downloadingTier;
     private long downloadedBytes;
     private LocalAiDownloader download;
@@ -218,7 +241,7 @@ final class LocalAiRuntime {
             changed = next != tier || idle != idleMinutes;
             if (next != tier) {
                 tier = next;
-                error = null;
+                clearErrorLocked();
                 if (handle != 0 && loadedTier != next) {
                     enqueueControlLocked(this::unloadNow);
                 }
@@ -353,7 +376,11 @@ final class LocalAiRuntime {
                 File partial = LocalAiDownloader.partialFile(file);
                 boolean deleted = (!file.exists() || file.delete()) && (!partial.exists() || partial.delete());
                 synchronized (lock) {
-                    error = deleted ? null : "Could not delete the model file.";
+                    if (deleted) {
+                        clearErrorLocked();
+                    } else {
+                        setErrorLocked(LocalAiModels.ERROR_DELETE, 0, "Could not delete " + file.getName() + ".");
+                    }
                 }
             });
         }
@@ -373,7 +400,7 @@ final class LocalAiRuntime {
             downloadingTier = target;
             File partial = LocalAiDownloader.partialFile(modelFile(target));
             downloadedBytes = partial.isFile() ? Math.min(partial.length(), target.sizeBytes) : 0L;
-            error = null;
+            clearErrorLocked();
         }
         notifyListeners();
         Thread thread = threadFactory.newThread(() -> runDownload(target, downloader));
@@ -418,7 +445,8 @@ final class LocalAiRuntime {
             } else {
                 phase = downloaded.contains(tier.id) ? Phase.DOWNLOADED : Phase.MISSING;
             }
-            return new Status(phase, tier, loaded, tier.sizeBytes, device, message, unsupportedReason, downloaded);
+            return new Status(phase, tier, loaded, tier.sizeBytes, device, message,
+                    message == null ? null : errorKey, message == null ? 0 : errorStatus, unsupportedReason, downloaded);
         }
     }
 
@@ -436,7 +464,7 @@ final class LocalAiRuntime {
     }
 
     private void runDownload(LocalAiModels.Tier target, LocalAiDownloader downloader) {
-        String failure = null;
+        Throwable failure = null;
         try {
             downloader.download(target.url(), modelFile(target), target.sizeBytes, (loaded, total) -> {
                 synchronized (lock) {
@@ -447,7 +475,7 @@ final class LocalAiRuntime {
         } catch (CancellationException cancelled) {
             // The partial file stays so the next download resumes it.
         } catch (Throwable downloadError) {
-            failure = describe(downloadError);
+            failure = downloadError;
         }
         synchronized (lock) {
             if (download == downloader) {
@@ -455,7 +483,10 @@ final class LocalAiRuntime {
                 downloadingTier = null;
             }
             if (failure != null) {
-                error = failure;
+                int status = failure instanceof LocalAiDownloader.HttpStatusException
+                        ? ((LocalAiDownloader.HttpStatusException) failure).status : 0;
+                setErrorLocked(status > 0 ? LocalAiModels.ERROR_DOWNLOAD_HTTP : LocalAiModels.ERROR_DOWNLOAD,
+                        status, describe(failure));
             }
         }
         notifyListeners();
@@ -557,10 +588,15 @@ final class LocalAiRuntime {
         } catch (Throwable failure) {
             Throwable reported = failure instanceof NativeFailure ? failure.getCause() : failure;
             boolean release = failure instanceof NativeFailure && !(reported instanceof CancellationException);
+            if (!(reported instanceof CancellationException || reported instanceof LocalAiException
+                    || reported instanceof Failure)) {
+                // Load failures arrive worded already; anything else went wrong while translating.
+                reported = new Failure(LocalAiModels.ERROR_TRANSLATE, 0, reported);
+            }
             synchronized (lock) {
                 removeLocked(job);
                 if (release) {
-                    error = describe(reported);
+                    setErrorLocked(LocalAiModels.ERROR_TRANSLATE, 0, describe(reported));
                 }
             }
             if (release) {
@@ -594,11 +630,15 @@ final class LocalAiRuntime {
         synchronized (lock) {
             requireReadyLocked(messages);
             loadingTier = wanted;
-            error = null;
+            clearErrorLocked();
         }
         notifyListeners();
         try {
             backend.initialize();
+        } catch (Throwable failure) {
+            throw failLoading(LocalAiModels.ERROR_ENGINE, failure);
+        }
+        try {
             long loaded = backend.load(modelFile(wanted), CONTEXT_SIZE, BATCH_SIZE, threads);
             synchronized (lock) {
                 handle = loaded;
@@ -608,13 +648,30 @@ final class LocalAiRuntime {
             notifyListeners();
             return loaded;
         } catch (Throwable failure) {
-            synchronized (lock) {
-                loadingTier = null;
-                error = describe(failure);
-            }
-            notifyListeners();
-            throw asException(failure);
+            throw failLoading(LocalAiModels.ERROR_LOAD, failure);
         }
+    }
+
+    /** Ends a load that failed in the engine or with the model file; the next request tries again. */
+    private Failure failLoading(String key, Throwable failure) {
+        Failure worded = new Failure(key, 0, failure);
+        synchronized (lock) {
+            loadingTier = null;
+            setErrorLocked(key, 0, worded.getMessage());
+        }
+        notifyListeners();
+        return worded;
+    }
+
+    /** Records what failed: an i18n key for the settings card and the technical detail for logs. */
+    private void setErrorLocked(String key, int httpStatus, String detail) {
+        error = detail;
+        errorKey = key;
+        errorStatus = httpStatus;
+    }
+
+    private void clearErrorLocked() {
+        setErrorLocked(null, 0, null);
     }
 
     private void unloadNow() {

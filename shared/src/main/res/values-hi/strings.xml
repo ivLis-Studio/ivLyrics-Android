@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics मीडिया लिसनर</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify डिटेक्टर</string>
+    <string name="accessibility_service_description">यह पता लगाता है कि Spotify कब खुला है, ताकि ivLyrics अपना शॉर्टकट केवल Spotify के अंदर दिखाए।</string>
+</resources>

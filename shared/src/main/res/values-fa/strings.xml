@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">شنوندهٔ رسانهٔ ivLyrics</string>
+    <string name="service_label_spotify_detector">تشخیص Spotify در ivLyrics</string>
+    <string name="accessibility_service_description">تشخیص می‌دهد Spotify چه زمانی باز است تا ivLyrics میان‌بر خود را فقط داخل Spotify نشان دهد.</string>
+</resources>

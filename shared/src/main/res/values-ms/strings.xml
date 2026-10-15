@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">Pendengar media ivLyrics</string>
+    <string name="service_label_spotify_detector">Pengesan Spotify ivLyrics</string>
+    <string name="accessibility_service_description">Mengesan apabila Spotify dibuka supaya ivLyrics hanya memaparkan pintasannya di dalam Spotify.</string>
+</resources>

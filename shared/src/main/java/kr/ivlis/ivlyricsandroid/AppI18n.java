@@ -146,8 +146,146 @@ final class AppI18n {
         addAppearanceStrings(languages);
         addVinylControlStrings(languages);
         addLyricsRegenerateStrings(languages);
+        addSingAlongStrings(languages);
+        addErrorMessageStrings(languages);
+        addAccessibilityLabelStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
+    }
+
+    /** The Spotify module's sing-along control, in the app's UI language like the rest of its lyrics page. */
+    private static void addSingAlongStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "sing_along.state_off",
+                "sing_along.state_low",
+                "sing_along.state_high",
+                "sing_along.stopping",
+                "sing_along.cancel",
+                "sing_along.no_track",
+                "sing_along.remote",
+                "sing_along.offline",
+                "sing_along.quality",
+                "sing_along.version",
+                "sing_along.unsupported_track",
+                "sing_along.unsupported_account",
+                "sing_along.mask_error",
+                "sing_along.timeout",
+                "sing_along.reset_failed",
+                "sing_along.error",
+                "sing_along.waiting"
+        };
+        String[][] rows = {
+                {"en", "Sing along off. Tap for low vocals", "Sing along with low vocals. Tap for high vocals", "Sing along with high vocals. Tap to turn off", "Turning sing along off", "Cancel sing-along preparation", "Play a song in Spotify first.", "Play on this device to sing along.", "Turn off Spotify offline mode to sing along.", "Choose a playback quality higher than Low in Spotify.", "Sing along is unavailable with this Spotify version.", "Spotify does not currently offer sing along for this song.", "Spotify has not enabled sing along for this account.", "Spotify could not prepare vocal reduction for this song.", "Sing along took too long to prepare. Please try again.", "Could not turn off sing along. Tap again to retry.", "Could not start sing along. Please try again.", "Checking Spotify sing-along availability."},
+                {"ko", "노래방 꺼짐. 눌러서 보컬 작게", "노래방 보컬 작게. 눌러서 보컬 크게", "노래방 보컬 크게. 눌러서 끄기", "노래방 끄는 중", "따라 부르기 준비 취소", "Spotify에서 노래를 먼저 재생해주세요.", "이 기기에서 재생하면 따라 부르기를 사용할 수 있습니다.", "Spotify의 오프라인 모드를 꺼주세요.", "Spotify의 재생 음질을 낮음보다 높게 설정해주세요.", "이 Spotify 버전에서는 따라 부르기를 사용할 수 없습니다.", "Spotify에서 이 곡의 따라 부르기를 제공하지 않습니다.", "이 계정에는 Spotify 따라 부르기가 활성화되어 있지 않습니다.", "이 곡의 보컬 감소를 준비하지 못했습니다.", "따라 부르기 준비가 지연되었습니다. 다시 시도해주세요.", "따라 부르기를 끄지 못했습니다. 다시 눌러 해제해주세요.", "따라 부르기를 시작하지 못했습니다. 다시 시도해주세요.", "Spotify 따라 부르기 지원 여부를 확인하고 있습니다."},
+                {"zh-CN", "跟唱已关闭。点按切换为人声小", "跟唱：人声小。点按切换为人声大", "跟唱：人声大。点按关闭", "正在关闭跟唱", "取消跟唱准备", "请先在 Spotify 中播放歌曲。", "在此设备上播放即可跟唱。", "请关闭 Spotify 的离线模式以使用跟唱。", "请在 Spotify 中选择高于“低”的音质。", "此版本的 Spotify 无法使用跟唱。", "Spotify 目前不提供这首歌曲的跟唱。", "Spotify 尚未为此账号启用跟唱。", "Spotify 无法为这首歌曲准备人声消减。", "跟唱准备时间过长，请重试。", "无法关闭跟唱，请再次点按重试。", "无法开始跟唱，请重试。", "正在检查 Spotify 是否支持跟唱。"},
+                {"zh-TW", "跟唱已關閉。點按切換為人聲小", "跟唱：人聲小。點按切換為人聲大", "跟唱：人聲大。點按即可關閉", "正在關閉跟唱", "取消跟唱準備", "請先在 Spotify 播放歌曲。", "在這部裝置上播放即可跟唱。", "請關閉 Spotify 的離線模式以使用跟唱。", "請在 Spotify 中選擇高於「低」的音質。", "這個版本的 Spotify 無法使用跟唱。", "Spotify 目前未提供這首歌曲的跟唱。", "Spotify 尚未為這個帳戶啟用跟唱。", "Spotify 無法為這首歌曲準備人聲消減。", "跟唱準備時間過長，請再試一次。", "無法關閉跟唱，請再次點按重試。", "無法開始跟唱，請再試一次。", "正在確認 Spotify 是否支援跟唱。"},
+                {"ja", "カラオケ：オフ。タップでボーカル小", "カラオケ：ボーカル小。タップでボーカル大", "カラオケ：ボーカル大。タップでオフ", "カラオケをオフにしています", "カラオケの準備をキャンセル", "先にSpotifyで曲を再生してください。", "このデバイスで再生するとカラオケを使えます。", "カラオケを使うには、Spotifyのオフラインモードをオフにしてください。", "Spotifyの音質を「低」より高く設定してください。", "このバージョンのSpotifyではカラオケを使えません。", "Spotifyは現在、この曲のカラオケを提供していません。", "このアカウントではSpotifyのカラオケが有効になっていません。", "Spotifyがこの曲のボーカル抑制を準備できませんでした。", "カラオケの準備に時間がかかりすぎました。もう一度お試しください。", "カラオケをオフにできませんでした。もう一度タップしてください。", "カラオケを開始できませんでした。もう一度お試しください。", "Spotifyでカラオケを使えるか確認しています。"},
+                {"hi", "कराओके बंद है। वोकल कम करने के लिए टैप करें", "कराओके: वोकल कम। वोकल ज़्यादा करने के लिए टैप करें", "कराओके: वोकल ज़्यादा। बंद करने के लिए टैप करें", "कराओके बंद किया जा रहा है", "कराओके की तैयारी रद्द करें", "पहले Spotify में कोई गाना चलाएँ।", "कराओके के लिए इसी डिवाइस पर गाना चलाएँ।", "कराओके के लिए Spotify का ऑफ़लाइन मोड बंद करें।", "Spotify में \"कम\" से बेहतर प्लेबैक क्वालिटी चुनें।", "Spotify के इस वर्शन में कराओके उपलब्ध नहीं है।", "Spotify अभी इस गाने के लिए कराओके नहीं देता।", "Spotify ने इस खाते के लिए कराओके चालू नहीं किया है।", "Spotify इस गाने में वोकल कम करने की तैयारी नहीं कर सका।", "कराओके की तैयारी में बहुत समय लगा। कृपया फिर से कोशिश करें।", "कराओके बंद नहीं हो सका। फिर से कोशिश करने के लिए दोबारा टैप करें।", "कराओके शुरू नहीं हो सका। कृपया फिर से कोशिश करें।", "Spotify में कराओके उपलब्ध है या नहीं, यह जाँचा जा रहा है।"},
+                {"es", "Karaoke desactivado. Toca para voces bajas", "Karaoke con voces bajas. Toca para voces altas", "Karaoke con voces altas. Toca para desactivarlo", "Desactivando el karaoke", "Cancelar la preparación del karaoke", "Primero reproduce una canción en Spotify.", "Reproduce en este dispositivo para usar el karaoke.", "Desactiva el modo sin conexión de Spotify para usar el karaoke.", "Elige en Spotify una calidad de reproducción superior a «Baja».", "El karaoke no está disponible en esta versión de Spotify.", "Spotify no ofrece karaoke para esta canción por ahora.", "Spotify no ha activado el karaoke en esta cuenta.", "Spotify no pudo preparar la reducción de voz de esta canción.", "La preparación del karaoke tardó demasiado. Inténtalo de nuevo.", "No se pudo desactivar el karaoke. Toca de nuevo para reintentarlo.", "No se pudo iniciar el karaoke. Inténtalo de nuevo.", "Comprobando si el karaoke de Spotify está disponible."},
+                {"fr", "Karaoké désactivé. Touchez pour des voix faibles", "Karaoké avec voix faibles. Touchez pour des voix fortes", "Karaoké avec voix fortes. Touchez pour désactiver", "Désactivation du karaoké", "Annuler la préparation du karaoké", "Lancez d’abord un titre dans Spotify.", "Lancez la lecture sur cet appareil pour utiliser le karaoké.", "Désactivez le mode hors connexion de Spotify pour utiliser le karaoké.", "Choisissez dans Spotify une qualité de lecture supérieure à « Faible ».", "Le karaoké n’est pas disponible avec cette version de Spotify.", "Spotify ne propose pas le karaoké pour ce titre pour le moment.", "Spotify n’a pas activé le karaoké pour ce compte.", "Spotify n’a pas pu préparer la réduction de la voix pour ce titre.", "La préparation du karaoké a pris trop de temps. Veuillez réessayer.", "Impossible de désactiver le karaoké. Touchez à nouveau pour réessayer.", "Impossible de lancer le karaoké. Veuillez réessayer.", "Vérification de la disponibilité du karaoké Spotify."},
+                {"ar", "الكاريوكي متوقف. اضغط لخفض صوت الغناء", "الكاريوكي بصوت غناء منخفض. اضغط لرفع صوت الغناء", "الكاريوكي بصوت غناء مرتفع. اضغط للإيقاف", "جارٍ إيقاف الكاريوكي", "إلغاء تجهيز الكاريوكي", "شغّل أغنية في Spotify أولًا.", "شغّل الأغنية على هذا الجهاز لاستخدام الكاريوكي.", "أوقف وضع عدم الاتصال في Spotify لاستخدام الكاريوكي.", "اختر في Spotify جودة تشغيل أعلى من «منخفضة».", "الكاريوكي غير متاح في هذا الإصدار من Spotify.", "لا يوفّر Spotify الكاريوكي لهذه الأغنية حاليًا.", "لم يفعّل Spotify الكاريوكي لهذا الحساب.", "تعذّر على Spotify تجهيز خفض صوت الغناء لهذه الأغنية.", "استغرق تجهيز الكاريوكي وقتًا طويلًا. يُرجى المحاولة مرة أخرى.", "تعذّر إيقاف الكاريوكي. اضغط مرة أخرى لإعادة المحاولة.", "تعذّر بدء الكاريوكي. يُرجى المحاولة مرة أخرى.", "جارٍ التحقق من توفر الكاريوكي في Spotify."},
+                {"fa", "هم‌خوانی خاموش است. برای کم کردن صدای خواننده ضربه بزنید", "هم‌خوانی با صدای خوانندهٔ کم. برای زیاد کردن صدای خواننده ضربه بزنید", "هم‌خوانی با صدای خوانندهٔ زیاد. برای خاموش کردن ضربه بزنید", "در حال خاموش کردن هم‌خوانی", "لغو آماده‌سازی هم‌خوانی", "ابتدا آهنگی را در Spotify پخش کنید.", "برای هم‌خوانی، آهنگ را روی همین دستگاه پخش کنید.", "برای هم‌خوانی، حالت آفلاین Spotify را خاموش کنید.", "در Spotify کیفیت پخش را بالاتر از «پایین» انتخاب کنید.", "هم‌خوانی در این نسخهٔ Spotify در دسترس نیست.", "Spotify در حال حاضر هم‌خوانی را برای این آهنگ ارائه نمی‌دهد.", "Spotify هم‌خوانی را برای این حساب فعال نکرده است.", "Spotify نتوانست کاهش صدای خواننده را برای این آهنگ آماده کند.", "آماده‌سازی هم‌خوانی بیش از حد طول کشید. لطفاً دوباره تلاش کنید.", "هم‌خوانی خاموش نشد. برای تلاش دوباره، دوباره ضربه بزنید.", "هم‌خوانی شروع نشد. لطفاً دوباره تلاش کنید.", "در حال بررسی در دسترس بودن هم‌خوانی Spotify."},
+                {"de", "Mitsingen aus. Tippen für leisen Gesang", "Mitsingen mit leisem Gesang. Tippen für lauten Gesang", "Mitsingen mit lautem Gesang. Tippen zum Ausschalten", "Mitsingen wird ausgeschaltet", "Vorbereitung des Mitsingens abbrechen", "Spielen Sie zuerst einen Song in Spotify ab.", "Starten Sie die Wiedergabe auf diesem Gerät, um mitzusingen.", "Schalten Sie den Offlinemodus von Spotify aus, um mitzusingen.", "Wählen Sie in Spotify eine höhere Wiedergabequalität als „Niedrig“.", "Mitsingen ist mit dieser Spotify-Version nicht verfügbar.", "Spotify bietet Mitsingen für diesen Song derzeit nicht an.", "Spotify hat Mitsingen für dieses Konto nicht aktiviert.", "Spotify konnte die Gesangsabsenkung für diesen Song nicht vorbereiten.", "Die Vorbereitung des Mitsingens hat zu lange gedauert. Bitte versuchen Sie es erneut.", "Mitsingen konnte nicht ausgeschaltet werden. Tippen Sie erneut, um es noch einmal zu versuchen.", "Mitsingen konnte nicht gestartet werden. Bitte versuchen Sie es erneut.", "Verfügbarkeit von Mitsingen in Spotify wird geprüft."},
+                {"ru", "Караоке выключено. Нажмите, чтобы приглушить вокал", "Караоке с тихим вокалом. Нажмите, чтобы сделать вокал громче", "Караоке с громким вокалом. Нажмите, чтобы выключить", "Караоке выключается", "Отменить подготовку караоке", "Сначала включите песню в Spotify.", "Чтобы петь караоке, включите воспроизведение на этом устройстве.", "Чтобы петь караоке, выключите офлайн-режим Spotify.", "Выберите в Spotify качество воспроизведения выше уровня «Низкое».", "Караоке недоступно в этой версии Spotify.", "Сейчас Spotify не предлагает караоке для этой песни.", "Spotify не включил караоке для этого аккаунта.", "Spotify не удалось подготовить приглушение вокала для этой песни.", "Подготовка караоке заняла слишком много времени. Попробуйте ещё раз.", "Не удалось выключить караоке. Нажмите ещё раз, чтобы повторить.", "Не удалось запустить караоке. Попробуйте ещё раз.", "Проверяем, доступно ли караоке в Spotify."},
+                {"sv", "Sjung med: av. Tryck för låg sång", "Sjung med: låg sång. Tryck för hög sång", "Sjung med: hög sång. Tryck för att stänga av", "Stänger av Sjung med", "Avbryt förberedelsen av Sjung med", "Spela först en låt i Spotify.", "Spela på den här enheten för att sjunga med.", "Stäng av offlineläget i Spotify för att sjunga med.", "Välj en högre uppspelningskvalitet än ”Låg” i Spotify.", "Sjung med är inte tillgängligt i den här versionen av Spotify.", "Spotify erbjuder för närvarande inte Sjung med för den här låten.", "Spotify har inte aktiverat Sjung med för det här kontot.", "Spotify kunde inte förbereda sänkt sång för den här låten.", "Förberedelsen av Sjung med tog för lång tid. Försök igen.", "Det gick inte att stänga av Sjung med. Tryck igen för att försöka på nytt.", "Det gick inte att starta Sjung med. Försök igen.", "Kontrollerar om Sjung med är tillgängligt i Spotify."},
+                {"pt", "Karaokê desativado. Toque para vocais baixos", "Karaokê com vocais baixos. Toque para vocais altos", "Karaokê com vocais altos. Toque para desativar", "Desativando o karaokê", "Cancelar a preparação do karaokê", "Primeiro, reproduza uma música no Spotify.", "Reproduza neste dispositivo para usar o karaokê.", "Desative o modo offline do Spotify para usar o karaokê.", "Escolha no Spotify uma qualidade de reprodução acima de “Baixa”.", "O karaokê não está disponível nesta versão do Spotify.", "No momento, o Spotify não oferece karaokê para esta música.", "O Spotify não ativou o karaokê para esta conta.", "O Spotify não conseguiu preparar a redução de voz desta música.", "A preparação do karaokê demorou demais. Tente novamente.", "Não foi possível desativar o karaokê. Toque de novo para tentar novamente.", "Não foi possível iniciar o karaokê. Tente novamente.", "Verificando se o karaokê do Spotify está disponível."},
+                {"bn", "কারাওকে বন্ধ। ভোকাল কমাতে ট্যাপ করুন", "কারাওকে: ভোকাল কম। ভোকাল বাড়াতে ট্যাপ করুন", "কারাওকে: ভোকাল বেশি। বন্ধ করতে ট্যাপ করুন", "কারাওকে বন্ধ করা হচ্ছে", "কারাওকের প্রস্তুতি বাতিল করুন", "প্রথমে Spotify-তে একটি গান চালান।", "কারাওকে ব্যবহার করতে এই ডিভাইসেই গান চালান।", "কারাওকে ব্যবহার করতে Spotify-এর অফলাইন মোড বন্ধ করুন।", "Spotify-তে \"কম\"-এর চেয়ে ভালো প্লেব্যাক মান বেছে নিন।", "Spotify-এর এই সংস্করণে কারাওকে উপলব্ধ নয়।", "Spotify এখন এই গানের জন্য কারাওকে দিচ্ছে না।", "Spotify এই অ্যাকাউন্টের জন্য কারাওকে চালু করেনি।", "Spotify এই গানের ভোকাল কমানোর প্রস্তুতি নিতে পারেনি।", "কারাওকে প্রস্তুত হতে অনেক সময় লেগেছে। আবার চেষ্টা করুন।", "কারাওকে বন্ধ করা যায়নি। আবার চেষ্টা করতে আবার ট্যাপ করুন।", "কারাওকে শুরু করা যায়নি। আবার চেষ্টা করুন।", "Spotify-তে কারাওকে উপলব্ধ কি না যাচাই করা হচ্ছে।"},
+                {"cs", "Karaoke vypnuto. Klepnutím ztlumíte zpěv", "Karaoke s tichým zpěvem. Klepnutím zpěv zesílíte", "Karaoke s hlasitým zpěvem. Klepnutím vypnete", "Vypínání karaoke", "Zrušit přípravu karaoke", "Nejprve přehrajte skladbu ve Spotify.", "Pro karaoke přehrávejte na tomto zařízení.", "Pro karaoke vypněte offline režim Spotify.", "Ve Spotify zvolte vyšší kvalitu přehrávání než „Nízká“.", "Karaoke není v této verzi Spotify k dispozici.", "Spotify pro tuto skladbu karaoke zatím nenabízí.", "Spotify pro tento účet karaoke nepovolilo.", "Spotify nedokázalo připravit ztlumení zpěvu pro tuto skladbu.", "Příprava karaoke trvala příliš dlouho. Zkuste to znovu.", "Karaoke se nepodařilo vypnout. Klepnutím to zkuste znovu.", "Karaoke se nepodařilo spustit. Zkuste to znovu.", "Ověřování dostupnosti karaoke ve Spotify."},
+                {"it", "Karaoke disattivato. Tocca per voci basse", "Karaoke con voci basse. Tocca per voci alte", "Karaoke con voci alte. Tocca per disattivare", "Disattivazione del karaoke", "Annulla la preparazione del karaoke", "Prima riproduci un brano su Spotify.", "Riproduci su questo dispositivo per usare il karaoke.", "Disattiva la modalità offline di Spotify per usare il karaoke.", "Scegli in Spotify una qualità di riproduzione superiore a «Bassa».", "Il karaoke non è disponibile con questa versione di Spotify.", "Al momento Spotify non offre il karaoke per questo brano.", "Spotify non ha attivato il karaoke per questo account.", "Spotify non è riuscito a preparare la riduzione della voce per questo brano.", "La preparazione del karaoke ha richiesto troppo tempo. Riprova.", "Impossibile disattivare il karaoke. Tocca di nuovo per riprovare.", "Impossibile avviare il karaoke. Riprova.", "Verifica della disponibilità del karaoke di Spotify in corso."},
+                {"th", "โหมดร้องตามปิดอยู่ แตะเพื่อลดเสียงร้อง", "ร้องตามแบบเสียงร้องเบา แตะเพื่อเพิ่มเสียงร้อง", "ร้องตามแบบเสียงร้องดัง แตะเพื่อปิด", "กำลังปิดโหมดร้องตาม", "ยกเลิกการเตรียมโหมดร้องตาม", "โปรดเล่นเพลงใน Spotify ก่อน", "เล่นเพลงบนอุปกรณ์นี้เพื่อใช้โหมดร้องตาม", "ปิดโหมดออฟไลน์ของ Spotify เพื่อใช้โหมดร้องตาม", "โปรดเลือกคุณภาพการเล่นใน Spotify ให้สูงกว่า \"ต่ำ\"", "Spotify เวอร์ชันนี้ใช้โหมดร้องตามไม่ได้", "ขณะนี้ Spotify ยังไม่มีโหมดร้องตามสำหรับเพลงนี้", "Spotify ยังไม่ได้เปิดใช้โหมดร้องตามสำหรับบัญชีนี้", "Spotify เตรียมการลดเสียงร้องของเพลงนี้ไม่สำเร็จ", "การเตรียมโหมดร้องตามใช้เวลานานเกินไป โปรดลองอีกครั้ง", "ปิดโหมดร้องตามไม่สำเร็จ แตะอีกครั้งเพื่อลองใหม่", "เริ่มโหมดร้องตามไม่สำเร็จ โปรดลองอีกครั้ง", "กำลังตรวจสอบว่า Spotify รองรับโหมดร้องตามหรือไม่"},
+                {"vi", "Hát theo đang tắt. Nhấn để giảm giọng hát", "Hát theo với giọng hát nhỏ. Nhấn để tăng giọng hát", "Hát theo với giọng hát lớn. Nhấn để tắt", "Đang tắt hát theo", "Hủy chuẩn bị hát theo", "Hãy phát một bài hát trên Spotify trước.", "Hãy phát trên thiết bị này để hát theo.", "Hãy tắt chế độ ngoại tuyến của Spotify để hát theo.", "Hãy chọn chất lượng phát trong Spotify cao hơn mức “Thấp”.", "Không thể hát theo với phiên bản Spotify này.", "Hiện Spotify chưa hỗ trợ hát theo cho bài hát này.", "Spotify chưa bật tính năng hát theo cho tài khoản này.", "Spotify không thể chuẩn bị giảm giọng hát cho bài hát này.", "Chuẩn bị hát theo mất quá nhiều thời gian. Vui lòng thử lại.", "Không thể tắt hát theo. Nhấn lại để thử lại.", "Không thể bắt đầu hát theo. Vui lòng thử lại.", "Đang kiểm tra Spotify có hỗ trợ hát theo hay không."},
+                {"id", "Karaoke nonaktif. Ketuk untuk vokal pelan", "Karaoke dengan vokal pelan. Ketuk untuk vokal keras", "Karaoke dengan vokal keras. Ketuk untuk menonaktifkan", "Menonaktifkan karaoke", "Batalkan persiapan karaoke", "Putar lagu di Spotify terlebih dahulu.", "Putar di perangkat ini untuk menggunakan karaoke.", "Nonaktifkan mode offline Spotify untuk menggunakan karaoke.", "Pilih kualitas pemutaran di Spotify yang lebih tinggi dari “Rendah”.", "Karaoke tidak tersedia di versi Spotify ini.", "Saat ini Spotify belum menyediakan karaoke untuk lagu ini.", "Spotify belum mengaktifkan karaoke untuk akun ini.", "Spotify tidak dapat menyiapkan pengurangan vokal untuk lagu ini.", "Persiapan karaoke terlalu lama. Silakan coba lagi.", "Karaoke tidak dapat dinonaktifkan. Ketuk lagi untuk mencoba ulang.", "Karaoke tidak dapat dimulai. Silakan coba lagi.", "Memeriksa ketersediaan karaoke Spotify."},
+                {"ms", "Karaoke dimatikan. Ketik untuk vokal perlahan", "Karaoke dengan vokal perlahan. Ketik untuk vokal kuat", "Karaoke dengan vokal kuat. Ketik untuk mematikan", "Mematikan karaoke", "Batalkan penyediaan karaoke", "Mainkan lagu dalam Spotify terlebih dahulu.", "Mainkan pada peranti ini untuk menggunakan karaoke.", "Matikan mod luar talian Spotify untuk menggunakan karaoke.", "Pilih kualiti main balik dalam Spotify yang lebih tinggi daripada “Rendah”.", "Karaoke tidak tersedia dalam versi Spotify ini.", "Spotify belum menawarkan karaoke untuk lagu ini buat masa ini.", "Spotify belum mendayakan karaoke untuk akaun ini.", "Spotify tidak dapat menyediakan pengurangan vokal untuk lagu ini.", "Penyediaan karaoke mengambil masa terlalu lama. Sila cuba lagi.", "Karaoke tidak dapat dimatikan. Ketik sekali lagi untuk mencuba semula.", "Karaoke tidak dapat dimulakan. Sila cuba lagi.", "Menyemak ketersediaan karaoke Spotify."},
+                {"tr", "Karaoke kapalı. Düşük vokal için dokunun", "Karaoke: düşük vokal. Yüksek vokal için dokunun", "Karaoke: yüksek vokal. Kapatmak için dokunun", "Karaoke kapatılıyor", "Karaoke hazırlığını iptal et", "Önce Spotify’da bir şarkı çalın.", "Karaoke için şarkıyı bu cihazda çalın.", "Karaoke için Spotify’ın çevrimdışı modunu kapatın.", "Spotify’da “Düşük” seviyesinden yüksek bir çalma kalitesi seçin.", "Bu Spotify sürümünde karaoke kullanılamıyor.", "Spotify şu anda bu şarkı için karaoke sunmuyor.", "Spotify bu hesap için karaokeyi etkinleştirmedi.", "Spotify bu şarkı için vokal azaltmayı hazırlayamadı.", "Karaoke hazırlığı çok uzun sürdü. Lütfen tekrar deneyin.", "Karaoke kapatılamadı. Yeniden denemek için tekrar dokunun.", "Karaoke başlatılamadı. Lütfen tekrar deneyin.", "Spotify karaoke kullanılabilirliği kontrol ediliyor."}
+        };
+        addRows(languages, keys, rows);
+    }
+
+    /** Provider failures shown to the user; the technical detail stays in the log. */
+    private static void addErrorMessageStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "error.api_key_required",
+                "error.ai_request_failed",
+                "error.keyless_none_enabled",
+                "error.provider_unexpected_response_format",
+                "error.provider_unavailable_format",
+                "error.provider_http_format"
+        };
+        String[][] rows = {
+                {"en", "An API key is required.", "The AI provider request failed.", "No translation-only provider is enabled.", "%s returned an unexpected response.", "%s is temporarily unavailable. Try again later.", "%s request failed (HTTP %d)."},
+                {"ko", "API 키가 필요합니다.", "AI 제공자 요청에 실패했습니다.", "활성화된 번역 전용 제공자가 없습니다.", "%s 응답 형식이 올바르지 않습니다.", "%s에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도하세요.", "%s 요청에 실패했습니다(HTTP %d)."},
+                {"zh-CN", "需要 API 密钥。", "AI 提供商请求失败。", "未启用仅用于翻译的提供商。", "%s 返回了无法识别的响应。", "%s 暂时不可用，请稍后重试。", "%s 请求失败（HTTP %d）。"},
+                {"zh-TW", "需要 API 金鑰。", "AI 供應商請求失敗。", "未啟用僅用於翻譯的供應商。", "%s 傳回了無法辨識的回應。", "%s 暫時無法使用，請稍後再試。", "%s 請求失敗（HTTP %d）。"},
+                {"ja", "APIキーが必要です。", "AI プロバイダーへのリクエストに失敗しました。", "有効な翻訳専用プロバイダーがありません。", "%s から予期しない応答が返されました。", "%s は一時的に利用できません。しばらくしてからもう一度お試しください。", "%s へのリクエストに失敗しました（HTTP %d）。"},
+                {"hi", "API कुंजी आवश्यक है।", "AI प्रदाता से अनुरोध विफल रहा।", "केवल अनुवाद वाला कोई प्रदाता चालू नहीं है।", "%s से अनपेक्षित जवाब मिला।", "%s अभी उपलब्ध नहीं है। कुछ देर बाद फिर से कोशिश करें।", "%s अनुरोध विफल रहा (HTTP %d)।"},
+                {"es", "Se necesita una clave API.", "Falló la solicitud al proveedor de IA.", "No hay ningún proveedor solo para traducción activado.", "%s devolvió una respuesta inesperada.", "%s no está disponible por ahora. Inténtalo más tarde.", "La solicitud a %s falló (HTTP %d)."},
+                {"fr", "Une clé API est requise.", "La requête au fournisseur IA a échoué.", "Aucun fournisseur dédié à la traduction n’est activé.", "%s a renvoyé une réponse inattendue.", "%s est temporairement indisponible. Réessayez plus tard.", "La requête vers %s a échoué (HTTP %d)."},
+                {"ar", "يلزم مفتاح API.", "فشل الطلب إلى موفر الذكاء الاصطناعي.", "لا يوجد موفّر مخصّص للترجمة مفعّل.", "أعاد %s استجابة غير متوقعة.", "تعذّر الوصول إلى %s مؤقتًا. حاول مرة أخرى لاحقًا.", "فشل الطلب إلى %s (HTTP %d)."},
+                {"fa", "کلید API لازم است.", "درخواست به ارائه‌دهنده هوش مصنوعی ناموفق بود.", "هیچ ارائه‌دهنده مخصوص ترجمه‌ای فعال نیست.", "%s پاسخ غیرمنتظره‌ای برگرداند.", "در حال حاضر دسترسی به %s ممکن نیست. بعداً دوباره تلاش کنید.", "درخواست به %s ناموفق بود (HTTP %d)."},
+                {"de", "Ein API-Schlüssel ist erforderlich.", "Die Anfrage an den KI-Anbieter ist fehlgeschlagen.", "Kein reiner Übersetzungsanbieter ist aktiviert.", "%s hat eine unerwartete Antwort geliefert.", "%s ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.", "Die Anfrage an %s ist fehlgeschlagen (HTTP %d)."},
+                {"ru", "Нужен API-ключ.", "Не удалось выполнить запрос к поставщику ИИ.", "Не включён ни один провайдер только для перевода.", "%s вернул неожиданный ответ.", "%s временно недоступен. Повторите попытку позже.", "Запрос к %s не выполнен (HTTP %d)."},
+                {"sv", "En API-nyckel krävs.", "Begäran till AI-leverantören misslyckades.", "Ingen leverantör endast för översättning är aktiverad.", "%s returnerade ett oväntat svar.", "%s är tillfälligt otillgängligt. Försök igen senare.", "Begäran till %s misslyckades (HTTP %d)."},
+                {"pt", "É necessária uma chave API.", "A solicitação ao provedor de IA falhou.", "Nenhum provedor exclusivo para tradução está ativado.", "%s retornou uma resposta inesperada.", "%s está temporariamente indisponível. Tente novamente mais tarde.", "A solicitação ao %s falhou (HTTP %d)."},
+                {"bn", "API কী প্রয়োজন।", "AI প্রদানকারীর কাছে অনুরোধ ব্যর্থ হয়েছে।", "শুধু অনুবাদের জন্য কোনো প্রদানকারী চালু নেই।", "%s থেকে অপ্রত্যাশিত উত্তর এসেছে।", "%s এখন সাময়িকভাবে উপলব্ধ নয়। পরে আবার চেষ্টা করুন।", "%s-এ অনুরোধ ব্যর্থ হয়েছে (HTTP %d)।"},
+                {"cs", "Je vyžadován klíč API.", "Požadavek na poskytovatele AI se nezdařil.", "Není zapnutý žádný poskytovatel pouze pro překlad.", "%s vrátil neočekávanou odpověď.", "%s je dočasně nedostupný. Zkuste to později.", "Požadavek na %s se nezdařil (HTTP %d)."},
+                {"it", "Serve una chiave API.", "La richiesta al provider IA non è riuscita.", "Nessun provider dedicato alla traduzione è attivo.", "%s ha restituito una risposta inattesa.", "%s non è temporaneamente disponibile. Riprova più tardi.", "La richiesta a %s non è riuscita (HTTP %d)."},
+                {"th", "ต้องใช้คีย์ API", "คำขอไปยังผู้ให้บริการ AI ล้มเหลว", "ยังไม่ได้เปิดใช้ผู้ให้บริการที่ใช้แปลเท่านั้น", "%s ส่งการตอบกลับที่ไม่คาดคิดกลับมา", "%s ใช้งานไม่ได้ชั่วคราว โปรดลองอีกครั้งในภายหลัง", "คำขอไปยัง %s ล้มเหลว (HTTP %d)"},
+                {"vi", "Cần có khóa API.", "Yêu cầu tới nhà cung cấp AI không thành công.", "Chưa bật nhà cung cấp chỉ dành cho dịch thuật nào.", "%s trả về phản hồi không mong muốn.", "%s tạm thời không khả dụng. Vui lòng thử lại sau.", "Yêu cầu tới %s không thành công (HTTP %d)."},
+                {"id", "Kunci API diperlukan.", "Permintaan ke penyedia AI gagal.", "Tidak ada penyedia khusus terjemahan yang diaktifkan.", "%s mengembalikan respons yang tidak terduga.", "%s untuk sementara tidak tersedia. Coba lagi nanti.", "Permintaan ke %s gagal (HTTP %d)."},
+                {"ms", "Kunci API diperlukan.", "Permintaan kepada penyedia AI gagal.", "Tiada penyedia khusus untuk terjemahan yang diaktifkan.", "%s memulangkan respons yang tidak dijangka.", "%s tidak tersedia buat sementara waktu. Cuba lagi kemudian.", "Permintaan kepada %s gagal (HTTP %d)."},
+                {"tr", "API anahtarı gerekiyor.", "AI sağlayıcısına yapılan istek başarısız oldu.", "Etkin bir yalnızca çeviri sağlayıcısı yok.", "%s beklenmeyen bir yanıt döndürdü.", "%s geçici olarak kullanılamıyor. Daha sonra tekrar deneyin.", "%s isteği başarısız oldu (HTTP %d)."}
+        };
+        addRows(languages, keys, rows);
+    }
+
+    /** Spoken labels and the names of Bluetooth audio devices that report no product name. */
+    private static void addAccessibilityLabelStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "accessibility.open_lyrics",
+                "accessibility.open_ivlyrics_lyrics",
+                "bluetooth_sync.device_ble_headset",
+                "bluetooth_sync.device_ble_speaker",
+                "bluetooth_sync.device_hearing_aid"
+        };
+        String[][] rows = {
+                {"en", "Open lyrics", "Open ivLyrics lyrics", "BLE headset", "BLE speaker", "Hearing aid"},
+                {"ko", "전체 가사 열기", "ivLyrics 가사 열기", "BLE 헤드셋", "BLE 스피커", "보청기"},
+                {"zh-CN", "打开歌词", "打开 ivLyrics 歌词", "BLE 耳机", "BLE 扬声器", "助听器"},
+                {"zh-TW", "開啟歌詞", "開啟 ivLyrics 歌詞", "BLE 耳機", "BLE 喇叭", "助聽器"},
+                {"ja", "歌詞を開く", "ivLyricsの歌詞を開く", "BLEヘッドセット", "BLEスピーカー", "補聴器"},
+                {"hi", "लिरिक्स खोलें", "ivLyrics में लिरिक्स खोलें", "BLE हेडसेट", "BLE स्पीकर", "श्रवण यंत्र"},
+                {"es", "Abrir letra", "Abrir la letra en ivLyrics", "Auriculares BLE", "Altavoz BLE", "Audífono"},
+                {"fr", "Ouvrir les paroles", "Ouvrir les paroles dans ivLyrics", "Casque BLE", "Enceinte BLE", "Appareil auditif"},
+                {"ar", "فتح كلمات الأغنية", "فتح كلمات الأغنية في ivLyrics", "سماعة رأس BLE", "مكبّر صوت BLE", "سماعة طبية"},
+                {"fa", "باز کردن متن ترانه", "باز کردن متن ترانه در ivLyrics", "هدست BLE", "بلندگوی BLE", "سمعک"},
+                {"de", "Songtext öffnen", "Songtext in ivLyrics öffnen", "BLE-Headset", "BLE-Lautsprecher", "Hörgerät"},
+                {"ru", "Открыть текст песни", "Открыть текст песни в ivLyrics", "Гарнитура BLE", "Колонка BLE", "Слуховой аппарат"},
+                {"sv", "Öppna låttext", "Öppna låttexten i ivLyrics", "BLE-headset", "BLE-högtalare", "Hörapparat"},
+                {"pt", "Abrir letra", "Abrir a letra no ivLyrics", "Fone de ouvido BLE", "Alto-falante BLE", "Aparelho auditivo"},
+                {"bn", "গানের কথা খুলুন", "ivLyrics-এ গানের কথা খুলুন", "BLE হেডসেট", "BLE স্পিকার", "শ্রবণযন্ত্র"},
+                {"cs", "Otevřít text písně", "Otevřít text písně v ivLyrics", "Náhlavní souprava BLE", "Reproduktor BLE", "Naslouchátko"},
+                {"it", "Apri il testo", "Apri il testo in ivLyrics", "Cuffie BLE", "Altoparlante BLE", "Apparecchio acustico"},
+                {"th", "เปิดเนื้อเพลง", "เปิดเนื้อเพลงใน ivLyrics", "ชุดหูฟัง BLE", "ลำโพง BLE", "เครื่องช่วยฟัง"},
+                {"vi", "Mở lời bài hát", "Mở lời bài hát trong ivLyrics", "Tai nghe BLE", "Loa BLE", "Máy trợ thính"},
+                {"id", "Buka lirik", "Buka lirik di ivLyrics", "Headset BLE", "Speaker BLE", "Alat bantu dengar"},
+                {"ms", "Buka lirik", "Buka lirik dalam ivLyrics", "Set kepala BLE", "Pembesar suara BLE", "Alat bantu pendengaran"},
+                {"tr", "Şarkı sözlerini aç", "Şarkı sözlerini ivLyrics’te aç", "BLE kulaklık", "BLE hoparlör", "İşitme cihazı"}
+        };
+        addRows(languages, keys, rows);
+    }
+
+    /** Adds keys translated row by row, {language, value...}; every UI language needs its own row. */
+    private static void addRows(Map<String, Map<String, String>> languages, String[] keys, String[][] rows) {
+        for (String[] row : rows) {
+            if (row.length != keys.length + 1) {
+                throw new IllegalStateException("Invalid translation row: " + row[0] + " " + keys[0]);
+            }
+            Map<String, String> copy = new LinkedHashMap<>(languages.get(row[0]));
+            for (int index = 0; index < keys.length; index++) {
+                copy.put(keys[index], row[index + 1]);
+            }
+            languages.put(row[0], Collections.unmodifiableMap(copy));
+        }
     }
 
     private static void addLyricsRegenerateStrings(Map<String, Map<String, String>> languages) {
@@ -317,7 +455,8 @@ final class AppI18n {
                 {"th", "ไม่สามารถเปิด Spotify ได้"},
                 {"vi", "Không thể mở Spotify"},
                 {"id", "Spotify tidak dapat dibuka"},
-                {"ms", "Spotify tidak dapat dibuka"}
+                {"ms", "Spotify tidak dapat dibuka"},
+                {"cs", "Spotify nelze otevřít"}
         };
         for (String[] translation : translations) {
             applyTranslationOverrides(
@@ -593,6 +732,68 @@ final class AppI18n {
             copy.put(entries[index], entries[index + 1]);
         }
         languages.put(languageCode, Collections.unmodifiableMap(copy));
+    }
+
+    /** One helper's strings for a UI language, as alternating keys and values. */
+    private interface LanguageStrings {
+        String[] forLanguage(String languageCode);
+    }
+
+    /**
+     * Applies helpers that list some languages and return their English default for the rest. For a
+     * language a helper does not list, that English default only fills keys that are missing or still
+     * English; it never replaces a translation an earlier table already provides. This keeps Czech,
+     * whose own table translates most helper keys, and any language added later translated.
+     */
+    private static void addLanguageStrings(Map<String, Map<String, String>> languages, LanguageStrings... helpers) {
+        Map<String, String> englishBefore = languages.get("en");
+        String[][] english = new String[helpers.length][];
+        for (int helper = 0; helper < helpers.length; helper++) {
+            english[helper] = helpers[helper].forLanguage("en");
+        }
+        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
+            Map<String, String> table = languages.get(language.code);
+            if (table == null) {
+                continue;
+            }
+            Map<String, String> copy = new LinkedHashMap<>(table);
+            for (int helper = 0; helper < helpers.length; helper++) {
+                String[] values = helpers[helper].forLanguage(language.code);
+                boolean englishFallback = !"en".equals(language.code) && Arrays.equals(values, english[helper]);
+                for (int index = 0; index + 1 < values.length; index += 2) {
+                    String key = values[index];
+                    if (englishFallback && isTranslated(copy.get(key), englishBefore, key, values[index + 1])) {
+                        continue;
+                    }
+                    copy.put(key, values[index + 1]);
+                }
+            }
+            languages.put(language.code, Collections.unmodifiableMap(copy));
+        }
+    }
+
+    /** Whether a table already shows its own text for a key rather than an English copy. */
+    private static boolean isTranslated(String current, Map<String, String> englishBefore, String key, String english) {
+        return current != null
+                && !current.trim().isEmpty()
+                && !current.equals(english)
+                && (englishBefore == null || !current.equals(englishBefore.get(key)));
+    }
+
+    /** Pairs a helper that returns only values with the keys those values translate. */
+    private static LanguageStrings keyed(String name, String[] keys, LanguageStrings values) {
+        return languageCode -> {
+            String[] row = values.forLanguage(languageCode);
+            if (row.length != keys.length) {
+                throw new IllegalStateException("Invalid " + name + " translations: " + languageCode);
+            }
+            String[] pairs = new String[keys.length * 2];
+            for (int index = 0; index < keys.length; index++) {
+                pairs[index * 2] = keys[index];
+                pairs[index * 2 + 1] = row[index];
+            }
+            return pairs;
+        };
     }
 
     private static void addFirstLanguagePromptStrings(Map<String, Map<String, String>> languages) {
@@ -1030,19 +1231,7 @@ final class AppI18n {
                 "font.serif",
                 "font.monospace"
         };
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) continue;
-            String[] values = culturalAnnotationStrings(language.code);
-            if (values.length != keys.length) {
-                throw new IllegalStateException("Invalid cultural annotation translations: " + language.code);
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index < keys.length; index++) {
-                copy.put(keys[index], values[index]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, keyed("cultural annotation", keys, AppI18n::culturalAnnotationStrings));
     }
 
     private static String[] culturalAnnotationStrings(String language) {
@@ -1191,19 +1380,7 @@ final class AppI18n {
                 "status.ai_generating_provider_format",
                 "tmi.loading_provider_format"
         };
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) continue;
-            String[] values = providerLoadingStrings(language.code);
-            if (values.length != keys.length) {
-                throw new IllegalStateException("Invalid provider loading translations: " + language.code);
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index < keys.length; index++) {
-                copy.put(keys[index], values[index]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, keyed("provider loading", keys, AppI18n::providerLoadingStrings));
     }
 
     private static String[] providerLoadingStrings(String language) {
@@ -1325,16 +1502,7 @@ final class AppI18n {
         String[] keys = {
                 "tab.general", "tab.appearance", "tab.player", "tab.system", "settings.subtitle"
         };
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) continue;
-            String[] values = settingsNavigationStrings(language.code);
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index < keys.length; index++) {
-                copy.put(keys[index], values[index]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, keyed("settings navigation", keys, AppI18n::settingsNavigationStrings));
     }
 
     private static String[] settingsNavigationStrings(String language) {
@@ -1392,21 +1560,7 @@ final class AppI18n {
                 "creator_privacy.login_success",
                 "lyrics.credit_anonymous"
         };
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            String[] values = creatorPrivacyStrings(language.code);
-            if (values.length != keys.length) {
-                throw new IllegalStateException("Invalid creator privacy translations: " + language.code);
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index < keys.length; index++) {
-                copy.put(keys[index], values[index]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, keyed("creator privacy", keys, AppI18n::creatorPrivacyStrings));
     }
 
     private static void addCloudSyncStrings(Map<String, Map<String, String>> languages) {
@@ -1418,19 +1572,7 @@ final class AppI18n {
                 "cloud_sync.deleted", "cloud_sync.confirm_apply", "cloud_sync.confirm_delete",
                 "cloud_sync.failed", "cloud_sync.monthly_required", "cloud_sync.conflict"
         };
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) continue;
-            String[] values = cloudSyncStrings(language.code);
-            if (values.length != keys.length) {
-                throw new IllegalStateException("Invalid cloud sync translations: " + language.code);
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index < keys.length; index++) {
-                copy.put(keys[index], values[index]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, keyed("cloud sync", keys, AppI18n::cloudSyncStrings));
     }
 
     private static String[] cloudSyncStrings(String language) {
@@ -1929,18 +2071,7 @@ final class AppI18n {
     }
 
     private static void addBluetoothSyncOffsetStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = bluetoothSyncOffsetStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::bluetoothSyncOffsetStrings);
     }
 
     private static String[] bluetoothSyncOffsetStrings(String lang) {
@@ -2011,18 +2142,7 @@ final class AppI18n {
     }
 
     private static void addGlobalSyncOffsetStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = globalSyncOffsetStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::globalSyncOffsetStrings);
     }
 
     private static String[] globalSyncOffsetStrings(String lang) {
@@ -2084,18 +2204,7 @@ final class AppI18n {
     }
 
     private static void addTmiStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = tmiStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::tmiStrings);
     }
 
     private static String[] tmiStrings(String lang) {
@@ -2174,41 +2283,12 @@ final class AppI18n {
     }
 
     private static void addKaraokeLineModeStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = karaokeLineModeStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::karaokeLineModeStrings);
     }
 
     private static void addVinylStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            String[] values = vinylStrings(language.code);
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            String[] settingsValues = vinylSettingsStrings(language.code);
-            for (int index = 0; index + 1 < settingsValues.length; index += 2) {
-                copy.put(settingsValues[index], settingsValues[index + 1]);
-            }
-            String[] tonearmValues = vinylTonearmSettingsStrings(language.code);
-            for (int index = 0; index + 1 < tonearmValues.length; index += 2) {
-                copy.put(tonearmValues[index], tonearmValues[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::vinylStrings, AppI18n::vinylSettingsStrings,
+                AppI18n::vinylTonearmSettingsStrings);
     }
 
     private static String[] vinylStrings(String lang) {
@@ -3204,18 +3284,7 @@ final class AppI18n {
     }
 
     private static void addLyricsAlignmentStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = lyricsAlignmentStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::lyricsAlignmentStrings);
     }
 
     private static String[] lyricsAlignmentStrings(String lang) {
@@ -3277,26 +3346,8 @@ final class AppI18n {
     }
 
     private static void addPictureInPictureStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = pictureInPictureStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            String[] settingValues = pictureInPictureSettingStrings(language.code);
-            for (int index = 0; index + 1 < settingValues.length; index += 2) {
-                copy.put(settingValues[index], settingValues[index + 1]);
-            }
-            String[] sizeValues = pictureInPictureSizeStrings(language.code);
-            for (int index = 0; index + 1 < sizeValues.length; index += 2) {
-                copy.put(sizeValues[index], sizeValues[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::pictureInPictureStrings, AppI18n::pictureInPictureSettingStrings,
+                AppI18n::pictureInPictureSizeStrings);
     }
 
     private static String[] pictureInPictureStrings(String lang) {
@@ -3473,22 +3524,12 @@ final class AppI18n {
     }
 
     private static void addTrackBackgroundStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = trackBackgroundStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::trackBackgroundStrings);
     }
 
     private static String[] trackBackgroundStrings(String lang) {
-        if ("ko".equals(normalize(lang))) {
+        String language = normalize(lang);
+        if ("ko".equals(language)) {
             return new String[]{
                     "lyrics.tab.background", "배경",
                     "lyrics.background.title", "현재 곡 배경",
@@ -3502,7 +3543,7 @@ final class AppI18n {
             };
         }
         return new String[]{
-                "lyrics.tab.background", "Background",
+                "lyrics.tab.background", trackBackgroundTabLabel(language),
                 "lyrics.background.title", "Current Track Background",
                 "lyrics.background.desc", "Save a background override for this track instead of the global background setting.",
                 "lyrics.background.override", "Apply only to this track",
@@ -3514,19 +3555,37 @@ final class AppI18n {
         };
     }
 
-    private static void addLandscapeNoLyricsStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = landscapeNoLyricsStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
+    /** The lyrics popup's background tab, worded as in the iOS app. */
+    private static String trackBackgroundTabLabel(String language) {
+        switch (language) {
+            case "zh-CN":
+            case "zh-TW":
+            case "ja":
+                return "背景";
+            case "hi": return "पृष्ठभूमि";
+            case "es": return "Fondo";
+            case "fr": return "Arrière-plan";
+            case "ar": return "الخلفية";
+            case "fa": return "پس‌زمینه";
+            case "de": return "Hintergrund";
+            case "ru": return "Фон";
+            case "sv": return "Bakgrund";
+            case "pt": return "Fundo";
+            case "bn": return "পটভূমি";
+            case "it": return "Sfondo";
+            case "th": return "พื้นหลัง";
+            case "vi": return "Nền";
+            case "id":
+            case "ms":
+                return "Latar belakang";
+            case "tr": return "Arka plan";
+            case "cs": return "Pozadí";
+            default: return "Background";
         }
+    }
+
+    private static void addLandscapeNoLyricsStrings(Map<String, Map<String, String>> languages) {
+        addLanguageStrings(languages, AppI18n::landscapeNoLyricsStrings);
     }
 
     private static String[] landscapeNoLyricsStrings(String lang) {
@@ -3547,18 +3606,7 @@ final class AppI18n {
     }
 
     private static void addPollinationsAuthStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = pollinationsAuthStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::pollinationsAuthStrings);
     }
 
     private static String[] pollinationsAuthStrings(String lang) {
@@ -3623,18 +3671,7 @@ final class AppI18n {
     }
 
     private static void addManualLrclibSearchStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = manualLrclibSearchStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::manualLrclibSearchStrings);
     }
 
     private static String[] manualLrclibSearchStrings(String lang) {
@@ -3895,18 +3932,7 @@ final class AppI18n {
     }
 
     private static void addSpotifyShortcutStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = spotifyShortcutStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::spotifyShortcutStrings);
     }
 
     private static String[] spotifyShortcutStrings(String lang) {
@@ -4125,18 +4151,7 @@ final class AppI18n {
     }
 
     private static void addDisplayPowerStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = displayPowerStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::displayPowerStrings);
     }
 
     private static String[] displayPowerStrings(String lang) {
@@ -4301,18 +4316,7 @@ final class AppI18n {
     }
 
     private static void addUpdateStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = updateStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::updateStrings);
     }
 
     private static String[] updateStrings(String lang) {
@@ -4439,18 +4443,7 @@ final class AppI18n {
     }
 
     private static void addUnifiedOutputLanguageStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = unifiedOutputLanguageStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::unifiedOutputLanguageStrings);
     }
 
     private static String[] unifiedOutputLanguageStrings(String lang) {
@@ -4666,18 +4659,7 @@ final class AppI18n {
     }
 
     private static void addFuriganaStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = furiganaStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::furiganaStrings);
     }
 
     private static String[] furiganaStrings(String lang) {
@@ -4726,10 +4708,23 @@ final class AppI18n {
                 return furiganaStringsValues(
                         "Japanese Furigana",
                         "Show hiragana readings above kanji when lyrics are detected as Japanese. Generated by AI only when kanji is present.",
-                        "Furigana",
+                        furiganaLabel(lang),
                         "Furigana on",
                         "Furigana off"
                 );
+        }
+    }
+
+    /** The term in languages that do not write it in Latin letters; the others keep "Furigana". */
+    private static String furiganaLabel(String lang) {
+        switch (normalize(lang)) {
+            case "hi": return "फुरिगाना";
+            case "ar": return "فوريغانا";
+            case "fa": return "فوریگانا";
+            case "ru": return "Фуригана";
+            case "bn": return "ফুরিগানা";
+            case "th": return "ฟุริกานะ";
+            default: return "Furigana";
         }
     }
 
@@ -4750,18 +4745,7 @@ final class AppI18n {
     }
 
     private static void addTypographyStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = typographyStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::typographyStrings);
     }
 
     private static String[] typographyStrings(String lang) {
@@ -4772,9 +4756,9 @@ final class AppI18n {
                         "메인 화면과 가사 페이지의 글자 크기와 두께를 항목별로 조절합니다.",
                         "크기",
                         "두께",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "보통",
+                        "약간 굵게",
+                        "굵게",
                         "글자 설정 저장됨",
                         "메인 제목",
                         "메인 아티스트",
@@ -4794,9 +4778,9 @@ final class AppI18n {
                         "分别调整主屏幕和歌词页面的字号与字重。",
                         "大小",
                         "字重",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "常规",
+                        "中粗",
+                        "粗体",
                         "文字设置已保存",
                         "主屏标题",
                         "主屏艺人",
@@ -4816,9 +4800,9 @@ final class AppI18n {
                         "分別調整主畫面與歌詞頁面的字級與字重。",
                         "大小",
                         "字重",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "標準",
+                        "中粗",
+                        "粗體",
                         "文字設定已儲存",
                         "主畫面標題",
                         "主畫面藝人",
@@ -4838,9 +4822,9 @@ final class AppI18n {
                         "メイン画面と歌詞ページの文字サイズと太さを項目ごとに調整します。",
                         "サイズ",
                         "太さ",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "レギュラー",
+                        "セミボールド",
+                        "ボールド",
                         "文字設定を保存しました",
                         "メインタイトル",
                         "メインアーティスト",
@@ -4860,9 +4844,9 @@ final class AppI18n {
                         "मुख्य प्लेयर और गीत पृष्ठ के टेक्स्ट आकार और मोटाई को अलग-अलग बदलें।",
                         "आकार",
                         "मोटाई",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "सामान्य",
+                        "सेमी-बोल्ड",
+                        "बोल्ड",
                         "टाइपोग्राफी सहेजी गई",
                         "मुख्य शीर्षक",
                         "मुख्य कलाकार",
@@ -4878,25 +4862,25 @@ final class AppI18n {
                 );
             case "es":
                 return typographyStringsValues(
-                        "Tipografia",
-                        "Personaliza el tamano y el grosor del texto en el reproductor principal y la pagina de letras.",
-                        "Tamano",
+                        "Tipografía",
+                        "Personaliza el tamaño y el grosor del texto en el reproductor principal y la página de letras.",
+                        "Tamaño",
                         "Grosor",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
-                        "Tipografia guardada",
-                        "Titulo principal",
+                        "Normal",
+                        "Seminegrita",
+                        "Negrita",
+                        "Tipografía guardada",
+                        "Título principal",
                         "Artista principal",
                         "Original inferior principal",
-                        "Pronunciacion inferior principal",
-                        "Traduccion inferior principal",
-                        "Titulo de pagina de letras",
-                        "Artista de pagina de letras",
-                        "Original de pagina de letras",
-                        "Pronunciacion de pagina de letras",
-                        "Traduccion de pagina de letras",
-                        "Ajusta el tamano y el grosor de este elemento."
+                        "Pronunciación inferior principal",
+                        "Traducción inferior principal",
+                        "Título de la página de letras",
+                        "Artista de la página de letras",
+                        "Original de la página de letras",
+                        "Pronunciación de la página de letras",
+                        "Traducción de la página de letras",
+                        "Ajusta el tamaño y el grosor de este elemento."
                 );
             case "fr":
                 return typographyStringsValues(
@@ -4904,10 +4888,10 @@ final class AppI18n {
                         "Personnalisez la taille et la graisse du texte pour le lecteur principal et la page de paroles.",
                         "Taille",
                         "Graisse",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
-                        "Typographie enregistree",
+                        "Normal",
+                        "Demi-gras",
+                        "Gras",
+                        "Typographie enregistrée",
                         "Titre principal",
                         "Artiste principal",
                         "Original du bas principal",
@@ -4918,7 +4902,7 @@ final class AppI18n {
                         "Original de la page paroles",
                         "Prononciation de la page paroles",
                         "Traduction de la page paroles",
-                        "Ajustez la taille et la graisse de cet element."
+                        "Ajustez la taille et la graisse de cet élément."
                 );
             case "ar":
                 return typographyStringsValues(
@@ -4926,9 +4910,9 @@ final class AppI18n {
                         "خصص حجم النص ووزنه لكل عنصر في المشغل الرئيسي وصفحة الكلمات.",
                         "الحجم",
                         "الوزن",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "عادي",
+                        "شبه غامق",
+                        "غامق",
                         "تم حفظ إعدادات النص",
                         "عنوان الشاشة الرئيسية",
                         "فنان الشاشة الرئيسية",
@@ -4948,9 +4932,9 @@ final class AppI18n {
                         "اندازه و ضخامت متن را برای پخش کننده اصلی و صفحه متن آهنگ جداگانه تنظیم کنید.",
                         "اندازه",
                         "ضخامت",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "معمولی",
+                        "نیمه‌پررنگ",
+                        "پررنگ",
                         "تنظیمات تایپوگرافی ذخیره شد",
                         "عنوان اصلی",
                         "هنرمند اصلی",
@@ -4967,24 +4951,24 @@ final class AppI18n {
             case "de":
                 return typographyStringsValues(
                         "Typografie",
-                        "Textgroesse und Schriftstaerke fuer Hauptplayer und Lyrics-Seite einzeln anpassen.",
-                        "Groesse",
-                        "Staerke",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Textgröße und Schriftstärke für Hauptplayer und Lyrics-Seite einzeln anpassen.",
+                        "Größe",
+                        "Stärke",
+                        "Normal",
+                        "Halbfett",
+                        "Fett",
                         "Typografie gespeichert",
                         "Haupttitel",
-                        "Hauptkuenstler",
+                        "Hauptkünstler",
                         "Original unten im Hauptbildschirm",
                         "Aussprache unten im Hauptbildschirm",
-                        "Uebersetzung unten im Hauptbildschirm",
+                        "Übersetzung unten im Hauptbildschirm",
                         "Titel der Lyrics-Seite",
-                        "Kuenstler der Lyrics-Seite",
+                        "Künstler der Lyrics-Seite",
                         "Original der Lyrics-Seite",
                         "Aussprache der Lyrics-Seite",
-                        "Uebersetzung der Lyrics-Seite",
-                        "Groesse und Staerke dieses Elements anpassen."
+                        "Übersetzung der Lyrics-Seite",
+                        "Größe und Stärke dieses Elements anpassen."
                 );
             case "ru":
                 return typographyStringsValues(
@@ -4992,9 +4976,9 @@ final class AppI18n {
                         "Настройте размер и толщину текста для главного плеера и страницы текста песни.",
                         "Размер",
                         "Толщина",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Обычный",
+                        "Полужирный",
+                        "Жирный",
                         "Типографика сохранена",
                         "Главный заголовок",
                         "Главный исполнитель",
@@ -5011,45 +4995,45 @@ final class AppI18n {
             case "sv":
                 return typographyStringsValues(
                         "Typografi",
-                        "Anpassa textstorlek och vikt for huvudspelaren och textsidan.",
+                        "Anpassa textstorlek och vikt för huvudspelaren och textsidan.",
                         "Storlek",
                         "Vikt",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Normal",
+                        "Halvfet",
+                        "Fet",
                         "Typografi sparad",
                         "Huvudtitel",
                         "Huvudartist",
                         "Huvud nedre original",
                         "Huvud nedre uttal",
-                        "Huvud nedre oversattning",
+                        "Huvud nedre översättning",
                         "Textsidans titel",
                         "Textsidans artist",
                         "Textsidans original",
                         "Textsidans uttal",
-                        "Textsidans oversattning",
-                        "Justera storlek och vikt for detta objekt."
+                        "Textsidans översättning",
+                        "Justera storlek och vikt för detta objekt."
                 );
             case "pt":
                 return typographyStringsValues(
                         "Tipografia",
-                        "Personalize o tamanho e o peso do texto no player principal e na pagina de letras.",
+                        "Personalize o tamanho e o peso do texto no player principal e na página de letras.",
                         "Tamanho",
                         "Peso",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Normal",
+                        "Seminegrito",
+                        "Negrito",
                         "Tipografia salva",
-                        "Titulo principal",
+                        "Título principal",
                         "Artista principal",
                         "Original inferior principal",
-                        "Pronuncia inferior principal",
-                        "Traducao inferior principal",
-                        "Titulo da pagina de letras",
-                        "Artista da pagina de letras",
-                        "Original da pagina de letras",
-                        "Pronuncia da pagina de letras",
-                        "Traducao da pagina de letras",
+                        "Pronúncia inferior principal",
+                        "Tradução inferior principal",
+                        "Título da página de letras",
+                        "Artista da página de letras",
+                        "Original da página de letras",
+                        "Pronúncia da página de letras",
+                        "Tradução da página de letras",
                         "Ajuste o tamanho e o peso deste item."
                 );
             case "bn":
@@ -5058,9 +5042,9 @@ final class AppI18n {
                         "মেইন প্লেয়ার ও লিরিক্স পেজের টেক্সট সাইজ এবং ওজন আলাদা করে বদলান।",
                         "সাইজ",
                         "ওজন",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "সাধারণ",
+                        "আধা গাঢ়",
+                        "গাঢ়",
                         "টাইপোগ্রাফি সংরক্ষিত",
                         "মেইন শিরোনাম",
                         "মেইন শিল্পী",
@@ -5080,9 +5064,9 @@ final class AppI18n {
                         "Personalizza dimensione e peso del testo nel player principale e nella pagina testi.",
                         "Dimensione",
                         "Peso",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Normale",
+                        "Semigrassetto",
+                        "Grassetto",
                         "Tipografia salvata",
                         "Titolo principale",
                         "Artista principale",
@@ -5102,9 +5086,9 @@ final class AppI18n {
                         "ปรับขนาดและน้ำหนักตัวอักษรของหน้าหลักและหน้าเนื้อเพลงแยกตามรายการ",
                         "ขนาด",
                         "น้ำหนัก",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "ปกติ",
+                        "กึ่งหนา",
+                        "หนา",
                         "บันทึกการตั้งค่าตัวอักษรแล้ว",
                         "ชื่อเพลงหน้าหลัก",
                         "ศิลปินหน้าหลัก",
@@ -5120,25 +5104,25 @@ final class AppI18n {
                 );
             case "vi":
                 return typographyStringsValues(
-                        "Kieu chu",
-                        "Tuy chinh co chu va do dam cho trinh phat chinh va trang loi bai hat.",
-                        "Co chu",
-                        "Do dam",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
-                        "Da luu kieu chu",
-                        "Tieu de chinh",
-                        "Nghe si chinh",
-                        "Loi goc phia duoi",
-                        "Phat am phia duoi",
-                        "Ban dich phia duoi",
-                        "Tieu de trang loi bai hat",
-                        "Nghe si trang loi bai hat",
-                        "Loi goc trang loi bai hat",
-                        "Phat am trang loi bai hat",
-                        "Ban dich trang loi bai hat",
-                        "Dieu chinh co chu va do dam cho muc nay."
+                        "Kiểu chữ",
+                        "Tùy chỉnh cỡ chữ và độ đậm cho trình phát chính và trang lời bài hát.",
+                        "Cỡ chữ",
+                        "Độ đậm",
+                        "Thường",
+                        "Hơi đậm",
+                        "Đậm",
+                        "Đã lưu kiểu chữ",
+                        "Tiêu đề chính",
+                        "Nghệ sĩ chính",
+                        "Lời gốc phía dưới",
+                        "Phát âm phía dưới",
+                        "Bản dịch phía dưới",
+                        "Tiêu đề trang lời bài hát",
+                        "Nghệ sĩ trang lời bài hát",
+                        "Lời gốc trang lời bài hát",
+                        "Phát âm trang lời bài hát",
+                        "Bản dịch trang lời bài hát",
+                        "Điều chỉnh cỡ chữ và độ đậm cho mục này."
                 );
             case "id":
                 return typographyStringsValues(
@@ -5146,9 +5130,9 @@ final class AppI18n {
                         "Sesuaikan ukuran dan ketebalan teks untuk pemutar utama dan halaman lirik.",
                         "Ukuran",
                         "Ketebalan",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Biasa",
+                        "Semi-tebal",
+                        "Tebal",
                         "Tipografi disimpan",
                         "Judul utama",
                         "Artis utama",
@@ -5168,9 +5152,9 @@ final class AppI18n {
                         "Laraskan saiz dan ketebalan teks untuk pemain utama dan halaman lirik.",
                         "Saiz",
                         "Ketebalan",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Biasa",
+                        "Separuh tebal",
+                        "Tebal",
                         "Tipografi disimpan",
                         "Tajuk utama",
                         "Artis utama",
@@ -5190,9 +5174,9 @@ final class AppI18n {
                         "Ana oynatıcı ve söz sayfası için metin boyutunu ve kalınlığını özelleştirin.",
                         "Boyut",
                         "Kalınlık",
-                        "Regular",
-                        "SemiBold",
-                        "Bold",
+                        "Normal",
+                        "Yarı kalın",
+                        "Kalın",
                         "Tipografi kaydedildi",
                         "Ana Başlık",
                         "Ana Sanatçı",
@@ -5285,62 +5269,51 @@ final class AppI18n {
     }
 
     private static void addSpeakerColorStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = speakerColorStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::speakerColorStrings);
     }
 
     private static String[] speakerColorStrings(String lang) {
         switch (normalize(lang)) {
             case "ko":
-                return speakerColorStringsValues("보컬 색상", "normal, duet, male, female 보컬 색상을 색상 선택기로 조절합니다.", "Normal", "Duet", "Male", "Female", "선택 색상", "색상 저장", "기본값으로", "보컬 색상 저장됨", "보컬 색상 기본값 적용됨", "%s 색상 형식이 올바르지 않습니다.");
+                return speakerColorStringsValues("보컬 색상", "기본, 듀엣, 남성, 여성 보컬 색상을 색상 선택기로 조절합니다.", "기본", "듀엣", "남성", "여성", "선택 색상", "색상 저장", "기본값으로", "보컬 색상 저장됨", "보컬 색상 기본값 적용됨", "%s 색상 형식이 올바르지 않습니다.");
             case "zh-CN":
-                return speakerColorStringsValues("人声颜色", "使用颜色选择器调整 normal、duet、male、female 的歌词颜色。", "普通", "合唱", "男声", "女声", "已选颜色", "保存颜色", "恢复默认", "人声颜色已保存", "人声颜色已恢复默认", "%s 的颜色格式不正确。");
+                return speakerColorStringsValues("人声颜色", "使用颜色选择器调整普通、合唱、男声、女声的歌词颜色。", "普通", "合唱", "男声", "女声", "已选颜色", "保存颜色", "恢复默认", "人声颜色已保存", "人声颜色已恢复默认", "%s 的颜色格式不正确。");
             case "zh-TW":
-                return speakerColorStringsValues("人聲顏色", "使用色彩選擇器調整 normal、duet、male、female 的歌詞顏色。", "一般", "合唱", "男聲", "女聲", "已選色彩", "儲存色彩", "恢復預設", "人聲色彩已儲存", "人聲色彩已恢復預設", "%s 的色彩格式不正確。");
+                return speakerColorStringsValues("人聲顏色", "使用色彩選擇器調整一般、合唱、男聲、女聲的歌詞顏色。", "一般", "合唱", "男聲", "女聲", "已選色彩", "儲存色彩", "恢復預設", "人聲色彩已儲存", "人聲色彩已恢復預設", "%s 的色彩格式不正確。");
             case "ja":
-                return speakerColorStringsValues("ボーカルカラー", "normal、duet、male、female の歌詞色をカラーピッカーで調整します。", "Normal", "Duet", "Male", "Female", "選択色", "色を保存", "初期値に戻す", "ボーカルカラーを保存しました", "ボーカルカラーを初期値に戻しました", "%s の色形式が正しくありません。");
+                return speakerColorStringsValues("ボーカルカラー", "通常、デュエット、男性、女性の歌詞色をカラーピッカーで調整します。", "通常", "デュエット", "男性", "女性", "選択色", "色を保存", "初期値に戻す", "ボーカルカラーを保存しました", "ボーカルカラーを初期値に戻しました", "%s の色形式が正しくありません。");
             case "hi":
-                return speakerColorStringsValues("वोकल रंग", "normal, duet, male, female गीत रंगों को रंग चयनकर्ता से बदलें।", "Normal", "Duet", "Male", "Female", "चुना गया रंग", "रंग सहेजें", "डिफॉल्ट", "वोकल रंग सहेजे गए", "वोकल रंग डिफॉल्ट पर लौटे", "%s रंग प्रारूप सही नहीं है।");
+                return speakerColorStringsValues("वोकल रंग", "सामान्य, डुएट, पुरुष और महिला गीत रंगों को रंग चयनकर्ता से बदलें।", "सामान्य", "डुएट", "पुरुष", "महिला", "चुना गया रंग", "रंग सहेजें", "डिफॉल्ट", "वोकल रंग सहेजे गए", "वोकल रंग डिफॉल्ट पर लौटे", "%s रंग प्रारूप सही नहीं है।");
             case "es":
-                return speakerColorStringsValues("Colores vocales", "Ajusta los colores normal, duet, male y female con un selector de color.", "Normal", "Dueto", "Masculino", "Femenino", "Color elegido", "Guardar colores", "Restablecer", "Colores vocales guardados", "Colores vocales restablecidos", "El formato de color de %s no es valido.");
+                return speakerColorStringsValues("Colores vocales", "Ajusta los colores normal, dueto, masculino y femenino con un selector de color.", "Normal", "Dueto", "Masculino", "Femenino", "Color elegido", "Guardar colores", "Restablecer", "Colores vocales guardados", "Colores vocales restablecidos", "El formato de color de %s no es válido.");
             case "fr":
-                return speakerColorStringsValues("Couleurs vocales", "Reglez les couleurs normal, duet, male et female avec un selecteur de couleur.", "Normal", "Duo", "Homme", "Femme", "Couleur choisie", "Enregistrer", "Reinitialiser", "Couleurs vocales enregistrees", "Couleurs vocales reinitialisees", "Le format de couleur de %s est invalide.");
+                return speakerColorStringsValues("Couleurs vocales", "Réglez les couleurs normale, duo, homme et femme à l’aide d’un sélecteur de couleur.", "Normal", "Duo", "Homme", "Femme", "Couleur choisie", "Enregistrer", "Réinitialiser", "Couleurs vocales enregistrées", "Couleurs vocales réinitialisées", "Le format de couleur de %s est invalide.");
             case "ar":
-                return speakerColorStringsValues("ألوان الأصوات", "اضبط ألوان normal وduet وmale وfemale باستخدام منتقي الألوان.", "Normal", "Duet", "Male", "Female", "اللون المحدد", "حفظ الألوان", "إعادة الضبط", "تم حفظ ألوان الأصوات", "تمت إعادة ألوان الأصوات", "تنسيق لون %s غير صحيح.");
+                return speakerColorStringsValues("ألوان الأصوات", "اضبط ألوان عادي وثنائي وذكر وأنثى باستخدام منتقي الألوان.", "عادي", "ثنائي", "ذكر", "أنثى", "اللون المحدد", "حفظ الألوان", "إعادة الضبط", "تم حفظ ألوان الأصوات", "تمت إعادة ألوان الأصوات", "تنسيق لون %s غير صحيح.");
             case "fa":
-                return speakerColorStringsValues("رنگ‌های وکال", "رنگ normal، duet، male و female را با انتخابگر رنگ تنظیم کنید.", "Normal", "Duet", "Male", "Female", "رنگ انتخاب‌شده", "ذخیره رنگ‌ها", "بازنشانی", "رنگ‌های وکال ذخیره شد", "رنگ‌های وکال بازنشانی شد", "قالب رنگ %s درست نیست.");
+                return speakerColorStringsValues("رنگ‌های وکال", "رنگ عادی، دونفره، مرد و زن را با انتخابگر رنگ تنظیم کنید.", "عادی", "دونفره", "مرد", "زن", "رنگ انتخاب‌شده", "ذخیره رنگ‌ها", "بازنشانی", "رنگ‌های وکال ذخیره شد", "رنگ‌های وکال بازنشانی شد", "قالب رنگ %s درست نیست.");
             case "de":
-                return speakerColorStringsValues("Vokal-Farben", "Passe normal, duet, male und female Farben mit einem Farbauswahler an.", "Normal", "Duett", "Maennlich", "Weiblich", "Ausgewahlte Farbe", "Farben speichern", "Zuruecksetzen", "Vokal-Farben gespeichert", "Vokal-Farben zurueckgesetzt", "Das Farbformat von %s ist ungueltig.");
+                return speakerColorStringsValues("Vokal-Farben", "Passe die Farben für Standard, Duett, männlich und weiblich mit einem Farbwähler an.", "Normal", "Duett", "Männlich", "Weiblich", "Ausgewählte Farbe", "Farben speichern", "Zurücksetzen", "Vokal-Farben gespeichert", "Vokal-Farben zurückgesetzt", "Das Farbformat von %s ist ungültig.");
             case "ru":
-                return speakerColorStringsValues("Цвета вокала", "Настройте цвета normal, duet, male и female через выбор цвета.", "Normal", "Duet", "Male", "Female", "Выбранный цвет", "Сохранить цвета", "Сбросить", "Цвета вокала сохранены", "Цвета вокала сброшены", "Неверный формат цвета для %s.");
+                return speakerColorStringsValues("Цвета вокала", "Настройте цвета «Обычный», «Дуэт», «Мужской» и «Женский» через выбор цвета.", "Обычный", "Дуэт", "Мужской", "Женский", "Выбранный цвет", "Сохранить цвета", "Сбросить", "Цвета вокала сохранены", "Цвета вокала сброшены", "Неверный формат цвета для %s.");
             case "sv":
-                return speakerColorStringsValues("Vokalfarger", "Justera normal, duet, male och female med en fargvaljare.", "Normal", "Duett", "Manlig", "Kvinnlig", "Vald farg", "Spara farger", "Aterstall", "Vokalfarger sparade", "Vokalfarger aterstallda", "Fargformatet for %s ar ogiltigt.");
+                return speakerColorStringsValues("Vokalfärger", "Justera färgerna för normal, duett, manlig och kvinnlig med en färgväljare.", "Normal", "Duett", "Manlig", "Kvinnlig", "Vald färg", "Spara färger", "Återställ", "Vokalfärger sparade", "Vokalfärger återställda", "Färgformatet för %s är ogiltigt.");
             case "pt":
-                return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, duet, male e female com um seletor de cor.", "Normal", "Dueto", "Masculino", "Feminino", "Cor escolhida", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s e invalido.");
+                return speakerColorStringsValues("Cores vocais", "Ajuste as cores normal, dueto, masculina e feminina com um seletor de cor.", "Normal", "Dueto", "Masculino", "Feminino", "Cor escolhida", "Salvar cores", "Redefinir", "Cores vocais salvas", "Cores vocais redefinidas", "O formato de cor de %s é inválido.");
             case "bn":
-                return speakerColorStringsValues("ভোকাল রঙ", "normal, duet, male, female লিরিক্সের রঙ নির্বাচনকারী দিয়ে বদলান।", "Normal", "Duet", "Male", "Female", "নির্বাচিত রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
+                return speakerColorStringsValues("ভোকাল রঙ", "সাধারণ, ডুয়েট, পুরুষ ও নারী লিরিক্সের রঙ নির্বাচনকারী দিয়ে বদলান।", "সাধারণ", "ডুয়েট", "পুরুষ", "নারী", "নির্বাচিত রঙ", "রঙ সংরক্ষণ", "রিসেট", "ভোকাল রঙ সংরক্ষিত", "ভোকাল রঙ রিসেট হয়েছে", "%s রঙের ফরম্যাট সঠিক নয়।");
             case "it":
-                return speakerColorStringsValues("Colori vocali", "Regola i colori normal, duet, male e female con un selettore colore.", "Normal", "Duetto", "Maschile", "Femminile", "Colore scelto", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non e valido.");
+                return speakerColorStringsValues("Colori vocali", "Regola i colori normale, duetto, maschile e femminile con un selettore colore.", "Normale", "Duetto", "Maschile", "Femminile", "Colore scelto", "Salva colori", "Ripristina", "Colori vocali salvati", "Colori vocali ripristinati", "Il formato colore di %s non è valido.");
             case "th":
-                return speakerColorStringsValues("สีเสียงร้อง", "ปรับสี normal, duet, male และ female ด้วยตัวเลือกสี", "Normal", "Duet", "Male", "Female", "สีที่เลือก", "บันทึกสี", "รีเซ็ต", "บันทึกสีเสียงร้องแล้ว", "รีเซ็ตสีเสียงร้องแล้ว", "รูปแบบสีของ %s ไม่ถูกต้อง");
+                return speakerColorStringsValues("สีเสียงร้อง", "ปรับสีปกติ ดูเอต ชาย และหญิงด้วยตัวเลือกสี", "ปกติ", "ดูเอต", "ชาย", "หญิง", "สีที่เลือก", "บันทึกสี", "รีเซ็ต", "บันทึกสีเสียงร้องแล้ว", "รีเซ็ตสีเสียงร้องแล้ว", "รูปแบบสีของ %s ไม่ถูกต้อง");
             case "vi":
-                return speakerColorStringsValues("Mau giong hat", "Chinh mau normal, duet, male va female bang bang chon mau.", "Normal", "Duet", "Male", "Female", "Mau da chon", "Luu mau", "Dat lai", "Da luu mau giong hat", "Da dat lai mau giong hat", "Dinh dang mau cua %s khong hop le.");
+                return speakerColorStringsValues("Màu giọng hát", "Điều chỉnh màu giọng thường, song ca, nam và nữ bằng bộ chọn màu.", "Thường", "Song ca", "Nam", "Nữ", "Màu đã chọn", "Lưu màu", "Đặt lại", "Đã lưu màu giọng hát", "Đã đặt lại màu giọng hát", "Định dạng màu của %s không hợp lệ.");
             case "id":
-                return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, male, dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna terpilih", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
+                return speakerColorStringsValues("Warna vokal", "Atur warna normal, duet, pria, dan wanita dengan pemilih warna.", "Normal", "Duet", "Pria", "Wanita", "Warna terpilih", "Simpan warna", "Reset", "Warna vokal disimpan", "Warna vokal direset", "Format warna %s tidak valid.");
             case "ms":
-                return speakerColorStringsValues("Warna vokal", "Laraskan warna normal, duet, male dan female dengan pemilih warna.", "Normal", "Duet", "Male", "Female", "Warna dipilih", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
+                return speakerColorStringsValues("Warna vokal", "Laraskan warna biasa, duet, lelaki dan perempuan dengan pemilih warna.", "Biasa", "Duet", "Lelaki", "Perempuan", "Warna dipilih", "Simpan warna", "Tetapkan semula", "Warna vokal disimpan", "Warna vokal ditetapkan semula", "Format warna %s tidak sah.");
             case "tr":
-                return speakerColorStringsValues("Vokal Renkleri", "Normal, duet, male ve female söz renklerini renk seçiciyle özelleştirin.", "Normal", "Duet", "Male", "Female", "Seçili renk", "Renkleri uygula", "Sıfırla", "Vokal renkleri kaydedildi", "Vokal renkleri sıfırlandı", "%s renk biçimi geçersiz.");
+                return speakerColorStringsValues("Vokal Renkleri", "Normal, düet, erkek ve kadın söz renklerini renk seçiciyle özelleştirin.", "Normal", "Düet", "Erkek", "Kadın", "Seçili renk", "Renkleri uygula", "Sıfırla", "Vokal renkleri kaydedildi", "Vokal renkleri sıfırlandı", "%s renk biçimi geçersiz.");
             default:
                 return speakerColorStringsValues("Vocal Colors", "Customize normal, duet, male, and female lyric colors with a color picker.", "Normal", "Duet", "Male", "Female", "Selected color", "Apply colors", "Reset", "Vocal colors saved", "Vocal colors reset", "%s color format is invalid.");
         }
@@ -5377,18 +5350,7 @@ final class AppI18n {
     }
 
     private static void addCreatorSpeakerColorStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = creatorSpeakerColorStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::creatorSpeakerColorStrings);
     }
 
     private static String[] creatorSpeakerColorStrings(String lang) {
@@ -5446,22 +5408,7 @@ final class AppI18n {
     }
 
     private static void addVideoBackgroundStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = videoBackgroundStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            String[] scaleValues = videoBackgroundScaleStrings(language.code);
-            for (int index = 0; index + 1 < scaleValues.length; index += 2) {
-                copy.put(scaleValues[index], scaleValues[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::videoBackgroundStrings, AppI18n::videoBackgroundScaleStrings);
     }
 
     private static String[] videoBackgroundStrings(String lang) {
@@ -5574,18 +5521,7 @@ final class AppI18n {
     }
 
     private static void addVideoSyncOffsetStrings(Map<String, Map<String, String>> languages) {
-        for (AiLyricsSettings.Language language : UI_LANGUAGES) {
-            Map<String, String> table = languages.get(language.code);
-            if (table == null) {
-                continue;
-            }
-            Map<String, String> copy = new LinkedHashMap<>(table);
-            String[] values = videoSyncOffsetStrings(language.code);
-            for (int index = 0; index + 1 < values.length; index += 2) {
-                copy.put(values[index], values[index + 1]);
-            }
-            languages.put(language.code, Collections.unmodifiableMap(copy));
-        }
+        addLanguageStrings(languages, AppI18n::videoSyncOffsetStrings);
     }
 
     private static String[] videoSyncOffsetStrings(String lang) {
@@ -5736,7 +5672,7 @@ final class AppI18n {
                 "onboarding.permission_status_required", "아직 권한이 없습니다. 권한 설정을 열어 ivLyrics를 허용하세요.",
                 "onboarding.spotify_title", "곡 정보 연결",
                 "onboarding.spotify_desc", "현재 재생 중인 곡의 ISRC와 고해상도 앨범 이미지를 가져오기 위해 Spotify Web API를 사용합니다.",
-                "onboarding.step_format", "Step %d / %d",
+                "onboarding.step_format", "%d / %d단계",
                 "spotify.status_configured", "Spotify API 등록 완료",
                 "spotify.status_required", "처음 사용 전에 Spotify API 정보를 등록하세요.",
                 "spotify.status_checking", "Spotify 토큰 발급 확인 중...",
@@ -5772,7 +5708,7 @@ final class AppI18n {
                 "label.on", "켜짐",
                 "label.off", "꺼짐",
                 "label.auto", "자동",
-                "label.auto_target", "자동(%s)",
+                "label.auto_target", "자동 (%s)",
                 "lyrics.button.translation_on", "번역 켬",
                 "lyrics.button.pronunciation_on", "발음 켬",
                 "lyrics.button.translation_plus", "번역+",
@@ -5879,7 +5815,7 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API 정보가 등록되어 있지 않습니다.",
                 "spotify.error.no_access_token", "Spotify 토큰 응답에 access_token이 없습니다.",
                 "spotify.error.repository_unavailable", "가사 저장소를 사용할 수 없습니다.",
-                "lyrics.credit_sync_by_format", "sync by %s",
+                "lyrics.credit_sync_by_format", "싱크: %s",
                 "sync.type_line", "라인",
                 "sync.type_word", "단어",
                 "sync.type_character", "글자",
@@ -6216,7 +6152,7 @@ final class AppI18n {
                 "onboarding.permission_status_required", "权限尚未开启。请打开权限设置并允许 ivLyrics。",
                 "onboarding.spotify_title", "连接歌曲信息",
                 "onboarding.spotify_desc", "使用 Spotify Web API 获取当前歌曲的 ISRC 和高清封面。",
-                "onboarding.step_format", "Step %d / %d",
+                "onboarding.step_format", "第 %d / %d 步",
                 "spotify.status_configured", "Spotify API 已配置",
                 "spotify.status_required", "首次使用前请注册 Spotify API。",
                 "spotify.status_checking", "正在检查 Spotify 令牌...",
@@ -6694,7 +6630,7 @@ final class AppI18n {
                 "onboarding.permission_status_required", "まだ権限がありません。権限設定を開いてivLyricsを許可してください。",
                 "onboarding.spotify_title", "曲情報を接続",
                 "onboarding.spotify_desc", "現在の曲のISRCと高解像度アートワーク取得にSpotify Web APIを使用します。",
-                "onboarding.step_format", "Step %d / %d",
+                "onboarding.step_format", "ステップ %d / %d",
                 "spotify.status_configured", "Spotify API設定済み",
                 "spotify.status_required", "初回使用前にSpotify APIを登録してください。",
                 "spotify.status_checking", "Spotify トークンを確認しています...",
@@ -6837,7 +6773,7 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API情報が設定されていません。",
                 "spotify.error.no_access_token", "Spotifyトークン応答にaccess_tokenが含まれていません。",
                 "spotify.error.repository_unavailable", "歌詞リポジトリを使用できません。",
-                "lyrics.credit_sync_by_format", "sync by %s",
+                "lyrics.credit_sync_by_format", "同期: %s",
                 "sync.type_line", "行",
                 "sync.type_word", "単語",
                 "sync.type_character", "文字",
@@ -6999,17 +6935,17 @@ final class AppI18n {
                 "provider.desc.groq", "को रूट करता है तेज़ OpenAI-संगत अनुमान",
                 "provider.desc.perplexity", "Sonar API",
                 "provider.desc.pollinations", "परागण OpenAI-संगत API",
-                "spotify.step0.title", "Spotify डेवलपर डैशबोर्ड",
-                "spotify.step0.desc", "पर जाएं अपने ब्राउज़र में Spotify डेवलपर डैशबोर्ड खोलें। साइन इन करें और एक नया ऐप बनाएं।",
-                "spotify.step1.title", "Create app",
-                "spotify.step1.desc", "में एक नाम दर्ज करें Create app दबाएँ और App name के लिए नीचे मान दर्ज करें। ivLyrics या ivlyrics न लिखें।",
+                "spotify.step0.title", "Spotify डेवलपर डैशबोर्ड पर जाएं",
+                "spotify.step0.desc", "अपने ब्राउज़र में Spotify डेवलपर डैशबोर्ड खोलें। साइन इन करें और एक नया ऐप बनाएं।",
+                "spotify.step1.title", "Create app में एक नाम दर्ज करें",
+                "spotify.step1.desc", "Create app दबाएँ और App name के लिए नीचे मान दर्ज करें। ivLyrics या ivlyrics न लिखें।",
                 "spotify.step2.title", "विवरण दर्ज करें",
                 "spotify.step2.desc", "App description के लिए भी नीचे मान दर्ज करें। भ्रम से बचने के लिए यह सिर्फ एक उदाहरण है।",
                 "spotify.step3.title", "रीडायरेक्ट URI दर्ज करें",
                 "spotify.step3.desc", "नीचे दिए गए पते को Redirect URIs में जोड़ें। अनुगामी स्लैश शामिल करें.",
-                "spotify.step4.title", "Web API चुनें और",
-                "spotify.step4.desc", "सहेजें API चयन क्षेत्र में Web API चुनें, अनुबंध बॉक्स को चेक करें, फिर Save दबाएँ।",
-                "spotify.step5.title", "कॉपी करें Client ID और सीक्रेट",
+                "spotify.step4.title", "Web API चुनें और सहेजें",
+                "spotify.step4.desc", "API चयन क्षेत्र में Web API चुनें, अनुबंध बॉक्स को चेक करें, फिर Save दबाएँ।",
+                "spotify.step5.title", "Client ID और सीक्रेट कॉपी करें",
                 "spotify.step5.desc", "ऐप सेटिंग से Client ID और Client Secret कॉपी करें, उन्हें नीचे पेस्ट करें, फिर Spotify API सेव करें।",
                 "toast.copied_format", "कॉपी किया गया: %s",
                 "toast.provider_saved", "प्रदाता ने सहेजा",
@@ -7076,7 +7012,7 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API credentials सेट नहीं हैं।",
                 "spotify.error.no_access_token", "Spotify token response में access_token नहीं था।",
                 "spotify.error.repository_unavailable", "गीत repository उपलब्ध नहीं है।",
-                "lyrics.credit_sync_by_format", "sync by %s",
+                "lyrics.credit_sync_by_format", "सिंक: %s",
                 "sync.type_line", "पंक्ति",
                 "sync.type_word", "शब्द",
                 "sync.type_character", "अक्षर",
@@ -7686,7 +7622,7 @@ final class AppI18n {
                 "label.on", "تشغيل",
                 "label.off", "إيقاف",
                 "label.auto", "تلقائي",
-                "label.auto_target", "تلقائي (%s) ترجمة",
+                "label.auto_target", "تلقائي (%s)",
                 "lyrics.button.translation_on", "تشغيل",
                 "lyrics.button.pronunciation_on", "النطق تشغيل",
                 "lyrics.button.translation_plus", "ترجمة +",
@@ -7932,7 +7868,7 @@ final class AppI18n {
                 "field.api_key_desc", "از یک کلید واحد، لیست خط جدید یا آرایه JSON پشتیبانی می کند. فقط در این دستگاه ذخیره می شود.",
                 "field.model_desc", ".",
                 "field.base_url_desc", "OpenAI-سازگار یا ارائه دهنده API پایه URL. توکن‌های",
-                "field.max_tokens", "Max",
+                "field.max_tokens", "حداکثر توکن",
                 "field.temperature", "خلاقیت",
                 "field.solid_color", "رنگ پس‌زمینه ثابت",
                 "field.solid_color_desc", "رنگ مورد استفاده در حالت پس‌زمینه ثابت را انتخاب کنید.",
@@ -8015,7 +7951,7 @@ final class AppI18n {
                 "lyrics.empty_none", "بدون شعر",
                 "interlude.prelude", "مقدمه",
                 "interlude.break", "اینترلود",
-                "interlude.postlude", "Outro",
+                "interlude.postlude", "پایان‌بندی",
                 "onboarding.preview.line1", "اشعار کارائوکه به دنبال آهنگ می آید",
                 "onboarding.preview.line2", "تلفظ و ترجمه در اینجا ظاهر می شود",
                 "onboarding.preview.line3", "همه چیز با آهنگ فعلی به روز می شود",
@@ -8642,7 +8578,7 @@ final class AppI18n {
                 "label.on", "På",
                 "label.off", "Av",
                 "label.auto", "Bil",
-                "label.auto_target", "Auto (%s)",
+                "label.auto_target", "Automatiskt (%s)",
                 "lyrics.button.translation_on", "Översättning På",
                 "lyrics.button.pronunciation_on", "Uttal på",
                 "lyrics.button.translation_plus", "Översättning+",
@@ -9158,10 +9094,10 @@ final class AppI18n {
                 "spotify.step2.desc", "App description এর জন্যও নিচের মানটি লিখুন। বিভ্রান্তি এড়াতে এটি একটি উদাহরণ মাত্র।",
                 "spotify.step3.title", "রিডাইরেক্ট URI লিখুন",
                 "spotify.step3.desc", "নিচের ঠিকানাটি Redirect URIs এ যোগ করুন। ট্রেলিং স্ল্যাশ অন্তর্ভুক্ত করুন।",
-                "spotify.step4.title", "Web API নির্বাচন করুন এবং",
-                "spotify.step4.desc", "সংরক্ষণ করুন API নির্বাচন এলাকায় Web API নির্বাচন করুন, চুক্তি বাক্সটি চেক করুন, তারপর Save টিপুন।",
-                "spotify.step5.title", "অনুলিপি Client ID এবং গোপন",
-                "spotify.step5.desc", "অনুলিপি Client ID এবং Client Secret অ্যাপ সেটিংস থেকে, সেগুলি নীচে পেস্ট করুন, তারপর Spotify API সংরক্ষণ করুন৷",
+                "spotify.step4.title", "Web API নির্বাচন করুন এবং সংরক্ষণ করুন",
+                "spotify.step4.desc", "API নির্বাচন এলাকায় Web API নির্বাচন করুন, চুক্তি বাক্সটি চেক করুন, তারপর Save টিপুন।",
+                "spotify.step5.title", "Client ID এবং Secret কপি করুন",
+                "spotify.step5.desc", "অ্যাপ সেটিংস থেকে Client ID এবং Client Secret কপি করুন, সেগুলি নীচে পেস্ট করুন, তারপর Spotify API সংরক্ষণ করুন৷",
                 "toast.copied_format", "অনুলিপি করা হয়েছে: %s",
                 "toast.provider_saved", "প্রদানকারী সংরক্ষিত",
                 "toast.pronunciation_language_saved", "উচ্চারণ ভাষা সংরক্ষিত",
@@ -9227,7 +9163,7 @@ final class AppI18n {
                 "spotify.error.credentials_not_configured", "Spotify API credentials সেট করা নেই।",
                 "spotify.error.no_access_token", "Spotify token response-এ access_token ছিল না।",
                 "spotify.error.repository_unavailable", "লিরিক্স repository উপলভ্য নয়।",
-                "lyrics.credit_sync_by_format", "sync by %s",
+                "lyrics.credit_sync_by_format", "সিঙ্ক: %s",
                 "sync.type_line", "লাইন",
                 "sync.type_word", "শব্দ",
                 "sync.type_character", "অক্ষর",
@@ -10315,7 +10251,7 @@ final class AppI18n {
                 "label.on", "Hidup",
                 "label.off", "Mati",
                 "label.auto", "Auto",
-                "label.auto_target", "Auto (%s)",
+                "label.auto_target", "Automatik (%s)",
                 "lyrics.button.translation_on", "Terjemahan Hidup",
                 "lyrics.button.pronunciation_on", "Sebutan Pada",
                 "lyrics.button.translation_plus", "Terjemahan+",
@@ -10556,7 +10492,7 @@ final class AppI18n {
                 "label.on", "Zapnuto",
                 "label.off", "Vypnuto",
                 "label.auto", "Auto",
-                "label.auto_target", "Auto (%s)",
+                "label.auto_target", "Automaticky (%s)",
                 "lyrics.button.translation_on", "Překlad zapnut",
                 "lyrics.button.pronunciation_on", "Výslovnost zapnuta",
                 "lyrics.button.translation_plus", "Překlad+",
@@ -10680,13 +10616,13 @@ final class AppI18n {
                 "lyrics.lrclib_search.empty_title", "Zadejte název skladby, kterou chcete vyhledat.",
                 "lyrics.lrclib_search.loading", "Vyhledávání LRCLIB...",
                 "lyrics.lrclib_search.no_results", "Žádné výsledky LRCLIB.",
-                "lyrics.lrclib_search.result_count_format", "Výsledky %d LRCLIB",
+                "lyrics.lrclib_search.result_count_format", "Výsledky LRCLIB: %d",
                 "lyrics.lrclib_search.selecting", "Načítání vybraných textů LRCLIB...",
                 "lyrics.lrclib_search.loaded", "Byly použity texty LRCLIB.",
                 "lyrics.lrclib_search.error_format", "Vyhledávání LRCLIB se nezdařilo: %s",
                 "lyrics.lrclib_search.instrumental", "Instrumentální",
                 "lyrics.lrclib_search.synced", "Synchronizováno",
-                "lyrics.lrclib_search.plain", "Prostý",
+                "lyrics.lrclib_search.plain", "Prostý text",
                 "repo.detail.manual_lrclib", "Ručně vybrané texty LRCLIB.",
                 "section.spotify_shortcut", "Zástupce Spotify",
                 "section.spotify_shortcut_desc", "Zobrazuje pouze malou pohyblivou ikonu na obrazovce Now Playing Spotify. Klepnutím otevřete stránku s texty písní ivLyrics.",
@@ -10698,7 +10634,7 @@ final class AppI18n {
                 "toast.overlay_permission_needed", "Vyžaduje se oprávnění pro kreslení přes jiné aplikace",
                 "toast.spotify_open_failed", "Nelze otevřít Spotify",
                 "onboarding.preview.line4", "Klepnutím na název nebo interpreta přeskočíte zpět na Spotify.",
-                "setting.keep_screen_on", "Nechte obrazovku zapnutou",
+                "setting.keep_screen_on", "Ponechat obrazovku zapnutou",
                 "setting.keep_screen_on_desc", "Zabraňuje vypnutí obrazovky telefonu při používání aplikace.",
                 "toast.keep_screen_on_on", "Obrazovka zůstane zapnutá",
                 "toast.keep_screen_on_off", "Obrazovka se může automaticky vypnout",
@@ -10708,8 +10644,8 @@ final class AppI18n {
                 "toast.landscape_center_no_lyrics_off", "Středová krajina bez textů",
                 "section.app_update", "Automatické aktualizace",
                 "section.app_update_desc", "Vyhledejte nejnovější APK ve vydáních na GitHubu a pokračujte podle instalačního návodu.",
-                "button.check_updates", "Zkontrolujte aktualizace",
-                "button.open_release_page", "Uvolnit stránku",
+                "button.check_updates", "Zkontrolovat aktualizace",
+                "button.open_release_page", "Stránka vydání",
                 "update.status_idle", "Aktualizace zatím nebyly zkontrolovány.",
                 "update.status_checking", "Kontrola nejnovější verze...",
                 "update.status_latest_format", "Aktuální verze %s je aktuální.",
@@ -10738,41 +10674,41 @@ final class AppI18n {
                 "setting.karaoke_data_as_line_synced", "Zobrazit karaoke data jako řádkově synchronizovaná",
                 "setting.karaoke_data_as_line_synced_desc", "Pokud sync-data obsahují časování karaoke, zobrazí je jako běžné řádkově synchronizované texty bez vyplňování jednotlivých znaků.",
                 "section.typography", "Typografie",
-                "section.typography_desc", "Přizpůsobte velikost a váhu textu pro hlavní přehrávač a stránku s texty.",
+                "section.typography_desc", "Přizpůsobte velikost a tloušťku písma v hlavním přehrávači a na stránce s texty.",
                 "typography.size", "Velikost",
-                "typography.weight", "Hmotnost",
-                "typography.weight.regular", "Pravidelný",
+                "typography.weight", "Tloušťka",
+                "typography.weight.regular", "Normální",
                 "typography.weight.semibold", "Polotučné",
                 "typography.weight.bold", "Tučné",
                 "toast.typography_saved", "Typografie byla uložena",
-                "typography.slot.main_title", "Hlavní název",
-                "typography.slot.main_title_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.main_artist", "Hlavní umělec",
-                "typography.slot.main_artist_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.main_preview_original", "Hlavní spodní originál",
-                "typography.slot.main_preview_original_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.main_preview_pronunciation", "Hlavní spodní výslovnost",
-                "typography.slot.main_preview_pronunciation_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.main_preview_translation", "Hlavní dolní překlad",
-                "typography.slot.main_preview_translation_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.lyrics_header_title", "Název stránky s texty",
-                "typography.slot.lyrics_header_title_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.lyrics_header_artist", "Umělec stránky s texty",
-                "typography.slot.lyrics_header_artist_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.lyrics_original", "Původní text stránky",
-                "typography.slot.lyrics_original_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.lyrics_pronunciation", "Výslovnost stránky s texty",
-                "typography.slot.lyrics_pronunciation_desc", "Upravte velikost a hmotnost této položky.",
-                "typography.slot.lyrics_translation", "Překlad stránky s texty",
-                "typography.slot.lyrics_translation_desc", "Upravte velikost a hmotnost této položky.",
+                "typography.slot.main_title", "Název na hlavní obrazovce",
+                "typography.slot.main_title_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.main_artist", "Interpret na hlavní obrazovce",
+                "typography.slot.main_artist_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.main_preview_original", "Originál dole na hlavní obrazovce",
+                "typography.slot.main_preview_original_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.main_preview_pronunciation", "Výslovnost dole na hlavní obrazovce",
+                "typography.slot.main_preview_pronunciation_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.main_preview_translation", "Překlad dole na hlavní obrazovce",
+                "typography.slot.main_preview_translation_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.lyrics_header_title", "Název na stránce s texty",
+                "typography.slot.lyrics_header_title_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.lyrics_header_artist", "Interpret na stránce s texty",
+                "typography.slot.lyrics_header_artist_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.lyrics_original", "Originál na stránce s texty",
+                "typography.slot.lyrics_original_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.lyrics_pronunciation", "Výslovnost na stránce s texty",
+                "typography.slot.lyrics_pronunciation_desc", "Upravte velikost a tloušťku písma této položky.",
+                "typography.slot.lyrics_translation", "Překlad na stránce s texty",
+                "typography.slot.lyrics_translation_desc", "Upravte velikost a tloušťku písma této položky.",
                 "section.speaker_colors", "Barvy vokálů",
                 "section.speaker_colors_desc", "Pomocí výběru barvy upravte běžné, duetové, mužské a ženské barvy textu.",
                 "speaker_color.normal", "Normální",
                 "speaker_color.duet", "Duet",
-                "speaker_color.male", "Mužské",
-                "speaker_color.female", "Žena",
+                "speaker_color.male", "Mužský",
+                "speaker_color.female", "Ženský",
                 "speaker_color.hex_hint", "Vybraná barva",
-                "button.apply_colors", "Nanášejte barvy",
+                "button.apply_colors", "Použít barvy",
                 "button.reset_colors", "Resetovat",
                 "toast.speaker_colors_saved", "Barvy vokálů uloženy",
                 "toast.speaker_colors_reset", "Barvy vokálů obnoveny",
@@ -10824,7 +10760,7 @@ final class AppI18n {
                 "lyrics.bluetooth_sync.no_device", "Není připojeno žádné zvukové zařízení Bluetooth.",
                 "lyrics.bluetooth_sync.device_scope", "Uloženo pouze pro \"%s\".",
                 "lyrics.bluetooth_sync.help", "Upravte načasování písně pro reproduktor/sluchátka Bluetooth, když je zvuk slyšet pozdě.",
-                "lyrics.bluetooth_sync.reset", "Resetujte posun Bluetooth",
+                "lyrics.bluetooth_sync.reset", "Obnovit posun Bluetooth",
                 "toast.bluetooth_sync_offset_format", "%s: posun Bluetooth %s",
                 "bluetooth_sync.unknown_device", "Neznámé zařízení Bluetooth",
                 "pollinations.account", "Účet Pollinations",

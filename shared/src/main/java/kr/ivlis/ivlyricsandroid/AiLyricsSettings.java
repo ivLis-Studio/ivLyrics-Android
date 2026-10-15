@@ -493,6 +493,12 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         prefs.edit().putString(KEY_UI_LANG, normalizedUiLanguage(lang)).apply();
     }
 
+    /** The chosen UI language for surfaces that hold no settings instance, such as the Spotify shortcut. */
+    static String uiLanguage(Context context) {
+        SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return normalizedUiLanguage(prefs.getString(KEY_UI_LANG, autoTargetLanguage()));
+    }
+
     void setPronunciationLang(String lang) {
         setOutputLang(lang);
     }

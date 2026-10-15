@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">Monitor de mídia do ivLyrics</string>
+    <string name="service_label_spotify_detector">Detector do Spotify do ivLyrics</string>
+    <string name="accessibility_service_description">Detecta quando o Spotify está aberto para que o ivLyrics mostre o atalho apenas dentro do Spotify.</string>
+</resources>

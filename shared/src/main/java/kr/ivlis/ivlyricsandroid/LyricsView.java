@@ -160,6 +160,8 @@ public final class LyricsView extends View {
     private String loadingMessage = AppI18n.t("en", "status.lyrics_loading");
     private String emptyFallbackMessage = AppI18n.t("en", "lyrics.empty_none");
     private boolean loadingState;
+    /** The empty result is a loading placeholder ({@link LyricsResult#loading}), in any UI language. */
+    private boolean emptyLoading;
     private String preludeLabel = AppI18n.t("en", "interlude.prelude");
     private String breakLabel = AppI18n.t("en", "interlude.break");
     private String postludeLabel = AppI18n.t("en", "interlude.postlude");
@@ -252,10 +254,12 @@ public final class LyricsView extends View {
         if (result == null || result.lines.isEmpty()) {
             lines = Collections.emptyList();
             emptyMessage = result == null || result.detail.isEmpty() ? emptyFallbackMessage : result.detail;
+            emptyLoading = result != null && result.loading;
             karaoke = false;
         } else {
             lines = result.lines;
             emptyMessage = "";
+            emptyLoading = false;
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
         normalizedSpeakerKeys.clear();
@@ -4046,24 +4050,7 @@ public final class LyricsView extends View {
     }
 
     private boolean isLoadingEmptyMessage() {
-        if (loadingState) {
-            return true;
-        }
-        String value = emptyMessage == null ? "" : emptyMessage.trim().toLowerCase(Locale.ROOT);
-        if (value.isEmpty()) {
-            return false;
-        }
-        if (loadingMessage != null && value.equals(loadingMessage.trim().toLowerCase(Locale.ROOT))) {
-            return true;
-        }
-        if (value.contains("없") || value.contains("실패") || value.contains("연주곡") || value.contains("instrumental")) {
-            return false;
-        }
-        return value.contains("loading lyrics")
-                || value.contains("lyrics loading")
-                || value.contains("가사 불러")
-                || value.contains("가사 찾는")
-                || (value.contains("가사") && value.contains("기다"));
+        return loadingState || emptyLoading;
     }
 
     private float segmentFillFraction(TextSegment segment) {

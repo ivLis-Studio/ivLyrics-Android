@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics medielyssnare</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify-identifiering</string>
+    <string name="accessibility_service_description">Upptäcker när Spotify är öppet så att ivLyrics bara visar sin genväg i Spotify.</string>
+</resources>

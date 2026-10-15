@@ -78,6 +78,26 @@ final class LocalAiProvider {
         return error instanceof LocalAiRuntime.SupersededException;
     }
 
+    /**
+     * The UI text for a Local AI failure. Requests the provider rejects are worded by their messages
+     * already; engine, model and download failures carry an i18n key. Their detail stays for the logs.
+     */
+    static String userMessage(Throwable failure, String uiLang) {
+        if (failure instanceof LocalAiRuntime.LocalAiException) {
+            return failure.getMessage();
+        }
+        if (failure instanceof LocalAiRuntime.Failure) {
+            LocalAiRuntime.Failure known = (LocalAiRuntime.Failure) failure;
+            return failureText(known.key, known.httpStatus, uiLang);
+        }
+        return failureText(LocalAiModels.ERROR_TRANSLATE, 0, uiLang);
+    }
+
+    /** Words a failure key of the runtime in the UI language; "{status}" takes the HTTP status. */
+    static String failureText(String key, int httpStatus, String uiLang) {
+        return LocalAiModels.format(AppI18n.t(uiLang, key), "status", String.valueOf(httpStatus));
+    }
+
     static LocalAiRuntime.Messages messages(String uiLang) {
         return new LocalAiRuntime.Messages() {
             @Override

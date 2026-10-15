@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">Détection multimédia d’ivLyrics</string>
+    <string name="service_label_spotify_detector">Détection de Spotify d’ivLyrics</string>
+    <string name="accessibility_service_description">Détecte quand Spotify est ouvert pour qu’ivLyrics n’affiche son raccourci que dans Spotify.</string>
+</resources>

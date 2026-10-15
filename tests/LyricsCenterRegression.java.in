@@ -29,7 +29,7 @@ public final class LyricsCenterRegression extends TestView {
     private long positionMs;
     private List<Object> lines = Collections.emptyList();
     private String emptyMessage, emptyFallbackMessage = "";
-    private boolean karaoke, testSoftUpdate;
+    private boolean emptyLoading, karaoke, testSoftUpdate;
     private final Map<Object, Object> normalizedSpeakerKeys = new HashMap<>();
     private final Map<Object, Object> rowLayoutCache = new HashMap<>();
     private float animatedVocalAnchorOffsetPx, vocalAnchorTransitionStartPx, vocalAnchorTransitionTargetPx;
@@ -62,6 +62,7 @@ public final class LyricsCenterRegression extends TestView {
         final List<Object> lines = List.of(new Object());
         final String detail = "";
         final boolean karaoke = false;
+        final boolean loading = false;
     }
     private Object getContext() { return this; }
     private boolean isLoadingEmptyMessage() { return false; }

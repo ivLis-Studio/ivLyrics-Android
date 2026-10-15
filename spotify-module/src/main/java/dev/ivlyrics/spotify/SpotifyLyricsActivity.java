@@ -17,7 +17,8 @@ public final class SpotifyLyricsActivity extends BaseLyricsActivity {
     private String karaokeTrack = "";
 
     @Override protected View createLyricsFooterAccessory() {
-        karaokeToolbar = new SpotifyKaraokeToolbar(this, KARAOKE);
+        // The control speaks the app's UI language, like the rest of this page, rather than the phone's.
+        karaokeToolbar = new SpotifyKaraokeToolbar(this, KARAOKE, this::localizedText);
         if (karaokeOwner == this) bindKaraokeToolbar();
         return karaokeToolbar;
     }

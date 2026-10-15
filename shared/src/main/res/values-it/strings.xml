@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">Rilevamento multimediale di ivLyrics</string>
+    <string name="service_label_spotify_detector">Rilevamento di Spotify di ivLyrics</string>
+    <string name="accessibility_service_description">Rileva quando Spotify è aperto, così ivLyrics mostra la sua scorciatoia solo all’interno di Spotify.</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics: отслеживание медиа</string>
+    <string name="service_label_spotify_detector">ivLyrics: обнаружение Spotify</string>
+    <string name="accessibility_service_description">Определяет, когда открыт Spotify, чтобы ivLyrics показывал свой ярлык только в Spotify.</string>
+</resources>

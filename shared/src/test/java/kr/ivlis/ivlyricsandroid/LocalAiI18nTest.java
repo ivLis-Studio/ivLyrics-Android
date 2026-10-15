@@ -21,7 +21,7 @@ public class LocalAiI18nTest {
                 {"local_ai.status_downloading", "{percent}"}, {"local_ai.status_downloading", "{loaded}"},
                 {"local_ai.status_downloading", "{total}"}, {"local_ai.status_ready", "{device}"},
                 {"local_ai.status_error", "{error}"}, {"local_ai.download", "{size}"},
-                {"local_ai.unsupported_language", "{language}"}
+                {"local_ai.unsupported_language", "{language}"}, {"local_ai.error_download_http", "{status}"}
         };
         for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
             for (String key : LocalAiI18n.KEYS) {
@@ -47,6 +47,28 @@ public class LocalAiI18nTest {
         assertEquals("Download model (1.13GB)", LocalAiModels.format(AppI18n.t("en", "local_ai.download"),
                 "size", LocalAiModels.formatGigabytes(LocalAiModels.LIGHT.sizeBytes)));
         assertTrue(AppI18n.t("ko", "local_ai.not_ready").contains("Local AI"));
+    }
+
+    @Test public void failuresAreWordedForTheUserWithoutTechnicalDetail() {
+        assertEquals("The model could not be downloaded (HTTP 404). Please try again later.",
+                LocalAiProvider.failureText(LocalAiModels.ERROR_DOWNLOAD_HTTP, 404, "en"));
+        assertEquals("모델을 받지 못했습니다(HTTP 503). 잠시 후 다시 시도해 주세요.",
+                LocalAiProvider.failureText(LocalAiModels.ERROR_DOWNLOAD_HTTP, 503, "ko"));
+        LocalAiRuntime.Failure engine = new LocalAiRuntime.Failure(LocalAiModels.ERROR_ENGINE, 0,
+                new java.io.IOException("Local AI engine unavailable: dlopen failed: library \"libllama.so\" not found"));
+        String[] keys = {LocalAiModels.ERROR_ENGINE, LocalAiModels.ERROR_LOAD, LocalAiModels.ERROR_TRANSLATE,
+                LocalAiModels.ERROR_DOWNLOAD, LocalAiModels.ERROR_DOWNLOAD_HTTP, LocalAiModels.ERROR_DELETE};
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            String shown = LocalAiProvider.userMessage(engine, language.code);
+            assertFalse(language.code, shown.contains("libllama") || shown.contains("dlopen"));
+            assertEquals(language.code, AppI18n.t(language.code, LocalAiModels.ERROR_ENGINE), shown);
+            for (String key : keys) {
+                assertTrue(key, Arrays.asList(LocalAiI18n.KEYS).contains(key));
+                if (!"en".equals(language.code)) {
+                    assertNotEquals(language.code + ":" + key, AppI18n.t("en", key), AppI18n.t(language.code, key));
+                }
+            }
+        }
     }
 
     @Test public void everyLanguageWarnsThatLocalAiNeedsAHighEndDevice() {

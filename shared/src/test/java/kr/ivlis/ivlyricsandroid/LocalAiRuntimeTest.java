@@ -209,14 +209,57 @@ public class LocalAiRuntimeTest {
             fail("The native failure must reach the caller");
         } catch (IOException expected) {
             assertEquals("Out of memory", expected.getMessage());
+            assertTrue("worded by a key, the detail stays in the message", expected instanceof LocalAiRuntime.Failure);
+            assertEquals(LocalAiModels.ERROR_TRANSLATE, ((LocalAiRuntime.Failure) expected).key);
         }
         assertEquals(1, backend.frees.get());
         assertEquals(LocalAiRuntime.Phase.ERROR, runtime.status().phase);
         assertEquals("Out of memory", runtime.status().error);
+        assertEquals(LocalAiModels.ERROR_TRANSLATE, runtime.status().errorKey);
         assertEquals(Collections.singletonList("KO:君の声"),
                 runtime.translate(Collections.singletonList("君の声"), "ko", MESSAGES, null));
         assertEquals(2, backend.loads.size());
         assertEquals(LocalAiRuntime.Phase.READY, runtime.status().phase);
+    }
+
+    @Test public void engineAndModelFailuresAreKeyedForTheUserAndKeepTheirDetail() throws Exception {
+        LocalAiRuntime runtime = runtime(null, LocalAiModels.LIGHT);
+        backend.initializeFailure = new IOException("Local AI engine unavailable: dlopen failed: libllama.so");
+        try {
+            runtime.translate(Collections.singletonList("君の声"), "ko", MESSAGES, null);
+            fail("The engine failure must reach the caller");
+        } catch (LocalAiRuntime.Failure expected) {
+            assertEquals(LocalAiModels.ERROR_ENGINE, expected.key);
+            assertTrue(expected.getMessage().contains("libllama.so"));
+        }
+        LocalAiRuntime.Status status = runtime.status();
+        assertEquals(LocalAiRuntime.Phase.ERROR, status.phase);
+        assertEquals(LocalAiModels.ERROR_ENGINE, status.errorKey);
+        assertTrue("the library path stays in the detail for logs", status.error.contains("libllama.so"));
+
+        backend.loadFailure = new IOException("The model could not be loaded.");
+        try {
+            runtime.testTranslation("ko", MESSAGES).get(5, TimeUnit.SECONDS);
+            fail("The load failure must reach the caller");
+        } catch (ExecutionException expected) {
+            assertTrue(expected.getCause() instanceof LocalAiRuntime.Failure);
+            assertEquals(LocalAiModels.ERROR_LOAD, ((LocalAiRuntime.Failure) expected.getCause()).key);
+        }
+        assertEquals(LocalAiModels.ERROR_LOAD, runtime.status().errorKey);
+        assertEquals(Collections.singletonList("KO:君の声"),
+                runtime.translate(Collections.singletonList("君の声"), "ko", MESSAGES, null));
+        assertNull("a successful load clears the failure", runtime.status().errorKey);
+    }
+
+    @Test public void aDownloadRejectedByTheServerReportsItsHttpStatus() throws Exception {
+        LocalAiRuntime runtime = runtime(null);
+        backend.httpStatus = 404;
+        runtime.startDownload();
+        await(() -> runtime.status().phase == LocalAiRuntime.Phase.ERROR);
+        LocalAiRuntime.Status status = runtime.status();
+        assertEquals(LocalAiModels.ERROR_DOWNLOAD_HTTP, status.errorKey);
+        assertEquals(404, status.errorStatus);
+        assertEquals("HTTP 404", status.error);
     }
 
     @Test public void choosingAnotherTierReleasesTheLoadedModel() throws Exception {
@@ -316,6 +359,9 @@ public class LocalAiRuntimeTest {
             return text.toString();
         };
         volatile Exception failure;
+        volatile Exception initializeFailure;
+        volatile Exception loadFailure;
+        volatile int httpStatus;
         volatile boolean abortRequested;
         volatile CountDownLatch started = new CountDownLatch(1);
         private volatile CountDownLatch hold;
@@ -332,11 +378,23 @@ public class LocalAiRuntimeTest {
             if (latch != null) latch.countDown();
         }
 
-        @Override public void initialize() { initializations.incrementAndGet(); }
+        @Override public void initialize() throws Exception {
+            initializations.incrementAndGet();
+            Exception error = initializeFailure;
+            if (error != null) {
+                initializeFailure = null;
+                throw error;
+            }
+        }
 
-        @Override public synchronized long load(File model, int contextSize, int batchSize, int threads) {
+        @Override public synchronized long load(File model, int contextSize, int batchSize, int threads) throws Exception {
             assertEquals(4096, contextSize);
             assertEquals(512, batchSize);
+            Exception error = loadFailure;
+            if (error != null) {
+                loadFailure = null;
+                throw error;
+            }
             loads.add(model.getName());
             this.threads.add(threads);
             return ++handles;
@@ -371,8 +429,12 @@ public class LocalAiRuntimeTest {
         HttpURLConnection open(URL url) {
             connections.incrementAndGet();
             CountDownLatch disconnected = new CountDownLatch(1);
+            int status = httpStatus;
             return new HttpURLConnection(url) {
                 @Override public int getResponseCode() throws IOException {
+                    if (status > 0) {
+                        return status;
+                    }
                     downloadStarted.countDown();
                     try {
                         disconnected.await(5, TimeUnit.SECONDS);

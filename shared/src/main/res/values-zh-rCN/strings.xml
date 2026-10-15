@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics 媒体监听</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify 检测</string>
+    <string name="accessibility_service_description">检测 Spotify 是否已打开，以便 ivLyrics 只在 Spotify 中显示快捷方式。</string>
+</resources>

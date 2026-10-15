@@ -19,13 +19,15 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import dev.ivlyrics.spotify.module.R;
+import java.util.function.Function;
 
 /** Compact native-player controls, owned and packaged only by the Spotify module. */
 final class SpotifyKaraokeToolbar extends FrameLayout {
     private static final int ACCENT = 0xff1ed760;
     private static final long IDLE_HIDE_MS = 3000L;
     private final SpotifyKaraokeController controller;
+    /** Looks up sing_along.* text in the app's UI language. */
+    private final Function<String, String> text;
     private final ImageButton microphone;
     private final ProgressBar progress;
     private SpotifyKaraokeController.State state = SpotifyKaraokeController.State.OFF;
@@ -36,9 +38,10 @@ final class SpotifyKaraokeToolbar extends FrameLayout {
     private final Runnable hideWhenIdle = () -> animate().alpha(0f).setDuration(180L)
             .withEndAction(() -> setVisibility(INVISIBLE)).start();
 
-    SpotifyKaraokeToolbar(Context context, SpotifyKaraokeController controller) {
+    SpotifyKaraokeToolbar(Context context, SpotifyKaraokeController controller, Function<String, String> text) {
         super(context);
         this.controller = controller;
+        this.text = text;
         setTag("ivLyricsKaraokeToolbar");
         microphone = button();
         microphone.setTag("ivLyricsKaraokeToggle");
@@ -84,12 +87,12 @@ final class SpotifyKaraokeToolbar extends FrameLayout {
         microphone.setSelected(enabled);
         microphone.setEnabled(next != SpotifyKaraokeController.State.STOPPING);
         progress.setVisibility(waiting ? VISIBLE : GONE);
-        int label = next == SpotifyKaraokeController.State.LOW ? R.string.spotify_karaoke_low
-                : next == SpotifyKaraokeController.State.HIGH ? R.string.spotify_karaoke_high
-                : next == SpotifyKaraokeController.State.LOADING ? R.string.spotify_karaoke_cancel
-                : next == SpotifyKaraokeController.State.STOPPING ? R.string.spotify_karaoke_stopping
-                : R.string.spotify_karaoke_start;
-        String description = getContext().getString(label);
+        String label = next == SpotifyKaraokeController.State.LOW ? "sing_along.state_low"
+                : next == SpotifyKaraokeController.State.HIGH ? "sing_along.state_high"
+                : next == SpotifyKaraokeController.State.LOADING ? "sing_along.cancel"
+                : next == SpotifyKaraokeController.State.STOPPING ? "sing_along.stopping"
+                : "sing_along.state_off";
+        String description = text.apply(label);
         if (!canEnable && !enabled && !waiting && detail != null && !detail.isEmpty()) {
             description += ": " + reasonText(detail);
         }
@@ -122,22 +125,22 @@ final class SpotifyKaraokeToolbar extends FrameLayout {
     }
 
     private String reasonText(String value) {
-        int id;
+        String key;
         switch (value == null ? "" : value) {
-            case "NO_TRACK": id = R.string.spotify_karaoke_no_track; break;
-            case "REMOTE": id = R.string.spotify_karaoke_remote; break;
-            case "OFFLINE": id = R.string.spotify_karaoke_offline; break;
-            case "LOW_QUALITY": id = R.string.spotify_karaoke_quality; break;
-            case "UNSUPPORTED": id = R.string.spotify_karaoke_version; break;
-            case "UNSUPPORTED_TRACK": id = R.string.spotify_karaoke_unsupported; break;
-            case "UNSUPPORTED_ACCOUNT": id = R.string.spotify_karaoke_account; break;
-            case "MASK_ERROR": id = R.string.spotify_karaoke_mask; break;
-            case "TIMEOUT": id = R.string.spotify_karaoke_timeout; break;
-            case "RESET_FAILED": id = R.string.spotify_karaoke_reset; break;
-            case "SERVICE_ERROR": id = R.string.spotify_karaoke_error; break;
-            default: id = R.string.spotify_karaoke_waiting;
+            case "NO_TRACK": key = "sing_along.no_track"; break;
+            case "REMOTE": key = "sing_along.remote"; break;
+            case "OFFLINE": key = "sing_along.offline"; break;
+            case "LOW_QUALITY": key = "sing_along.quality"; break;
+            case "UNSUPPORTED": key = "sing_along.version"; break;
+            case "UNSUPPORTED_TRACK": key = "sing_along.unsupported_track"; break;
+            case "UNSUPPORTED_ACCOUNT": key = "sing_along.unsupported_account"; break;
+            case "MASK_ERROR": key = "sing_along.mask_error"; break;
+            case "TIMEOUT": key = "sing_along.timeout"; break;
+            case "RESET_FAILED": key = "sing_along.reset_failed"; break;
+            case "SERVICE_ERROR": key = "sing_along.error"; break;
+            default: key = "sing_along.waiting";
         }
-        return getContext().getString(id);
+        return text.apply(key);
     }
 
     private ImageButton button() {

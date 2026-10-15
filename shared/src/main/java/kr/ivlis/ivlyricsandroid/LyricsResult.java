@@ -19,6 +19,8 @@ final class LyricsResult {
     final int syncPoints;
     final String pronunciationProviderLabel;
     final String translationProviderLabel;
+    /** An empty placeholder shown while lyrics are fetched; views show their loading state for it. */
+    final boolean loading;
 
     LyricsResult(List<LyricsLine> lines, String providerLabel, String detail, boolean karaoke) {
         this(lines, providerLabel, detail, karaoke, "", "");
@@ -120,6 +122,26 @@ final class LyricsResult {
             String pronunciationProviderLabel,
             String translationProviderLabel
     ) {
+        this(lines, providerLabel, detail, karaoke, isrc, spotifyTrackId, contributors, providerId,
+                selectionPolicyKey, syncType, syncPoints, pronunciationProviderLabel, translationProviderLabel, false);
+    }
+
+    private LyricsResult(
+            List<LyricsLine> lines,
+            String providerLabel,
+            String detail,
+            boolean karaoke,
+            String isrc,
+            String spotifyTrackId,
+            List<SyncContributor> contributors,
+            String providerId,
+            String selectionPolicyKey,
+            String syncType,
+            int syncPoints,
+            String pronunciationProviderLabel,
+            String translationProviderLabel,
+            boolean loading
+    ) {
         this.lines = lines == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(lines));
@@ -137,6 +159,7 @@ final class LyricsResult {
         this.syncPoints = Math.max(0, syncPoints);
         this.pronunciationProviderLabel = pronunciationProviderLabel == null ? "" : pronunciationProviderLabel.trim();
         this.translationProviderLabel = translationProviderLabel == null ? "" : translationProviderLabel.trim();
+        this.loading = loading;
     }
 
     LyricsResult withSelection(String providerId, String selectionPolicyKey) {
@@ -181,6 +204,12 @@ final class LyricsResult {
 
     static LyricsResult empty(String detail) {
         return new LyricsResult(Collections.emptyList(), "", detail, false);
+    }
+
+    /** The placeholder while lyrics load, whatever language its detail text is in. */
+    static LyricsResult loading(String detail) {
+        return new LyricsResult(Collections.emptyList(), "", detail, false, "", "", Collections.emptyList(),
+                "", "", "unknown", 0, "", "", true);
     }
 
     static final class SyncContributor {

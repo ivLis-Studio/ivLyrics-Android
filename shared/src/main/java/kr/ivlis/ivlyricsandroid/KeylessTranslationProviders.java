@@ -1,6 +1,7 @@
 package kr.ivlis.ivlyricsandroid;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -93,7 +94,7 @@ final class KeylessTranslationProviders {
         if (lastError != null) {
             throw lastError;
         }
-        throw new IOException("활성화된 키리스 번역 제공자가 없습니다");
+        throw new ProviderException("error.keyless_none_enabled", "No keyless translation provider is enabled");
     }
 
     static Result translateWithProvider(
@@ -263,12 +264,13 @@ final class KeylessTranslationProviders {
                 body
         );
         if (response.status < 200 || response.status >= 300) {
-            throw new HttpStatusException(response.status, "Google Translate request failed");
+            throw new HttpStatusException(response.status, GOOGLE_LABEL, "Google Translate request failed");
         }
-        JSONArray root = new JSONArray(response.body);
+        JSONArray root = jsonArray(response.body, GOOGLE_LABEL);
         JSONArray segments = root.optJSONArray(0);
         if (segments == null) {
-            throw new IOException("Google Translate 응답 형식이 올바르지 않습니다");
+            throw new ProviderException("error.provider_unexpected_response_format",
+                    "Google Translate response has no translated segments", GOOGLE_LABEL);
         }
         StringBuilder translated = new StringBuilder();
         for (int index = 0; index < segments.length(); index++) {
@@ -319,21 +321,23 @@ final class KeylessTranslationProviders {
                 null
         );
         if (response.status < 200 || response.status >= 300) {
-            throw new HttpStatusException(response.status, "Bing translator configuration failed");
+            throw new HttpStatusException(response.status, BING_LABEL, "Bing translator configuration failed");
         }
 
         String ig = firstGroup(response.body, "IG:\\s*\\\"([^\\\"]+)\\\"");
         String iid = firstGroup(response.body, "data-iid=\\\"([^\\\"]+)\\\"");
         String tupleText = firstGroup(response.body, "params_AbusePreventionHelper\\s*=\\s*(\\[[^]]+])");
         if (ig.isEmpty() || iid.isEmpty() || tupleText.isEmpty()) {
-            throw new IOException("Bing translator 설정을 읽을 수 없습니다");
+            throw new ProviderException("error.provider_unavailable_format",
+                    "Bing translator page has no IG, IID or abuse-prevention parameters", BING_LABEL);
         }
-        JSONArray tuple = new JSONArray(tupleText);
+        JSONArray tuple = jsonArray(tupleText, BING_LABEL);
         long key = tuple.optLong(0, -1L);
         String token = tuple.optString(1, "");
         long expiryInterval = tuple.optLong(2, 600_000L);
         if (key < 0 || token.isEmpty()) {
-            throw new IOException("Bing translator 토큰이 올바르지 않습니다");
+            throw new ProviderException("error.provider_unavailable_format",
+                    "Bing translator configuration has no usable key or token", BING_LABEL);
         }
 
         String finalOrigin = BING_ORIGIN;
@@ -386,17 +390,30 @@ final class KeylessTranslationProviders {
         }
         HttpResponse response = request(endpoint, "POST", headers, body);
         if (response.status < 200 || response.status >= 300) {
-            throw new HttpStatusException(response.status, "Bing Translate request failed");
+            throw new HttpStatusException(response.status, BING_LABEL, "Bing Translate request failed");
         }
-        JSONArray root = new JSONArray(response.body);
+        JSONArray root = jsonArray(response.body, BING_LABEL);
         JSONObject first = root.optJSONObject(0);
         JSONArray translations = first == null ? null : first.optJSONArray("translations");
         JSONObject translation = translations == null ? null : translations.optJSONObject(0);
         String value = translation == null ? "" : translation.optString("text", "");
         if (value.isEmpty() && !text.isEmpty()) {
-            throw new IOException("Bing Translate 응답 형식이 올바르지 않습니다");
+            throw new ProviderException("error.provider_unexpected_response_format",
+                    "Bing Translate response has no translation text", BING_LABEL);
         }
         return value;
+    }
+
+    /** Parses a JSON array; anything else is the provider's unexpected answer, not a translation. */
+    private static JSONArray jsonArray(String source, String providerLabel) throws ProviderException {
+        try {
+            return new JSONArray(source);
+        } catch (JSONException invalid) {
+            ProviderException failure = new ProviderException("error.provider_unexpected_response_format",
+                    providerLabel + " response is not a JSON array: " + invalid.getMessage(), providerLabel);
+            failure.initCause(invalid);
+            throw failure;
+        }
     }
 
     private static HttpResponse request(
@@ -579,11 +596,30 @@ final class KeylessTranslationProviders {
         }
     }
 
-    private static final class HttpStatusException extends IOException {
+    /**
+     * A provider failure worded for the user by an i18n key and its format arguments; the message keeps
+     * the technical detail for logs.
+     */
+    static class ProviderException extends IOException {
+        private final String key;
+        private final Object[] arguments;
+
+        ProviderException(String key, String detail, Object... arguments) {
+            super(detail);
+            this.key = key;
+            this.arguments = arguments;
+        }
+
+        String userMessage(String uiLang) {
+            return String.format(Locale.ROOT, AppI18n.t(uiLang, key), arguments);
+        }
+    }
+
+    private static final class HttpStatusException extends ProviderException {
         final int status;
 
-        HttpStatusException(int status, String message) {
-            super(message + " (" + status + ")");
+        HttpStatusException(int status, String providerLabel, String message) {
+            super("error.provider_http_format", message + " (" + status + ")", providerLabel, status);
             this.status = status;
         }
     }

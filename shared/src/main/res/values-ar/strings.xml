@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">مستمع الوسائط في ivLyrics</string>
+    <string name="service_label_spotify_detector">كاشف Spotify في ivLyrics</string>
+    <string name="accessibility_service_description">يكتشف متى يكون Spotify مفتوحًا حتى يعرض ivLyrics اختصاره داخل Spotify فقط.</string>
+</resources>

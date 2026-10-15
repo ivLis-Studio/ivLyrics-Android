@@ -161,7 +161,7 @@ final class SpotifyShortcutOverlayController {
         FrameLayout view = new AccessibleFrameLayout(context);
         view.setBackgroundColor(Color.TRANSPARENT);
         view.setPadding(dp(8), dp(8), dp(8), dp(8));
-        view.setContentDescription("Open ivLyrics lyrics");
+        view.setContentDescription(AppI18n.t(AiLyricsSettings.uiLanguage(context), "accessibility.open_ivlyrics_lyrics"));
 
         ImageView icon = new ImageView(context);
         icon.setImageResource(R.drawable.ivlyrics_overlay_symbol);

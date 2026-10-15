@@ -21,6 +21,14 @@ final class LocalAiModels {
     /** Why a device cannot run the engine, as i18n keys shown in the current UI language. */
     static final String NEEDS_ANDROID_9 = "local_ai.needs_android9";
     static final String NEEDS_ARM64 = "local_ai.needs_arm64";
+    /** What failed, as i18n keys shown in the current UI language; the technical detail goes to the log. */
+    static final String ERROR_ENGINE = "local_ai.error_engine";
+    static final String ERROR_LOAD = "local_ai.error_load";
+    static final String ERROR_TRANSLATE = "local_ai.error_translate";
+    static final String ERROR_DOWNLOAD = "local_ai.error_download";
+    /** Its "{status}" placeholder takes the HTTP status code. */
+    static final String ERROR_DOWNLOAD_HTTP = "local_ai.error_download_http";
+    static final String ERROR_DELETE = "local_ai.error_delete";
 
     private LocalAiModels() {
     }

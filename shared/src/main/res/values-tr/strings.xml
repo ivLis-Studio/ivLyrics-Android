@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics medya dinleyicisi</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify algılayıcısı</string>
+    <string name="accessibility_service_description">ivLyrics’in kısayolunu yalnızca Spotify içinde göstermesi için Spotify’ın ne zaman açık olduğunu algılar.</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">Detector multimedia de ivLyrics</string>
+    <string name="service_label_spotify_detector">Detector de Spotify de ivLyrics</string>
+    <string name="accessibility_service_description">Detecta cuándo Spotify está abierto para que ivLyrics muestre su acceso directo solo dentro de Spotify.</string>
+</resources>

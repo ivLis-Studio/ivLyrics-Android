@@ -816,13 +816,13 @@ public class BaseLyricsActivity extends Activity implements
         if (productName != null) {
             name = productName.toString().trim();
         }
-        if (name.isEmpty()) {
-            name = bluetoothAudioDeviceTypeLabel(device.getType());
-        }
-        String keyName = name.isEmpty() ? "id:" + device.getId() : name.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        // Saved offsets are keyed by the English type label; only the name shown is localized.
+        String keyLabel = name.isEmpty() ? bluetoothAudioDeviceTypeLabel(device.getType()) : name;
+        String shownName = name.isEmpty() ? bluetoothAudioDeviceTypeName(device.getType()) : name;
+        String keyName = keyLabel.isEmpty() ? "id:" + device.getId() : keyLabel.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
         return new BluetoothAudioDevice(
                 "type:" + device.getType() + "|name:" + keyName,
-                name.isEmpty() ? ui("bluetooth_sync.unknown_device") : name
+                shownName.isEmpty() ? ui("bluetooth_sync.unknown_device") : shownName
         );
     }
 
@@ -867,6 +867,21 @@ public class BaseLyricsActivity extends Activity implements
             return "Hearing aid";
         }
         return ui("bluetooth_sync.unknown_device");
+    }
+
+    /** The type of a device without a product name, as shown in the UI language. */
+    private String bluetoothAudioDeviceTypeName(int type) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+            return ui("bluetooth_sync.device_ble_headset");
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+            return ui("bluetooth_sync.device_ble_speaker");
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && type == AudioDeviceInfo.TYPE_HEARING_AID) {
+            return ui("bluetooth_sync.device_hearing_aid");
+        }
+        // "Bluetooth A2DP" and "Bluetooth SCO" are profile names and read the same in every language.
+        return bluetoothAudioDeviceTypeLabel(type);
     }
 
     private static final class BluetoothAudioDevice {
@@ -1523,7 +1538,7 @@ public class BaseLyricsActivity extends Activity implements
                     + " / artwork=" + artworkDebug(snapshot)
                     + packageSuffix(snapshot.packageName));
             lyricsLookupInFlight = lyricsRepository != null;
-            currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
+            currentLyricsResult = LyricsResult.loading(lyricsLoadingText());
             currentBaseLyricsResult = currentLyricsResult;
             currentFuriganaResult = null;
             currentFuriganaKey = "";
@@ -1733,7 +1748,7 @@ public class BaseLyricsActivity extends Activity implements
         }
         lyricsLoadingProviderName = providerName == null ? "" : providerName.trim();
         String loadingText = lyricsLoadingText();
-        currentLyricsResult = LyricsResult.empty(loadingText);
+        currentLyricsResult = LyricsResult.loading(loadingText);
         currentBaseLyricsResult = currentLyricsResult;
         setLyricsResultOnViews(currentLyricsResult);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -6709,10 +6724,34 @@ public class BaseLyricsActivity extends Activity implements
         TextView copyButton = debugButton(ui("button.copy"));
         copyButton.setTextSize(12f);
         copyButton.setOnClickListener(view -> copyTextToClipboard(title, value));
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(dp(62), dp(36));
+        // At least the former 62x36dp; a longer word such as "Копировать" widens it instead of breaking.
+        keepActionMinimumSize(copyButton, 62, 36);
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
         copyParams.leftMargin = dp(8);
         row.addView(copyButton, copyParams);
         return row;
+    }
+
+    /**
+     * One of a dialog's side-by-side actions. It keeps its former fixed height for one line at the
+     * default font size and grows with wrapped translations or a large system font instead of clipping;
+     * MATCH_PARENT in the wrap-content row gives both actions the height of the taller one.
+     */
+    private LinearLayout.LayoutParams dialogActionParams(TextView button, int minHeightDp, float weight) {
+        keepActionMinimumSize(button, 48, minHeightDp);
+        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight);
+    }
+
+    /** Replaces the 48dp settings minimum with a compact control's own minimum; content can still grow. */
+    private void keepActionMinimumSize(TextView button, int minWidthDp, int minHeightDp) {
+        button.setMinWidth(dp(minWidthDp));
+        button.setMinimumWidth(dp(minWidthDp));
+        button.setMinHeight(dp(minHeightDp));
+        button.setMinimumHeight(dp(minHeightDp));
+        button.setPadding(button.getPaddingLeft(), dp(8), button.getPaddingRight(), dp(8));
     }
 
     private void copyTextToClipboard(String label, String value) {
@@ -10454,7 +10493,19 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private String autoSourceLanguageLabel() {
-        return "auto(" + effectiveDetectedSourceLang() + ")";
+        return uiFormat("label.auto_target", languageDisplayName(effectiveDetectedSourceLang()));
+    }
+
+    /** A language's name in the UI language, such as 일본어 for ja; the code only when no name is known. */
+    private String languageDisplayName(String languageCode) {
+        String code = languageCode == null ? "" : languageCode.trim().replace('_', '-');
+        if (code.isEmpty() || aiLyricsSettings == null) {
+            return code;
+        }
+        Locale language = Locale.forLanguageTag(code);
+        String name = language.getDisplayLanguage(Locale.forLanguageTag(
+                aiLyricsSettings.snapshot().uiLang.replace('_', '-')));
+        return name == null || name.trim().isEmpty() || name.equalsIgnoreCase(language.getLanguage()) ? code : name;
     }
 
     private String effectiveDetectedSourceLang() {
@@ -11009,7 +11060,7 @@ public class BaseLyricsActivity extends Activity implements
         currentLyricsKey = "debug-provider-loading";
         lyricsLookupInFlight = true;
         lyricsLoadingProviderName = providerName;
-        currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
+        currentLyricsResult = LyricsResult.loading(lyricsLoadingText());
         currentBaseLyricsResult = currentLyricsResult;
         sourceView.setText(providerName);
         statusView.setText(lyricsLoadingText());
@@ -11865,7 +11916,7 @@ public class BaseLyricsActivity extends Activity implements
         aiLyricsGenerating = false;
         lyricsLoadingProviderName = "";
         pendingSeekPositionMs = -1L;
-        currentLyricsResult = LyricsResult.empty(lyricsLoadingText());
+        currentLyricsResult = LyricsResult.loading(lyricsLoadingText());
         currentBaseLyricsResult = currentLyricsResult;
         currentFuriganaResult = null;
         currentFuriganaKey = "";
@@ -12382,12 +12433,12 @@ public class BaseLyricsActivity extends Activity implements
         shell.addView(actions, topMargin(matchWrap(), dp(18)));
 
         TextView cancel = debugButton(ui("button.close"));
-        actions.addView(cancel, new LinearLayout.LayoutParams(0, dp(46), 0.8f));
+        actions.addView(cancel, dialogActionParams(cancel, 46, 0.8f));
 
         TextView agree = debugButton(ui("research.token_consent_agree"));
         agree.setTextColor(Color.rgb(30, 24, 10));
         agree.setBackground(roundDrawable(Color.rgb(251, 191, 36), dp(10)));
-        LinearLayout.LayoutParams agreeParams = new LinearLayout.LayoutParams(0, dp(46), 1.35f);
+        LinearLayout.LayoutParams agreeParams = dialogActionParams(agree, 46, 1.35f);
         agreeParams.leftMargin = dp(8);
         actions.addView(agree, agreeParams);
 
@@ -12541,11 +12592,11 @@ public class BaseLyricsActivity extends Activity implements
 
         tmiDialogRegenerateButton = debugButton(ui("tmi.regenerate"));
         tmiDialogRegenerateButton.setOnClickListener(view -> showTmiForCurrentTrack(true));
-        actions.addView(tmiDialogRegenerateButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        actions.addView(tmiDialogRegenerateButton, dialogActionParams(tmiDialogRegenerateButton, 42, 1f));
 
         TextView closeButton = debugButton(ui("button.close"));
         closeButton.setOnClickListener(view -> dismissTmiDialog());
-        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        LinearLayout.LayoutParams closeParams = dialogActionParams(closeButton, 42, 1f);
         closeParams.leftMargin = dp(8);
         actions.addView(closeButton, closeParams);
 
@@ -13948,8 +13999,7 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsSupplementFuriganaLoading) {
             return ui("lyrics.furigana") + " · " + ui("loading.generating");
         }
-        String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
-        if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
+        if (lyricsLookupInFlight || isLoadingLyricsPreview(currentLyricsResult)) {
             return lyricsLoadingText();
         }
         return "";
@@ -14929,7 +14979,7 @@ public class BaseLyricsActivity extends Activity implements
         if (currentLyricsResult == null || currentLyricsResult.lines.isEmpty()) {
             clearPreviewRowsCache();
             String detail = currentLyricsResult == null ? "" : currentLyricsResult.detail;
-            boolean loading = isLoadingLyricsPreview(detail);
+            boolean loading = isLoadingLyricsPreview(currentLyricsResult);
             if (!loading && aiLyricsSettings != null && !aiLyricsSettings.showLyricsNotFound()) {
                 clearLyricPreviewViews();
                 return;
@@ -15074,16 +15124,16 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private MainLyricPreviewView.PreviewLine emptyPreviewLine(String detail) {
-        if (lyricsLookupInFlight || isLoadingLyricsPreview(detail)) {
+        if (lyricsLookupInFlight || isLoadingLyricsPreview(currentLyricsResult)) {
             return MainLyricPreviewView.PreviewLine.loading(lyricsLoadingText());
         }
         String text = detail == null || detail.isEmpty() ? ui("status.lyrics_waiting") : detail;
         return new MainLyricPreviewView.PreviewLine(text, true);
     }
 
-    private boolean isLoadingLyricsPreview(String detail) {
-        String value = detail == null ? "" : detail.trim().toLowerCase(Locale.ROOT);
-        return value.contains("loading") || value.contains("불러");
+    /** The result is the placeholder shown while lyrics load; its text may be in any UI language. */
+    private boolean isLoadingLyricsPreview(LyricsResult result) {
+        return result != null && result.loading && result.lines.isEmpty();
     }
 
     private boolean shouldHideEmptyLyricsPreview(String detail) {
@@ -15125,7 +15175,7 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         String detail = currentLyricsResult.detail;
-        if (isLoadingLyricsPreview(detail) || !buildEmptyLyricsPreviewKey(detail).equals(emptyLyricsPreviewKey)) {
+        if (isLoadingLyricsPreview(currentLyricsResult) || !buildEmptyLyricsPreviewKey(detail).equals(emptyLyricsPreviewKey)) {
             return;
         }
         if (SystemClock.uptimeMillis() - emptyLyricsPreviewShownAtMs >= EMPTY_LYRICS_PREVIEW_VISIBLE_MS) {
@@ -17511,6 +17561,11 @@ public class BaseLyricsActivity extends Activity implements
 
     private String uiFormat(String key, Object... args) {
         return String.format(Locale.ROOT, ui(key), args);
+    }
+
+    /** Text in the app's UI language for controls a host module adds, such as Spotify's sing-along button. */
+    protected final String localizedText(String key) {
+        return ui(key);
     }
 
     private TextView label(String value, float sizeSp, int color, Typeface typeface) {

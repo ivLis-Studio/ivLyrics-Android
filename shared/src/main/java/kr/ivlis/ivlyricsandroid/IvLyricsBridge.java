@@ -472,7 +472,7 @@ public final class IvLyricsBridge {
                 background.setVisibility(showBackground ? View.VISIBLE : View.GONE);
                 if (showBackground) background.setBackgroundSettings(settings.background);
                 else background.setArtwork(null, "");
-                setContentDescription("ivLyrics, " + ("ko".equals(settings.uiLang) ? "전체 가사 열기" : "Open lyrics"));
+                setContentDescription("ivLyrics, " + state.ui("accessibility.open_lyrics"));
             }
             if (appliedResult != state.result) {
                 appliedResult = state.result;
@@ -547,7 +547,7 @@ public final class IvLyricsBridge {
                 preview.setKaraokeDisplayGranularity(settings.karaokeDisplayGranularity);
                 preview.setKaraokeBounceEffectEnabled(settings.karaokeBounceEffectEnabled);
                 preview.setLyricTextAlignment(settings.lyricsTextAlignment);
-                setContentDescription("ivLyrics, " + ("ko".equals(settings.uiLang) ? "전체 가사 열기" : "Open lyrics"));
+                setContentDescription("ivLyrics, " + state.ui("accessibility.open_lyrics"));
             }
             appliedSettings = settings;
             appliedResult = state.result;
@@ -750,7 +750,7 @@ public final class IvLyricsBridge {
                     base = null;
                     furiganaResult = null;
                     annotations = Collections.emptyList();
-                    result = LyricsResult.empty(ui("status.lyrics_loading"));
+                    result = LyricsResult.loading(ui("status.lyrics_loading"));
                 }
                 loading = result == null || result.lines.isEmpty();
                 requestInFlight = false;

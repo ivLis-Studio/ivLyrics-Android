@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -22,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 /** Download, quality, memory and test controls inside the Local AI provider card (both APKs). */
 @SuppressLint("ViewConstructor")
 final class LocalAiSettingsView extends LinearLayout {
+    private static final String TAG = "ivLyricsLocalAi";
     private final AiLyricsSettings settings;
     private final LocalAiRuntime runtime;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -34,14 +36,19 @@ final class LocalAiSettingsView extends LinearLayout {
     private final ProgressBar progress;
     private final LinearLayout actions;
     private final TextView testResult;
+    private final TextView qualityTitle;
     private final SeekBar quality;
     private final LinearLayout tierLabels;
+    private final TextView tierHint;
+    private final TextView idleTitle;
     private final LinearLayout idleChoices;
+    private final TextView privacy;
     private boolean draggingQuality;
     private boolean confirmRemove;
     private boolean testRunning;
     private boolean testSucceeded;
     private String testText;
+    private String loggedError;
 
     LocalAiSettingsView(Context context, AiLyricsSettings settings) {
         super(context);
@@ -69,7 +76,9 @@ final class LocalAiSettingsView extends LinearLayout {
         testResult.setLineSpacing(dp(2), 1f);
         addView(testResult, matchWrap(8));
 
-        addView(text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context), ui("local_ai.quality")), matchWrap(18));
+        // Headings are set in render(), so a card reused after a UI language change follows it.
+        qualityTitle = text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context));
+        addView(qualityTitle, matchWrap(18));
         quality = new SeekBar(context);
         quality.setMax(LocalAiModels.TIERS.size() - 1);
         SettingsAppearance.styleSlider(quality);
@@ -104,16 +113,17 @@ final class LocalAiSettingsView extends LinearLayout {
         tierLabels = new LinearLayout(context);
         tierLabels.setOrientation(HORIZONTAL);
         addView(tierLabels, matchWrap(0));
-        TextView hint = text(12f, SettingsAppearance.MUTED, AppFonts.regular(context), ui("local_ai.tier_hint"));
-        hint.setLineSpacing(dp(2), 1f);
-        addView(hint, matchWrap(10));
+        tierHint = text(12f, SettingsAppearance.MUTED, AppFonts.regular(context));
+        tierHint.setLineSpacing(dp(2), 1f);
+        addView(tierHint, matchWrap(10));
 
-        addView(text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context), ui("local_ai.idle_unload")), matchWrap(18));
+        idleTitle = text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context));
+        addView(idleTitle, matchWrap(18));
         idleChoices = new LinearLayout(context);
         idleChoices.setOrientation(VERTICAL);
         addView(idleChoices, matchWrap(8));
 
-        TextView privacy = text(11.5f, SettingsAppearance.MUTED, AppFonts.regular(context), ui("local_ai.privacy"));
+        privacy = text(11.5f, SettingsAppearance.MUTED, AppFonts.regular(context));
         privacy.setLineSpacing(dp(2), 1f);
         addView(privacy, matchWrap(16));
         render();
@@ -153,6 +163,11 @@ final class LocalAiSettingsView extends LinearLayout {
     private void render() {
         LocalAiRuntime.Status snapshot = runtime.status();
         boolean supported = snapshot.unsupportedReason == null;
+        qualityTitle.setText(ui("local_ai.quality"));
+        tierHint.setText(ui("local_ai.tier_hint"));
+        idleTitle.setText(ui("local_ai.idle_unload"));
+        privacy.setText(ui("local_ai.privacy"));
+        logError(snapshot.error);
         status.setText(statusText(snapshot));
         status.setTextColor(snapshot.phase == LocalAiRuntime.Phase.ERROR ? SettingsAppearance.ACCENT
                 : snapshot.phase == LocalAiRuntime.Phase.READY ? SettingsAppearance.MINT : SettingsAppearance.SECONDARY);
@@ -195,8 +210,11 @@ final class LocalAiSettingsView extends LinearLayout {
         }
         actions.addView(button(testRunning ? "…" : ui("local_ai.test"), true, !busy && !testRunning, this::runTest),
                 matchWrap(0));
-        LinearLayout row = new LinearLayout(getContext());
+        // Long labels such as the delete confirmation wrap, and the pair stacks when it cannot fit side by side.
+        LinearLayout row = new SettingsControlRow(getContext());
         row.setOrientation(HORIZONTAL);
+        // Top-aligned: baseline alignment would push a wrapped label below its single-line neighbour.
+        row.setBaselineAligned(false);
         actions.addView(row, matchWrap(8));
         if (snapshot.phase == LocalAiRuntime.Phase.READY) {
             row.addView(button(ui("local_ai.unload"), false, true, runtime::unload), weighted(0));
@@ -219,14 +237,18 @@ final class LocalAiSettingsView extends LinearLayout {
         applySettings();
         AiLyricsSettings.Snapshot snapshot = settings.snapshot();
         String target = snapshot.resolveTargetLanguage("");
-        runtime.testTranslation(target, LocalAiProvider.messages(snapshot.uiLang)).whenComplete((result, failure) ->
+        String uiLang = snapshot.uiLang;
+        runtime.testTranslation(target, LocalAiProvider.messages(uiLang)).whenComplete((result, failure) ->
                 main.post(() -> {
                     testRunning = false;
                     testSucceeded = failure == null;
+                    if (failure != null) {
+                        Log.w(TAG, "Local AI test translation failed", cause(failure));
+                    }
                     testText = failure == null
                             ? "✓ " + result.sample + " → " + result.line
                                     + String.format(Locale.ROOT, " (%.1fs)", result.seconds)
-                            : "✗ " + LocalAiRuntime.describe(cause(failure));
+                            : "✗ " + LocalAiProvider.userMessage(cause(failure), uiLang);
                     render();
                 }));
         render();
@@ -296,19 +318,32 @@ final class LocalAiSettingsView extends LinearLayout {
                 return LocalAiModels.format(ui("local_ai.status_ready"), "device", snapshot.device);
             case ERROR:
                 return LocalAiModels.format(ui("local_ai.status_error"), "error",
-                        snapshot.unsupportedReason != null ? ui(snapshot.unsupportedReason) : snapshot.error);
+                        snapshot.unsupportedReason != null ? ui(snapshot.unsupportedReason)
+                                : LocalAiProvider.failureText(snapshot.errorKey == null
+                                        ? LocalAiModels.ERROR_TRANSLATE : snapshot.errorKey,
+                                        snapshot.errorStatus, settings.snapshot().uiLang));
             default:
                 return ui("local_ai.status_not_downloaded");
         }
+    }
+
+    /** The card shows what failed in words; the technical detail goes to the log once per failure. */
+    private void logError(String detail) {
+        if (detail != null && !detail.equals(loggedError)) {
+            Log.w(TAG, "Local AI: " + detail);
+        }
+        loggedError = detail;
     }
 
     private TextView button(String label, boolean primary, boolean enabled, Runnable action) {
         TextView button = text(13.5f, SettingsAppearance.TEXT, AppFonts.semiBold(getContext()), label);
         button.setTag(primary ? SettingsAppearance.PRIMARY_ACTION : SettingsAppearance.SECONDARY_ACTION);
         button.setGravity(Gravity.CENTER);
-        button.setSingleLine(true);
-        button.setEllipsize(TextUtils.TruncateAt.END);
-        button.setPadding(dp(12), 0, dp(12), 0);
+        // A translation that does not fit wraps instead of being cut off; one line keeps the 48dp height.
+        button.setSingleLine(false);
+        button.setMaxLines(4);
+        button.setEllipsize(null);
+        button.setPadding(dp(12), dp(8), dp(12), dp(8));
         button.setFocusable(true);
         SettingsAppearance.styleControls(button);
         button.setEnabled(enabled);

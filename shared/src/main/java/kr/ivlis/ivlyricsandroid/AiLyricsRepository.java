@@ -1515,12 +1515,12 @@ final class AiLyricsRepository {
 
         if (!settings.hasApiKey()) {
             emitLog(trackKey, callback, "ai tmi skipped: API key missing for " + settings.provider.label);
-            callback.onAiTmiError(trackKey, "AI 제공자 API 키가 설정되지 않았습니다");
+            callback.onAiTmiError(trackKey, AppI18n.t(settings.uiLang, "tmi.require_key"));
             return;
         }
         if (!settings.hasModel()) {
             emitLog(trackKey, callback, "ai tmi skipped: model missing for " + settings.provider.label);
-            callback.onAiTmiError(trackKey, "AI 모델을 직접 선택해 주세요");
+            callback.onAiTmiError(trackKey, AppI18n.t(settings.uiLang, "status.ai_model_needed"));
             return;
         }
 
@@ -1540,7 +1540,8 @@ final class AiLyricsRepository {
             } catch (Exception error) {
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
                 log.write("ai tmi error: " + message);
-                mainHandler.post(() -> callback.onAiTmiError(trackKey, message));
+                String shown = userErrorMessage(error, settings.uiLang);
+                mainHandler.post(() -> callback.onAiTmiError(trackKey, shown));
             }
         });
     }
@@ -1599,7 +1600,7 @@ final class AiLyricsRepository {
             mainHandler.post(() -> callback.onAiCulturalAnnotationsError(
                     trackKey,
                     cacheKey,
-                    "AI 제공자 API 키가 설정되지 않았습니다"
+                    AppI18n.t(settings.uiLang, "tmi.require_key")
             ));
             return cacheKey;
         }
@@ -1607,7 +1608,7 @@ final class AiLyricsRepository {
             mainHandler.post(() -> callback.onAiCulturalAnnotationsError(
                     trackKey,
                     cacheKey,
-                    "AI 모델을 직접 선택해 주세요"
+                    AppI18n.t(settings.uiLang, "status.ai_model_needed")
             ));
             return cacheKey;
         }
@@ -1917,7 +1918,7 @@ final class AiLyricsRepository {
                 session.markTranslationFailed();
                 log.write("ai translation error: " + message);
             }
-            partialDispatcher.taskFailed(message);
+            partialDispatcher.taskFailed(userErrorMessage(error, settings.uiLang));
         }
     }
 
@@ -2277,7 +2278,7 @@ final class AiLyricsRepository {
         PaxsenixAiModels.requireSelectedModel(settings == null ? "" : settings.model);
         List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
-            throw new IOException("API 키가 필요합니다");
+            throw new IOException(uiText(settings, "error.api_key_required"));
         }
 
         Exception lastError = null;
@@ -2306,7 +2307,7 @@ final class AiLyricsRepository {
                 }
             }
         }
-        throw lastError == null ? new IOException("AI 제공자 스트림 요청 실패") : lastError;
+        throw lastError == null ? new IOException(uiText(settings, "error.ai_request_failed")) : lastError;
     }
 
     private String callResearchStreamRaw(
@@ -2319,7 +2320,7 @@ final class AiLyricsRepository {
     ) throws Exception {
         PaxsenixAiModels.requireSelectedModel(settings == null ? "" : settings.model);
         List<String> apiKeys = providerApiKeys(settings);
-        if (apiKeys.isEmpty()) throw new IOException("API 키가 필요합니다");
+        if (apiKeys.isEmpty()) throw new IOException(uiText(settings, "error.api_key_required"));
         Exception lastError = null;
         for (String apiKey : apiKeys) {
             for (int attempt = 0; attempt < 2; attempt++) {
@@ -2411,7 +2412,7 @@ final class AiLyricsRepository {
         PaxsenixAiModels.requireSelectedModel(settings == null ? "" : settings.model);
         List<String> apiKeys = providerApiKeys(settings);
         if (apiKeys.isEmpty()) {
-            throw new IOException("API 키가 필요합니다");
+            throw new IOException(uiText(settings, "error.api_key_required"));
         }
 
         Exception lastError = null;
@@ -2440,7 +2441,7 @@ final class AiLyricsRepository {
                 }
             }
         }
-        throw lastError == null ? new IOException("AI 제공자 요청 실패") : lastError;
+        throw lastError == null ? new IOException(uiText(settings, "error.ai_request_failed")) : lastError;
     }
 
     private String callProviderRawOnce(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
@@ -4033,6 +4034,21 @@ final class AiLyricsRepository {
         return message == null || message.trim().isEmpty()
                 ? error.getClass().getSimpleName()
                 : message.trim();
+    }
+
+    /** The text shown for a failed request: provider failures in the UI language, the detail stays in the log. */
+    private static String userErrorMessage(Exception error, String uiLang) {
+        if (error instanceof KeylessTranslationProviders.ProviderException) {
+            return ((KeylessTranslationProviders.ProviderException) error).userMessage(uiLang);
+        }
+        if (error instanceof LocalAiRuntime.Failure) {
+            return LocalAiProvider.userMessage(error, uiLang);
+        }
+        return errorMessage(error);
+    }
+
+    private static String uiText(AiLyricsSettings.Snapshot settings, String key) {
+        return AppI18n.t(settings == null ? "en" : settings.uiLang, key);
     }
 
     private static String payloadTextForRequests(List<SupplementRequest> requests) {

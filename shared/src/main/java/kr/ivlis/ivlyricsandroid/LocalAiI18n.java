@@ -10,6 +10,8 @@ import java.util.Map;
  * "Android 9" and "64-bit ARM" unlocalized in every language. The performance note
  * (local_ai.performance_note) is mobile-only too: on-device translation needs a high-end phone.
  * Delete confirmations say "tap" rather than the desktop's "click".
+ * The failure messages (local_ai.error_*) are mobile-only as well: the settings card and the lyrics
+ * status show them instead of engine, file or network details, which stay in the logs.
  */
 final class LocalAiI18n {
     static final String[] KEYS = {
@@ -42,7 +44,13 @@ final class LocalAiI18n {
             "local_ai.download_busy",
             "local_ai.needs_android9",
             "local_ai.needs_arm64",
-            "local_ai.performance_note"
+            "local_ai.performance_note",
+            "local_ai.error_engine",
+            "local_ai.error_load",
+            "local_ai.error_translate",
+            "local_ai.error_download",
+            "local_ai.error_download_http",
+            "local_ai.error_delete"
     };
 
     private LocalAiI18n() {
@@ -88,7 +96,13 @@ final class LocalAiI18n {
                         "모델 다운로드가 끝난 뒤 다시 시도해 주세요.",
                         "Local AI를 사용하려면 Android 9 이상이 필요합니다.",
                         "Local AI는 64-bit ARM 기기에서만 사용할 수 있습니다.",
-                        "기기 성능에 따라 속도와 안정성이 크게 달라집니다. 고사양 기기가 아니라면 사용을 권장하지 않습니다."
+                        "기기 성능에 따라 속도와 안정성이 크게 달라집니다. 고사양 기기가 아니라면 사용을 권장하지 않습니다.",
+                        "이 기기에서 Local AI 엔진을 시작하지 못했습니다.",
+                        "모델을 불러오지 못했습니다. 다른 앱을 닫거나 더 낮은 번역 품질을 선택한 뒤 다시 시도해 주세요.",
+                        "번역 중 Local AI가 중단되었습니다. 다시 시도해 주세요.",
+                        "모델을 받지 못했습니다. 네트워크 연결과 저장 공간을 확인한 뒤 다시 시도해 주세요.",
+                        "모델을 받지 못했습니다(HTTP {status}). 잠시 후 다시 시도해 주세요.",
+                        "모델 파일을 삭제하지 못했습니다."
                 };
             case "zh-CN":
                 return new String[]{
@@ -121,7 +135,13 @@ final class LocalAiI18n {
                         "请等待模型下载完成后再试。",
                         "Local AI 需要 Android 9 或更高版本。",
                         "Local AI 仅支持 64-bit ARM 设备。",
-                        "运行速度和稳定性在很大程度上取决于设备性能。如果不是高端设备，不建议使用。"
+                        "运行速度和稳定性在很大程度上取决于设备性能。如果不是高端设备，不建议使用。",
+                        "无法在此设备上启动 Local AI 引擎。",
+                        "无法加载模型。请关闭其他应用或选择较低的翻译质量后重试。",
+                        "Local AI 在翻译时中断，请重试。",
+                        "无法下载模型。请检查网络连接和可用存储空间后重试。",
+                        "无法下载模型（HTTP {status}）。请稍后重试。",
+                        "无法删除模型文件。"
                 };
             case "zh-TW":
                 return new String[]{
@@ -154,7 +174,13 @@ final class LocalAiI18n {
                         "請等模型下載完成後再試一次。",
                         "Local AI 需要 Android 9 或以上版本。",
                         "Local AI 僅支援 64-bit ARM 裝置。",
-                        "執行速度與穩定性很大程度取決於裝置效能。如果不是高階裝置，不建議使用。"
+                        "執行速度與穩定性很大程度取決於裝置效能。如果不是高階裝置，不建議使用。",
+                        "無法在這部裝置上啟動 Local AI 引擎。",
+                        "無法載入模型。請關閉其他應用程式或選擇較低的翻譯品質後再試一次。",
+                        "Local AI 在翻譯時中斷，請再試一次。",
+                        "無法下載模型。請檢查網路連線和可用儲存空間後再試一次。",
+                        "無法下載模型（HTTP {status}）。請稍後再試。",
+                        "無法刪除模型檔案。"
                 };
             case "ja":
                 return new String[]{
@@ -187,7 +213,13 @@ final class LocalAiI18n {
                         "モデルのダウンロードが完了してから、もう一度お試しください。",
                         "Local AI を使うには Android 9 以降が必要です。",
                         "Local AI は 64-bit ARM デバイスでのみ使用できます。",
-                        "速度と安定性はデバイスの性能によって大きく変わります。ハイエンドのデバイスでない場合はおすすめしません。"
+                        "速度と安定性はデバイスの性能によって大きく変わります。ハイエンドのデバイスでない場合はおすすめしません。",
+                        "このデバイスでLocal AIエンジンを起動できませんでした。",
+                        "モデルを読み込めませんでした。ほかのアプリを閉じるか、より低い翻訳品質を選んでからもう一度お試しください。",
+                        "翻訳中にLocal AIが停止しました。もう一度お試しください。",
+                        "モデルをダウンロードできませんでした。通信状況と空き容量を確認してから、もう一度お試しください。",
+                        "モデルをダウンロードできませんでした（HTTP {status}）。しばらくしてからもう一度お試しください。",
+                        "モデルファイルを削除できませんでした。"
                 };
             case "hi":
                 return new String[]{
@@ -220,7 +252,13 @@ final class LocalAiI18n {
                         "मॉडल डाउनलोड पूरा होने तक प्रतीक्षा करें, फिर दोबारा प्रयास करें।",
                         "Local AI के लिए Android 9 या उसके बाद का संस्करण ज़रूरी है।",
                         "Local AI केवल 64-bit ARM डिवाइस पर चलता है।",
-                        "गति और स्थिरता काफ़ी हद तक आपके डिवाइस के प्रदर्शन पर निर्भर करती है। अगर आपका डिवाइस हाई-एंड नहीं है, तो इसका इस्तेमाल करने की सलाह नहीं दी जाती।"
+                        "गति और स्थिरता काफ़ी हद तक आपके डिवाइस के प्रदर्शन पर निर्भर करती है। अगर आपका डिवाइस हाई-एंड नहीं है, तो इसका इस्तेमाल करने की सलाह नहीं दी जाती।",
+                        "इस डिवाइस पर Local AI इंजन शुरू नहीं हो सका।",
+                        "मॉडल लोड नहीं हो सका। दूसरे ऐप बंद करें या अनुवाद की कम गुणवत्ता चुनें, फिर दोबारा प्रयास करें।",
+                        "अनुवाद के दौरान Local AI रुक गया। कृपया दोबारा प्रयास करें।",
+                        "मॉडल डाउनलोड नहीं हो सका। अपना कनेक्शन और खाली स्टोरेज जाँचें, फिर दोबारा प्रयास करें।",
+                        "मॉडल डाउनलोड नहीं हो सका (HTTP {status})। कृपया कुछ देर बाद दोबारा प्रयास करें।",
+                        "मॉडल फ़ाइल हटाई नहीं जा सकी।"
                 };
             case "es":
                 return new String[]{
@@ -253,7 +291,13 @@ final class LocalAiI18n {
                         "Espera a que termine la descarga del modelo y vuelve a intentarlo.",
                         "Local AI necesita Android 9 o posterior.",
                         "Local AI solo funciona en dispositivos 64-bit ARM.",
-                        "La velocidad y la estabilidad dependen mucho del rendimiento de tu dispositivo. No se recomienda si tu dispositivo no es de gama alta."
+                        "La velocidad y la estabilidad dependen mucho del rendimiento de tu dispositivo. No se recomienda si tu dispositivo no es de gama alta.",
+                        "No se pudo iniciar el motor de Local AI en este dispositivo.",
+                        "No se pudo cargar el modelo. Cierra otras apps o elige una calidad de traducción más baja y vuelve a intentarlo.",
+                        "Local AI se detuvo mientras traducía. Vuelve a intentarlo.",
+                        "No se pudo descargar el modelo. Comprueba la conexión y el espacio libre y vuelve a intentarlo.",
+                        "No se pudo descargar el modelo (HTTP {status}). Vuelve a intentarlo más tarde.",
+                        "No se pudo eliminar el archivo del modelo."
                 };
             case "fr":
                 return new String[]{
@@ -286,7 +330,13 @@ final class LocalAiI18n {
                         "Attendez la fin du téléchargement du modèle, puis réessayez.",
                         "Local AI nécessite Android 9 ou une version ultérieure.",
                         "Local AI fonctionne uniquement sur les appareils 64-bit ARM.",
-                        "La vitesse et la stabilité dépendent fortement des performances de votre appareil. Déconseillé si votre appareil n'est pas haut de gamme."
+                        "La vitesse et la stabilité dépendent fortement des performances de votre appareil. Déconseillé si votre appareil n'est pas haut de gamme.",
+                        "Impossible de démarrer le moteur Local AI sur cet appareil.",
+                        "Impossible de charger le modèle. Fermez d'autres applis ou choisissez une qualité de traduction inférieure, puis réessayez.",
+                        "Local AI s'est arrêté pendant la traduction. Veuillez réessayer.",
+                        "Impossible de télécharger le modèle. Vérifiez votre connexion et l'espace de stockage libre, puis réessayez.",
+                        "Impossible de télécharger le modèle (HTTP {status}). Réessayez plus tard.",
+                        "Impossible de supprimer le fichier du modèle."
                 };
             case "ar":
                 return new String[]{
@@ -319,7 +369,13 @@ final class LocalAiI18n {
                         "انتظر حتى يكتمل تنزيل النموذج، ثم حاول مرة أخرى.",
                         "يتطلب Local AI نظام Android 9 أو أحدث.",
                         "يعمل Local AI على أجهزة 64-bit ARM فقط.",
-                        "تعتمد السرعة والاستقرار بشكل كبير على أداء جهازك. لا يُنصح باستخدامه إلا على الأجهزة عالية الأداء."
+                        "تعتمد السرعة والاستقرار بشكل كبير على أداء جهازك. لا يُنصح باستخدامه إلا على الأجهزة عالية الأداء.",
+                        "تعذّر تشغيل محرك Local AI على هذا الجهاز.",
+                        "تعذّر تحميل النموذج. أغلق التطبيقات الأخرى أو اختر جودة ترجمة أقل، ثم حاول مرة أخرى.",
+                        "توقف Local AI أثناء الترجمة. يُرجى المحاولة مرة أخرى.",
+                        "تعذّر تنزيل النموذج. تحقّق من الاتصال والمساحة الفارغة، ثم حاول مرة أخرى.",
+                        "تعذّر تنزيل النموذج (HTTP {status}). يُرجى المحاولة لاحقًا.",
+                        "تعذّر حذف ملف النموذج."
                 };
             case "fa":
                 return new String[]{
@@ -352,7 +408,13 @@ final class LocalAiI18n {
                         "صبر کنید تا دانلود مدل تمام شود، سپس دوباره تلاش کنید.",
                         "Local AI به Android 9 یا نسخه‌های جدیدتر نیاز دارد.",
                         "Local AI فقط روی دستگاه‌های 64-bit ARM کار می‌کند.",
-                        "سرعت و پایداری تا حد زیادی به توان دستگاه شما بستگی دارد. اگر دستگاه شما رده‌بالا نیست، استفاده از آن توصیه نمی‌شود."
+                        "سرعت و پایداری تا حد زیادی به توان دستگاه شما بستگی دارد. اگر دستگاه شما رده‌بالا نیست، استفاده از آن توصیه نمی‌شود.",
+                        "موتور Local AI روی این دستگاه اجرا نشد.",
+                        "مدل بارگیری نشد. برنامه‌های دیگر را ببندید یا کیفیت ترجمهٔ پایین‌تری انتخاب کنید و دوباره تلاش کنید.",
+                        "Local AI هنگام ترجمه متوقف شد. لطفاً دوباره تلاش کنید.",
+                        "مدل دانلود نشد. اتصال اینترنت و فضای خالی دستگاه را بررسی کنید و دوباره تلاش کنید.",
+                        "مدل دانلود نشد (HTTP {status}). لطفاً بعداً دوباره تلاش کنید.",
+                        "فایل مدل حذف نشد."
                 };
             case "de":
                 return new String[]{
@@ -385,7 +447,13 @@ final class LocalAiI18n {
                         "Warten Sie, bis der Modell-Download abgeschlossen ist, und versuchen Sie es dann erneut.",
                         "Local AI benötigt Android 9 oder neuer.",
                         "Local AI läuft nur auf Geräten mit 64-bit ARM.",
-                        "Geschwindigkeit und Stabilität hängen stark von der Leistung Ihres Geräts ab. Nur für leistungsstarke Geräte empfohlen."
+                        "Geschwindigkeit und Stabilität hängen stark von der Leistung Ihres Geräts ab. Nur für leistungsstarke Geräte empfohlen.",
+                        "Die Engine von Local AI konnte auf diesem Gerät nicht gestartet werden.",
+                        "Das Modell konnte nicht geladen werden. Schließen Sie andere Apps oder wählen Sie eine niedrigere Übersetzungsqualität und versuchen Sie es erneut.",
+                        "Local AI wurde beim Übersetzen unterbrochen. Bitte versuchen Sie es erneut.",
+                        "Das Modell konnte nicht heruntergeladen werden. Prüfen Sie die Verbindung und den freien Speicherplatz und versuchen Sie es erneut.",
+                        "Das Modell konnte nicht heruntergeladen werden (HTTP {status}). Bitte versuchen Sie es später erneut.",
+                        "Die Modelldatei konnte nicht gelöscht werden."
                 };
             case "ru":
                 return new String[]{
@@ -418,7 +486,13 @@ final class LocalAiI18n {
                         "Дождитесь окончания скачивания модели и повторите попытку.",
                         "Для Local AI нужен Android 9 или новее.",
                         "Local AI работает только на устройствах с 64-bit ARM.",
-                        "Скорость и стабильность сильно зависят от производительности вашего устройства. Рекомендуется только для мощных устройств."
+                        "Скорость и стабильность сильно зависят от производительности вашего устройства. Рекомендуется только для мощных устройств.",
+                        "Не удалось запустить движок Local AI на этом устройстве.",
+                        "Не удалось загрузить модель. Закройте другие приложения или выберите более низкое качество перевода и повторите попытку.",
+                        "Local AI остановился во время перевода. Повторите попытку.",
+                        "Не удалось скачать модель. Проверьте подключение и свободное место, затем повторите попытку.",
+                        "Не удалось скачать модель (HTTP {status}). Повторите попытку позже.",
+                        "Не удалось удалить файл модели."
                 };
             case "sv":
                 return new String[]{
@@ -451,7 +525,13 @@ final class LocalAiI18n {
                         "Vänta tills modellen har laddats ner och försök sedan igen.",
                         "Local AI kräver Android 9 eller senare.",
                         "Local AI fungerar bara på enheter med 64-bit ARM.",
-                        "Hastighet och stabilitet beror i hög grad på enhetens prestanda. Rekommenderas bara för kraftfulla enheter."
+                        "Hastighet och stabilitet beror i hög grad på enhetens prestanda. Rekommenderas bara för kraftfulla enheter.",
+                        "Motorn för Local AI kunde inte startas på den här enheten.",
+                        "Modellen kunde inte läsas in. Stäng andra appar eller välj en lägre översättningskvalitet och försök sedan igen.",
+                        "Local AI stoppades under översättningen. Försök igen.",
+                        "Modellen kunde inte laddas ner. Kontrollera anslutningen och ledigt lagringsutrymme och försök sedan igen.",
+                        "Modellen kunde inte laddas ner (HTTP {status}). Försök igen senare.",
+                        "Det gick inte att ta bort modellfilen."
                 };
             case "pt":
                 return new String[]{
@@ -484,7 +564,13 @@ final class LocalAiI18n {
                         "Aguarde o download do modelo terminar e tente novamente.",
                         "O Local AI requer o Android 9 ou superior.",
                         "O Local AI só funciona em dispositivos 64-bit ARM.",
-                        "A velocidade e a estabilidade dependem muito do desempenho do seu dispositivo. Não é recomendado se o seu dispositivo não for topo de linha."
+                        "A velocidade e a estabilidade dependem muito do desempenho do seu dispositivo. Não é recomendado se o seu dispositivo não for topo de linha.",
+                        "Não foi possível iniciar o mecanismo do Local AI neste dispositivo.",
+                        "Não foi possível carregar o modelo. Feche outros apps ou escolha uma qualidade de tradução menor e tente novamente.",
+                        "O Local AI parou durante a tradução. Tente novamente.",
+                        "Não foi possível baixar o modelo. Verifique a conexão e o espaço livre e tente novamente.",
+                        "Não foi possível baixar o modelo (HTTP {status}). Tente novamente mais tarde.",
+                        "Não foi possível excluir o arquivo do modelo."
                 };
             case "bn":
                 return new String[]{
@@ -517,7 +603,13 @@ final class LocalAiI18n {
                         "মডেল ডাউনলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন, তারপর আবার চেষ্টা করুন।",
                         "Local AI ব্যবহার করতে Android 9 বা তার পরের সংস্করণ লাগবে।",
                         "Local AI শুধু 64-bit ARM ডিভাইসে চলে।",
-                        "গতি ও স্থিতিশীলতা অনেকটাই আপনার ডিভাইসের পারফরম্যান্সের ওপর নির্ভর করে। আপনার ডিভাইস হাই-এন্ড না হলে এটি ব্যবহারের পরামর্শ দেওয়া হয় না।"
+                        "গতি ও স্থিতিশীলতা অনেকটাই আপনার ডিভাইসের পারফরম্যান্সের ওপর নির্ভর করে। আপনার ডিভাইস হাই-এন্ড না হলে এটি ব্যবহারের পরামর্শ দেওয়া হয় না।",
+                        "এই ডিভাইসে Local AI ইঞ্জিন চালু করা যায়নি।",
+                        "মডেল লোড করা যায়নি। অন্য অ্যাপ বন্ধ করুন বা অনুবাদের কম মান বেছে নিন, তারপর আবার চেষ্টা করুন।",
+                        "অনুবাদের সময় Local AI থেমে গেছে। আবার চেষ্টা করুন।",
+                        "মডেল ডাউনলোড করা যায়নি। সংযোগ ও খালি স্টোরেজ পরীক্ষা করে আবার চেষ্টা করুন।",
+                        "মডেল ডাউনলোড করা যায়নি (HTTP {status})। কিছুক্ষণ পরে আবার চেষ্টা করুন।",
+                        "মডেল ফাইল মুছে ফেলা যায়নি।"
                 };
             case "cs":
                 return new String[]{
@@ -550,7 +642,13 @@ final class LocalAiI18n {
                         "Počkejte na dokončení stahování modelu a zkuste to znovu.",
                         "Local AI vyžaduje Android 9 nebo novější.",
                         "Local AI funguje jen na zařízeních s 64-bit ARM.",
-                        "Rychlost a stabilita výrazně závisí na výkonu vašeho zařízení. Doporučeno pouze pro výkonná zařízení."
+                        "Rychlost a stabilita výrazně závisí na výkonu vašeho zařízení. Doporučeno pouze pro výkonná zařízení.",
+                        "Jádro Local AI se na tomto zařízení nepodařilo spustit.",
+                        "Model se nepodařilo načíst. Zavřete ostatní aplikace nebo zvolte nižší kvalitu překladu a zkuste to znovu.",
+                        "Local AI se během překladu zastavila. Zkuste to znovu.",
+                        "Model se nepodařilo stáhnout. Zkontrolujte připojení a volné místo v úložišti a zkuste to znovu.",
+                        "Model se nepodařilo stáhnout (HTTP {status}). Zkuste to později.",
+                        "Soubor modelu se nepodařilo smazat."
                 };
             case "it":
                 return new String[]{
@@ -583,7 +681,13 @@ final class LocalAiI18n {
                         "Attendi il termine del download del modello, poi riprova.",
                         "Local AI richiede Android 9 o versioni successive.",
                         "Local AI funziona solo su dispositivi 64-bit ARM.",
-                        "Velocità e stabilità dipendono molto dalle prestazioni del tuo dispositivo. Sconsigliato se il dispositivo non è di fascia alta."
+                        "Velocità e stabilità dipendono molto dalle prestazioni del tuo dispositivo. Sconsigliato se il dispositivo non è di fascia alta.",
+                        "Impossibile avviare il motore di Local AI su questo dispositivo.",
+                        "Impossibile caricare il modello. Chiudi altre app o scegli una qualità di traduzione inferiore, poi riprova.",
+                        "Local AI si è interrotto durante la traduzione. Riprova.",
+                        "Impossibile scaricare il modello. Controlla la connessione e lo spazio libero, poi riprova.",
+                        "Impossibile scaricare il modello (HTTP {status}). Riprova più tardi.",
+                        "Impossibile eliminare il file del modello."
                 };
             case "th":
                 return new String[]{
@@ -616,7 +720,13 @@ final class LocalAiI18n {
                         "โปรดรอให้ดาวน์โหลดโมเดลเสร็จก่อน แล้วลองอีกครั้ง",
                         "Local AI ต้องใช้ Android 9 ขึ้นไป",
                         "Local AI ใช้ได้เฉพาะกับอุปกรณ์ 64-bit ARM",
-                        "ความเร็วและความเสถียรขึ้นอยู่กับประสิทธิภาพของอุปกรณ์เป็นอย่างมาก ไม่แนะนำให้ใช้หากอุปกรณ์ของคุณไม่ใช่รุ่นระดับสูง"
+                        "ความเร็วและความเสถียรขึ้นอยู่กับประสิทธิภาพของอุปกรณ์เป็นอย่างมาก ไม่แนะนำให้ใช้หากอุปกรณ์ของคุณไม่ใช่รุ่นระดับสูง",
+                        "เริ่มเอนจิน Local AI บนอุปกรณ์นี้ไม่สำเร็จ",
+                        "โหลดโมเดลไม่สำเร็จ ปิดแอปอื่นหรือเลือกคุณภาพการแปลที่ต่ำลง แล้วลองอีกครั้ง",
+                        "Local AI หยุดทำงานระหว่างแปล โปรดลองอีกครั้ง",
+                        "ดาวน์โหลดโมเดลไม่สำเร็จ ตรวจสอบการเชื่อมต่อและพื้นที่เก็บข้อมูลที่ว่าง แล้วลองอีกครั้ง",
+                        "ดาวน์โหลดโมเดลไม่สำเร็จ (HTTP {status}) โปรดลองอีกครั้งในภายหลัง",
+                        "ลบไฟล์โมเดลไม่สำเร็จ"
                 };
             case "vi":
                 return new String[]{
@@ -649,7 +759,13 @@ final class LocalAiI18n {
                         "Vui lòng đợi tải mô hình xong rồi thử lại.",
                         "Local AI cần Android 9 trở lên.",
                         "Local AI chỉ chạy trên thiết bị 64-bit ARM.",
-                        "Tốc độ và độ ổn định phụ thuộc nhiều vào hiệu năng thiết bị của bạn. Không khuyến khích sử dụng nếu thiết bị không thuộc dòng cao cấp."
+                        "Tốc độ và độ ổn định phụ thuộc nhiều vào hiệu năng thiết bị của bạn. Không khuyến khích sử dụng nếu thiết bị không thuộc dòng cao cấp.",
+                        "Không thể khởi động công cụ Local AI trên thiết bị này.",
+                        "Không thể tải mô hình. Hãy đóng các ứng dụng khác hoặc chọn chất lượng dịch thấp hơn rồi thử lại.",
+                        "Local AI đã dừng khi đang dịch. Vui lòng thử lại.",
+                        "Không thể tải xuống mô hình. Hãy kiểm tra kết nối và dung lượng trống rồi thử lại.",
+                        "Không thể tải xuống mô hình (HTTP {status}). Vui lòng thử lại sau.",
+                        "Không thể xóa tệp mô hình."
                 };
             case "id":
                 return new String[]{
@@ -682,7 +798,13 @@ final class LocalAiI18n {
                         "Tunggu hingga unduhan model selesai, lalu coba lagi.",
                         "Local AI memerlukan Android 9 atau yang lebih baru.",
                         "Local AI hanya berjalan di perangkat 64-bit ARM.",
-                        "Kecepatan dan stabilitas sangat bergantung pada performa perangkat Anda. Tidak disarankan jika perangkat Anda bukan kelas atas."
+                        "Kecepatan dan stabilitas sangat bergantung pada performa perangkat Anda. Tidak disarankan jika perangkat Anda bukan kelas atas.",
+                        "Mesin Local AI tidak dapat dijalankan di perangkat ini.",
+                        "Model tidak dapat dimuat. Tutup aplikasi lain atau pilih kualitas terjemahan yang lebih rendah, lalu coba lagi.",
+                        "Local AI berhenti saat menerjemahkan. Silakan coba lagi.",
+                        "Model tidak dapat diunduh. Periksa koneksi dan ruang penyimpanan kosong, lalu coba lagi.",
+                        "Model tidak dapat diunduh (HTTP {status}). Silakan coba lagi nanti.",
+                        "File model tidak dapat dihapus."
                 };
             case "ms":
                 return new String[]{
@@ -715,7 +837,13 @@ final class LocalAiI18n {
                         "Tunggu sehingga muat turun model selesai, kemudian cuba lagi.",
                         "Local AI memerlukan Android 9 atau lebih baharu.",
                         "Local AI hanya berfungsi pada peranti 64-bit ARM.",
-                        "Kelajuan dan kestabilan sangat bergantung pada prestasi peranti anda. Tidak disyorkan kecuali peranti anda berprestasi tinggi."
+                        "Kelajuan dan kestabilan sangat bergantung pada prestasi peranti anda. Tidak disyorkan kecuali peranti anda berprestasi tinggi.",
+                        "Enjin Local AI tidak dapat dimulakan pada peranti ini.",
+                        "Model tidak dapat dimuatkan. Tutup apl lain atau pilih kualiti terjemahan yang lebih rendah, kemudian cuba lagi.",
+                        "Local AI terhenti semasa menterjemah. Sila cuba lagi.",
+                        "Model tidak dapat dimuat turun. Semak sambungan dan ruang storan kosong, kemudian cuba lagi.",
+                        "Model tidak dapat dimuat turun (HTTP {status}). Sila cuba lagi kemudian.",
+                        "Fail model tidak dapat dipadamkan."
                 };
             case "tr":
                 return new String[]{
@@ -748,7 +876,13 @@ final class LocalAiI18n {
                         "Model indirmesinin bitmesini bekleyin, ardından tekrar deneyin.",
                         "Local AI için Android 9 veya üzeri gerekir.",
                         "Local AI yalnızca 64-bit ARM cihazlarda çalışır.",
-                        "Hız ve kararlılık büyük ölçüde cihazınızın performansına bağlıdır. Üst düzey bir cihazınız yoksa önerilmez."
+                        "Hız ve kararlılık büyük ölçüde cihazınızın performansına bağlıdır. Üst düzey bir cihazınız yoksa önerilmez.",
+                        "Local AI motoru bu cihazda başlatılamadı.",
+                        "Model yüklenemedi. Diğer uygulamaları kapatın veya daha düşük bir çeviri kalitesi seçip tekrar deneyin.",
+                        "Local AI çeviri sırasında durdu. Lütfen tekrar deneyin.",
+                        "Model indirilemedi. Bağlantınızı ve boş depolama alanını kontrol edip tekrar deneyin.",
+                        "Model indirilemedi (HTTP {status}). Lütfen daha sonra tekrar deneyin.",
+                        "Model dosyası silinemedi."
                 };
             case "en":
             default:
@@ -782,7 +916,13 @@ final class LocalAiI18n {
                         "Wait for the model download to finish, then try again.",
                         "Local AI needs Android 9 or later.",
                         "Local AI needs a 64-bit ARM device.",
-                        "Speed and stability depend heavily on your device's performance. Not recommended unless your device is high-end."
+                        "Speed and stability depend heavily on your device's performance. Not recommended unless your device is high-end.",
+                        "The Local AI engine could not start on this device.",
+                        "The model could not be loaded. Close other apps or choose a lower translation quality, then try again.",
+                        "Local AI stopped while translating. Please try again.",
+                        "The model could not be downloaded. Check your connection and free storage, then try again.",
+                        "The model could not be downloaded (HTTP {status}). Please try again later.",
+                        "Could not delete the model file."
                 };
         }
     }

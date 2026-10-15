@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_label_media_listener">ivLyrics মিডিয়া লিসেনার</string>
+    <string name="service_label_spotify_detector">ivLyrics Spotify শনাক্তকারী</string>
+    <string name="accessibility_service_description">Spotify কখন খোলা থাকে তা শনাক্ত করে, যাতে ivLyrics শুধু Spotify-এর ভিতরে তার শর্টকাট দেখায়।</string>
+</resources>

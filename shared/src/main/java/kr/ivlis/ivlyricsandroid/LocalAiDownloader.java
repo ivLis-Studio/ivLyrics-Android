@@ -24,6 +24,16 @@ final class LocalAiDownloader {
         HttpURLConnection open(URL url) throws IOException;
     }
 
+    /** The server answered with something other than the file; only its status code is shown to the user. */
+    static final class HttpStatusException extends IOException {
+        final int status;
+
+        HttpStatusException(int status, String message) {
+            super(message);
+            this.status = status;
+        }
+    }
+
     private static final int MAX_REDIRECTS = 8;
     private static final long PROGRESS_INTERVAL_MS = 250L;
     private static final Pattern CONTENT_RANGE = Pattern.compile("bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)");
@@ -101,7 +111,7 @@ final class LocalAiDownloader {
                 if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
                     String location = connection.getHeaderField("Location");
                     if (location == null || ++redirects > MAX_REDIRECTS) {
-                        throw new IOException("HTTP " + code + " without a usable redirect");
+                        throw new HttpStatusException(code, "HTTP " + code + " without a usable redirect");
                     }
                     url = new URL(url, location);
                     continue;
@@ -130,7 +140,7 @@ final class LocalAiDownloader {
                     append = false;
                     existing = 0;
                 } else {
-                    throw new IOException("HTTP " + code);
+                    throw new HttpStatusException(code, "HTTP " + code);
                 }
                 copy(connection, partial, append, existing, expectedBytes, progress);
                 return;
