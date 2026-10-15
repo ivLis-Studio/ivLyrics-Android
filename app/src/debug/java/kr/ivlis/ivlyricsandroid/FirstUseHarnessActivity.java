@@ -79,6 +79,10 @@ public final class FirstUseHarnessActivity extends BaseLyricsActivity {
                     .putString("theme", getIntent().getStringExtra("theme")).commit();
             AiLyricsSettings settings = new AiLyricsSettings(storage);
             settings.setUiLang(getIntent().getStringExtra("language"));
+            // The decorative player background is outside these first-use tests. Stop only
+            // its drift so native window draw-idle can observe the form on every renderer.
+            // This does NOT disable ScrollView/OverScroller or native control animations.
+            settings.setBackgroundReduceMotion(true);
             for (AiLyricsSettings.Provider provider : AiLyricsSettings.PROVIDERS) settings.setAiProviderEnabled(provider.id, false);
             settings.setBingTranslateEnabled(false);
             settings.setGoogleTranslateEnabled(true);

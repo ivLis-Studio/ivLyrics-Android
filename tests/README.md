@@ -56,10 +56,23 @@ in an unexported debug fixture with isolated storage. It covers light/dark, nati
 touches, large text/landscape/RTL scrolling, language-rule persistence, Original only/cancel/stale-song
 handling, closing uncommitted edits, and unsaved credentials across back/language changes/Activity
 recreation. Landscape tests assert the real Activity orientation and native window dimensions.
-Native taps wait for an attached, focused, laid-out target and quiet rendering by its ancestor
-ScrollViews, not just unchanged bounds: a clamped OverScroller can otherwise consume the first
-DOWN. A queued clamped-scroll regression requires the same single pointer tap to advance the
-onboarding phase; there are no click retries or programmatic `performClick()` fallbacks.
+Native taps require an attached, focused, laid-out target, completed UI frame/traversal, and
+400ms of unconditional native draw quiet (longer than stock 250ms scrolling and the regression's
+300ms queued-scroll cadence). The isolated fixture pauses only decorative background drift;
+native controls and OverScroller still run normally. No renderer-dependent `isDirty()` filtering
+is used. A queued clamped-scroll regression checks that all eight requests and the last native
+animation finish **before** a single Next/Back pointer gesture, not merely that a click happens
+to succeed.
+
+Window focus and visible bounds do not prove input ownership: a transparent, nonfocusable Taskbar
+can still receive the tap. The waiter reads the real API-35 InputDispatcher window stack through
+`dumpsys input`, applies its physical-to-logical display transform, and requires the center and
+corners of a 48dp hit area to target the expected app UID/window for 400ms. Unknown dump formats
+fail closed. A native transparent-panel regression retains app focus while blocking input, then
+verifies no pointer is injected until that test-owned panel leaves. Four separate parser contracts
+cover rotation/scaling, disjoint regions, system/spy overlays, and fail-closed behavior; these are
+not substitutes for native UI acceptance. There are no click retries, `performClick()` fallbacks,
+Taskbar hiding, or orientation/dimension assertion changes.
 Its OS window captures are atomically saved under the app's external-files
 `first-use-screenshots/` directory, including `failure-<test>.png` captured before fixture cleanup
 when a native assertion fails. Run on a disposable emulator with:

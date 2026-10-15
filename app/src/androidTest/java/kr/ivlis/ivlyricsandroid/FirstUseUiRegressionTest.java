@@ -6,15 +6,19 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.MotionEvent;
+import android.view.Gravity;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
@@ -26,9 +30,14 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -39,9 +48,13 @@ import static org.junit.Assert.*;
 /** Real production first-use views, touch dispatch, persistence and native window captures. */
 @android.annotation.TargetApi(30)
 public final class FirstUseUiRegressionTest {
+    // Exceeds both stock OverScroller's 250ms animation and queued focus/scroll cadence
+    // (300ms in the regression). Unlike isDirty(), OnDraw works on software rendering too.
+    private static final long DRAW_QUIET_MS = 400;
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
     private FirstUseHarnessActivity activity;
     private String language;
+    private Runnable onBlockedInput;
 
     @Rule public final TestWatcher nativeEvidence = new TestWatcher() {
         @Override protected void failed(Throwable error, Description test) {
@@ -169,18 +182,76 @@ public final class FirstUseUiRegressionTest {
 
     @Test public void onboardingTapWaitsForClampedScroll() throws Exception {
         launch("ko", 1.6f, true, true, "dark");
+        tapAfterQueuedClampedScroll(activity.view("onboardingNextButton"));
+        onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+        onMain(() -> step(2));
+        tapAfterQueuedClampedScroll(activity.view("onboardingBackButton"));
+        onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+    }
+
+    @Test public void onboardingWaitsForNonFocusableInputOverlay() throws Exception {
+        launch("ko", 1.6f, true, true, "dark");
         View next = activity.view("onboardingNextButton");
         reveal(next);
+        View blocker = new View(activity);
+        AtomicInteger blockedTouches = new AtomicInteger();
+        blocker.setOnTouchListener((view, event) -> { blockedTouches.incrementAndGet(); return true; });
+        WindowManager manager = activity.getWindowManager();
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        params.token = activity.getWindow().getDecorView().getWindowToken();
+        params.gravity = Gravity.TOP | Gravity.LEFT;
+        params.setTitle("first-use-input-blocker");
+        onMain(() -> manager.addView(blocker, params));
+        AtomicInteger observedBlockers = new AtomicInteger();
+        onBlockedInput = () -> {
+            assertTrue("app focus does not prove native hit ownership", activity.hasWindowFocus());
+            assertTrue(blocker.isAttachedToWindow());
+            observedBlockers.incrementAndGet();
+            // Remove only this test-owned transparent input window, after the real input
+            // snapshot observed it. Do not hide system UI or inject a preliminary/retry tap.
+            blocker.postDelayed(() -> manager.removeViewImmediate(blocker), 600);
+        };
+        try {
+            tap(next, () -> {
+                assertEquals("waiter observed the native nonfocusable input blocker", 1, observedBlockers.get());
+                assertFalse("blocker left before the single DOWN", blocker.isAttachedToWindow());
+            });
+            assertEquals("no native pointer was sent into the covering window", 0, blockedTouches.get());
+            onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+            capture("ko-onboarding-landscape-after-input-overlay");
+        } finally {
+            onBlockedInput = null;
+            onMain(() -> { if (blocker.isAttachedToWindow()) manager.removeViewImmediate(blocker); });
+        }
+    }
+
+    private void tapAfterQueuedClampedScroll(View target) {
+        reveal(target);
         // Like queued focus/rectangle requests, these native scrolls do not move the
         // button at the edge, but OverScroller is active and can intercept the first DOWN.
         ScrollView scroll = (ScrollView) activity.view("spotifySetupScrollView");
-        Runnable clampedScroll = () -> scroll.smoothScrollBy(0, 0);
+        AtomicInteger requests = new AtomicInteger();
+        AtomicLong lastRequest = new AtomicLong();
+        Runnable clampedScroll = () -> {
+            scroll.smoothScrollBy(0, 0);
+            requests.incrementAndGet();
+            lastRequest.set(SystemClock.uptimeMillis());
+        };
         onMain(() -> {
             for (int index = 0; index < 8; index++) scroll.postDelayed(clampedScroll, index * 300L);
         });
         try {
-            tap(next); // One native pointer tap, never a retry or performClick().
-            onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+            // Assert BEFORE input: a coincidentally successful click must not hide a waiter
+            // returning between 300ms requests or inside the stock 250ms scroll animation.
+            tap(target, () -> {
+                assertEquals("all queued native scrolls completed before the single DOWN", 8, requests.get());
+                assertTrue("stock 250ms native scroll completed before DOWN",
+                        SystemClock.uptimeMillis() - lastRequest.get() > 250);
+            });
         } finally {
             onMain(() -> scroll.removeCallbacks(clampedScroll));
         }
@@ -376,48 +447,37 @@ public final class FirstUseUiRegressionTest {
         awaitLayout(view);
     }
     private void tap(View view) {
+        tap(view, () -> {});
+    }
+    private void tap(View view, Runnable beforeDown) {
         reveal(view);
-        int[] xy = new int[2];
-        Rect hit = new Rect();
-        onMain(() -> {
-            assertTrue("attached native target: " + view, view.isAttachedToWindow());
-            assertTrue("enabled native target: " + view, view.isEnabled());
-            assertTrue("visible native target: " + view, view.getLocalVisibleRect(hit));
-            hit.offset(-view.getScrollX(), -view.getScrollY());
-            assertTrue(hit.intersect(0, 0, view.getWidth(), view.getHeight()));
-            view.getLocationOnScreen(xy);
-        });
-        assertTrue("48dp target: " + view, view.getWidth() >= dp(48) && view.getHeight() >= dp(48));
-        assertTrue("visible 48dp target: " + hit, hit.width() >= dp(48) && hit.height() >= dp(48));
-        float x = xy[0] + hit.exactCenterX(), y = xy[1] + hit.exactCenterY();
-        Rect window = new Rect();
-        onMain(() -> view.getWindowVisibleDisplayFrame(window));
-        assertTrue("native touch center inside visible window: " + window,
-                window.contains(Math.round(x), Math.round(y)));
+        TapPoint target = awaitReady(view, true);
+        float x = target.x, y = target.y;
         android.util.Log.i("FirstUseUiRegression", "Single native tap at " + x + "," + y
-                + ", hit=" + hit + ", target=" + view + ", step=" + activity.value("onboardingStep"));
+                + ", hit=" + target.hit + ", target=" + view + ", step=" + activity.value("onboardingStep"));
+        onMain(beforeDown);
         long time = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
-        MotionEvent up = MotionEvent.obtain(time, time + 60, MotionEvent.ACTION_UP, x, y, 0);
-        instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
+        instrumentation.sendPointerSync(down);
+        SystemClock.sleep(60);
+        MotionEvent up = MotionEvent.obtain(time, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+        instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
         AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
         awaitLayout(dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView());
     }
 
-    private void awaitLayout(View view) {
-        long deadline = SystemClock.uptimeMillis() + 10000;
+    private void awaitLayout(View view) { awaitReady(view, false); }
+
+    private TapPoint awaitReady(View view, boolean checkInput) {
+        long deadline = SystemClock.uptimeMillis() + 15000;
         Rect previous = new Rect();
         AtomicLong lastDraw = new AtomicLong();
-        AtomicLong lastScrollDraw = new AtomicLong();
+        AtomicInteger draws = new AtomicInteger();
         ViewTreeObserver[] observer = new ViewTreeObserver[1];
         ViewTreeObserver.OnDrawListener draw = () -> {
-            long now = SystemClock.uptimeMillis();
-            lastDraw.set(now);
-            for (View ancestor = view; ancestor != null;
-                    ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
-                if (ancestor instanceof ScrollView && ancestor.isDirty()) lastScrollDraw.set(now);
-            }
+            lastDraw.set(SystemClock.uptimeMillis());
+            draws.incrementAndGet();
         };
         onMain(() -> {
             observer[0] = view.getViewTreeObserver();
@@ -425,10 +485,14 @@ public final class FirstUseUiRegressionTest {
             view.getRootView().invalidate(); // Require a real frame, including after root rebuilds.
         });
         int stable = 0;
+        long inputReadySince = 0;
+        String inputState = "not sampled", previousInputState = "";
         try {
             while (SystemClock.uptimeMillis() < deadline) {
                 acknowledgeImmersiveEducation();
+                awaitUiFrame(view);
                 Rect bounds = new Rect();
+                TapPoint target = new TapPoint();
                 final boolean[] ready = {false};
                 onMain(() -> {
                     int[] xy = new int[2]; view.getLocationOnScreen(xy);
@@ -439,24 +503,96 @@ public final class FirstUseUiRegressionTest {
                             ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
                         ready[0] &= !ancestor.isLayoutRequested();
                     }
+                    if (checkInput && ready[0]) {
+                        assertTrue("enabled native target: " + view, view.isEnabled());
+                        assertTrue("48dp target: " + view, view.getWidth() >= dp(48) && view.getHeight() >= dp(48));
+                        ready[0] = view.getLocalVisibleRect(target.hit);
+                        target.hit.offset(-view.getScrollX(), -view.getScrollY());
+                        ready[0] &= target.hit.intersect(0, 0, view.getWidth(), view.getHeight());
+                        ready[0] &= target.hit.width() >= dp(48) && target.hit.height() >= dp(48);
+                        target.x = xy[0] + target.hit.exactCenterX(); target.y = xy[1] + target.hit.exactCenterY();
+                        Rect window = new Rect(); view.getWindowVisibleDisplayFrame(window);
+                        ready[0] &= window.contains(Math.round(target.x), Math.round(target.y));
+                        Rect metrics = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
+                        target.width = metrics.width(); target.height = metrics.height();
+                        target.title = ((WindowManager.LayoutParams) view.getRootView().getLayoutParams()).getTitle().toString();
+                    }
                 });
                 stable = ready[0] && previous.equals(bounds) ? stable + 1 : 0;
-                // A clamped OverScroller/edge effect keeps drawing without moving the target.
-                // Bounds-only idling can therefore send DOWN while ScrollView still intercepts
-                // it to stop scrolling. Wait for actual rendered-frame quiet as well as layout.
-                if (stable >= 3 && lastDraw.get() > 0
-                        && SystemClock.uptimeMillis() - lastScrollDraw.get() >= 240) return;
+                boolean inputReady = !checkInput;
+                if (checkInput && ready[0]) {
+                    NativeInputWindowState input = NativeInputWindowState.parse(readInputDump(), view.getDisplay().getDisplayId());
+                    int uid = activity.getApplicationInfo().uid;
+                    float halfTarget = dp(48) / 2f - 0.5f;
+                    inputReady = input.width == target.width && input.height == target.height
+                            && input.targets(target.x, target.y, uid, target.title);
+                    for (float dx : new float[]{-halfTarget, halfTarget}) {
+                        for (float dy : new float[]{-halfTarget, halfTarget}) {
+                            inputReady &= input.targets(target.x + dx, target.y + dy, uid, target.title);
+                        }
+                    }
+                    inputState = input.width + "x" + input.height + " @" + target.x + "," + target.y
+                            + " -> " + input.targetAt(target.x, target.y);
+                    if (!inputState.equals(previousInputState)) {
+                        android.util.Log.i("FirstUseUiRegression", "Native input " + (inputReady ? "ready: " : "blocked: ") + inputState);
+                        inputReadySince = 0;
+                    }
+                    previousInputState = inputState;
+                    if (!inputReady && onBlockedInput != null) {
+                        Runnable observed = onBlockedInput;
+                        onBlockedInput = null;
+                        onMain(observed);
+                    }
+                }
+                if (!inputReady || !ready[0] || !previous.equals(bounds)) inputReadySince = 0;
+                else if (inputReadySince == 0) inputReadySince = SystemClock.uptimeMillis();
+                long now = SystemClock.uptimeMillis();
+                if (stable >= 3 && lastDraw.get() > 0 && now - lastDraw.get() >= DRAW_QUIET_MS
+                        && inputReady && (!checkInput || now - inputReadySince >= DRAW_QUIET_MS)) {
+                    android.util.Log.i("FirstUseUiRegression", "Native settled: frames=" + draws.get()
+                            + ", draw quiet=" + (now - lastDraw.get()) + "ms, input=" + inputState);
+                    return target;
+                }
                 previous.set(bounds);
                 SystemClock.sleep(80);
             }
-            fail("Native layout/drawing/focus did not settle: " + view + " at " + previous
+            fail("Native layout/drawing/input did not settle: " + view + " at " + previous
                     + ", stable=" + stable + ", last draw age=" + (SystemClock.uptimeMillis() - lastDraw.get())
-                    + ", last scroll draw age=" + (SystemClock.uptimeMillis() - lastScrollDraw.get()));
+                    + ", input=" + inputState);
+            throw new AssertionError("unreachable");
         } finally {
             onMain(() -> {
                 if (observer[0].isAlive()) observer[0].removeOnDrawListener(draw);
             });
         }
+    }
+
+    private void awaitUiFrame(View view) {
+        CountDownLatch traversed = new CountDownLatch(1);
+        onMain(() -> view.postOnAnimation(() -> view.post(traversed::countDown)));
+        try {
+            assertTrue("native UI frame/traversal completed", traversed.await(3, TimeUnit.SECONDS));
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt(); throw new AssertionError(error);
+        }
+        instrumentation.waitForIdleSync();
+    }
+
+    private String readInputDump() {
+        try (InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(
+                instrumentation.getUiAutomation().executeShellCommand("dumpsys input"));
+                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192]; int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return output.toString("UTF-8");
+        } catch (java.io.IOException error) { throw new AssertionError("Native input snapshot", error); }
+    }
+
+    private static final class TapPoint {
+        final Rect hit = new Rect();
+        float x, y;
+        int width, height;
+        String title;
     }
 
     private void acknowledgeImmersiveEducation() {
