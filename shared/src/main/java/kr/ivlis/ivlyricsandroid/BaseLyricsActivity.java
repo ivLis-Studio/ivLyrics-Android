@@ -17,6 +17,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -467,6 +468,19 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout onboardingBody;
     private SettingsKit onboardingKit;
     private View[] onboardingProgress;
+    private FrameLayout onboardingGreetingView;
+    private TextView onboardingGreetingEnglish;
+    private TextView onboardingGreetingKorean;
+    private WelcomeGreetingRotation onboardingGreetingRotation;
+    private boolean onboardingResumed;
+    private AccessibilityManager onboardingAccessibilityManager;
+    private final AccessibilityManager.AccessibilityStateChangeListener onboardingAccessibilityListener =
+            enabled -> updateOnboardingGreetingActivity();
+    private final AccessibilityManager.TouchExplorationStateChangeListener onboardingTouchExplorationListener =
+            enabled -> updateOnboardingGreetingActivity();
+    private final ContentObserver onboardingMotionObserver = new ContentObserver(handler) {
+        @Override public void onChange(boolean selfChange) { updateOnboardingGreetingActivity(); }
+    };
 
     private final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
     private TrackSnapshot currentTrack;
@@ -659,6 +673,8 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     public void finish() {
+        onboardingResumed = false;
+        if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
         if (lyricsActivityHost != null && !isFinishing()) {
             lyricsActivityHost.close(this::finishHostedLyricsImmediately);
         } else {
@@ -687,6 +703,25 @@ public class BaseLyricsActivity extends Activity implements
             onboardingSpotifyHelpExpanded = savedInstanceState.getBoolean("first_use.help");
             spotifyInstructionStep = savedInstanceState.getInt("first_use.guide_step");
         }
+        onboardingGreetingRotation = new WelcomeGreetingRotation(
+                savedInstanceState == null ? "ko".equals(aiLyricsSettings.snapshot().uiLang)
+                        : savedInstanceState.getBoolean("first_use.greeting_ko", "ko".equals(aiLyricsSettings.snapshot().uiLang)),
+                savedInstanceState != null && savedInstanceState.getBoolean("first_use.language_interacted"),
+                new WelcomeGreetingRotation.Scheduler() {
+                    @Override public void postDelayed(Runnable callback, long delayMs) { handler.postDelayed(callback, delayMs); }
+                    @Override public void removeCallbacks(Runnable callback) { handler.removeCallbacks(callback); }
+                }, this::renderOnboardingGreeting);
+        onboardingAccessibilityManager = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+        if (onboardingAccessibilityManager != null) {
+            onboardingAccessibilityManager.addAccessibilityStateChangeListener(onboardingAccessibilityListener);
+            onboardingAccessibilityManager.addTouchExplorationStateChangeListener(onboardingTouchExplorationListener);
+        }
+        getContentResolver().registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
+                false, onboardingMotionObserver);
+        // Spoken-feedback services can change while another accessibility service is already
+        // enabled, without an accessibility-enabled or touch-exploration state transition.
+        getContentResolver().registerContentObserver(Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+                false, onboardingMotionObserver);
         currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
         creatorPrivacyRepository = new CreatorPrivacyRepository(this);
@@ -732,6 +767,8 @@ public class BaseLyricsActivity extends Activity implements
         outState.putString("first_use.client_secret", onboardingClientSecretDraft);
         outState.putBoolean("first_use.help", onboardingSpotifyHelpExpanded);
         outState.putInt("first_use.guide_step", spotifyInstructionStep);
+        outState.putBoolean("first_use.greeting_ko", onboardingGreetingRotation.isKorean());
+        outState.putBoolean("first_use.language_interacted", onboardingGreetingRotation.hasLanguageInteraction());
         super.onSaveInstanceState(outState);
     }
 
@@ -746,6 +783,8 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        onboardingResumed = true;
+        updateOnboardingGreetingActivity();
         if (!usesLivePlayback()) return;
         if (IvLyricsBridge.isEmbedded(this)) IvLyricsBridge.setLyricsPageForeground(this, true);
         if (!IvLyricsBridge.isEmbedded(this)) SpotifyShortcutOverlayController.setIvLyricsForeground(true);
@@ -771,6 +810,7 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        updateOnboardingGreetingActivity();
         if (hasFocus) {
             applySystemBarsForOrientation();
             applyLandscapeControlsAutoHideSetting();
@@ -1045,6 +1085,8 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onPause() {
+        onboardingResumed = false;
+        updateOnboardingGreetingActivity();
         if (IvLyricsBridge.isEmbedded(this)) IvLyricsBridge.setLyricsPageForeground(this, false);
         boolean keepActiveForPictureInPicture = isPictureInPictureUiActive();
         if (!keepActiveForPictureInPicture) {
@@ -1088,6 +1130,13 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onDestroy() {
+        onboardingResumed = false;
+        if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
+        getContentResolver().unregisterContentObserver(onboardingMotionObserver);
+        if (onboardingAccessibilityManager != null) {
+            onboardingAccessibilityManager.removeAccessibilityStateChangeListener(onboardingAccessibilityListener);
+            onboardingAccessibilityManager.removeTouchExplorationStateChangeListener(onboardingTouchExplorationListener);
+        }
         stopPlaybackClock();
         if (firstLanguagePromptDialog != null) {
             firstLanguagePromptDialog.setOnDismissListener(null);
@@ -6459,6 +6508,10 @@ public class BaseLyricsActivity extends Activity implements
 
     private void showOnboardingStep(int step) {
         rememberSpotifySetupDraft();
+        if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
+        onboardingGreetingView = null;
+        onboardingGreetingEnglish = null;
+        onboardingGreetingKorean = null;
         onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, step));
         if (onboardingBody == null) {
             return;
@@ -6518,7 +6571,49 @@ public class BaseLyricsActivity extends Activity implements
 
     private void buildOnboardingWelcomeStep(LinearLayout body) {
         SettingsKit kit = onboardingKit;
-        addOnboardingHeading(body, "onboarding.welcome_title", "onboarding.welcome_desc");
+        onboardingGreetingView = new FrameLayout(this) {
+            private final android.view.ViewTreeObserver.OnScrollChangedListener scrollListener =
+                    BaseLyricsActivity.this::updateOnboardingGreetingActivity;
+
+            @Override protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                getViewTreeObserver().addOnScrollChangedListener(scrollListener);
+                updateOnboardingGreetingActivity();
+            }
+            @Override protected void onDetachedFromWindow() {
+                getViewTreeObserver().removeOnScrollChangedListener(scrollListener);
+                onboardingGreetingRotation.setActive(false);
+                super.onDetachedFromWindow();
+            }
+            @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+                updateOnboardingGreetingActivity();
+            }
+            @Override protected void onVisibilityChanged(View changedView, int visibility) {
+                super.onVisibilityChanged(changedView, visibility);
+                updateOnboardingGreetingActivity();
+            }
+            @Override protected void onWindowVisibilityChanged(int visibility) {
+                super.onWindowVisibilityChanged(visibility);
+                updateOnboardingGreetingActivity();
+            }
+        };
+        // Both labels participate in measurement, so a crossfade never moves the form.
+        onboardingGreetingEnglish = kit.largeTitle("Hello");
+        onboardingGreetingKorean = kit.largeTitle("안녕하세요");
+        onboardingGreetingEnglish.setTextLocale(Locale.ENGLISH);
+        onboardingGreetingKorean.setTextLocale(Locale.KOREAN);
+        onboardingGreetingEnglish.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        onboardingGreetingKorean.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        onboardingGreetingView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        if (Build.VERSION.SDK_INT >= 28) onboardingGreetingView.setAccessibilityHeading(true);
+        onboardingGreetingView.addView(onboardingGreetingEnglish, new FrameLayout.LayoutParams(-1, -2));
+        onboardingGreetingView.addView(onboardingGreetingKorean, new FrameLayout.LayoutParams(-1, -2));
+        renderOnboardingGreeting(onboardingGreetingRotation.isKorean(), false);
+        body.addView(onboardingGreetingView, matchWrap());
+        TextView description = kit.text(ui("onboarding.welcome_desc"), 15f, kit.p.text2, kit.regular);
+        description.setLineSpacing(dp(4), 1f);
+        body.addView(description, matchWrap());
         body.addView(buildOnboardingUiLanguageSelect(), topMargin(matchWrap(), dp(24)));
         LinearLayout display = kit.group();
         Switch darkMode = kit.toggle(ui("onboarding.dark_mode"), null);
@@ -6534,11 +6629,46 @@ public class BaseLyricsActivity extends Activity implements
         body.addView(display, topMargin(matchWrap(), dp(12)));
     }
 
+    private void renderOnboardingGreeting(boolean korean, boolean animate) {
+        if (onboardingGreetingView == null) return;
+        onboardingGreetingView.setContentDescription(korean ? "안녕하세요" : "Hello");
+        onboardingGreetingEnglish.animate().cancel();
+        onboardingGreetingKorean.animate().cancel();
+        if (animate) {
+            onboardingGreetingEnglish.animate().alpha(korean ? 0f : 1f).setDuration(300L).start();
+            onboardingGreetingKorean.animate().alpha(korean ? 1f : 0f).setDuration(300L).start();
+        } else {
+            onboardingGreetingEnglish.setAlpha(korean ? 0f : 1f);
+            onboardingGreetingKorean.setAlpha(korean ? 1f : 0f);
+        }
+    }
+
+    private void updateOnboardingGreetingActivity() {
+        if (onboardingGreetingRotation == null) return;
+        boolean screenReader = onboardingAccessibilityManager != null
+                && (onboardingAccessibilityManager.isTouchExplorationEnabled()
+                || !onboardingAccessibilityManager.getEnabledAccessibilityServiceList(
+                        AccessibilityServiceInfo.FEEDBACK_SPOKEN).isEmpty());
+        boolean visible = onboardingResumed && onboardingStep == 0 && !isInitialSetupComplete() && hasWindowFocus()
+                && onboardingGreetingView != null && onboardingGreetingView.isShown()
+                && onboardingGreetingView.getWindowVisibility() == View.VISIBLE
+                && onboardingGreetingView.getGlobalVisibleRect(new Rect());
+        onboardingGreetingRotation.setActive(visible && !screenReader && ValueAnimator.areAnimatorsEnabled()
+                && Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+                && !aiLyricsSettings.snapshot().background.reduceMotion);
+    }
+
     private LinearLayout buildOnboardingUiLanguageSelect() {
         SettingsKit kit = onboardingKit;
         LinearLayout group = kit.group();
         onboardingUiLanguageSelectButton = kit.picker("");
         makeRemoteFocusable(onboardingUiLanguageSelectButton);
+        onboardingUiLanguageSelectButton.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                onboardingGreetingRotation.interactWithLanguage(aiLyricsSettings.snapshot().uiLang);
+            }
+            return false;
+        });
         onboardingUiLanguageSelectButton.setOnClickListener(view -> showOnboardingUiLanguagePopup(onboardingUiLanguageSelectButton));
         group.addView(kit.stackRow(ui("onboarding.app_language_native"), null, onboardingUiLanguageSelectButton), matchWrap());
         updateOnboardingUiLanguageSelect();
@@ -6711,7 +6841,9 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         String selected = aiLyricsSettings.snapshot().uiLang;
+        onboardingGreetingRotation.interactWithLanguage(selected);
         showSettingsChoicePopup(anchor, uiLanguageChoices(), selected, code -> {
+            onboardingGreetingRotation.interactWithLanguage(code);
             aiLyricsSettings.setUiLang(code);
             applyUiLanguageChange();
             showSavedToast(ui("toast.ui_language_saved"));
@@ -13654,6 +13786,7 @@ public class BaseLyricsActivity extends Activity implements
         boolean configured = isInitialSetupComplete();
         spotifySetupPanel.animate().cancel();
         if (configured) {
+            onboardingGreetingRotation.setActive(false);
             spotifySetupRequired = false;
             if (spotifySetupPanel.getVisibility() != View.VISIBLE) {
                 return;

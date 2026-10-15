@@ -13,6 +13,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.MotionEvent;
+import android.view.KeyEvent;
 import android.view.Gravity;
 import android.view.Surface;
 import android.view.View;
@@ -73,6 +74,183 @@ public final class FirstUseUiRegressionTest {
         if (activity != null) onMain(() -> { activity.dismissPrompt(); activity.finish(); });
         instrumentation.waitForIdleSync();
         instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
+    }
+
+    @Test public void welcomeRotatesWithoutMutatingLanguagesOrMovingControls() throws Exception {
+        launch("en", 1f, true, false, "dark", true);
+        java.util.Map<String, ?> preferences = activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll();
+        String next = ((TextView) activity.view("onboardingNextButton")).getText().toString();
+        Rect before = new Rect();
+        onMain(() -> activity.view("onboardingUiLanguageSelectButton").getGlobalVisibleRect(before));
+        capture("en-welcome-hello-dark");
+        awaitGreeting(true);
+        capture("en-welcome-korean-dark");
+        onMain(() -> {
+            Rect after = new Rect();
+            activity.view("onboardingUiLanguageSelectButton").getGlobalVisibleRect(after);
+            assertEquals("crossfade keeps the picker in place", before, after);
+            assertEquals(next, ((TextView) activity.view("onboardingNextButton")).getText().toString());
+            assertEquals(preferences, activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll());
+            assertEquals("en", settings().snapshot().uiLang);
+            assertEquals(22, AppI18n.UI_LANGUAGES.size());
+        });
+        awaitGreeting(false);
+    }
+
+    @Test public void welcomePickerSelectionStaysStoppedAcrossBackThemeAndRecreation() throws Exception {
+        launch("en", 1f, true, false, "light", true);
+        String outputLanguage = settings().snapshot().outputLang;
+        java.util.Map<String, ?> preferences = activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll();
+        tap(activity.view("onboardingUiLanguageSelectButton"));
+        assertGreetingStopped(false);
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        awaitLayout(activity.getWindow().getDecorView());
+        assertGreetingStopped(false);
+        onMain(() -> assertEquals(preferences, activity.getSharedPreferences(AiLyricsSettings.PREFS_NAME, 0).getAll()));
+        capture("en-welcome-picker-dismissed-light");
+        tap(activity.view("onboardingUiLanguageSelectButton"));
+        // Find the actual native popup row, then use the same input-ownership checked pointer
+        // injection as the rest of this suite. No performClick/accessibility click shortcut.
+        final TextView[] korean = new TextView[1];
+        onMain(() -> {
+            for (View window : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+                for (TextView text : find(window, TextView.class)) {
+                    if (text.getText().toString().startsWith("한국어 ·")) korean[0] = text;
+                }
+            }
+        });
+        assertNotNull("Korean popup choice", korean[0]);
+        tap(korean[0]);
+        language = "ko";
+        onMain(() -> {
+            assertEquals("ko", settings().snapshot().uiLang);
+            assertEquals(outputLanguage, settings().snapshot().outputLang);
+            assertEquals(ui("button.next"), ((TextView) activity.view("onboardingNextButton")).getText().toString());
+        });
+        assertGreetingStopped(true);
+        tap(activity.view("onboardingNextButton"));
+        tap(activity.view("onboardingBackButton"));
+        tap(switches(activity.view("spotifySetupPanel")).get(0));
+        assertGreetingStopped(true);
+        recreateFirstUseActivity();
+        assertGreetingStopped(true);
+        SystemClock.sleep(WelcomeGreetingRotation.INTERVAL_MS + 400);
+        assertGreetingStopped(true);
+        capture("ko-welcome-selected-restored-dark");
+    }
+
+    @Test public void welcomeLifecycleVisibilityAndAccessibilityCancelTimers() throws Exception {
+        launch("ko", 1.6f, true, true, "dark", true);
+        assertControls(activity.view("spotifySetupPanel"));
+        assertGreetingScheduled(true);
+        onMain(() -> activity.view("spotifySetupPanel").setVisibility(View.GONE));
+        assertGreetingScheduled(false);
+        onMain(() -> activity.view("spotifySetupPanel").setVisibility(View.VISIBLE));
+        // At large text in landscape the title can scroll fully offscreen.
+        reveal(activity.view("onboardingGreetingView"));
+        assertGreetingScheduled(true);
+        tap(activity.view("onboardingNextButton"));
+        assertGreetingScheduled(false);
+        tap(activity.view("onboardingBackButton"));
+        reveal(activity.view("onboardingGreetingView"));
+        assertGreetingScheduled(true);
+
+        assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME));
+        SystemClock.sleep(300);
+        assertGreetingScheduled(false);
+        onMain(() -> activity.startActivity(new Intent(activity, FirstUseHarnessActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+        awaitLayout(activity.getWindow().getDecorView());
+        reveal(activity.view("onboardingGreetingView"));
+        assertGreetingScheduled(true);
+
+        onMain(() -> { settings().setBackgroundReduceMotion(true); activity.call("updateOnboardingGreetingActivity"); });
+        assertGreetingScheduled(false);
+        onMain(() -> { settings().setBackgroundReduceMotion(false); activity.call("updateOnboardingGreetingActivity"); });
+        assertGreetingScheduled(true);
+
+        String animatorScale = shellOutput("settings get global animator_duration_scale").trim();
+        AccessibilityServiceInfo service = instrumentation.getUiAutomation().getServiceInfo();
+        int feedback = service.feedbackType;
+        int flags = service.flags;
+        try {
+            shellOutput("settings put global animator_duration_scale 0");
+            SystemClock.sleep(300);
+            assertGreetingScheduled(false);
+            shellOutput("settings put global animator_duration_scale 1");
+            SystemClock.sleep(300);
+            assertGreetingScheduled(true);
+            service.feedbackType = AccessibilityServiceInfo.FEEDBACK_SPOKEN;
+            service.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
+            instrumentation.getUiAutomation().setServiceInfo(service);
+            SystemClock.sleep(500);
+            onMain(() -> activity.call("updateOnboardingGreetingActivity"));
+            assertGreetingScheduled(false);
+            capture("ko-welcome-static-landscape-font1.6-dark");
+        } finally {
+            service.feedbackType = feedback;
+            service.flags = flags;
+            instrumentation.getUiAutomation().setServiceInfo(service);
+            shellOutput("null".equals(animatorScale) ? "settings delete global animator_duration_scale"
+                    : "settings put global animator_duration_scale " + animatorScale);
+        }
+        onMain(() -> activity.finish());
+        assertGreetingScheduled(false);
+    }
+
+    private void assertGreetingScheduled(boolean scheduled) {
+        String source = new Throwable().getStackTrace()[1].toString();
+        onMain(() -> {
+            try {
+                java.lang.reflect.Field pending = WelcomeGreetingRotation.class.getDeclaredField("pending");
+                pending.setAccessible(true);
+                assertEquals("welcome timer scheduled at " + source, scheduled,
+                        pending.get(activity.value("onboardingGreetingRotation")) != null);
+            } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+        });
+    }
+
+    private void assertGreetingStopped(boolean korean) {
+        assertGreetingScheduled(false);
+        onMain(() -> {
+            WelcomeGreetingRotation rotation = (WelcomeGreetingRotation) activity.value("onboardingGreetingRotation");
+            assertTrue(rotation.hasLanguageInteraction());
+            assertEquals(korean, rotation.isKorean());
+            assertEquals(korean ? "안녕하세요" : "Hello", activity.view("onboardingGreetingView").getContentDescription());
+            assertEquals(korean ? 1f : 0f, activity.view("onboardingGreetingKorean").getAlpha(), 0f);
+            assertEquals(korean ? 0f : 1f, activity.view("onboardingGreetingEnglish").getAlpha(), 0f);
+        });
+    }
+
+    private void awaitGreeting(boolean korean) {
+        long deadline = SystemClock.uptimeMillis() + 6500;
+        while (SystemClock.uptimeMillis() < deadline) {
+            final boolean[] matched = {false};
+            onMain(() -> matched[0] = activity.view(korean ? "onboardingGreetingKorean" : "onboardingGreetingEnglish").getAlpha() == 1f);
+            if (matched[0]) return;
+            SystemClock.sleep(60);
+        }
+        fail("Greeting did not rotate to " + (korean ? "Korean" : "English"));
+    }
+
+    private String shellOutput(String command) throws Exception {
+        try (ParcelFileDescriptor descriptor = instrumentation.getUiAutomation().executeShellCommand(command);
+                InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] bytes = new byte[4096];
+            for (int count; (count = input.read(bytes)) != -1;) output.write(bytes, 0, count);
+            return output.toString("UTF-8");
+        }
+    }
+
+    private void recreateFirstUseActivity() {
+        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(FirstUseHarnessActivity.class.getName(), null, false);
+        onMain(() -> activity.recreate());
+        FirstUseHarnessActivity recreated = (FirstUseHarnessActivity) instrumentation.waitForMonitorWithTimeout(monitor, 15000);
+        instrumentation.removeMonitor(monitor);
+        assertNotNull("Activity recreation", recreated);
+        activity = recreated;
+        awaitLayout(activity.getWindow().getDecorView());
     }
 
     @Test public void onboardingBackRetryAndRecreationKeepDrafts() throws Exception {
@@ -354,6 +532,10 @@ public final class FirstUseUiRegressionTest {
     }
 
     private void launch(String locale, float scale, boolean onboarding, boolean landscape, String theme) {
+        launch(locale, scale, onboarding, landscape, theme, false);
+    }
+
+    private void launch(String locale, float scale, boolean onboarding, boolean landscape, String theme, boolean greetingMotion) {
         language = locale;
         AccessibilityServiceInfo service = instrumentation.getUiAutomation().getServiceInfo();
         service.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
@@ -362,7 +544,7 @@ public final class FirstUseUiRegressionTest {
         FirstUseHarnessActivity.prepare(locale, scale);
         Intent intent = new Intent(instrumentation.getTargetContext(), FirstUseHarnessActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("language", locale).putExtra("theme", theme)
-                .putExtra("onboarding", onboarding);
+                .putExtra("onboarding", onboarding).putExtra("greeting_motion", greetingMotion);
         activity = (FirstUseHarnessActivity) instrumentation.startActivitySync(intent);
         instrumentation.waitForIdleSync();
         SystemClock.sleep(400);
@@ -464,7 +646,13 @@ public final class FirstUseUiRegressionTest {
         instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
         AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
-        awaitLayout(dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView());
+        View focusedRoot = dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView();
+        // A picker owns its own focused native window. Keep the full frame/input wait, but
+        // settle that window instead of waiting for focus to return to the covered Activity.
+        for (View window : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+            if (window.hasWindowFocus()) focusedRoot = window;
+        }
+        awaitLayout(focusedRoot);
     }
 
     private void awaitLayout(View view) { awaitReady(view, false); }

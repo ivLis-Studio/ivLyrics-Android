@@ -83,6 +83,11 @@ public final class FirstUseHarnessActivity extends BaseLyricsActivity {
             // its drift so native window draw-idle can observe the form on every renderer.
             // This does NOT disable ScrollView/OverScroller or native control animations.
             settings.setBackgroundReduceMotion(true);
+            if (getIntent().getBooleanExtra("greeting_motion", false)) {
+                // Exercise welcome motion without introducing unrelated player drift.
+                settings.setBackgroundMode(AiLyricsSettings.BACKGROUND_MODE_SOLID);
+                settings.setBackgroundReduceMotion(false);
+            }
             for (AiLyricsSettings.Provider provider : AiLyricsSettings.PROVIDERS) settings.setAiProviderEnabled(provider.id, false);
             settings.setBingTranslateEnabled(false);
             settings.setGoogleTranslateEnabled(true);
