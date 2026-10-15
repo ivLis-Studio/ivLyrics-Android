@@ -56,6 +56,7 @@ public final class FirstUseUiRegressionTest {
     private FirstUseHarnessActivity activity;
     private String language;
     private Runnable onBlockedInput;
+    private String originalAnimatorScale;
 
     @Rule public final TestWatcher nativeEvidence = new TestWatcher() {
         @Override protected void failed(Throwable error, Description test) {
@@ -74,9 +75,21 @@ public final class FirstUseUiRegressionTest {
     };
 
     private void cleanup() {
-        if (activity != null) onMain(() -> { activity.dismissPrompt(); activity.finish(); });
-        instrumentation.waitForIdleSync();
-        instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
+        try {
+            if (activity != null) onMain(() -> { activity.dismissPrompt(); activity.finish(); });
+            instrumentation.waitForIdleSync();
+        } finally {
+            try {
+                if (originalAnimatorScale != null) {
+                    shellOutput("null".equals(originalAnimatorScale) ? "settings delete global animator_duration_scale"
+                            : "settings put global animator_duration_scale " + originalAnimatorScale);
+                    awaitSystemAnimatorScale("null".equals(originalAnimatorScale) || Float.parseFloat(originalAnimatorScale) > 0f);
+                }
+            } catch (Exception error) { throw new AssertionError("Restore system animator scale", error); }
+            finally {
+                instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
+            }
+        }
     }
 
     @Test public void welcomeRotatesWithoutMutatingLanguagesOrMovingControls() throws Exception {
@@ -604,6 +617,15 @@ public final class FirstUseUiRegressionTest {
 
     private void launch(String locale, float scale, boolean onboarding, boolean landscape, String theme, boolean greetingMotion) {
         language = locale;
+        if (greetingMotion) {
+            // The CI emulator deliberately disables animations. Motion scenarios establish
+            // their own OS precondition and restore it even when a native assertion fails.
+            try {
+                originalAnimatorScale = shellOutput("settings get global animator_duration_scale").trim();
+                shellOutput("settings put global animator_duration_scale 1");
+                awaitSystemAnimatorScale(true);
+            } catch (Exception error) { throw new AssertionError("Enable system motion for greeting scenario", error); }
+        }
         AccessibilityServiceInfo service = instrumentation.getUiAutomation().getServiceInfo();
         service.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
         instrumentation.getUiAutomation().setServiceInfo(service);
@@ -621,6 +643,19 @@ public final class FirstUseUiRegressionTest {
                 : Configuration.ORIENTATION_PORTRAIT, activity.getResources().getConfiguration().orientation);
         Rect window = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
         assertEquals("real native window aspect: " + window, landscape, window.width() > window.height());
+    }
+
+    private void awaitSystemAnimatorScale(boolean enabled) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            final boolean[] matched = {false};
+            onMain(() -> matched[0] = android.animation.ValueAnimator.areAnimatorsEnabled() == enabled
+                    && (Settings.Global.getFloat(instrumentation.getTargetContext().getContentResolver(),
+                            Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f) == enabled);
+            if (matched[0]) return;
+            SystemClock.sleep(50);
+        }
+        fail("System animator scale/cache did not become " + (enabled ? "enabled" : "disabled"));
     }
 
     private void showPrompt(String source, String key) {
@@ -712,14 +747,31 @@ public final class FirstUseUiRegressionTest {
         MotionEvent up = MotionEvent.obtain(time, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
         instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
-        AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
-        View focusedRoot = dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView();
-        // A picker owns its own focused native window. Keep the full frame/input wait, but
-        // settle that window instead of waiting for focus to return to the covered Activity.
-        for (View window : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
-            if (window.hasWindowFocus()) focusedRoot = window;
+        awaitFocusedWindow();
+    }
+
+    private void awaitFocusedWindow() {
+        // Popup focus can transfer AFTER pointer dispatch/looper idle. Observe the actual
+        // native focus owner over time before choosing the tree for the strict frame wait.
+        long deadline = SystemClock.uptimeMillis() + 15000;
+        View previous = null;
+        long focusedSince = 0;
+        while (SystemClock.uptimeMillis() < deadline) {
+            final View[] focused = {null};
+            onMain(() -> {
+                for (View window : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+                    if (window.isAttachedToWindow() && window.hasWindowFocus()) focused[0] = window;
+                }
+            });
+            if (focused[0] != previous) focusedSince = SystemClock.uptimeMillis();
+            previous = focused[0];
+            if (previous != null && SystemClock.uptimeMillis() - focusedSince >= DRAW_QUIET_MS) {
+                awaitLayout(previous);
+                return;
+            }
+            SystemClock.sleep(80);
         }
-        awaitLayout(focusedRoot);
+        fail("Native focus did not settle after pointer dispatch");
     }
 
     private void awaitLayout(View view) { awaitReady(view, false); }

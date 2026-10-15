@@ -1013,7 +1013,8 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
-        if (vinylModeVisible) {
+        // First-use controls own their gestures even where hidden player controls overlap.
+        if (vinylModeVisible || (spotifySetupPanel != null && spotifySetupPanel.getVisibility() == View.VISIBLE)) {
             return super.dispatchTouchEvent(event);
         }
         if (handlePictureInPicturePinch(event)) {

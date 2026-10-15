@@ -50,7 +50,9 @@ are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
 
 The first-use regression executes the production permission action, credential validation callbacks,
-draft capture/restoration and in-flight button state with a controlled token validator. No Spotify
+draft capture/restoration and in-flight button state with a controlled token validator. It also
+replays production touch dispatch with a hidden player control beneath the onboarding form:
+the form receives the gesture without revealing/consuming the underlying player controls. No Spotify
 requests are sent. `FirstUseUiRegressionTest` runs the production onboarding and first-language dialog
 in an unexported debug fixture with isolated storage. It covers light/dark, native 48dp switches and
 touches, large text/landscape/RTL scrolling, language-rule persistence, Original only/cancel/stale-song
@@ -81,6 +83,12 @@ when a native assertion fails. Run on a disposable emulator with:
 adb shell wm fixed-to-user-rotation enabled
 ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kr.ivlis.ivlyricsandroid.FirstUseUiRegressionTest
 ```
+
+Greeting-motion scenarios save the OS animator scale, explicitly enable motion, wait for both
+the system setting and ValueAnimator's cache, and restore the prior scale during cleanup.
+The lifecycle scenario still verifies disabled motion, accessibility, backgrounding and resumption.
+After native pointer dispatch, the helper observes a stable focused window before waiting for its
+rendered frames, so a newly opened picker is not mistaken for the covered Activity.
 
 The UI workflow also runs the whole unfiltered native suite and collects first-use PNGs into
 `build/reports/settings-ui/first-use/` before UTP uninstalls the fixture app. Changes to

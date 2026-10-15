@@ -19,6 +19,7 @@ def declaration(source, signature):
 
 
 source = (SHARED / "BaseLyricsActivity.java").read_text()
+touch_dispatch = declaration(source, "public boolean dispatchTouchEvent(MotionEvent event)")
 methods = "\n".join(declaration(source, signature) for signature in (
     "private void rememberSpotifySetupDraft()", "private void updateOnboardingActionState()",
     "private void handleOnboardingNextAction()", "private String onboardingNextButtonText()",
@@ -40,6 +41,25 @@ public final class FirstUseRegression {
         void setAlpha(float alpha) { this.alpha = alpha; }
     }
     static class EditText extends TextView {}
+    static class View {
+        static final int VISIBLE = 0, GONE = 8;
+        int visibility = VISIBLE;
+        int getVisibility() { return visibility; }
+    }
+    static class MotionEvent {}
+    static class NativeDispatch {
+        int dispatched;
+        public boolean dispatchTouchEvent(MotionEvent event) { dispatched++; return false; }
+    }
+    static class TouchFlow extends NativeDispatch {
+        boolean vinylModeVisible;
+        View spotifySetupPanel;
+        int playerGestures;
+        boolean handlePictureInPicturePinch(MotionEvent event) { playerGestures++; return false; }
+        // Reproduce a hidden landscape player control under the onboarding button.
+        boolean handleLandscapeControlTouch(MotionEvent event) { playerGestures++; return true; }
+        // TOUCH_DISPATCH
+    }
     static class AiLyricsSettings {
         Snapshot saved = new Snapshot("", ""); int saves;
         Snapshot snapshot() { return saved; }
@@ -88,6 +108,20 @@ public final class FirstUseRegression {
         // PRODUCTION
     }
     public static void main(String[] args) {
+        TouchFlow touch = new TouchFlow();
+        MotionEvent event = new MotionEvent();
+        check(touch.dispatchTouchEvent(event));
+        check(touch.playerGestures == 2 && touch.dispatched == 0);
+        touch.spotifySetupPanel = new View();
+        check(!touch.dispatchTouchEvent(event));
+        check(touch.playerGestures == 2 && touch.dispatched == 1);
+        touch.spotifySetupPanel.visibility = View.GONE;
+        check(touch.dispatchTouchEvent(event));
+        check(touch.playerGestures == 4 && touch.dispatched == 1);
+        touch.vinylModeVisible = true;
+        check(!touch.dispatchTouchEvent(event));
+        check(touch.playerGestures == 4 && touch.dispatched == 2);
+
         Flow flow = new Flow();
         flow.handleOnboardingNextAction();
         check(flow.onboardingStep == 1);
@@ -151,7 +185,7 @@ public final class FirstUseRegression {
         System.out.println("First-use permission/credential regression: " + checks + " checks passed");
     }
 }
-'''.replace("// PRODUCTION", methods)
+'''.replace("// PRODUCTION", methods).replace("// TOUCH_DISPATCH", touch_dispatch)
 work = REPORTS / "first-use"
 work.mkdir(parents=True, exist_ok=True)
 java = work / "FirstUseRegression.java"
