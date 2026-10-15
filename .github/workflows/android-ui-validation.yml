@@ -7,6 +7,11 @@ on:
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/Settings*.java'
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/LocalAiSettingsView.java'
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/*I18n.java'
+      - 'shared/src/test/java/kr/ivlis/ivlyricsandroid/AppI18nInitializationTest.java'
+      - 'tests/run_first_use_regression.py'
+      - 'tests/run_settings_ui_regression.py'
+      - '.github/scripts/*settings_ui*'
       - 'app/src/debug/**'
       - 'app/src/androidTest/**'
       - 'app/build.gradle'
@@ -16,6 +21,11 @@ on:
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/Settings*.java'
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/LocalAiSettingsView.java'
       - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/BaseLyricsActivity.java'
+      - 'shared/src/main/java/kr/ivlis/ivlyricsandroid/*I18n.java'
+      - 'shared/src/test/java/kr/ivlis/ivlyricsandroid/AppI18nInitializationTest.java'
+      - 'tests/run_first_use_regression.py'
+      - 'tests/run_settings_ui_regression.py'
+      - '.github/scripts/*settings_ui*'
       - 'app/src/debug/**'
       - 'app/src/androidTest/**'
       - 'app/build.gradle'
@@ -33,7 +43,7 @@ env:
 
 jobs:
   settings-ui:
-    name: Native settings and track popup UI
+    name: Native settings, first use and track popup UI
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -54,6 +64,7 @@ jobs:
       - name: Build native UI test application
         run: |
           python3 tests/run_settings_ui_regression.py
+          python3 tests/run_first_use_regression.py
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --console=plain
 
       - name: Enable emulator acceleration

@@ -6,6 +6,7 @@ Run these commands from the repository root:
 ./gradlew :shared:testDebugUnitTest :shared:lintDebug :app:lintDebug :spotify-module:lintDebug :app:assembleDebug :app:assembleQa :spotify-module:assembleDebug
 python3 tests/run_lyrics_center_regression.py
 python3 tests/run_appearance_regression.py
+python3 tests/run_first_use_regression.py
 python3 tests/run_vinyl_regression.py
 python3 tests/run_interlude_handoff_regression.py
 python3 tests/run_lyrics_metadata_cache_regression.py
@@ -47,6 +48,33 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The first-use regression executes the production permission action, credential validation callbacks,
+draft capture/restoration and in-flight button state with a controlled token validator. No Spotify
+requests are sent. `FirstUseUiRegressionTest` runs the production onboarding and first-language dialog
+in an unexported debug fixture with isolated storage. It covers light/dark, native 48dp switches and
+touches, large text/landscape/RTL scrolling, language-rule persistence, Original only/cancel/stale-song
+handling, closing uncommitted edits, and unsaved credentials across back/language changes/Activity
+recreation. Landscape tests assert the real Activity orientation and native window dimensions.
+Its OS window captures are atomically saved under the app's external-files
+`first-use-screenshots/` directory. Run on a disposable emulator with:
+
+```sh
+adb shell wm fixed-to-user-rotation enabled
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=kr.ivlis.ivlyricsandroid.FirstUseUiRegressionTest
+```
+
+The UI workflow also runs the whole unfiltered native suite and collects first-use PNGs into
+`build/reports/settings-ui/first-use/` before UTP uninstalls the fixture app. Changes to
+`FirstUseI18n.java`, the host regression, or either native test/fixture trigger that workflow.
+For local screenshot retention without UTP cleanup, assemble/install the debug app and its
+androidTest APK, run the same class with `adb shell am instrument -w -r -e class
+kr.ivlis.ivlyricsandroid.FirstUseUiRegressionTest
+kr.ivlis.ivlyricsandroid.test/androidx.test.runner.AndroidJUnitRunner`, then pull
+`/sdcard/Android/data/kr.ivlis.ivlyricsandroid/files/first-use-screenshots/`.
+
+The offline UI fixture verifies the notification-settings intent but does not grant access or make
+a live Spotify token request; validate those platform/account paths separately on a device.
 
 The `LocalAi*Test` JUnit classes cover the Local AI provider without a model or native
 library: tier files and the mobile default, idle choices, block splitting, markers, vocal

@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name="kr.ivlis.ivlyricsandroid.FirstUseHarnessActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
+            android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity android:name="kr.ivlis.ivlyricsandroid.SettingsUiHarnessActivity" android:exported="false"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:theme="@style/AppTheme" android:windowSoftInputMode="adjustResize|stateHidden" />

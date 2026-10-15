@@ -4,6 +4,28 @@ import org.junit.Test;
 
 public final class AppI18nInitializationTest {
     @SuppressWarnings("unchecked")
+    @Test public void firstUseCopyHasEveryLocaleAndMatchingPlaceholders() throws Exception {
+        java.lang.reflect.Field field = AppI18n.class.getDeclaredField("STRINGS");
+        field.setAccessible(true);
+        java.util.Map<String, java.util.Map<String, String>> tables =
+                (java.util.Map<String, java.util.Map<String, String>>) field.get(null);
+        org.junit.Assert.assertEquals(22, tables.size());
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            for (String key : FirstUseI18n.KEYS) {
+                String value = tables.get(language.code).get(key);
+                String label = language.code + ":" + key;
+                org.junit.Assert.assertNotNull(label, value);
+                org.junit.Assert.assertFalse(label, value.isBlank());
+                org.junit.Assert.assertEquals(label, placeholders(AppI18n.t("en", key)), placeholders(value));
+                if (!"en".equals(language.code)) org.junit.Assert.assertNotEquals(label, AppI18n.t("en", key), value);
+            }
+        }
+        org.junit.Assert.assertEquals("언어와 화면", AppI18n.t("ko", "onboarding.welcome_title"));
+        org.junit.Assert.assertEquals("일본어 가사", String.format(java.util.Locale.KOREAN,
+                AppI18n.t("ko", "first_language.title_format"), "일본어"));
+    }
+
+    @SuppressWarnings("unchecked")
     @Test public void regenerationLabelIsPresentWithoutFallbackInEveryLanguage() throws Exception {
         java.lang.reflect.Field field = AppI18n.class.getDeclaredField("STRINGS");
         field.setAccessible(true);

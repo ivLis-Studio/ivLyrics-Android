@@ -1,0 +1,468 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.app.AlertDialog;
+import android.app.Instrumentation;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Rect;
+import android.os.Bundle;
+import android.os.SystemClock;
+import android.provider.Settings;
+import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.ScrollView;
+import android.widget.Switch;
+import android.widget.TextView;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.After;
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+/** Real production first-use views, touch dispatch, persistence and native window captures. */
+@android.annotation.TargetApi(30)
+public final class FirstUseUiRegressionTest {
+    private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+    private FirstUseHarnessActivity activity;
+    private String language;
+
+    @After public void cleanup() {
+        if (activity != null) onMain(() -> { activity.dismissPrompt(); activity.finish(); });
+        instrumentation.waitForIdleSync();
+        instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
+    }
+
+    @Test public void onboardingBackRetryAndRecreationKeepDrafts() throws Exception {
+        launch("ko", 1f, true, false, "dark");
+        capture("ko-onboarding-1-dark");
+        View panel = activity.view("spotifySetupPanel");
+        assertControls(panel);
+        tap(switches(panel).get(0));
+        onMain(() -> assertFalse(((SettingsKit) activity.value("onboardingKit")).p.dark));
+        capture("ko-onboarding-1-light");
+        tap(activity.view("onboardingNextButton"));
+        onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+        capture("ko-onboarding-2-light");
+        if (!NowPlayingService.isNotificationAccessEnabled(activity)) {
+            tap(activity.view("onboardingNextButton"));
+            onMain(() -> {
+                assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS, activity.permissionIntent.getAction());
+                assertEquals(1, activity.value("onboardingStep"));
+            });
+        }
+        // Platform grant itself is outside the offline fixture. Enter the same production phase.
+        onMain(() -> step(2));
+        capture("ko-onboarding-3-light");
+        tap(activity.view("onboardingNextButton"));
+        onMain(() -> {
+            assertEquals(ui("toast.spotify_missing"), ((TextView) activity.view("spotifySetupStatusView")).getText().toString());
+            assertFalse(settings().snapshot().hasSpotifyApiCredentials());
+            ((EditText) activity.view("spotifySetupClientIdInput")).setText("fixture-client");
+            ((EditText) activity.view("spotifySetupClientSecretInput")).setText("fixture-secret");
+        });
+        capture("ko-onboarding-3-missing-light");
+        tap(activity.view("onboardingBackButton"));
+        onMain(() -> step(2));
+        assertDrafts();
+        onMain(() -> {
+            activity.put("spotifyCredentialsValidationInFlight", true);
+            activity.call("setSpotifyValidationStatus", new Class<?>[]{String.class}, ui("spotify.status_checking"));
+            assertFalse(activity.view("onboardingNextButton").isEnabled());
+            assertFalse(activity.view("spotifySetupClientSecretInput").isEnabled());
+            step(1); step(2);
+            assertFalse(activity.view("onboardingNextButton").isEnabled());
+            activity.put("spotifyCredentialsValidationInFlight", false);
+            activity.call("setSpotifyValidationStatus", new Class<?>[]{String.class}, "Fixture validation error");
+            assertTrue(activity.view("onboardingNextButton").isEnabled());
+        });
+        assertDrafts();
+        onMain(() -> {
+            settings().setUiLang("en");
+            activity.call("applyUiLanguageChange");
+        });
+        language = "en";
+        assertDrafts();
+        // Android recreation restores the phase and drafts through the actual saved-instance path.
+        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(FirstUseHarnessActivity.class.getName(), null, false);
+        onMain(() -> activity.recreate());
+        FirstUseHarnessActivity recreated = (FirstUseHarnessActivity) instrumentation.waitForMonitorWithTimeout(monitor, 15000);
+        instrumentation.removeMonitor(monitor);
+        assertNotNull("Activity recreation", recreated);
+        activity = recreated;
+        instrumentation.waitForIdleSync();
+        assertDrafts();
+        onMain(() -> {
+            assertEquals(2, activity.value("onboardingStep"));
+            assertFalse(settings().snapshot().hasSpotifyApiCredentials());
+            assertFalse(settings().snapshot().isAiProviderEnabled(AiLyricsSettings.Provider.LOCAL_AI_ID));
+        });
+        capture("en-onboarding-3-restored-light");
+    }
+
+    @Test public void germanNarrowLargeTextAndGuide() throws Exception {
+        launch("de", 2f, true, false, "light");
+        capture("de-onboarding-1-font2-light");
+        assertControls(activity.view("spotifySetupPanel"));
+        tap(activity.view("onboardingNextButton"));
+        capture("de-onboarding-2-font2-light");
+        onMain(() -> step(2));
+        Button help = button(activity.view("spotifySetupPanel"), ui("onboarding.spotify_help"));
+        tap(help);
+        onMain(() -> assertEquals(true, activity.value("onboardingSpotifyHelpExpanded")));
+        assertControls(activity.view("spotifySetupPanel"));
+        tap(button(activity.view("spotifySetupPanel"), ui("button.next")));
+        onMain(() -> {
+            assertEquals(1, activity.value("spotifyInstructionStep"));
+            step(1); step(2);
+            assertEquals(true, activity.value("onboardingSpotifyHelpExpanded"));
+            assertEquals(1, activity.value("spotifyInstructionStep"));
+        });
+        capture("de-onboarding-3-guide-font2-light");
+        tap(activity.view("onboardingNextButton"));
+        capture("de-onboarding-3-action-font2-light");
+    }
+
+    @Test public void koreanOnboardingLandscapeScroll() throws Exception {
+        launch("ko", 1.6f, true, true, "dark");
+        assertControls(activity.view("spotifySetupPanel"));
+        capture("ko-onboarding-landscape-font1.6-dark-top");
+        tap(activity.view("onboardingNextButton"));
+        onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+        onMain(() -> step(2));
+        assertControls(activity.view("spotifySetupPanel"));
+        reveal(activity.view("onboardingNextButton"));
+        capture("ko-onboarding-landscape-font1.6-dark-action");
+        tap(activity.view("onboardingBackButton"));
+        onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+    }
+
+    @Test public void koreanLanguageChoicesPersistIndependently() throws Exception {
+        launch("ko", 1f, false, false, "dark");
+        showPrompt("ja", "fixture:ja");
+        View root = promptRoot();
+        List<Switch> toggles = switches(root);
+        assertEquals(2, toggles.size());
+        assertEquals(1, buttons(root).size());
+        assertControls(root);
+        assertHint(false);
+        capture("ko-language-none-dark");
+        tap(toggles.get(0));
+        assertHint(false); // Google is translation-only and needs no pronunciation notice here.
+        capture("ko-language-translation-dark");
+        tap(button(root, ui("first_language.apply")));
+        assertRule("ja", true, false);
+
+        showPrompt("fr", "fixture:fr");
+        root = promptRoot(); toggles = switches(root);
+        tap(toggles.get(1));
+        assertHint(true);
+        assertEquals(ui("first_language.pronunciation_ai_provider_hint"),
+                ((TextView) root.findViewWithTag("first-language-provider-hint")).getText().toString());
+        capture("ko-language-pronunciation-dark");
+        tap(button(root, ui("first_language.apply")));
+        assertRule("fr", false, true);
+
+        showPrompt("de", "fixture:de");
+        root = promptRoot(); toggles = switches(root);
+        tap(toggles.get(0)); tap(toggles.get(1));
+        tap(button(root, ui("first_language.apply")));
+        assertRule("de", true, true);
+
+        showPrompt("ru", "fixture:ru");
+        tap(button(promptRoot(), ui("first_language.original")));
+        onMain(() -> {
+            AiLyricsSettings reloaded = new AiLyricsSettings(activity.getApplicationContext());
+            assertFalse(reloaded.shouldPromptForFirstLanguage("ru"));
+            assertFalse(reloaded.snapshot().languageRules.get("ru").enabled());
+            assertFalse(reloaded.snapshot().hasEnabledAiProvider());
+            assertFalse(reloaded.snapshot().isAiProviderEnabled(AiLyricsSettings.Provider.LOCAL_AI_ID));
+            reloaded.shutdown();
+            assertEquals(4, activity.supplementRequests);
+        });
+        onMain(() -> {
+            activity.seedTrack("ja", "fixture:ja-reopen");
+            assertEquals(true, activity.call("showFirstLanguagePrompt", new Class<?>[]{String.class}, "ja"));
+        });
+        root = promptRoot();
+        assertTrue(switches(root).get(0).isChecked());
+        assertFalse(switches(root).get(1).isChecked());
+        tap(switches(root).get(1));
+        capture("ko-language-reopened-current-dark");
+        tap(find(root, ImageButton.class).get(0));
+        assertRule("ja", true, false); // Closing discards uncommitted edits.
+        onMain(() -> assertEquals(5, activity.supplementRequests));
+    }
+
+    @Test public void languagePromptLandscapeLargeTextAndStaleSong() throws Exception {
+        launch("de", 2f, false, true, "light");
+        showPrompt("ja", "fixture:ja");
+        View root = promptRoot();
+        capture("de-language-landscape-font2-light-top");
+        tap(switches(root).get(1));
+        assertHint(true);
+        assertControls(root);
+        capture("de-language-landscape-font2-light-choices");
+        Button apply = button(root, ui("first_language.apply"));
+        reveal(apply);
+        capture("de-language-landscape-font2-light-action");
+        onMain(() -> activity.put("currentLyricsKey", "fixture:new-song"));
+        tap(apply);
+        onMain(() -> {
+            assertFalse(settings().snapshot().languageRules.containsKey("ja"));
+            assertEquals(0, activity.supplementRequests);
+        });
+    }
+
+    @Test public void arabicRtlAndMissingTranslationProvider() throws Exception {
+        launch("ar", 1.8f, false, false, "light");
+        onMain(() -> settings().setGoogleTranslateEnabled(false));
+        showPrompt("ja", "fixture:ja");
+        View root = promptRoot();
+        tap(switches(root).get(0));
+        assertHint(true);
+        assertEquals(ui("first_language.translation_provider_hint"),
+                ((TextView) root.findViewWithTag("first-language-provider-hint")).getText().toString());
+        assertControls(root);
+        capture("ar-language-font1.8-light");
+        reveal(button(root, ui("first_language.apply")));
+        capture("ar-language-font1.8-light-action");
+        tap(switches(root).get(0));
+        assertHint(false);
+        onMain(() -> ((AlertDialog) activity.value("firstLanguagePromptDialog")).cancel());
+        onMain(() -> assertEquals(1, activity.supplementRequests));
+    }
+
+    private void launch(String locale, float scale, boolean onboarding, boolean landscape, String theme) {
+        language = locale;
+        AccessibilityServiceInfo service = instrumentation.getUiAutomation().getServiceInfo();
+        service.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
+        instrumentation.getUiAutomation().setServiceInfo(service);
+        instrumentation.getUiAutomation().setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0);
+        FirstUseHarnessActivity.prepare(locale, scale);
+        Intent intent = new Intent(instrumentation.getTargetContext(), FirstUseHarnessActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("language", locale).putExtra("theme", theme)
+                .putExtra("onboarding", onboarding);
+        activity = (FirstUseHarnessActivity) instrumentation.startActivitySync(intent);
+        instrumentation.waitForIdleSync();
+        SystemClock.sleep(400);
+        awaitLayout(activity.getWindow().getDecorView());
+        assertEquals(scale, activity.getResources().getConfiguration().fontScale, 0.01f);
+        assertEquals("real Activity orientation", landscape ? Configuration.ORIENTATION_LANDSCAPE
+                : Configuration.ORIENTATION_PORTRAIT, activity.getResources().getConfiguration().orientation);
+        Rect window = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
+        assertEquals("real native window aspect: " + window, landscape, window.width() > window.height());
+    }
+
+    private void showPrompt(String source, String key) {
+        onMain(() -> {
+            activity.seedTrack(source, key);
+            assertEquals(true, activity.call("maybeShowFirstLanguagePrompt"));
+        });
+    }
+    private View promptRoot() {
+        AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
+        assertNotNull(dialog);
+        return dialog.getWindow().getDecorView();
+    }
+    private void assertHint(boolean visible) {
+        onMain(() -> assertEquals(visible ? View.VISIBLE : View.GONE,
+                promptRoot().findViewWithTag("first-language-provider-hint").getVisibility()));
+    }
+    private void assertRule(String source, boolean translation, boolean pronunciation) {
+        onMain(() -> {
+            AiLyricsSettings reloaded = new AiLyricsSettings(activity.getApplicationContext());
+            AiLyricsSettings.LanguageRule rule = reloaded.snapshot().languageRules.get(source);
+            assertNotNull(source, rule);
+            assertEquals(translation, rule.translationEnabled);
+            assertEquals(pronunciation, rule.pronunciationEnabled);
+            assertFalse(reloaded.shouldPromptForFirstLanguage(source));
+            reloaded.shutdown();
+        });
+    }
+    private void assertDrafts() {
+        onMain(() -> {
+            assertEquals("fixture-client", ((EditText) activity.view("spotifySetupClientIdInput")).getText().toString());
+            assertEquals("fixture-secret", ((EditText) activity.view("spotifySetupClientSecretInput")).getText().toString());
+        });
+    }
+    private AiLyricsSettings settings() { return (AiLyricsSettings) activity.value("aiLyricsSettings"); }
+    private void step(int phase) { activity.call("showOnboardingStep", new Class<?>[]{int.class}, phase); }
+    private String ui(String key) { return AppI18n.t(language, key); }
+    private void onMain(Runnable action) {
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        instrumentation.runOnMainSync(() -> {
+            try { action.run(); } catch (Throwable error) { failure.set(error); }
+        });
+        instrumentation.waitForIdleSync();
+        if (failure.get() instanceof Error) throw (Error) failure.get();
+        if (failure.get() instanceof RuntimeException) throw (RuntimeException) failure.get();
+        if (failure.get() != null) throw new AssertionError(failure.get());
+    }
+
+    private void reveal(View view) {
+        awaitLayout(view);
+        onMain(() -> {
+            Rect desired = new Rect(0, 0, view.getWidth(), view.getHeight());
+            desired.offset(view.getScrollX(), view.getScrollY());
+            view.requestRectangleOnScreen(desired, true);
+            // ScrollView's rectangle request can stop inside its padding. The production form
+            // clips that padding to protect system bars, so reveal the actual native touch frame.
+            android.view.ViewParent parent = view.getParent();
+            while (parent instanceof View) {
+                if (parent instanceof ScrollView) {
+                    ScrollView scroll = (ScrollView) parent;
+                    int[] target = new int[2], viewport = new int[2];
+                    view.getLocationOnScreen(target);
+                    scroll.getLocationOnScreen(viewport);
+                    int top = viewport[1] + scroll.getPaddingTop();
+                    int bottom = viewport[1] + scroll.getHeight() - scroll.getPaddingBottom();
+                    int delta = target[1] + view.getHeight() > bottom
+                            ? target[1] + view.getHeight() - bottom : target[1] < top ? target[1] - top : 0;
+                    scroll.scrollBy(0, delta);
+                }
+                parent = ((View) parent).getParent();
+            }
+        });
+        awaitLayout(view);
+    }
+    private void tap(View view) {
+        reveal(view);
+        int[] xy = new int[2];
+        Rect hit = new Rect();
+        onMain(() -> {
+            assertTrue("visible native target: " + view, view.getLocalVisibleRect(hit));
+            hit.offset(-view.getScrollX(), -view.getScrollY());
+            assertTrue(hit.intersect(0, 0, view.getWidth(), view.getHeight()));
+            view.getLocationOnScreen(xy);
+        });
+        assertTrue("48dp target: " + view, view.getWidth() >= dp(48) && view.getHeight() >= dp(48));
+        assertTrue("visible 48dp target: " + hit, hit.width() >= dp(48) && hit.height() >= dp(48));
+        long time = SystemClock.uptimeMillis();
+        float x = xy[0] + hit.exactCenterX(), y = xy[1] + hit.exactCenterY();
+        MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(time, time + 60, MotionEvent.ACTION_UP, x, y, 0);
+        instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
+        down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
+    }
+
+    private void awaitLayout(View view) {
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        Rect previous = new Rect();
+        int stable = 0;
+        while (SystemClock.uptimeMillis() < deadline) {
+            acknowledgeImmersiveEducation();
+            Rect bounds = new Rect();
+            final boolean[] ready = {false};
+            onMain(() -> {
+                int[] xy = new int[2]; view.getLocationOnScreen(xy);
+                bounds.set(xy[0], xy[1], xy[0] + view.getWidth(), xy[1] + view.getHeight());
+                ready[0] = view.isLaidOut() && !view.isLayoutRequested() && view.hasWindowFocus()
+                        && view.getWidth() > 0 && view.getHeight() > 0;
+            });
+            stable = ready[0] && previous.equals(bounds) ? stable + 1 : 0;
+            if (stable >= 3) return;
+            previous.set(bounds);
+            SystemClock.sleep(80);
+        }
+        fail("Native layout/focus did not settle: " + view + " at " + previous);
+    }
+
+    private void acknowledgeImmersiveEducation() {
+        // Android can show this after the first layout or after rotation. Match only its known
+        // education view; never click unrelated system dialogs or app actions to obtain focus.
+        for (android.view.accessibility.AccessibilityWindowInfo window : instrumentation.getUiAutomation().getWindows()) {
+            AccessibilityNodeInfo root = window.getRoot();
+            if (root != null) {
+                for (String namespace : new String[]{"android", "com.android.systemui"}) {
+                    if (!root.findAccessibilityNodeInfosByViewId(namespace + ":id/immersive_cling_description").isEmpty()) {
+                        for (AccessibilityNodeInfo ok : root.findAccessibilityNodeInfosByViewId(namespace + ":id/ok")) {
+                            ok.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            ok.recycle();
+                        }
+                    }
+                }
+                root.recycle();
+            }
+            window.recycle();
+        }
+    }
+    private int dp(int value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
+
+    private void assertControls(View root) {
+        onMain(() -> inspect(root));
+    }
+    private void inspect(View view) {
+        if (view.getVisibility() != View.VISIBLE) return;
+        if (view instanceof Button || view instanceof EditText || view instanceof ImageButton) {
+            assertTrue("minimum height: " + view, view.getHeight() >= dp(48));
+            assertTrue("minimum width: " + view, view.getWidth() >= dp(48));
+        }
+        if (view instanceof TextView && !(view instanceof EditText)) {
+            TextView text = (TextView) view;
+            if (text.getLayout() != null) {
+                for (int line = 0; line < text.getLayout().getLineCount(); line++) {
+                    assertEquals("untruncated: " + text.getText(), 0, text.getLayout().getEllipsisCount(line));
+                }
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                View child = group.getChildAt(index);
+                if (child.getVisibility() != View.VISIBLE) continue;
+                assertTrue("no horizontal overflow: " + child, child.getLeft() >= 0 && child.getRight() <= group.getWidth());
+                inspect(child);
+            }
+        }
+    }
+
+    private static <T extends View> List<T> find(View root, Class<T> type) {
+        List<T> result = new ArrayList<>();
+        if (type.isInstance(root) && root.getVisibility() == View.VISIBLE) result.add(type.cast(root));
+        if (root instanceof ViewGroup && root.getVisibility() == View.VISIBLE) {
+            ViewGroup group = (ViewGroup) root;
+            for (int index = 0; index < group.getChildCount(); index++) result.addAll(find(group.getChildAt(index), type));
+        }
+        return result;
+    }
+    private static List<Switch> switches(View root) { return find(root, Switch.class); }
+    private static List<Button> buttons(View root) {
+        List<Button> buttons = find(root, Button.class);
+        buttons.removeIf(value -> value instanceof Switch);
+        return buttons;
+    }
+    private static Button button(View root, String text) {
+        for (Button candidate : buttons(root)) if (text.contentEquals(candidate.getText())) return candidate;
+        throw new AssertionError("Missing button: " + text);
+    }
+
+    private void capture(String name) throws Exception {
+        AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
+        awaitLayout(dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView());
+        instrumentation.waitForIdleSync();
+        SystemClock.sleep(300);
+        Bitmap bitmap = instrumentation.getUiAutomation().takeScreenshot();
+        assertNotNull("native window screenshot", bitmap);
+        File directory = new File(activity.getExternalFilesDir(null), "first-use-screenshots");
+        assertTrue(directory.isDirectory() || directory.mkdirs());
+        File temporary = new File(directory, name + ".png.tmp");
+        try (FileOutputStream output = new FileOutputStream(temporary)) {
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output));
+        }
+        assertTrue("publish complete screenshot", temporary.renameTo(new File(directory, name + ".png")));
+        bitmap.recycle();
+    }
+}

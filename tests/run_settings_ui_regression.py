@@ -143,7 +143,7 @@ class AiLyricsSettings {
 java = work / "SettingsUiContractRegression.java"
 java.write_text(fixture)
 sources = [java] + [SHARED / name for name in (
-    "AppI18n.java", "ResearchI18n.java", "LocalAiI18n.java", "OpenAIConnectionI18n.java",
+    "AppI18n.java", "FirstUseI18n.java", "ResearchI18n.java", "LocalAiI18n.java", "OpenAIConnectionI18n.java",
     "SettingsTranslationOverrides.java", "LyricsToolsTranslationOverrides.java",
     "VideoSelectionTranslations.java", "SettingsExperienceTranslations.java")]
 subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "-d", str(work), *map(str, sources)], check=True)

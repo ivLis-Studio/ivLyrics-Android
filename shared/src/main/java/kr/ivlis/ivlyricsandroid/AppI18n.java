@@ -150,6 +150,7 @@ final class AppI18n {
         addErrorMessageStrings(languages);
         addAccessibilityLabelStrings(languages);
         addSettingsRedesignStrings(languages);
+        FirstUseI18n.apply(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }

@@ -175,24 +175,8 @@ public class BaseLyricsActivity extends Activity implements
     private static final long REMOTE_SEEK_LARGE_STEP_MS = 30_000L;
     private static final long PENDING_SEEK_HOLD_MS = 2_500L;
     private static final long PENDING_SEEK_ACK_TOLERANCE_MS = 2_500L;
-    private static final String[] ONBOARDING_WELCOME_MESSAGES = {
-            "ivLyrics에 오신 것을 환영합니다",
-            "Welcome to ivLyrics",
-            "ivLyricsへようこそ",
-            "欢迎使用 ivLyrics",
-            "Bienvenue dans ivLyrics",
-            "Bienvenido a ivLyrics"
-    };
-
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable emptyLyricsPreviewClearRunnable = this::clearExpiredEmptyLyricsPreview;
-    private final Runnable onboardingWelcomeTicker = new Runnable() {
-        @Override
-        public void run() {
-            updateOnboardingWelcomeText(true);
-            handler.postDelayed(this, 1850L);
-        }
-    };
     private final List<String> logLines = new ArrayList<>();
     private final Map<String, TextView> speakerColorValueViews = new LinkedHashMap<>();
     private final Map<String, View> speakerColorSwatches = new LinkedHashMap<>();
@@ -475,13 +459,14 @@ public class BaseLyricsActivity extends Activity implements
     private TextView cloudSettingsUploadButton;
     private TextView cloudSettingsApplyButton;
     private TextView cloudSettingsDeleteButton;
-    private TextView onboardingWelcomeText;
     private TextView onboardingStepLabel;
     private TextView onboardingBackButton;
     private TextView onboardingNextButton;
     private TextView onboardingUiLanguageSelectButton;
     private TextView onboardingPermissionStatusView;
     private LinearLayout onboardingBody;
+    private SettingsKit onboardingKit;
+    private View[] onboardingProgress;
 
     private final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
     private TrackSnapshot currentTrack;
@@ -613,8 +598,13 @@ public class BaseLyricsActivity extends Activity implements
     private boolean pictureInPicturePinchTriggered;
     private boolean vinylModeVisible;
     private float pictureInPicturePinchStartDistance;
-    private int onboardingStep;
-    private int onboardingWelcomeIndex = -1;
+    private int onboardingStep = -1;
+    // Unsaved credentials belong to the flow, not to the views rebuilt on back/theme/rotation.
+    private String onboardingClientIdDraft;
+    private String onboardingClientSecretDraft;
+    private String onboardingValidationStatus;
+    private boolean onboardingSpotifyHelpExpanded;
+    private int spotifyInstructionStep;
     private String activeSettingsTab = SETTINGS_TAB_GENERAL;
     private String pollinationsAuthVerificationUrl = "";
     private String pollinationsAuthUserCode = "";
@@ -690,6 +680,13 @@ public class BaseLyricsActivity extends Activity implements
         super.onCreate(savedInstanceState);
         LyricsWordSegmenter.initialize(getApplicationContext());
         aiLyricsSettings = new AiLyricsSettings(this);
+        if (savedInstanceState != null) {
+            onboardingStep = savedInstanceState.getInt("first_use.step", -1);
+            onboardingClientIdDraft = savedInstanceState.getString("first_use.client_id");
+            onboardingClientSecretDraft = savedInstanceState.getString("first_use.client_secret");
+            onboardingSpotifyHelpExpanded = savedInstanceState.getBoolean("first_use.help");
+            spotifyInstructionStep = savedInstanceState.getInt("first_use.guide_step");
+        }
         currentGlobalSyncOffsetMs = aiLyricsSettings.globalSyncOffsetMs();
         lyricsProviderSettings = new LyricsProviderSettings(this);
         creatorPrivacyRepository = new CreatorPrivacyRepository(this);
@@ -725,6 +722,17 @@ public class BaseLyricsActivity extends Activity implements
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
         requestDefaultRemoteFocus(false);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        rememberSpotifySetupDraft();
+        outState.putInt("first_use.step", onboardingStep);
+        outState.putString("first_use.client_id", onboardingClientIdDraft);
+        outState.putString("first_use.client_secret", onboardingClientSecretDraft);
+        outState.putBoolean("first_use.help", onboardingSpotifyHelpExpanded);
+        outState.putInt("first_use.guide_step", spotifyInstructionStep);
+        super.onSaveInstanceState(outState);
     }
 
     @Override
@@ -942,6 +950,7 @@ public class BaseLyricsActivity extends Activity implements
         cancelLyricsMetaLongPress();
         dismissLyricsMetaMenuPopup();
         rebuildContentViewAfterConfigurationChange();
+        resizeFirstLanguagePrompt();
     }
 
     @Override
@@ -1049,7 +1058,6 @@ public class BaseLyricsActivity extends Activity implements
             cancelLyricsMetaLongPress();
             cancelArtworkLongPress();
             dismissLyricsMetaMenuPopup();
-            handler.removeCallbacks(onboardingWelcomeTicker);
         }
         super.onPause();
     }
@@ -1081,6 +1089,11 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     protected void onDestroy() {
         stopPlaybackClock();
+        if (firstLanguagePromptDialog != null) {
+            firstLanguagePromptDialog.setOnDismissListener(null);
+            firstLanguagePromptDialog.dismiss();
+            firstLanguagePromptDialog = null;
+        }
         if (lyricsActivityHost != null) lyricsActivityHost.destroy();
         pictureInPictureUiActive = false;
         pictureInPictureActionsInitialized = false;
@@ -2179,6 +2192,8 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private View buildContentView() {
+        // Settings are built first and populate credential fields; capture the old form before that.
+        rememberSpotifySetupDraft();
         FrameLayout root = new FrameLayout(this);
         rootView = root;
         backgroundView = new PlayerBackgroundView(this);
@@ -3325,6 +3340,19 @@ public class BaseLyricsActivity extends Activity implements
         if (isPictureInPictureUiActive()) {
             return;
         }
+        // Setup is a regular form. Keep Android navigation available, including in landscape;
+        // entering immersive mode here also adds an unnecessary first-launch system tutorial.
+        if (isSpotifySetupPanelVisible()) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            window.setNavigationBarColor(settingsPalette().bg);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && window.getInsetsController() != null) {
+                window.getInsetsController().show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+            applySettingsStatusBarAppearance();
+            return;
+        }
+        window.setNavigationBarColor(Color.rgb(17, 18, 22));
         boolean landscape = isLandscapeLayout();
         View decorView = window.getDecorView();
         if (landscape) {
@@ -4752,17 +4780,18 @@ public class BaseLyricsActivity extends Activity implements
     private void applySettingsStatusBarAppearance() {
         Window window = getWindow();
         if (window == null) return;
-        boolean light = isSettingsPanelVisible() && settingsKit != null && !settingsKit.p.dark;
+        boolean light = (isSettingsPanelVisible() || isSpotifySetupPanelVisible()) && !settingsPalette().dark;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
-                controller.setSystemBarsAppearance(light ? WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0,
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(light ? mask : 0, mask);
             }
         } else {
             View decor = window.getDecorView();
             int flags = decor.getSystemUiVisibility();
-            flags = light ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            int mask = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            flags = light ? flags | mask : flags & ~mask;
             decor.setSystemUiVisibility(flags);
         }
     }
@@ -6336,92 +6365,92 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private FrameLayout buildSpotifySetupPanel() {
+        rememberSpotifySetupDraft();
+        onboardingKit = new SettingsKit(this, settingsPalette());
+        SettingsKit kit = onboardingKit;
         FrameLayout panel = new FrameLayout(this);
-        panel.setBackground(new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[] {
-                        Color.rgb(33, 35, 52),
-                        Color.rgb(13, 14, 20)
-                }
-        ));
+        panel.setLayoutDirection(TextUtils.getLayoutDirectionFromLocale(Locale.forLanguageTag(aiLyricsSettings.snapshot().uiLang)));
+        panel.setBackgroundColor(kit.p.bg);
         panel.setVisibility(isInitialSetupComplete() ? View.GONE : View.VISIBLE);
+        panel.setOnTouchListener((view, event) -> true);
 
         ScrollView scrollView = new ScrollView(this);
         spotifySetupScrollView = scrollView;
         scrollView.setFillViewport(true);
-        scrollView.setClipToPadding(false);
+        // Scrolled form controls must stay out of the system bars, cutout and keyboard insets.
+        scrollView.setClipToPadding(true);
+        scrollView.setPadding(dp(20), dp(24), dp(20), dp(24));
+        scrollView.setOnApplyWindowInsetsListener((view, insets) -> {
+            int left = insets.getSystemWindowInsetLeft();
+            int right = insets.getSystemWindowInsetRight();
+            int top = insets.getSystemWindowInsetTop();
+            int bottom = insets.getSystemWindowInsetBottom();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets safe = insets.getInsets(WindowInsets.Type.systemBars()
+                        | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                left = safe.left;
+                right = safe.right;
+                top = safe.top;
+                bottom = safe.bottom;
+            }
+            scrollView.setPadding(left + dp(20), top + dp(24), right + dp(20), bottom + dp(24));
+            return insets;
+        });
         panel.addView(scrollView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        LinearLayout outer = new LinearLayout(this);
+        FrameLayout columnHost = new FrameLayout(this);
+        scrollView.addView(columnHost, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout outer = new LinearLayout(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int width = Math.min(View.MeasureSpec.getSize(widthSpec), dp(520));
+                super.onMeasure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), heightSpec);
+            }
+        };
         outer.setOrientation(LinearLayout.VERTICAL);
-        outer.setGravity(Gravity.CENTER_VERTICAL);
-        outer.setPadding(dp(24), dp(48), dp(24), dp(34));
-        scrollView.addView(outer, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        columnHost.addView(outer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
 
-        ImageView appLogo = new ImageView(this);
-        appLogo.setImageResource(R.drawable.ivlyrics_logo);
-        appLogo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        clipRound(appLogo, 20);
-        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(86), dp(86));
-        logoParams.gravity = Gravity.CENTER_HORIZONTAL;
-        outer.addView(appLogo, logoParams);
+        outer.addView(kit.text("ivLyrics", 16f, kit.p.text, kit.semi), matchWrap());
+        onboardingStepLabel = kit.text("", 13f, kit.p.text2, kit.regular);
+        onboardingStepLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        outer.addView(onboardingStepLabel, topMargin(matchWrap(), dp(24)));
+        LinearLayout progress = kit.horizontal();
+        onboardingProgress = new View[ONBOARDING_STEP_COUNT];
+        for (int index = 0; index < ONBOARDING_STEP_COUNT; index++) {
+            View segment = new View(this);
+            onboardingProgress[index] = segment;
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(3), 1f);
+            if (index > 0) params.setMarginStart(dp(6));
+            progress.addView(segment, params);
+        }
+        progress.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        outer.addView(progress, topMargin(matchWrap(), dp(10)));
 
-        TextView brand = label("ivLyrics", 15f, Color.argb(170, 255, 255, 255), AppFonts.semiBold(this));
-        brand.setGravity(Gravity.CENTER);
-        outer.addView(brand, topMargin(matchWrap(), dp(12)));
+        onboardingBody = kit.vertical();
+        outer.addView(onboardingBody, topMargin(matchWrap(), dp(28)));
 
-        onboardingWelcomeText = label("", 30f, Color.WHITE, AppFonts.bold(this));
-        onboardingWelcomeText.setGravity(Gravity.CENTER);
-        onboardingWelcomeText.setSingleLine(false);
-        onboardingWelcomeText.setMaxLines(2);
-        onboardingWelcomeText.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams welcomeParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(78)
-        );
-        welcomeParams.topMargin = dp(18);
-        outer.addView(onboardingWelcomeText, welcomeParams);
-
-        TextView subtitle = label(ui("onboarding.subtitle"), 13f, Color.argb(180, 255, 255, 255), AppFonts.regular(this));
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setLineSpacing(dp(2), 1f);
-        outer.addView(subtitle, topMargin(matchWrap(), dp(10)));
-
-        onboardingStepLabel = label("", 11f, Color.argb(145, 255, 255, 255), AppFonts.semiBold(this));
-        onboardingStepLabel.setGravity(Gravity.CENTER);
-        outer.addView(onboardingStepLabel, topMargin(matchWrap(), dp(30)));
-
-        onboardingBody = new LinearLayout(this);
-        onboardingBody.setOrientation(LinearLayout.VERTICAL);
-        onboardingBody.setPadding(dp(2), 0, dp(2), 0);
-        outer.addView(onboardingBody, topMargin(matchWrap(), dp(14)));
-
-        LinearLayout actionRow = new SettingsControlRow(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow.setGravity(Gravity.CENTER_VERTICAL);
-        outer.addView(actionRow, topMargin(matchWrap(), dp(18)));
-
-        onboardingBackButton = debugButton(ui("button.previous"));
-        onboardingBackButton.setOnClickListener(view -> showOnboardingStep(onboardingStep - 1));
-        actionRow.addView(onboardingBackButton, weightedButtonParams(1f, dp(4)));
-
-        onboardingNextButton = primaryButton(ui("button.next"));
+        // Actions scroll with the form, including on a short window or with very large text.
+        LinearLayout actionRow = kit.vertical();
+        outer.addView(actionRow, topMargin(matchWrap(), dp(24)));
+        onboardingNextButton = kit.button(ui("button.next"), SettingsKit.BUTTON_PRIMARY, null);
+        makeRemoteFocusable(onboardingNextButton);
         onboardingNextButton.setOnClickListener(view -> handleOnboardingNextAction());
-        actionRow.addView(onboardingNextButton, weightedButtonParams(1.2f, dp(4)));
+        actionRow.addView(onboardingNextButton, matchWrap());
+        onboardingBackButton = kit.button(ui("button.previous"), SettingsKit.BUTTON_NORMAL, null);
+        makeRemoteFocusable(onboardingBackButton);
+        onboardingBackButton.setOnClickListener(view -> showOnboardingStep(onboardingStep - 1));
+        actionRow.addView(onboardingBackButton, topMargin(matchWrap(), dp(8)));
 
         showOnboardingStep(initialOnboardingStep());
-        updateOnboardingWelcomeText(false);
-        populateSpotifyCredentialInputs(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
         return panel;
     }
 
     private int initialOnboardingStep() {
+        if (onboardingStep >= 0) return onboardingStep;
         if (isSpotifyApiConfigured() && !NowPlayingService.isNotificationAccessEnabled(this)) {
             return 1;
         }
@@ -6429,6 +6458,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void showOnboardingStep(int step) {
+        rememberSpotifySetupDraft();
         onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, step));
         if (onboardingBody == null) {
             return;
@@ -6437,20 +6467,19 @@ public class BaseLyricsActivity extends Activity implements
         if (onboardingStepLabel != null) {
             onboardingStepLabel.setText(uiFormat("onboarding.step_format", onboardingStep + 1, ONBOARDING_STEP_COUNT));
         }
-        if (onboardingBackButton != null) {
-            boolean canGoBack = onboardingStep > 0;
-            onboardingBackButton.setEnabled(canGoBack);
-            onboardingBackButton.setAlpha(canGoBack ? 1f : 0.45f);
+        if (onboardingProgress != null) {
+            for (int index = 0; index < onboardingProgress.length; index++) {
+                onboardingProgress[index].setBackground(onboardingKit.rect(
+                        index <= onboardingStep ? onboardingKit.p.ink : onboardingKit.p.surface4, 2f));
+            }
         }
-        if (onboardingNextButton != null) {
-            boolean canGoNext = onboardingStep < ONBOARDING_STEP_COUNT - 1;
-            onboardingNextButton.setEnabled(canGoNext);
-            onboardingNextButton.setAlpha(canGoNext ? 1f : 0.42f);
-            onboardingNextButton.setText(onboardingNextButtonText());
-        }
+        if (onboardingBackButton != null) onboardingBackButton.setVisibility(onboardingStep > 0 ? View.VISIBLE : View.GONE);
 
         onboardingUiLanguageSelectButton = null;
         onboardingPermissionStatusView = null;
+        spotifySetupClientIdInput = null;
+        spotifySetupClientSecretInput = null;
+        spotifySetupStatusView = null;
         if (onboardingStep == 0) {
             buildOnboardingWelcomeStep(onboardingBody);
         } else if (onboardingStep == 1) {
@@ -6458,10 +6487,16 @@ public class BaseLyricsActivity extends Activity implements
         } else {
             buildOnboardingSpotifyStep(onboardingBody);
         }
+        updateOnboardingActionState();
+        if (spotifySetupScrollView != null) spotifySetupScrollView.post(() -> spotifySetupScrollView.scrollTo(0, 0));
         requestDefaultRemoteFocus(true);
     }
 
     private void handleOnboardingNextAction() {
+        if (onboardingStep == ONBOARDING_STEP_COUNT - 1) {
+            applySpotifySetupFromRequiredPanel();
+            return;
+        }
         if (onboardingStep == 1 && !NowPlayingService.isNotificationAccessEnabled(this)) {
             openMediaPermissionSettings();
             return;
@@ -6472,149 +6507,145 @@ public class BaseLyricsActivity extends Activity implements
     private String onboardingNextButtonText() {
         if (onboardingStep == 1) {
             return NowPlayingService.isNotificationAccessEnabled(this)
-                    ? ui("button.spotify_setup")
+                    ? ui("button.next")
                     : ui("button.open_permission");
         }
         if (onboardingStep >= ONBOARDING_STEP_COUNT - 1) {
-            return ui("button.save_start");
+            return ui(spotifyCredentialsValidationInFlight ? "toast.spotify_checking" : "button.save_start");
         }
         return ui("button.next");
     }
 
     private void buildOnboardingWelcomeStep(LinearLayout body) {
-        TextView title = sectionTitle(ui("onboarding.welcome_title"));
-        title.setGravity(Gravity.CENTER);
-        body.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
-        TextView description = sectionDescription(ui("onboarding.welcome_desc"));
-        description.setGravity(Gravity.CENTER);
-        description.setTextColor(Color.argb(180, 255, 255, 255));
-        body.addView(description, topMargin(matchWrap(), dp(10)));
-
-        body.addView(buildOnboardingUiLanguageSelect(), topMargin(matchWrap(), dp(16)));
-
-        LinearLayout preview = new LinearLayout(this);
-        preview.setOrientation(LinearLayout.VERTICAL);
-        preview.setPadding(dp(14), dp(14), dp(14), dp(14));
-        preview.setBackground(roundDrawable(Color.argb(28, 255, 255, 255), dp(16)));
-        body.addView(preview, topMargin(matchWrap(), dp(18)));
-
-        TextView line1 = label(ui("onboarding.preview.line1"), 22f, Color.WHITE, AppFonts.bold(this));
-        preview.addView(line1, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        TextView line2 = label(ui("onboarding.preview.line2"), 19f, Color.argb(110, 255, 255, 255), AppFonts.bold(this));
-        preview.addView(line2, topMargin(matchWrap(), dp(14)));
-        TextView line3 = label(ui("onboarding.preview.line3"), 15f, Color.argb(76, 255, 255, 255), AppFonts.semiBold(this));
-        preview.addView(line3, topMargin(matchWrap(), dp(12)));
-        TextView line4 = label(ui("onboarding.preview.line4"), 13f, Color.argb(128, 255, 255, 255), AppFonts.semiBold(this));
-        line4.setLineSpacing(dp(2), 1f);
-        preview.addView(line4, topMargin(matchWrap(), dp(10)));
+        SettingsKit kit = onboardingKit;
+        addOnboardingHeading(body, "onboarding.welcome_title", "onboarding.welcome_desc");
+        body.addView(buildOnboardingUiLanguageSelect(), topMargin(matchWrap(), dp(24)));
+        LinearLayout display = kit.group();
+        Switch darkMode = kit.toggle(ui("onboarding.dark_mode"), null);
+        darkMode.setChecked(kit.p.dark);
+        darkMode.setOnCheckedChangeListener((button, checked) -> {
+            getSharedPreferences(SETTINGS_UI_PREFS, MODE_PRIVATE).edit()
+                    .putString(KEY_SETTINGS_THEME, checked ? SettingsPalette.THEME_DARK : SettingsPalette.THEME_LIGHT).apply();
+            rebuildSettingsPanelInPlace();
+            rebuildSpotifySetupPanel();
+        });
+        makeRemoteFocusable(darkMode);
+        display.addView(darkMode, matchWrap());
+        body.addView(display, topMargin(matchWrap(), dp(12)));
     }
 
     private LinearLayout buildOnboardingUiLanguageSelect() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(10), dp(12), dp(10));
-        row.setBackground(roundDrawable(Color.argb(28, 255, 255, 255), dp(16)));
-
-        LinearLayout labels = new LinearLayout(this);
-        labels.setOrientation(LinearLayout.VERTICAL);
-        row.addView(labels, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView title = label(ui("onboarding.app_language_en"), 12f, Color.WHITE, AppFonts.semiBold(this));
-        labels.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
-        TextView subtitle = label(ui("onboarding.app_language_native"), 11f, Color.argb(140, 255, 255, 255), AppFonts.regular(this));
-        labels.addView(subtitle, topMargin(matchWrap(), dp(3)));
-
-        onboardingUiLanguageSelectButton = label("", 13f, Color.WHITE, AppFonts.semiBold(this));
-        onboardingUiLanguageSelectButton.setGravity(Gravity.CENTER);
-        onboardingUiLanguageSelectButton.setSingleLine(true);
-        onboardingUiLanguageSelectButton.setEllipsize(TextUtils.TruncateAt.END);
-        onboardingUiLanguageSelectButton.setPadding(dp(12), 0, dp(12), 0);
-        onboardingUiLanguageSelectButton.setBackground(roundDrawable(Color.argb(44, 255, 255, 255), dp(12)));
+        SettingsKit kit = onboardingKit;
+        LinearLayout group = kit.group();
+        onboardingUiLanguageSelectButton = kit.picker("");
+        makeRemoteFocusable(onboardingUiLanguageSelectButton);
         onboardingUiLanguageSelectButton.setOnClickListener(view -> showOnboardingUiLanguagePopup(onboardingUiLanguageSelectButton));
-        row.addView(onboardingUiLanguageSelectButton, new LinearLayout.LayoutParams(dp(172), dp(42)));
-
+        group.addView(kit.stackRow(ui("onboarding.app_language_native"), null, onboardingUiLanguageSelectButton), matchWrap());
         updateOnboardingUiLanguageSelect();
-        return row;
+        return group;
     }
 
     private void buildOnboardingPermissionStep(LinearLayout body) {
-        TextView title = sectionTitle(ui("onboarding.permission_title"));
-        title.setGravity(Gravity.CENTER);
-        body.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
-        TextView description = sectionDescription(ui("onboarding.permission_desc"));
-        description.setGravity(Gravity.CENTER);
-        description.setTextColor(Color.argb(180, 255, 255, 255));
-        body.addView(description, topMargin(matchWrap(), dp(10)));
-
-        onboardingPermissionStatusView = label("", 13f, Color.WHITE, AppFonts.semiBold(this));
-        onboardingPermissionStatusView.setGravity(Gravity.CENTER);
-        onboardingPermissionStatusView.setLineSpacing(dp(2), 1f);
-        onboardingPermissionStatusView.setPadding(dp(14), dp(13), dp(14), dp(13));
-        onboardingPermissionStatusView.setBackground(roundDrawable(Color.argb(30, 255, 255, 255), dp(14)));
-        body.addView(onboardingPermissionStatusView, topMargin(matchWrap(), dp(16)));
-
-        TextView openButton = primaryButton(ui("button.open_permission"));
-        openButton.setOnClickListener(view -> openMediaPermissionSettings());
-        body.addView(openButton, topMargin(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(44)
-        ), dp(12)));
-
-        TextView hint = sectionDescription(ui("onboarding.permission_hint"));
-        hint.setGravity(Gravity.CENTER);
-        body.addView(hint, topMargin(matchWrap(), dp(10)));
+        SettingsKit kit = onboardingKit;
+        addOnboardingHeading(body, "onboarding.permission_title", "onboarding.permission_desc");
+        onboardingPermissionStatusView = kit.text("", 15f, kit.p.text, kit.semi);
+        onboardingPermissionStatusView.setPaddingRelative(dp(16), dp(16), dp(16), dp(16));
+        onboardingPermissionStatusView.setBackground(kit.rect(kit.p.surface, 12f, kit.p.line, 1f));
+        onboardingPermissionStatusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        body.addView(onboardingPermissionStatusView, topMargin(matchWrap(), dp(24)));
+        TextView hint = kit.text(ui("onboarding.permission_hint"), 14f, kit.p.text2, kit.regular);
+        hint.setLineSpacing(dp(3), 1f);
+        body.addView(hint, topMargin(matchWrap(), dp(12)));
         updateOnboardingPermissionState();
     }
 
     private void buildOnboardingSpotifyStep(LinearLayout body) {
-        TextView title = sectionTitle(ui("onboarding.spotify_title"));
-        body.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
-        TextView description = sectionDescription(ui("onboarding.spotify_desc"));
-        body.addView(description, topMargin(matchWrap(), dp(8)));
-
-        spotifySetupStatusView = label("", 12f, Color.argb(210, 255, 255, 255), AppFonts.semiBold(this));
-        spotifySetupStatusView.setLineSpacing(dp(2), 1f);
-        body.addView(spotifySetupStatusView, topMargin(matchWrap(), dp(14)));
-        body.addView(buildSpotifyApiSetupInstructions(), topMargin(matchWrap(), dp(12)));
-
-        spotifySetupClientIdInput = settingEditText("", false, false);
+        SettingsKit kit = onboardingKit;
+        addOnboardingHeading(body, "onboarding.spotify_title", "onboarding.spotify_desc");
+        LinearLayout fields = kit.group();
+        body.addView(fields, topMargin(matchWrap(), dp(24)));
+        spotifySetupClientIdInput = kit.field("", false, false);
+        spotifySetupClientIdInput.setSaveEnabled(false);
         attachSpotifySetupKeyboardScroll(spotifySetupClientIdInput);
-        body.addView(settingField("Client ID", ui("field.spotify_client_id_desc"), spotifySetupClientIdInput), topMargin(matchWrap(), dp(14)));
-
-        spotifySetupClientSecretInput = settingEditText("", false, true);
+        fields.addView(kit.stackRow("Client ID", null, spotifySetupClientIdInput), matchWrap());
+        spotifySetupClientSecretInput = kit.field("", false, true);
+        spotifySetupClientSecretInput.setSaveEnabled(false);
         attachSpotifySetupKeyboardScroll(spotifySetupClientSecretInput);
-        body.addView(settingField("Client Secret", ui("field.spotify_client_secret_desc"), spotifySetupClientSecretInput), topMargin(matchWrap(), dp(12)));
+        fields.addView(kit.stackRow("Client Secret", null,
+                kit.secretField(spotifySetupClientSecretInput, ui("settings.show_secret"), ui("settings.hide_secret"))), matchWrap());
 
-        LinearLayout actionRow = new SettingsControlRow(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow.setGravity(Gravity.CENTER_VERTICAL);
-        body.addView(actionRow, topMargin(matchWrap(), dp(18)));
+        spotifySetupStatusView = kit.text("", 14f, kit.p.text2, kit.regular);
+        spotifySetupStatusView.setLineSpacing(dp(3), 1f);
+        spotifySetupStatusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        body.addView(spotifySetupStatusView, topMargin(matchWrap(), dp(12)));
 
-        TextView saveButton = primaryButton(ui("button.save_start"));
-        saveButton.setOnClickListener(view -> applySpotifySetupFromRequiredPanel());
-        actionRow.addView(saveButton, weightedButtonParams(1f, dp(4)));
-
+        Button help = kit.button(ui("onboarding.spotify_help"), SettingsKit.BUTTON_NORMAL,
+                onboardingSpotifyHelpExpanded ? "down" : "right");
+        makeRemoteFocusable(help);
+        help.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.addAction(onboardingSpotifyHelpExpanded
+                        ? android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
+                        : android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND);
+            }
+            @Override public boolean performAccessibilityAction(View host, int action, Bundle arguments) {
+                if (action == android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND
+                        || action == android.view.accessibility.AccessibilityNodeInfo.ACTION_COLLAPSE) return help.performClick();
+                return super.performAccessibilityAction(host, action, arguments);
+            }
+        });
+        body.addView(help, topMargin(matchWrap(), dp(16)));
+        LinearLayout guide = kit.vertical();
+        guide.setVisibility(onboardingSpotifyHelpExpanded ? View.VISIBLE : View.GONE);
+        if (onboardingSpotifyHelpExpanded) guide.addView(buildSpotifyApiSetupInstructions(), matchWrap());
+        body.addView(guide, topMargin(matchWrap(), dp(12)));
+        help.setOnClickListener(view -> {
+            onboardingSpotifyHelpExpanded = !onboardingSpotifyHelpExpanded;
+            help.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                    kit.icon(onboardingSpotifyHelpExpanded ? "down" : "right", kit.p.text, 17f), null, null, null);
+            if (onboardingSpotifyHelpExpanded && guide.getChildCount() == 0) {
+                guide.addView(buildSpotifyApiSetupInstructions(), matchWrap());
+            }
+            guide.setVisibility(onboardingSpotifyHelpExpanded ? View.VISIBLE : View.GONE);
+        });
         populateSpotifyCredentialInputs(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
+    }
+
+    private void addOnboardingHeading(LinearLayout body, String titleKey, String descriptionKey) {
+        SettingsKit kit = onboardingKit;
+        body.addView(kit.largeTitle(ui(titleKey)), matchWrap());
+        TextView description = kit.text(ui(descriptionKey), 15f, kit.p.text2, kit.regular);
+        description.setLineSpacing(dp(4), 1f);
+        body.addView(description, matchWrap());
+    }
+
+    private void rememberSpotifySetupDraft() {
+        if (spotifySetupClientIdInput != null) onboardingClientIdDraft = spotifySetupClientIdInput.getText().toString();
+        if (spotifySetupClientSecretInput != null) onboardingClientSecretDraft = spotifySetupClientSecretInput.getText().toString();
+    }
+
+    private void updateOnboardingActionState() {
+        boolean checking = onboardingStep == ONBOARDING_STEP_COUNT - 1 && spotifyCredentialsValidationInFlight;
+        if (onboardingNextButton != null) {
+            onboardingNextButton.setText(onboardingNextButtonText());
+            onboardingNextButton.setEnabled(!checking);
+            onboardingNextButton.setAlpha(checking ? 0.5f : 1f);
+        }
+        if (spotifySetupClientIdInput != null) spotifySetupClientIdInput.setEnabled(!checking);
+        if (spotifySetupClientSecretInput != null) spotifySetupClientSecretInput.setEnabled(!checking);
+    }
+
+    private void rebuildSpotifySetupPanel() {
+        if (spotifySetupPanel == null || !(spotifySetupPanel.getParent() instanceof ViewGroup)) return;
+        ViewGroup parent = (ViewGroup) spotifySetupPanel.getParent();
+        int index = parent.indexOfChild(spotifySetupPanel);
+        parent.removeView(spotifySetupPanel);
+        spotifySetupPanel = buildSpotifySetupPanel();
+        parent.addView(spotifySetupPanel, index, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        spotifySetupPanel.requestApplyInsets();
+        applySystemBarsForOrientation();
     }
 
     private void attachSpotifySetupKeyboardScroll(EditText input) {
@@ -6680,7 +6711,7 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         String selected = aiLyricsSettings.snapshot().uiLang;
-        showLanguageSelectPopup(anchor, uiLanguageChoices(), selected, code -> {
+        showSettingsChoicePopup(anchor, uiLanguageChoices(), selected, code -> {
             aiLyricsSettings.setUiLang(code);
             applyUiLanguageChange();
             showSavedToast(ui("toast.ui_language_saved"));
@@ -7042,51 +7073,6 @@ public class BaseLyricsActivity extends Activity implements
         return choices;
     }
 
-    private void startOnboardingWelcomeRotation() {
-        handler.removeCallbacks(onboardingWelcomeTicker);
-        if (onboardingWelcomeText == null || !isSpotifySetupPanelVisible()) {
-            return;
-        }
-        if (onboardingWelcomeIndex < 0) {
-            updateOnboardingWelcomeText(false);
-        }
-        handler.postDelayed(onboardingWelcomeTicker, 1850L);
-    }
-
-    private void stopOnboardingWelcomeRotation() {
-        handler.removeCallbacks(onboardingWelcomeTicker);
-    }
-
-    private void updateOnboardingWelcomeText(boolean animate) {
-        if (onboardingWelcomeText == null) {
-            return;
-        }
-        onboardingWelcomeIndex = (onboardingWelcomeIndex + 1) % ONBOARDING_WELCOME_MESSAGES.length;
-        String nextText = ONBOARDING_WELCOME_MESSAGES[onboardingWelcomeIndex];
-        if (!animate) {
-            onboardingWelcomeText.animate().cancel();
-            onboardingWelcomeText.setAlpha(1f);
-            onboardingWelcomeText.setTranslationY(0f);
-            onboardingWelcomeText.setText(nextText);
-            return;
-        }
-        onboardingWelcomeText.animate().cancel();
-        onboardingWelcomeText.animate()
-                .alpha(0f)
-                .translationY(-dp(6))
-                .setDuration(160L)
-                .withEndAction(() -> {
-                    onboardingWelcomeText.setText(nextText);
-                    onboardingWelcomeText.setTranslationY(dp(8));
-                    onboardingWelcomeText.animate()
-                            .alpha(1f)
-                            .translationY(0f)
-                            .setDuration(240L)
-                            .start();
-                })
-                .start();
-    }
-
     private TextView sectionTitle(String text) {
         TextView title = label(text, 17f, Color.WHITE, AppFonts.bold(this));
         title.setTag(SettingsAppearance.SECTION_TITLE);
@@ -7384,11 +7370,12 @@ public class BaseLyricsActivity extends Activity implements
         nav.addView(nextButton);
         card.addView(nav, topMargin(matchWrap(), dp(14)));
 
-        final int[] currentStep = {0};
+        final int[] currentStep = {Math.max(0, Math.min(stepCount - 1, spotifyInstructionStep))};
         final Runnable[] refresh = new Runnable[1];
         refresh[0] = () -> {
             body.removeAllViews();
             int step = currentStep[0];
+            spotifyInstructionStep = step;
             stepCounter.setText(uiFormat("onboarding.step_format", step + 1, stepCount));
             for (int index = 0; index < stepCount; index++) {
                 int color = index == step ? kit.p.accent : index < step ? kit.p.accentLine : kit.p.surface4;
@@ -12241,6 +12228,7 @@ public class BaseLyricsActivity extends Activity implements
 
     private void applySpotifySetupFromRequiredPanel() {
         if (IvLyricsBridge.isEmbedded(this)) return;
+        rememberSpotifySetupDraft();
         saveSpotifyCredentials(textOf(spotifySetupClientIdInput), textOf(spotifySetupClientSecretInput), true);
     }
 
@@ -12310,6 +12298,8 @@ public class BaseLyricsActivity extends Activity implements
                 || !before.spotifyClientId.equals(clientId)
                 || !before.spotifyClientSecret.equals(clientSecret);
         aiLyricsSettings.setSpotifyApiCredentials(clientId, clientSecret);
+        onboardingClientIdDraft = clientId;
+        onboardingClientSecretDraft = clientSecret;
         AiLyricsSettings.Snapshot after = aiLyricsSettings.snapshot();
         if (lyricsRepository != null && changed) {
             lyricsRepository.clearCache();
@@ -12326,6 +12316,8 @@ public class BaseLyricsActivity extends Activity implements
 
     private void setSpotifyValidationStatus(String message) {
         String value = message == null ? "" : message;
+        onboardingValidationStatus = value;
+        updateOnboardingActionState();
         if (spotifySetupStatusView != null) {
             spotifySetupStatusView.setText(value);
         }
@@ -12344,13 +12336,14 @@ public class BaseLyricsActivity extends Activity implements
             spotifyClientSecretInput.setText(clientSecret);
         }
         if (spotifySetupClientIdInput != null) {
-            spotifySetupClientIdInput.setText(clientId);
+            spotifySetupClientIdInput.setText(onboardingClientIdDraft == null ? clientId : onboardingClientIdDraft);
         }
         if (spotifySetupClientSecretInput != null) {
-            spotifySetupClientSecretInput.setText(clientSecret);
+            spotifySetupClientSecretInput.setText(onboardingClientSecretDraft == null ? clientSecret : onboardingClientSecretDraft);
         }
         if (spotifySetupStatusView != null) {
-            spotifySetupStatusView.setText(snapshot != null && snapshot.hasSpotifyApiCredentials()
+            spotifySetupStatusView.setText(onboardingValidationStatus != null ? onboardingValidationStatus
+                    : snapshot != null && snapshot.hasSpotifyApiCredentials()
                     ? ui("spotify.status_configured")
                     : ui("spotify.status_required"));
         }
@@ -13662,7 +13655,6 @@ public class BaseLyricsActivity extends Activity implements
         spotifySetupPanel.animate().cancel();
         if (configured) {
             spotifySetupRequired = false;
-            stopOnboardingWelcomeRotation();
             if (spotifySetupPanel.getVisibility() != View.VISIBLE) {
                 return;
             }
@@ -13673,12 +13665,14 @@ public class BaseLyricsActivity extends Activity implements
                         .withEndAction(() -> {
                             spotifySetupPanel.setVisibility(View.GONE);
                             spotifySetupPanel.setAlpha(1f);
+                            applySystemBarsForOrientation();
                             requestDefaultRemoteFocus(true);
                         })
                         .start();
             } else {
                 spotifySetupPanel.setVisibility(View.GONE);
                 spotifySetupPanel.setAlpha(1f);
+                applySystemBarsForOrientation();
                 requestDefaultRemoteFocus(true);
             }
             return;
@@ -13715,7 +13709,7 @@ public class BaseLyricsActivity extends Activity implements
             spotifySetupPanel.setAlpha(animate ? 0f : 1f);
         }
         spotifySetupPanel.bringToFront();
-        startOnboardingWelcomeRotation();
+        applySettingsStatusBarAppearance();
         if (animate) {
             spotifySetupPanel.animate().alpha(1f).setDuration(180L).start();
         }
@@ -13794,7 +13788,10 @@ public class BaseLyricsActivity extends Activity implements
         if (!aiLyricsSettings.shouldPromptForFirstLanguage(source)) {
             return false;
         }
+        return showFirstLanguagePrompt(source);
+    }
 
+    private boolean showFirstLanguagePrompt(String source) {
         aiLyricsSettings.markFirstLanguagePrompted(source);
         String trackKey = currentLyricsKey;
         Locale displayLocale = Locale.forLanguageTag(
@@ -13817,134 +13814,97 @@ public class BaseLyricsActivity extends Activity implements
             }
         };
 
-        LinearLayout shell = new LinearLayout(this);
-        shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setPadding(dp(28), dp(28), dp(28), dp(22));
-        GradientDrawable shellBackground = roundDrawable(Color.rgb(24, 24, 27), dp(24));
-        shellBackground.setStroke(dp(1), Color.argb(26, 255, 255, 255));
-        shell.setBackground(shellBackground);
+        SettingsKit kit = new SettingsKit(this, settingsPalette());
+        LinearLayout shell = kit.vertical();
+        shell.setLayoutDirection(TextUtils.getLayoutDirectionFromLocale(displayLocale));
+        shell.setPaddingRelative(dp(20), dp(20), dp(20), dp(16));
+        shell.setBackground(kit.rect(kit.p.surface, 12f, kit.p.line2, 1f));
+        LinearLayout header = kit.horizontal();
+        TextView title = kit.text(uiFormat("first_language.title_format", languageName), 18f, kit.p.text, kit.semi);
+        title.setLineSpacing(dp(2), 1f);
+        SettingsKit.heading(title);
+        header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageButton close = kit.iconButton("close", ui("button.close"), 20f);
+        makeRemoteFocusable(close);
+        header.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        shell.addView(header, matchWrap());
+        TextView hint = kit.text(ui("first_language.hint"), 14f, kit.p.text2, kit.regular);
+        hint.setLineSpacing(dp(3), 1f);
+        shell.addView(hint, topMargin(matchWrap(), dp(6)));
 
-        TextView icon = label("文A", 17f, Color.rgb(147, 197, 253), AppFonts.bold(this));
-        icon.setGravity(Gravity.CENTER);
-        icon.setLetterSpacing(-0.08f);
-        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        icon.setBackground(roundDrawable(Color.argb(56, 96, 165, 250), dp(29)));
-        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(58), dp(58));
-        iconParams.gravity = Gravity.CENTER_HORIZONTAL;
-        shell.addView(icon, iconParams);
-
-        TextView title = label(
-                uiFormat("first_language.title_format", languageName),
-                20f,
-                Color.rgb(248, 250, 252),
-                AppFonts.bold(this)
-        );
-        title.setGravity(Gravity.CENTER);
-        title.setLineSpacing(0f, 1.08f);
-        shell.addView(title, topMargin(matchWrap(), dp(16)));
-
-        TextView message = label(
-                ui("first_language.message"),
-                16f,
-                Color.argb(150, 248, 250, 252),
-                AppFonts.regular(this)
-        );
-        message.setGravity(Gravity.CENTER);
-        message.setLineSpacing(0f, 1.14f);
-        shell.addView(message, topMargin(matchWrap(), dp(5)));
-
-        TextView hint = label(
-                ui("first_language.hint"),
-                12.5f,
-                Color.argb(116, 248, 250, 252),
-                AppFonts.regular(this)
-        );
-        hint.setGravity(Gravity.CENTER);
-        hint.setLineSpacing(0f, 1.12f);
-        shell.addView(hint, topMargin(matchWrap(), dp(8)));
-
-        LinearLayout choices = new LinearLayout(this);
-        choices.setOrientation(LinearLayout.VERTICAL);
-        shell.addView(choices, topMargin(matchWrap(), dp(16)));
-
-        Switch pronunciationSwitch = addFirstLanguagePromptToggle(
-                choices,
-                "Abc",
-                ui("first_language.pronunciation"),
-                true
-        );
-        Switch translationSwitch = addFirstLanguagePromptToggle(
-                choices,
-                "文A",
-                ui("first_language.translation"),
-                false
-        );
-
-        AiLyricsSettings.Snapshot providerSnapshot = aiLyricsSettings.snapshot();
-        final TextView providerHint;
-        // The hint says only Bing and Google are active, which is not true once Local AI is on.
-        if (providerSnapshot.hasAnyTranslationProvider() && !providerSnapshot.hasEnabledAiProvider()
-                && !providerSnapshot.isAiProviderEnabled(AiLyricsSettings.Provider.LOCAL_AI_ID)) {
-            providerHint = label(
-                    "✦  " + ui("first_language.ai_provider_hint"),
-                    12.5f,
-                    Color.rgb(219, 234, 254),
-                    AppFonts.regular(this)
-            );
-            providerHint.setLineSpacing(0f, 1.16f);
-            providerHint.setPadding(dp(12), dp(10), dp(12), dp(10));
-            GradientDrawable providerHintBackground = roundDrawable(Color.argb(26, 59, 130, 246), dp(11));
-            providerHintBackground.setStroke(dp(1), Color.argb(56, 96, 165, 250));
-            providerHint.setBackground(providerHintBackground);
-            shell.addView(providerHint, topMargin(matchWrap(), dp(14)));
-        } else {
-            providerHint = null;
+        LinearLayout choices = kit.dividedList();
+        shell.addView(choices, topMargin(matchWrap(), dp(12)));
+        Switch translationSwitch = kit.toggle(ui("first_language.translation"), null);
+        Switch pronunciationSwitch = kit.toggle(ui("first_language.pronunciation"), null);
+        AiLyricsSettings.LanguageRule currentRule = aiLyricsSettings.snapshot().ruleForSource(source);
+        translationSwitch.setChecked(currentRule.translationEnabled);
+        pronunciationSwitch.setChecked(currentRule.pronunciationEnabled);
+        for (Switch toggle : new Switch[]{translationSwitch, pronunciationSwitch}) {
+            toggle.setPaddingRelative(0, dp(12), 0, dp(12));
+            makeRemoteFocusable(toggle);
+            choices.addView(toggle, matchWrap());
         }
 
-        TextView action = label(
-                ui("first_language.not_now"),
-                15f,
-                Color.argb(158, 248, 250, 252),
-                AppFonts.semiBold(this)
-        );
+        TextView providerHint = kit.text("", 14f, kit.p.text2, kit.regular);
+        providerHint.setTag("first-language-provider-hint");
+        providerHint.setLineSpacing(dp(3), 1f);
+        providerHint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        shell.addView(providerHint, topMargin(matchWrap(), dp(8)));
+        Button action = kit.button(ui("first_language.original"), SettingsKit.BUTTON_PRIMARY, null);
         makeRemoteFocusable(action);
-        action.setGravity(Gravity.CENTER);
-        action.setMinHeight(dp(48));
-        action.setPadding(dp(12), 0, dp(12), 0);
         shell.addView(action, topMargin(matchWrap(), dp(16)));
 
-        Runnable updateAction = () -> updateFirstLanguagePromptAction(
-                action,
-                pronunciationSwitch.isChecked() || translationSwitch.isChecked()
-        );
         Runnable updatePromptState = () -> {
-            updateAction.run();
-            if (providerHint != null) {
-                providerHint.setText("✦  " + ui(pronunciationSwitch.isChecked()
-                        ? "first_language.pronunciation_ai_provider_hint"
-                        : "first_language.ai_provider_hint"));
-            }
+            action.setText(ui(pronunciationSwitch.isChecked() || translationSwitch.isChecked()
+                    ? "first_language.apply" : "first_language.original"));
+            AiLyricsSettings.Snapshot providers = aiLyricsSettings.snapshot();
+            String hintKey = pronunciationSwitch.isChecked() && !providers.hasReadyAiProvider()
+                    ? "first_language.pronunciation_ai_provider_hint"
+                    : translationSwitch.isChecked() && !providers.hasLyricsTranslationProvider()
+                    ? "first_language.translation_provider_hint" : null;
+            providerHint.setVisibility(hintKey == null ? View.GONE : View.VISIBLE);
+            providerHint.setText(hintKey == null ? "" : ui(hintKey));
         };
         pronunciationSwitch.setOnCheckedChangeListener((button, checked) -> updatePromptState.run());
-        translationSwitch.setOnCheckedChangeListener((button, checked) -> updateAction.run());
+        translationSwitch.setOnCheckedChangeListener((button, checked) -> updatePromptState.run());
         updatePromptState.run();
 
+        // The whole compact dialog can scroll, so its action stays reachable in landscape/large text.
+        ScrollView scroll = new ScrollView(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int available = Math.max(dp(48), visibleSettingsWindowBounds().height() - dp(48));
+                if (View.MeasureSpec.getMode(heightSpec) != View.MeasureSpec.UNSPECIFIED) {
+                    available = Math.min(available, View.MeasureSpec.getSize(heightSpec));
+                }
+                super.onMeasure(widthSpec, View.MeasureSpec.makeMeasureSpec(available, View.MeasureSpec.AT_MOST));
+            }
+        };
+        scroll.setBackground(kit.rect(kit.p.surface, 12f));
+        scroll.setClipToOutline(true);
+        scroll.addView(shell, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(shell)
+                .setView(scroll)
                 .create();
         dialog.setCanceledOnTouchOutside(false);
         dialog.setOnCancelListener(ignored -> continueCurrentTrack.run());
+        close.setOnClickListener(view -> {
+            continueCurrentTrack.run();
+            dialog.dismiss();
+        });
         action.setOnClickListener(view -> {
+            if (!trackKey.equals(currentLyricsKey)) {
+                dialog.dismiss();
+                return;
+            }
             boolean pronunciationEnabled = pronunciationSwitch.isChecked();
             boolean translationEnabled = translationSwitch.isChecked();
-            if (pronunciationEnabled || translationEnabled) {
-                aiLyricsSettings.setLanguageRule(
-                        source,
-                        translationEnabled,
-                        pronunciationEnabled,
-                        aiLyricsSettings.snapshot().defaultRule.targetLang
-                );
-            }
+            aiLyricsSettings.setLanguageRule(
+                    source,
+                    translationEnabled,
+                    pronunciationEnabled,
+                    aiLyricsSettings.snapshot().defaultRule.targetLang
+            );
             continueCurrentTrack.run();
             dialog.dismiss();
         });
@@ -13957,105 +13917,16 @@ public class BaseLyricsActivity extends Activity implements
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setDimAmount(0.56f);
-            int width = Math.min(
-                    getResources().getDisplayMetrics().widthPixels - dp(32),
-                    dp(440)
-            );
-            window.setLayout(Math.max(dp(300), width), ViewGroup.LayoutParams.WRAP_CONTENT);
+            resizeFirstLanguagePrompt();
         }
         return true;
     }
 
-    private Switch addFirstLanguagePromptToggle(
-            LinearLayout parent,
-            String iconText,
-            String labelText,
-            boolean showDivider
-    ) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(58));
-        row.setPadding(dp(4), 0, dp(4), 0);
-
-        TextView rowIcon = label(
-                iconText,
-                12f,
-                Color.argb(168, 248, 250, 252),
-                AppFonts.bold(this)
-        );
-        rowIcon.setGravity(Gravity.CENTER);
-        rowIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(rowIcon, new LinearLayout.LayoutParams(dp(24), dp(32)));
-
-        TextView rowLabel = label(
-                labelText,
-                16f,
-                Color.rgb(248, 250, 252),
-                AppFonts.semiBold(this)
-        );
-        rowLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-        );
-        labelParams.leftMargin = dp(12);
-        row.addView(rowLabel, labelParams);
-
-        Switch toggle = new Switch(this);
-        toggle.setShowText(false);
-        toggle.setSplitTrack(false);
-        toggle.setContentDescription(labelText);
-        toggle.setMinWidth(dp(50));
-        toggle.setMinimumHeight(dp(48));
-        int[][] states = new int[][] {
-                new int[] {android.R.attr.state_checked},
-                new int[] {-android.R.attr.state_checked}
-        };
-        toggle.setTrackTintList(new ColorStateList(
-                states,
-                new int[] {Color.rgb(47, 125, 221), Color.argb(38, 255, 255, 255)}
-        ));
-        toggle.setThumbTintList(new ColorStateList(
-                states,
-                new int[] {Color.WHITE, Color.WHITE}
-        ));
-        row.addView(toggle, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(58)
-        ));
-        row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
-        row.setFocusable(false);
-        row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-
-        if (showDivider) {
-            FrameLayout wrapper = new FrameLayout(this);
-            wrapper.addView(row, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(58)
-            ));
-            View divider = new View(this);
-            divider.setBackgroundColor(Color.argb(23, 255, 255, 255));
-            FrameLayout.LayoutParams dividerParams = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(1),
-                    Gravity.BOTTOM
-            );
-            wrapper.addView(divider, dividerParams);
-            parent.addView(wrapper, matchWrap());
-        } else {
-            parent.addView(row, matchWrap());
-        }
-        return toggle;
-    }
-
-    private void updateFirstLanguagePromptAction(TextView action, boolean hasSelection) {
-        action.setText(ui(hasSelection ? "first_language.apply" : "first_language.not_now"));
-        action.setTextColor(hasSelection ? Color.WHITE : Color.argb(158, 248, 250, 252));
-        action.setBackground(hasSelection
-                ? roundDrawable(Color.rgb(47, 125, 221), dp(12))
-                : roundDrawable(Color.TRANSPARENT, dp(12)));
+    private void resizeFirstLanguagePrompt() {
+        Window window = firstLanguagePromptDialog == null ? null : firstLanguagePromptDialog.getWindow();
+        if (window == null) return;
+        int width = Math.min(visibleSettingsWindowBounds().width() - dp(32), dp(340));
+        window.setLayout(Math.max(1, width), ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     protected void requestAiLyrics(boolean clearCache) {
@@ -15365,14 +15236,10 @@ public class BaseLyricsActivity extends Activity implements
                     ? ui("onboarding.permission_status_enabled")
                     : ui("onboarding.permission_status_required"));
             onboardingPermissionStatusView.setTextColor(enabled
-                    ? Color.rgb(142, 236, 198)
-                    : Color.WHITE);
+                    ? onboardingKit.p.ok
+                    : onboardingKit.p.text);
         }
-        if (onboardingNextButton != null && onboardingStep == 1) {
-            onboardingNextButton.setText(onboardingNextButtonText());
-            onboardingNextButton.setEnabled(true);
-            onboardingNextButton.setAlpha(1f);
-        }
+        if (onboardingStep == 1) updateOnboardingActionState();
     }
 
     private void openMediaPermissionSettings() {
