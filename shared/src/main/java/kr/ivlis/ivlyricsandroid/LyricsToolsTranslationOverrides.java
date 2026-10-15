@@ -89,7 +89,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "खोज रहा है…",
                         "lyrics.lrclib_search.no_results", "कोई परिणाम नहीं मिला।",
                         "lyrics.lrclib_search.result_count_format", "%d परिणाम",
-                        "lyrics.lrclib_search.selecting", "खोज रहा है · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "चुने गए LRCLIB गीत लोड हो रहे हैं...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "गीत खोजने में विफल: %s"
                 });
@@ -140,7 +140,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "جار البحث…",
                         "lyrics.lrclib_search.no_results", "لم يتم العثور على نتائج.",
                         "lyrics.lrclib_search.result_count_format", "%d نتيجة",
-                        "lyrics.lrclib_search.selecting", "جار البحث · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "جارٍ تحميل كلمات LRCLIB المحددة...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "فشل البحث عن الكلمات: %s"
                 });
@@ -167,7 +167,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "در حال جستجو…",
                         "lyrics.lrclib_search.no_results", "نتیجه‌ای پیدا نشد.",
                         "lyrics.lrclib_search.result_count_format", "%d نتیجه",
-                        "lyrics.lrclib_search.selecting", "در حال جستجو · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "در حال بارگیری متن انتخاب‌شده از LRCLIB...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "جستجوی متن ترانه ناموفق بود: %s"
                 });
@@ -206,7 +206,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Поиск…",
                         "lyrics.lrclib_search.no_results", "Результаты не найдены.",
                         "lyrics.lrclib_search.result_count_format", "%d результатов",
-                        "lyrics.lrclib_search.selecting", "Поиск · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Загрузка выбранного текста LRCLIB...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Не удалось найти тексты: %s"
                 });
@@ -233,7 +233,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Söker…",
                         "lyrics.lrclib_search.no_results", "Inga resultat hittades.",
                         "lyrics.lrclib_search.result_count_format", "%d resultat",
-                        "lyrics.lrclib_search.selecting", "Söker · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Läser in vald LRCLIB-text...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Det gick inte att söka efter texter: %s"
                 });
@@ -272,7 +272,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "খোঁজা হচ্ছে…",
                         "lyrics.lrclib_search.no_results", "কোনো ফলাফল পাওয়া যায়নি।",
                         "lyrics.lrclib_search.result_count_format", "%dটি ফলাফল",
-                        "lyrics.lrclib_search.selecting", "খোঁজা হচ্ছে · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "নির্বাচিত LRCLIB লিরিক্স লোড হচ্ছে...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "লিরিক্স খুঁজতে ব্যর্থ হয়েছে: %s"
                 });
@@ -299,7 +299,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Ricerca…",
                         "lyrics.lrclib_search.no_results", "Nessun risultato trovato.",
                         "lyrics.lrclib_search.result_count_format", "%d risultati",
-                        "lyrics.lrclib_search.selecting", "Ricerca · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Caricamento del testo LRCLIB selezionato...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Ricerca testi non riuscita: %s"
                 });
@@ -326,7 +326,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "กำลังค้นหา…",
                         "lyrics.lrclib_search.no_results", "ไม่พบผลลัพธ์",
                         "lyrics.lrclib_search.result_count_format", "%d ผลลัพธ์",
-                        "lyrics.lrclib_search.selecting", "กำลังค้นหา · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "กำลังโหลดเนื้อเพลง LRCLIB ที่เลือก...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "ค้นหาเนื้อเพลงไม่สำเร็จ: %s"
                 });
@@ -353,7 +353,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Đang tìm…",
                         "lyrics.lrclib_search.no_results", "Không tìm thấy kết quả.",
                         "lyrics.lrclib_search.result_count_format", "%d kết quả",
-                        "lyrics.lrclib_search.selecting", "Đang tìm · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Đang tải lời bài hát LRCLIB đã chọn...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Không thể tìm lời bài hát: %s"
                 });
@@ -380,7 +380,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Mencari…",
                         "lyrics.lrclib_search.no_results", "Tidak ada hasil.",
                         "lyrics.lrclib_search.result_count_format", "%d hasil",
-                        "lyrics.lrclib_search.selecting", "Mencari · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Memuat lirik LRCLIB yang dipilih...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Gagal mencari lirik: %s"
                 });
@@ -407,7 +407,7 @@ final class LyricsToolsTranslationOverrides {
                         "lyrics.lrclib_search.loading", "Mencari…",
                         "lyrics.lrclib_search.no_results", "Tiada hasil ditemui.",
                         "lyrics.lrclib_search.result_count_format", "%d hasil",
-                        "lyrics.lrclib_search.selecting", "Mencari · LRCLIB",
+                        "lyrics.lrclib_search.selecting", "Memuatkan lirik LRCLIB yang dipilih...",
                         "lyrics.lrclib_search.loaded", "LRCLIB ✓",
                         "lyrics.lrclib_search.error_format", "Gagal mencari lirik: %s"
                 });
