@@ -78,7 +78,8 @@ public final class SettingsUiRegressionTest {
             assertFalse(((AiLyricsSettings) activity.value("aiLyricsSettings")).snapshot().hasApiKey());
             assertFalse(activity.usesLivePlayback());
         });
-        for (String tab : new String[]{"general", "ai", "appearance", "lyrics", "player", "providers", "system"}) {
+        // "home" is the menu list with the search field; the others are the seven settings menus.
+        for (String tab : new String[]{"home", "general", "ai", "appearance", "lyrics", "player", "providers", "system"}) {
             onMain(() -> activity.settings(tab));
             screenshot(prefix + "-window-settings-" + tab);
             onMain(() -> {
@@ -90,7 +91,12 @@ public final class SettingsUiRegressionTest {
                 assertMinimum(activity.view("settingsSearchInput"), "settings search");
                 assertChevron((TextView) activity.view("uiLanguageSelectButton"));
                 assertChevron((TextView) activity.view("outputLanguageSelectButton"));
-                assertChevron((TextView) activity.view("pronunciationNotationSelectButton"));
+                if ("general".equals(tab)) {
+                    // Pronunciation notation is now a set of radio cards instead of a drop-down.
+                    for (View card : ((SettingsKit.Choice) activity.value("pronunciationNotationChoice")).items) {
+                        assertMinimum(card, "pronunciation notation card");
+                    }
+                }
                 ScrollView scroll = (ScrollView) activity.value("settingsScrollView");
                 assertTrue("landscape body remains scrollable", scroll.getHeight() >= dp(80));
                 if ("ai".equals(tab)) {
@@ -136,7 +142,8 @@ public final class SettingsUiRegressionTest {
             onMain(activity::dismissPopup);
         }
         onMain(() -> {
-            activity.settings("general");
+            // Search lives on the settings home (menu list).
+            activity.settings("home");
             EditText search = (EditText) activity.view("settingsSearchInput");
             search.setText(AppI18n.t(language, "setting.metadata_translation"));
             View panel = activity.view("settingsPanel");

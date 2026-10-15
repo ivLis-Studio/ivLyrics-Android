@@ -149,6 +149,7 @@ final class AppI18n {
         addSingAlongStrings(languages);
         addErrorMessageStrings(languages);
         addAccessibilityLabelStrings(languages);
+        addSettingsRedesignStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -272,6 +273,238 @@ final class AppI18n {
                 {"tr", "Şarkı sözlerini aç", "Şarkı sözlerini ivLyrics’te aç", "BLE kulaklık", "BLE hoparlör", "İşitme cihazı"}
         };
         addRows(languages, keys, rows);
+    }
+
+    /** Strings of the redesigned settings screen (home menu list, search, sections, live preview). */
+    private static void addSettingsRedesignStrings(Map<String, Map<String, String>> languages) {
+        String[] navigation = {
+                "settings.back", "settings.theme_light", "settings.theme_dark", "settings.preview",
+                "settings.clear_search", "settings.group_sources", "settings.group_manage",
+                "settings.no_results_hint", "settings.result_count_format", "settings.shown_when_format"
+        };
+        String[][] navigationRows = {
+                {"ko", "뒤로", "라이트 모드로 전환", "다크 모드로 전환", "실시간 미리보기", "지우기", "소스", "관리",
+                        "다른 검색어를 입력해 보세요", "%d개의 결과", "%s 설정에 따라 표시됩니다"},
+                {"en", "Back", "Switch to light mode", "Switch to dark mode", "Live Preview", "Clear", "Sources", "Management",
+                        "Try different keywords", "Results: %d", "Shown depending on the %s setting"},
+                {"zh-CN", "返回", "切换到浅色模式", "切换到深色模式", "实时预览", "清除", "来源", "管理",
+                        "请尝试输入其他关键词", "%d 个结果", "根据“%s”设置显示"},
+                {"zh-TW", "返回", "切換到淺色模式", "切換到深色模式", "即時預覽", "清除", "來源", "管理",
+                        "請嘗試輸入其他關鍵字", "%d 個結果", "依「%s」設定顯示"},
+                {"ja", "戻る", "ライトモードに切り替え", "ダークモードに切り替え", "リアルタイムプレビュー", "クリア", "ソース", "管理",
+                        "別のキーワードで検索してみてください", "%d件の結果", "「%s」の設定に応じて表示されます"},
+                {"hi", "वापस", "लाइट मोड में बदलें", "डार्क मोड में बदलें", "लाइव पूर्वावलोकन", "साफ़ करें", "स्रोत", "प्रबंधन",
+                        "कुछ अलग खोजने का प्रयास करें", "%d परिणाम", "%s सेटिंग के अनुसार दिखाया जाता है"},
+                {"es", "Volver", "Cambiar a modo claro", "Cambiar a modo oscuro", "Vista previa en vivo", "Borrar", "Fuentes", "Gestión",
+                        "Intenta con otra palabra clave", "Resultados: %d", "Se muestra según el ajuste %s"},
+                {"fr", "Retour", "Passer en mode clair", "Passer en mode sombre", "Aperçu en direct", "Effacer", "Sources", "Gestion",
+                        "Essayez un autre terme de recherche", "Résultats : %d", "Affiché selon le réglage %s"},
+                {"ar", "رجوع", "التبديل إلى الوضع الفاتح", "التبديل إلى الوضع الداكن", "معاينة حية", "مسح", "المصادر", "الإدارة",
+                        "حاول البحث بكلمات أخرى", "النتائج: %d", "يظهر حسب إعداد %s"},
+                {"fa", "بازگشت", "تغییر به حالت روشن", "تغییر به حالت تیره", "پیش‌نمایش زنده", "پاک کردن", "منابع", "مدیریت",
+                        "عبارت دیگری را امتحان کنید", "%d نتیجه", "بسته به تنظیم %s نمایش داده می‌شود"},
+                {"de", "Zurück", "In den hellen Modus wechseln", "In den dunklen Modus wechseln", "Live-Vorschau", "Löschen", "Quellen",
+                        "Verwaltung", "Versuche einen anderen Suchbegriff", "Ergebnisse: %d",
+                        "Wird abhängig von der Einstellung %s angezeigt"},
+                {"ru", "Назад", "Переключить на светлую тему", "Переключить на тёмную тему", "Предпросмотр", "Очистить", "Источники",
+                        "Управление", "Попробуйте изменить поисковый запрос", "Найдено: %d",
+                        "Показывается в зависимости от настройки «%s»"},
+                {"sv", "Tillbaka", "Växla till ljust läge", "Växla till mörkt läge", "Liveförhandsvisning", "Rensa", "Källor", "Hantering",
+                        "Prova andra sökord", "%d resultat", "Visas beroende på inställningen %s"},
+                {"pt", "Voltar", "Alternar para o modo claro", "Alternar para o modo escuro", "Pré-visualização em tempo real", "Limpar",
+                        "Fontes", "Gerenciamento", "Tente digitar outra palavra-chave", "Resultados: %d",
+                        "Exibido de acordo com a configuração %s"},
+                {"bn", "ফিরে যান", "লাইট মোডে পরিবর্তন করুন", "ডার্ক মোডে পরিবর্তন করুন", "লাইভ প্রিভিউ", "মুছুন", "উৎস", "ব্যবস্থাপনা",
+                        "অন্য কোনো কীওয়ার্ড দিয়ে চেষ্টা করুন", "%dটি ফলাফল", "%s সেটিং অনুযায়ী দেখানো হয়"},
+                {"it", "Indietro", "Passa alla modalità chiara", "Passa alla modalità scura", "Anteprima in tempo reale", "Cancella",
+                        "Fonti", "Gestione", "Prova con una parola chiave diversa", "Risultati: %d",
+                        "Mostrato in base all’impostazione %s"},
+                {"th", "ย้อนกลับ", "สลับเป็นโหมดสว่าง", "สลับเป็นโหมดมืด", "ตัวอย่างแบบเรียลไทม์", "ล้าง", "แหล่งที่มา", "การจัดการ",
+                        "ลองใช้คำค้นหาอื่น", "%d ผลลัพธ์", "แสดงตามการตั้งค่า %s"},
+                {"vi", "Quay lại", "Chuyển sang chế độ sáng", "Chuyển sang chế độ tối", "Xem trước trực tiếp", "Xóa", "Nguồn", "Quản lý",
+                        "Hãy thử nhập từ khóa khác", "%d kết quả", "Hiển thị tùy theo cài đặt %s"},
+                {"id", "Kembali", "Beralih ke mode terang", "Beralih ke mode gelap", "Pratinjau langsung", "Hapus", "Sumber", "Pengelolaan",
+                        "Coba kata kunci lain", "%d hasil", "Ditampilkan sesuai pengaturan %s"},
+                {"ms", "Kembali", "Tukar ke mod cerah", "Tukar ke mod gelap", "Pratonton langsung", "Padam", "Sumber", "Pengurusan",
+                        "Cuba kata kunci lain", "%d keputusan", "Dipaparkan mengikut tetapan %s"},
+                {"tr", "Geri", "Açık temaya geç", "Koyu temaya geç", "Canlı önizleme", "Temizle", "Kaynaklar", "Yönetim",
+                        "Farklı anahtar kelimeler deneyin", "%d sonuç", "%s ayarına göre gösterilir"},
+                {"cs", "Zpět", "Přepnout na světlý režim", "Přepnout na tmavý režim", "Živý náhled", "Vymazat", "Zdroje", "Správa",
+                        "Zkuste jiná klíčová slova", "Nalezeno: %d", "Zobrazuje se podle nastavení %s"}
+        };
+        addRows(languages, navigation, navigationRows);
+
+        String[] sections = {
+                "settings.section.lyrics_display", "settings.section.lookup", "settings.section.lookup_desc",
+                "settings.section.connections", "settings.section.connections_desc", "settings.section.layout",
+                "settings.section.lyrics_screen", "settings.section.interlude", "settings.section.karaoke",
+                "settings.section.landscape"
+        };
+        String[][] sectionRows = {
+                {"ko", "가사 표시", "조회 순서", "가사를 찾을 때 어떤 기준을 먼저 볼지 정합니다.", "연결",
+                        "API 키와 모델처럼 제공자마다 필요한 연결 정보를 관리합니다.", "레이아웃", "가사 화면", "간주 표시",
+                        "노래방 모드", "가로 화면"},
+                {"en", "Lyrics Display", "Lookup Order", "Choose what to check first when looking for lyrics.", "Connections",
+                        "Manage the connection details each provider needs, such as API keys and models.", "Layout",
+                        "Lyrics Screen", "Interlude Markers", "Karaoke Mode", "Landscape"},
+                {"zh-CN", "歌词显示", "查找顺序", "设置查找歌词时优先依据的条件。", "连接", "管理每个提供者所需的连接信息，例如 API 密钥和模型。",
+                        "布局", "歌词界面", "间奏标记", "卡拉 OK 模式", "横屏"},
+                {"zh-TW", "歌詞顯示", "查找順序", "設定尋找歌詞時優先依據的條件。", "連線", "管理每個提供者所需的連線資訊，例如 API 金鑰與模型。",
+                        "版面", "歌詞畫面", "間奏標記", "卡拉 OK 模式", "橫向畫面"},
+                {"ja", "歌詞の表示", "検索順序", "歌詞を探すときに、どの条件を優先するかを決めます。", "接続",
+                        "APIキーやモデルなど、プロバイダーごとに必要な接続情報を管理します。", "レイアウト", "歌詞画面", "間奏表示",
+                        "カラオケモード", "横画面"},
+                {"hi", "लिरिक्स प्रदर्शन", "खोज का क्रम", "चुनें कि बोल खोजते समय पहले क्या देखा जाए।", "कनेक्शन",
+                        "हर प्रदाता के लिए ज़रूरी कनेक्शन जानकारी, जैसे API कुंजी और मॉडल, प्रबंधित करें।", "लेआउट", "लिरिक्स स्क्रीन",
+                        "इंटरल्यूड संकेत", "कराओके मोड", "लैंडस्केप"},
+                {"es", "Visualización de la letra", "Orden de búsqueda", "Elige qué comprobar primero al buscar la letra.", "Conexiones",
+                        "Gestiona los datos de conexión que necesita cada proveedor, como claves de API y modelos.", "Diseño",
+                        "Pantalla de letras", "Marcadores de interludio", "Modo karaoke", "Pantalla horizontal"},
+                {"fr", "Affichage des paroles", "Ordre de recherche",
+                        "Choisissez ce qui est vérifié en premier lors de la recherche des paroles.", "Connexions",
+                        "Gérez les informations de connexion de chaque fournisseur, comme les clés API et les modèles.", "Disposition",
+                        "Écran des paroles", "Repères d’interlude", "Mode karaoké", "Mode paysage"},
+                {"ar", "عرض الكلمات", "ترتيب البحث", "اختر ما يُفحص أولًا عند البحث عن كلمات الأغنية.", "الاتصالات",
+                        "أدِر بيانات الاتصال التي يحتاجها كل موفّر، مثل مفاتيح API والنماذج.", "التخطيط", "شاشة الكلمات",
+                        "علامات الفواصل", "وضع الكاريوكي", "الوضع الأفقي"},
+                {"fa", "نمایش متن ترانه", "ترتیب جست‌وجو", "مشخص کنید هنگام جست‌وجوی متن ترانه، اول چه چیزی بررسی شود.", "اتصال‌ها",
+                        "اطلاعات اتصالی را که هر ارائه‌دهنده لازم دارد، مانند کلید API و مدل، مدیریت کنید.", "طرح‌بندی", "نمای متن ترانه",
+                        "نشانگر میان‌آهنگ", "حالت کارائوکه", "حالت افقی"},
+                {"de", "Liedtext-Anzeige", "Suchreihenfolge", "Lege fest, was bei der Liedtextsuche zuerst geprüft wird.", "Verbindungen",
+                        "Verwalte die Verbindungsdaten, die jeder Anbieter braucht, etwa API-Schlüssel und Modelle.", "Layout",
+                        "Liedtext-Bildschirm", "Zwischenspiel-Markierung", "Karaoke-Modus", "Querformat"},
+                {"ru", "Отображение текста", "Порядок поиска", "Выберите, что проверять в первую очередь при поиске текста.", "Подключения",
+                        "Управляйте данными подключения для каждого провайдера, например API-ключами и моделями.", "Макет",
+                        "Экран текста", "Метки интерлюдий", "Режим караоке", "Альбомная ориентация"},
+                {"sv", "Textvisning", "Sökordning", "Välj vad som ska kontrolleras först när låttexten söks.", "Anslutningar",
+                        "Hantera anslutningsuppgifterna som varje leverantör behöver, till exempel API-nycklar och modeller.", "Layout",
+                        "Textskärm", "Mellanspelsmarkeringar", "Karaokeläge", "Liggande läge"},
+                {"pt", "Exibição da letra", "Ordem de busca", "Escolha o que verificar primeiro ao procurar a letra.", "Conexões",
+                        "Gerencie os dados de conexão de cada provedor, como chaves de API e modelos.", "Layout", "Tela de letras",
+                        "Marcadores de interlúdio", "Modo karaokê", "Tela horizontal"},
+                {"bn", "লিরিক্স প্রদর্শন", "খোঁজার ক্রম", "লিরিক খোঁজার সময় আগে কী দেখা হবে তা বেছে নিন।", "সংযোগ",
+                        "প্রতিটি প্রদানকারীর দরকারি সংযোগ তথ্য, যেমন API কী ও মডেল, পরিচালনা করুন।", "লেআউট", "লিরিক্স স্ক্রিন",
+                        "ইন্টারলিউড চিহ্ন", "কারাওকে মোড", "আড়াআড়ি স্ক্রিন"},
+                {"it", "Visualizzazione del testo", "Ordine di ricerca", "Scegli cosa controllare per primo quando si cerca il testo.",
+                        "Connessioni", "Gestisci i dati di connessione richiesti da ogni fornitore, come chiavi API e modelli.", "Layout",
+                        "Schermata del testo", "Indicatori di interludio", "Modalità karaoke", "Schermo orizzontale"},
+                {"th", "การแสดงเนื้อเพลง", "ลำดับการค้นหา", "เลือกว่าจะตรวจสอบอะไรก่อนเมื่อค้นหาเนื้อเพลง", "การเชื่อมต่อ",
+                        "จัดการข้อมูลการเชื่อมต่อที่ผู้ให้บริการแต่ละรายต้องใช้ เช่น คีย์ API และโมเดล", "เค้าโครง", "หน้าจอเนื้อเพลง",
+                        "ตัวบ่งชี้อินเทอร์ลูด", "โหมดคาราโอเกะ", "หน้าจอแนวนอน"},
+                {"vi", "Hiển thị lời bài hát", "Thứ tự tìm kiếm", "Chọn điều cần kiểm tra trước khi tìm lời bài hát.", "Kết nối",
+                        "Quản lý thông tin kết nối mà mỗi nhà cung cấp cần, như khóa API và mô hình.", "Bố cục",
+                        "Màn hình lời bài hát", "Dấu đoạn dạo", "Chế độ karaoke", "Màn hình ngang"},
+                {"id", "Tampilan lirik", "Urutan pencarian", "Pilih apa yang diperiksa lebih dulu saat mencari lirik.", "Koneksi",
+                        "Kelola detail koneksi yang dibutuhkan tiap penyedia, seperti kunci API dan model.", "Tata letak", "Layar lirik",
+                        "Penanda selingan", "Mode karaoke", "Layar lanskap"},
+                {"ms", "Paparan lirik", "Susunan carian", "Pilih perkara yang disemak dahulu semasa mencari lirik.", "Sambungan",
+                        "Urus butiran sambungan yang diperlukan setiap penyedia, seperti kunci API dan model.", "Susun atur",
+                        "Skrin lirik", "Penanda selingan", "Mod karaoke", "Skrin landskap"},
+                {"tr", "Söz görünümü", "Arama sırası", "Şarkı sözü ararken önce neye bakılacağını seçin.", "Bağlantılar",
+                        "Her sağlayıcının ihtiyaç duyduğu API anahtarı ve model gibi bağlantı bilgilerini yönetin.", "Düzen",
+                        "Söz ekranı", "Ara işaretleri", "Karaoke modu", "Yatay ekran"},
+                {"cs", "Zobrazení textu", "Pořadí vyhledávání", "Zvolte, co se má při hledání textu ověřit nejdřív.", "Připojení",
+                        "Spravujte údaje pro připojení každého poskytovatele, například klíče API a modely.", "Rozložení",
+                        "Obrazovka s textem", "Značky mezihry", "Režim karaoke", "Na šířku"}
+        };
+        addRows(languages, sections, sectionRows);
+
+        String[] controls = {
+                "settings.typography_main", "settings.typography_lyrics", "settings.annotation_standard", "settings.owner_none",
+                "settings.show_secret", "settings.hide_secret", "settings.confirm_irreversible"
+        };
+        String[][] controlRows = {
+                {"ko", "메인 화면", "가사 페이지", "일반", "없음", "보기", "숨기기", "이 작업은 되돌릴 수 없습니다."},
+                {"en", "Main player", "Lyrics page", "Standard", "None", "Show", "Hide", "This can't be undone."},
+                {"zh-CN", "主屏幕", "歌词页面", "标准", "无", "显示", "隐藏", "此操作无法撤销。"},
+                {"zh-TW", "主畫面", "歌詞頁面", "標準", "無", "顯示", "隱藏", "此操作無法復原。"},
+                {"ja", "メイン画面", "歌詞ページ", "標準", "なし", "表示", "非表示", "この操作は元に戻せません。"},
+                {"hi", "मुख्य प्लेयर", "गीत पृष्ठ", "मानक", "कोई नहीं", "दिखाएँ", "छिपाएँ", "इस कार्रवाई को पूर्ववत नहीं किया जा सकता।"},
+                {"es", "Reproductor principal", "Página de letras", "Estándar", "Ninguno", "Mostrar", "Ocultar",
+                        "Esta acción no se puede deshacer."},
+                {"fr", "Lecteur principal", "Page de paroles", "Standard", "Aucun", "Afficher", "Masquer", "Cette action est irréversible."},
+                {"ar", "المشغل الرئيسي", "صفحة الكلمات", "قياسي", "لا يوجد", "إظهار", "إخفاء", "لا يمكن التراجع عن هذا الإجراء."},
+                {"fa", "پخش‌کننده اصلی", "صفحه متن آهنگ", "استاندارد", "هیچ", "نمایش", "پنهان کردن", "این کار قابل بازگشت نیست."},
+                {"de", "Hauptplayer", "Liedtextseite", "Standard", "Keiner", "Anzeigen", "Ausblenden",
+                        "Das kann nicht rückgängig gemacht werden."},
+                {"ru", "Главный плеер", "Страница текста", "Обычный", "Нет", "Показать", "Скрыть", "Это действие нельзя отменить."},
+                {"sv", "Huvudspelare", "Textsida", "Standard", "Ingen", "Visa", "Dölj", "Det här går inte att ångra."},
+                {"pt", "Player principal", "Página de letras", "Padrão", "Nenhum", "Mostrar", "Ocultar", "Esta ação não pode ser desfeita."},
+                {"bn", "মেইন প্লেয়ার", "লিরিক্স পেজ", "স্ট্যান্ডার্ড", "নেই", "দেখান", "লুকান", "এই কাজটি আর ফেরানো যাবে না।"},
+                {"it", "Player principale", "Pagina testi", "Standard", "Nessuno", "Mostra", "Nascondi",
+                        "Questa azione non può essere annullata."},
+                {"th", "หน้าหลัก", "หน้าเนื้อเพลง", "มาตรฐาน", "ไม่มี", "แสดง", "ซ่อน", "การดำเนินการนี้ไม่สามารถย้อนกลับได้"},
+                {"vi", "Màn hình chính", "Trang lời bài hát", "Tiêu chuẩn", "Không có", "Hiện", "Ẩn", "Không thể hoàn tác thao tác này."},
+                {"id", "Pemutar utama", "Halaman lirik", "Standar", "Tidak ada", "Tampilkan", "Sembunyikan",
+                        "Tindakan ini tidak dapat dibatalkan."},
+                {"ms", "Pemain utama", "Halaman lirik", "Standard", "Tiada", "Tunjukkan", "Sembunyikan",
+                        "Tindakan ini tidak boleh dibuat asal."},
+                {"tr", "Ana oynatıcı", "Söz sayfası", "Standart", "Hiçbiri", "Göster", "Gizle", "Bu işlem geri alınamaz."},
+                {"cs", "Hlavní přehrávač", "Stránka s texty", "Standardní", "Žádný", "Zobrazit", "Skrýt", "Tuto akci nelze vrátit zpět."}
+        };
+        addRows(languages, controls, controlRows);
+
+        // The preview's sample song is Japanese; these are its translation lines and a sample cultural note.
+        String[] preview = {"settings.preview_translation_1", "settings.preview_translation_2", "settings.preview_annotation"};
+        String[][] previewRows = {
+                {"ko", "너의 목소리가 들려", "내일도 분명 맑을 테니까",
+                        "‘夜空(밤하늘)’은 일본 가사에서 닿을 수 없는 그리움이나 동경을 나타낼 때 자주 쓰이는 표현입니다."},
+                {"en", "I can hear your voice", "Because tomorrow will surely be clear too",
+                        "In Japanese lyrics, ‘夜空’ (night sky) often expresses a longing that can never be reached."},
+                {"zh-CN", "我听见你的声音", "因为明天一定也会放晴", "在日语歌词中，“夜空”常用来表达遥不可及的思念或憧憬。"},
+                {"zh-TW", "我聽見你的聲音", "因為明天一定也會放晴", "在日文歌詞中，「夜空」常用來表達遙不可及的思念或憧憬。"},
+                {"ja", "あなたの声が聞こえる", "明日もきっと晴れるはずだから",
+                        "「夜空」は日本の歌詞で、届かない想いや憧れを表すときによく使われる表現です。"},
+                {"hi", "मुझे तुम्हारी आवाज़ सुनाई देती है", "क्योंकि कल भी ज़रूर धूप खिलेगी",
+                        "जापानी गीतों में ‘夜空’ (रात का आसमान) अक्सर ऐसी चाहत या लालसा दिखाता है जो पहुँच से बाहर हो।"},
+                {"es", "Puedo oír tu voz", "Porque mañana seguro también saldrá el sol",
+                        "En las letras japonesas, ‘夜空’ (cielo nocturno) suele expresar una añoranza o un anhelo inalcanzable."},
+                {"fr", "J’entends ta voix", "Car demain aussi, le ciel sera sûrement dégagé",
+                        "Dans les paroles japonaises, « 夜空 » (ciel nocturne) exprime souvent une nostalgie ou un désir inaccessible."},
+                {"ar", "أسمع صوتك", "لأن الغد سيكون صافيًا بالتأكيد أيضًا",
+                        "في الأغاني اليابانية، كثيرًا ما تعبّر كلمة ‘夜空’ (سماء الليل) عن حنين أو شوق بعيد المنال."},
+                {"fa", "صدایت را می‌شنوم", "چون فردا هم حتماً هوا صاف است",
+                        "در ترانه‌های ژاپنی، ‘夜空’ (آسمان شب) اغلب دلتنگی یا آرزویی دست‌نیافتنی را بیان می‌کند."},
+                {"de", "Ich höre deine Stimme", "Denn auch morgen wird es sicher klar sein",
+                        "In japanischen Liedtexten steht ‘夜空’ (Nachthimmel) oft für eine unerreichbare Sehnsucht."},
+                {"ru", "Я слышу твой голос", "Ведь и завтра наверняка будет ясно",
+                        "В японских песнях «夜空» (ночное небо) часто выражает недостижимую тоску или мечту."},
+                {"sv", "Jag hör din röst", "För i morgon blir det säkert klart igen",
+                        "I japanska låttexter uttrycker ‘夜空’ (natthimmel) ofta en längtan som aldrig går att nå."},
+                {"pt", "Eu ouço a sua voz", "Porque amanhã com certeza também vai fazer sol",
+                        "Nas letras japonesas, ‘夜空’ (céu noturno) costuma expressar uma saudade ou um anseio inalcançável."},
+                {"bn", "তোমার কণ্ঠ শুনতে পাই", "কারণ কালও নিশ্চয়ই আকাশ পরিষ্কার থাকবে",
+                        "জাপানি গানে ‘夜空’ (রাতের আকাশ) প্রায়ই নাগালের বাইরে থাকা আকুলতা বা আকাঙ্ক্ষা বোঝায়।"},
+                {"it", "Sento la tua voce", "Perché anche domani sarà sicuramente sereno",
+                        "Nei testi giapponesi, ‘夜空’ (cielo notturno) esprime spesso una nostalgia o un desiderio irraggiungibile."},
+                {"th", "ฉันได้ยินเสียงของเธอ", "เพราะพรุ่งนี้ฟ้าก็คงแจ่มใสแน่นอน",
+                        "ในเนื้อเพลงญี่ปุ่น ‘夜空’ (ท้องฟ้ายามค่ำคืน) มักใช้สื่อถึงความคิดถึงหรือความใฝ่ฝันที่เอื้อมไม่ถึง"},
+                {"vi", "Tôi nghe thấy giọng của bạn", "Vì ngày mai chắc chắn trời cũng sẽ quang đãng",
+                        "Trong lời bài hát tiếng Nhật, ‘夜空’ (bầu trời đêm) thường diễn tả nỗi nhớ hay khát khao không thể chạm tới."},
+                {"id", "Aku mendengar suaramu", "Karena besok pasti cerah juga",
+                        "Dalam lirik Jepang, ‘夜空’ (langit malam) sering menggambarkan kerinduan atau dambaan yang tak tergapai."},
+                {"ms", "Aku dengar suaramu", "Kerana esok pasti cerah juga",
+                        "Dalam lirik Jepun, ‘夜空’ (langit malam) sering menggambarkan kerinduan atau impian yang tidak tercapai."},
+                {"tr", "Sesini duyabiliyorum", "Çünkü yarın da mutlaka hava açık olacak",
+                        "Japonca şarkı sözlerinde ‘夜空’ (gece gökyüzü) çoğu zaman ulaşılamayan bir özlemi anlatır."},
+                {"cs", "Slyším tvůj hlas", "Protože i zítra bude určitě jasno",
+                        "V japonských textech ‘夜空’ (noční obloha) často vyjadřuje nedosažitelnou touhu nebo stesk."}
+        };
+        addRows(languages, preview, previewRows);
+
+        // Existing labels the new home list and provider cards show prominently; a few were mistranslated.
+        applyTranslationOverrides(languages, "de", new String[]{"tab.display", "Anzeige"});
+        applyTranslationOverrides(languages, "zh-TW", new String[]{"tab.display", "顯示"});
+        applyTranslationOverrides(languages, "sv", new String[]{"tab.display", "Visning", "button.close", "Stäng"});
+        applyTranslationOverrides(languages, "pt", new String[]{"tab.display", "Exibição", "label.on", "Ligado"});
+        applyTranslationOverrides(languages, "tr", new String[]{"tab.display", "Ekran"});
+        applyTranslationOverrides(languages, "id", new String[]{"tab.display", "Layar"});
+        applyTranslationOverrides(languages, "th", new String[]{"tab.display", "การแสดงผล"});
+        applyTranslationOverrides(languages, "fr", new String[]{"label.on", "Activé"});
+        applyTranslationOverrides(languages, "it", new String[]{"label.on", "Acceso"});
+        applyTranslationOverrides(languages, "bn", new String[]{"label.on", "চালু", "label.off", "বন্ধ"});
+        applyTranslationOverrides(languages, "ms", new String[]{"settings.title", "Tetapan", "button.close", "Tutup"});
+        applyTranslationOverrides(languages, "ar", new String[]{"button.close", "إغلاق"});
     }
 
     /** Adds keys translated row by row, {language, value...}; every UI language needs its own row. */

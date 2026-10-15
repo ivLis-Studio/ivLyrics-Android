@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
@@ -25,6 +26,8 @@ import java.util.concurrent.ExecutionException;
 final class LocalAiSettingsView extends LinearLayout {
     private static final String TAG = "ivLyricsLocalAi";
     private final AiLyricsSettings settings;
+    /** Colours of the redesigned settings screen; null keeps the original dark tokens. */
+    private final SettingsPalette palette;
     private final LocalAiRuntime runtime;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable render = this::render;
@@ -51,19 +54,24 @@ final class LocalAiSettingsView extends LinearLayout {
     private String loggedError;
 
     LocalAiSettingsView(Context context, AiLyricsSettings settings) {
+        this(context, settings, null);
+    }
+
+    LocalAiSettingsView(Context context, AiLyricsSettings settings, SettingsPalette palette) {
         super(context);
         this.settings = settings;
+        this.palette = palette;
         this.runtime = LocalAiProvider.runtime(context);
         setOrientation(VERTICAL);
 
-        status = text(13f, SettingsAppearance.SECONDARY, AppFonts.regular(context));
+        status = text(13f, secondaryColor(), AppFonts.regular(context));
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         addView(status, matchWrap(0));
 
         progress = new ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
-        progress.setProgressTintList(ColorStateList.valueOf(SettingsAppearance.ACCENT));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(SettingsAppearance.CONTROL));
+        progress.setProgressTintList(ColorStateList.valueOf(accentColor()));
+        progress.setProgressBackgroundTintList(ColorStateList.valueOf(controlColor()));
         LayoutParams progressParams = new LayoutParams(LayoutParams.MATCH_PARENT, dp(6));
         progressParams.topMargin = dp(8);
         addView(progress, progressParams);
@@ -72,16 +80,23 @@ final class LocalAiSettingsView extends LinearLayout {
         actions.setOrientation(VERTICAL);
         addView(actions, matchWrap(10));
 
-        testResult = text(12.5f, SettingsAppearance.SECONDARY, AppFonts.regular(context));
+        testResult = text(12.5f, secondaryColor(), AppFonts.regular(context));
         testResult.setLineSpacing(dp(2), 1f);
         addView(testResult, matchWrap(8));
 
         // Headings are set in render(), so a card reused after a UI language change follows it.
-        qualityTitle = text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context));
+        qualityTitle = text(14f, textColor(), AppFonts.semiBold(context));
         addView(qualityTitle, matchWrap(18));
         quality = new SeekBar(context);
         quality.setMax(LocalAiModels.TIERS.size() - 1);
-        SettingsAppearance.styleSlider(quality);
+        if (palette == null) {
+            SettingsAppearance.styleSlider(quality);
+        } else {
+            quality.setProgressTintList(ColorStateList.valueOf(palette.accent));
+            quality.setProgressBackgroundTintList(ColorStateList.valueOf(palette.surface4));
+            quality.setThumbTintList(ColorStateList.valueOf(palette.accent));
+            quality.setMinimumHeight(dp(48));
+        }
         quality.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int value, boolean fromUser) {
@@ -113,17 +128,17 @@ final class LocalAiSettingsView extends LinearLayout {
         tierLabels = new LinearLayout(context);
         tierLabels.setOrientation(HORIZONTAL);
         addView(tierLabels, matchWrap(0));
-        tierHint = text(12f, SettingsAppearance.MUTED, AppFonts.regular(context));
+        tierHint = text(12f, mutedColor(), AppFonts.regular(context));
         tierHint.setLineSpacing(dp(2), 1f);
         addView(tierHint, matchWrap(10));
 
-        idleTitle = text(14f, SettingsAppearance.TEXT, AppFonts.semiBold(context));
+        idleTitle = text(14f, textColor(), AppFonts.semiBold(context));
         addView(idleTitle, matchWrap(18));
         idleChoices = new LinearLayout(context);
         idleChoices.setOrientation(VERTICAL);
         addView(idleChoices, matchWrap(8));
 
-        privacy = text(11.5f, SettingsAppearance.MUTED, AppFonts.regular(context));
+        privacy = text(smallSize(11.5f), mutedColor(), AppFonts.regular(context));
         privacy.setLineSpacing(dp(2), 1f);
         addView(privacy, matchWrap(16));
         render();
@@ -169,15 +184,15 @@ final class LocalAiSettingsView extends LinearLayout {
         privacy.setText(ui("local_ai.privacy"));
         logError(snapshot.error);
         status.setText(statusText(snapshot));
-        status.setTextColor(snapshot.phase == LocalAiRuntime.Phase.ERROR ? SettingsAppearance.ACCENT
-                : snapshot.phase == LocalAiRuntime.Phase.READY ? SettingsAppearance.MINT : SettingsAppearance.SECONDARY);
+        status.setTextColor(snapshot.phase == LocalAiRuntime.Phase.ERROR ? errorColor()
+                : snapshot.phase == LocalAiRuntime.Phase.READY ? okColor() : secondaryColor());
         boolean downloading = snapshot.phase == LocalAiRuntime.Phase.DOWNLOADING;
         progress.setVisibility(downloading ? VISIBLE : GONE);
         progress.setProgress((int) Math.round(Math.min(1d, snapshot.loadedBytes / (double) snapshot.totalBytes) * 1000));
         renderActions(snapshot, supported);
         testResult.setVisibility(testText == null ? GONE : VISIBLE);
         testResult.setText(testText);
-        testResult.setTextColor(testSucceeded ? SettingsAppearance.MINT : SettingsAppearance.ACCENT);
+        testResult.setTextColor(testSucceeded ? okColor() : errorColor());
         if (!draggingQuality) {
             quality.setProgress(LocalAiModels.TIERS.indexOf(snapshot.tier));
         }
@@ -264,12 +279,12 @@ final class LocalAiSettingsView extends LinearLayout {
             column.setOrientation(VERTICAL);
             column.setGravity(gravity);
             boolean chosen = tier == selected;
-            column.addView(text(12.5f, chosen ? SettingsAppearance.TEXT : SettingsAppearance.SECONDARY,
+            column.addView(text(12.5f, chosen ? textColor() : secondaryColor(),
                     chosen ? AppFonts.semiBold(getContext()) : AppFonts.regular(getContext()), ui(tier.labelKey)));
-            column.addView(text(11.5f, SettingsAppearance.MUTED, AppFonts.regular(getContext()),
+            column.addView(text(smallSize(11.5f), mutedColor(), AppFonts.regular(getContext()),
                     LocalAiModels.formatGigabytes(tier.sizeBytes)), matchWrap(2));
             if (snapshot.isDownloaded(tier)) {
-                column.addView(text(11f, SettingsAppearance.MINT, AppFonts.semiBold(getContext()),
+                column.addView(text(smallSize(11f), okColor(), AppFonts.semiBold(getContext()),
                         ui("local_ai.tier_downloaded")), matchWrap(2));
             }
             tierLabels.addView(column, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
@@ -336,8 +351,7 @@ final class LocalAiSettingsView extends LinearLayout {
     }
 
     private TextView button(String label, boolean primary, boolean enabled, Runnable action) {
-        TextView button = text(13.5f, SettingsAppearance.TEXT, AppFonts.semiBold(getContext()), label);
-        button.setTag(primary ? SettingsAppearance.PRIMARY_ACTION : SettingsAppearance.SECONDARY_ACTION);
+        TextView button = text(13.5f, textColor(), AppFonts.semiBold(getContext()), label);
         button.setGravity(Gravity.CENTER);
         // A translation that does not fit wraps instead of being cut off; one line keeps the 48dp height.
         button.setSingleLine(false);
@@ -345,7 +359,27 @@ final class LocalAiSettingsView extends LinearLayout {
         button.setEllipsize(null);
         button.setPadding(dp(12), dp(8), dp(12), dp(8));
         button.setFocusable(true);
-        SettingsAppearance.styleControls(button);
+        if (palette == null) {
+            button.setTag(primary ? SettingsAppearance.PRIMARY_ACTION : SettingsAppearance.SECONDARY_ACTION);
+            SettingsAppearance.styleControls(button);
+        } else {
+            GradientDrawable background = new GradientDrawable();
+            background.setCornerRadius(dp(8));
+            if (primary) {
+                background.setColor(palette.ink);
+                button.setTextColor(palette.inkText);
+            } else {
+                background.setColor(palette.surface2);
+                background.setStroke(Math.max(1, dp(1)), palette.line2);
+                button.setTextColor(palette.text);
+            }
+            button.setBackground(new RippleDrawable(ColorStateList.valueOf(palette.ripple), background, null));
+            button.setTextSize(14.5f);
+            button.setMinHeight(dp(48));
+            button.setMinimumHeight(dp(48));
+            button.setMinWidth(dp(48));
+            button.setMinimumWidth(dp(48));
+        }
         button.setEnabled(enabled);
         button.setAlpha(enabled ? 1f : 0.5f);
         button.setOnClickListener(view -> action.run());
@@ -353,8 +387,10 @@ final class LocalAiSettingsView extends LinearLayout {
     }
 
     private TextView choice(String label, boolean selected) {
-        TextView choice = text(13.5f, selected ? SettingsAppearance.BACKGROUND : SettingsAppearance.SECONDARY,
-                AppFonts.semiBold(getContext()), label);
+        int color = palette == null
+                ? (selected ? SettingsAppearance.BACKGROUND : SettingsAppearance.SECONDARY)
+                : (selected ? palette.text : palette.text3);
+        TextView choice = text(13.5f, color, AppFonts.semiBold(getContext()), label);
         choice.setGravity(Gravity.CENTER);
         choice.setSelected(selected);
         choice.setSingleLine(true);
@@ -362,10 +398,48 @@ final class LocalAiSettingsView extends LinearLayout {
         choice.setFocusable(true);
         choice.setPadding(dp(6), 0, dp(6), 0);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(selected ? SettingsAppearance.TEXT : SettingsAppearance.CONTROL);
         background.setCornerRadius(dp(8));
+        if (palette == null) {
+            background.setColor(selected ? SettingsAppearance.TEXT : SettingsAppearance.CONTROL);
+        } else {
+            background.setColor(selected ? palette.raise : palette.surface2);
+            background.setStroke(Math.max(1, dp(1)), selected ? palette.line3 : palette.line);
+        }
         choice.setBackground(background);
         return choice;
+    }
+
+    private int textColor() {
+        return palette == null ? SettingsAppearance.TEXT : palette.text;
+    }
+
+    /** The redesigned settings keep small print at 12sp or larger. */
+    private float smallSize(float legacySp) {
+        return palette == null ? legacySp : Math.max(12f, legacySp);
+    }
+
+    private int secondaryColor() {
+        return palette == null ? SettingsAppearance.SECONDARY : palette.text2;
+    }
+
+    private int mutedColor() {
+        return palette == null ? SettingsAppearance.MUTED : palette.text3;
+    }
+
+    private int errorColor() {
+        return palette == null ? SettingsAppearance.ACCENT : palette.danger;
+    }
+
+    private int okColor() {
+        return palette == null ? SettingsAppearance.MINT : palette.ok;
+    }
+
+    private int accentColor() {
+        return palette == null ? SettingsAppearance.ACCENT : palette.accent;
+    }
+
+    private int controlColor() {
+        return palette == null ? SettingsAppearance.CONTROL : palette.surface4;
     }
 
     private TextView text(float sizeSp, int color, Typeface typeface) {
