@@ -56,8 +56,13 @@ in an unexported debug fixture with isolated storage. It covers light/dark, nati
 touches, large text/landscape/RTL scrolling, language-rule persistence, Original only/cancel/stale-song
 handling, closing uncommitted edits, and unsaved credentials across back/language changes/Activity
 recreation. Landscape tests assert the real Activity orientation and native window dimensions.
+Native taps wait for an attached, focused, laid-out target and quiet rendering by its ancestor
+ScrollViews, not just unchanged bounds: a clamped OverScroller can otherwise consume the first
+DOWN. A queued clamped-scroll regression requires the same single pointer tap to advance the
+onboarding phase; there are no click retries or programmatic `performClick()` fallbacks.
 Its OS window captures are atomically saved under the app's external-files
-`first-use-screenshots/` directory. Run on a disposable emulator with:
+`first-use-screenshots/` directory, including `failure-<test>.png` captured before fixture cleanup
+when a native assertion fails. Run on a disposable emulator with:
 
 ```sh
 adb shell wm fixed-to-user-rotation enabled

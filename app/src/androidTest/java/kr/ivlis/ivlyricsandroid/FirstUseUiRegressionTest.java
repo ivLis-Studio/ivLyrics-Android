@@ -14,6 +14,7 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.EditText;
@@ -27,9 +28,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestWatcher;
+import org.junit.runner.Description;
 import static org.junit.Assert.*;
 
 /** Real production first-use views, touch dispatch, persistence and native window captures. */
@@ -39,7 +43,20 @@ public final class FirstUseUiRegressionTest {
     private FirstUseHarnessActivity activity;
     private String language;
 
-    @After public void cleanup() {
+    @Rule public final TestWatcher nativeEvidence = new TestWatcher() {
+        @Override protected void failed(Throwable error, Description test) {
+            // Capture the failing native window BEFORE cleanup, without waiting for a layout
+            // which may itself be the failure. The CI collector already preserves these PNGs.
+            try {
+                if (activity != null) saveNativeScreenshot("failure-" + test.getMethodName());
+            } catch (Throwable captureError) {
+                error.addSuppressed(captureError);
+            }
+        }
+        @Override protected void finished(Description test) { cleanup(); }
+    };
+
+    private void cleanup() {
         if (activity != null) onMain(() -> { activity.dismissPrompt(); activity.finish(); });
         instrumentation.waitForIdleSync();
         instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_UNFREEZE);
@@ -141,12 +158,32 @@ public final class FirstUseUiRegressionTest {
         capture("ko-onboarding-landscape-font1.6-dark-top");
         tap(activity.view("onboardingNextButton"));
         onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+        capture("ko-onboarding-landscape-font1.6-dark-permission");
         onMain(() -> step(2));
         assertControls(activity.view("spotifySetupPanel"));
         reveal(activity.view("onboardingNextButton"));
         capture("ko-onboarding-landscape-font1.6-dark-action");
         tap(activity.view("onboardingBackButton"));
         onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+    }
+
+    @Test public void onboardingTapWaitsForClampedScroll() throws Exception {
+        launch("ko", 1.6f, true, true, "dark");
+        View next = activity.view("onboardingNextButton");
+        reveal(next);
+        // Like queued focus/rectangle requests, these native scrolls do not move the
+        // button at the edge, but OverScroller is active and can intercept the first DOWN.
+        ScrollView scroll = (ScrollView) activity.view("spotifySetupScrollView");
+        Runnable clampedScroll = () -> scroll.smoothScrollBy(0, 0);
+        onMain(() -> {
+            for (int index = 0; index < 8; index++) scroll.postDelayed(clampedScroll, index * 300L);
+        });
+        try {
+            tap(next); // One native pointer tap, never a retry or performClick().
+            onMain(() -> assertEquals(1, activity.value("onboardingStep")));
+        } finally {
+            onMain(() -> scroll.removeCallbacks(clampedScroll));
+        }
     }
 
     @Test public void koreanLanguageChoicesPersistIndependently() throws Exception {
@@ -343,6 +380,8 @@ public final class FirstUseUiRegressionTest {
         int[] xy = new int[2];
         Rect hit = new Rect();
         onMain(() -> {
+            assertTrue("attached native target: " + view, view.isAttachedToWindow());
+            assertTrue("enabled native target: " + view, view.isEnabled());
             assertTrue("visible native target: " + view, view.getLocalVisibleRect(hit));
             hit.offset(-view.getScrollX(), -view.getScrollY());
             assertTrue(hit.intersect(0, 0, view.getWidth(), view.getHeight()));
@@ -350,34 +389,74 @@ public final class FirstUseUiRegressionTest {
         });
         assertTrue("48dp target: " + view, view.getWidth() >= dp(48) && view.getHeight() >= dp(48));
         assertTrue("visible 48dp target: " + hit, hit.width() >= dp(48) && hit.height() >= dp(48));
-        long time = SystemClock.uptimeMillis();
         float x = xy[0] + hit.exactCenterX(), y = xy[1] + hit.exactCenterY();
+        Rect window = new Rect();
+        onMain(() -> view.getWindowVisibleDisplayFrame(window));
+        assertTrue("native touch center inside visible window: " + window,
+                window.contains(Math.round(x), Math.round(y)));
+        android.util.Log.i("FirstUseUiRegression", "Single native tap at " + x + "," + y
+                + ", hit=" + hit + ", target=" + view + ", step=" + activity.value("onboardingStep"));
+        long time = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
         MotionEvent up = MotionEvent.obtain(time, time + 60, MotionEvent.ACTION_UP, x, y, 0);
         instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up);
         down.recycle(); up.recycle(); instrumentation.waitForIdleSync();
+        AlertDialog dialog = (AlertDialog) activity.value("firstLanguagePromptDialog");
+        awaitLayout(dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView());
     }
 
     private void awaitLayout(View view) {
         long deadline = SystemClock.uptimeMillis() + 10000;
         Rect previous = new Rect();
+        AtomicLong lastDraw = new AtomicLong();
+        AtomicLong lastScrollDraw = new AtomicLong();
+        ViewTreeObserver[] observer = new ViewTreeObserver[1];
+        ViewTreeObserver.OnDrawListener draw = () -> {
+            long now = SystemClock.uptimeMillis();
+            lastDraw.set(now);
+            for (View ancestor = view; ancestor != null;
+                    ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
+                if (ancestor instanceof ScrollView && ancestor.isDirty()) lastScrollDraw.set(now);
+            }
+        };
+        onMain(() -> {
+            observer[0] = view.getViewTreeObserver();
+            observer[0].addOnDrawListener(draw);
+            view.getRootView().invalidate(); // Require a real frame, including after root rebuilds.
+        });
         int stable = 0;
-        while (SystemClock.uptimeMillis() < deadline) {
-            acknowledgeImmersiveEducation();
-            Rect bounds = new Rect();
-            final boolean[] ready = {false};
+        try {
+            while (SystemClock.uptimeMillis() < deadline) {
+                acknowledgeImmersiveEducation();
+                Rect bounds = new Rect();
+                final boolean[] ready = {false};
+                onMain(() -> {
+                    int[] xy = new int[2]; view.getLocationOnScreen(xy);
+                    bounds.set(xy[0], xy[1], xy[0] + view.getWidth(), xy[1] + view.getHeight());
+                    ready[0] = view.isAttachedToWindow() && view.isShown() && view.isLaidOut()
+                            && view.hasWindowFocus() && view.getWidth() > 0 && view.getHeight() > 0;
+                    for (View ancestor = view; ancestor != null;
+                            ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
+                        ready[0] &= !ancestor.isLayoutRequested();
+                    }
+                });
+                stable = ready[0] && previous.equals(bounds) ? stable + 1 : 0;
+                // A clamped OverScroller/edge effect keeps drawing without moving the target.
+                // Bounds-only idling can therefore send DOWN while ScrollView still intercepts
+                // it to stop scrolling. Wait for actual rendered-frame quiet as well as layout.
+                if (stable >= 3 && lastDraw.get() > 0
+                        && SystemClock.uptimeMillis() - lastScrollDraw.get() >= 240) return;
+                previous.set(bounds);
+                SystemClock.sleep(80);
+            }
+            fail("Native layout/drawing/focus did not settle: " + view + " at " + previous
+                    + ", stable=" + stable + ", last draw age=" + (SystemClock.uptimeMillis() - lastDraw.get())
+                    + ", last scroll draw age=" + (SystemClock.uptimeMillis() - lastScrollDraw.get()));
+        } finally {
             onMain(() -> {
-                int[] xy = new int[2]; view.getLocationOnScreen(xy);
-                bounds.set(xy[0], xy[1], xy[0] + view.getWidth(), xy[1] + view.getHeight());
-                ready[0] = view.isLaidOut() && !view.isLayoutRequested() && view.hasWindowFocus()
-                        && view.getWidth() > 0 && view.getHeight() > 0;
+                if (observer[0].isAlive()) observer[0].removeOnDrawListener(draw);
             });
-            stable = ready[0] && previous.equals(bounds) ? stable + 1 : 0;
-            if (stable >= 3) return;
-            previous.set(bounds);
-            SystemClock.sleep(80);
         }
-        fail("Native layout/focus did not settle: " + view + " at " + previous);
     }
 
     private void acknowledgeImmersiveEducation() {
@@ -454,6 +533,10 @@ public final class FirstUseUiRegressionTest {
         awaitLayout(dialog == null ? activity.getWindow().getDecorView() : dialog.getWindow().getDecorView());
         instrumentation.waitForIdleSync();
         SystemClock.sleep(300);
+        saveNativeScreenshot(name);
+    }
+
+    private void saveNativeScreenshot(String name) throws Exception {
         Bitmap bitmap = instrumentation.getUiAutomation().takeScreenshot();
         assertNotNull("native window screenshot", bitmap);
         File directory = new File(activity.getExternalFilesDir(null), "first-use-screenshots");
