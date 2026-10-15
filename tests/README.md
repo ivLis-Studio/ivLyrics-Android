@@ -93,6 +93,9 @@ rendered frames, so a newly opened picker is not mistaken for the covered Activi
 The UI workflow also runs the whole unfiltered native suite and collects first-use PNGs into
 `build/reports/settings-ui/first-use/` before UTP uninstalls the fixture app. Changes to
 `FirstUseI18n.java`, the host regression, or either native test/fixture trigger that workflow.
+Settings scenarios wait for the requested real orientation and include English at 1.8x text
+in a 280dp landscape panel. This catches duplicate cutout padding squeezing a password field
+below 48dp; the settings shell applies safe-area insets once.
 For local screenshot retention without UTP cleanup, assemble/install the debug app and its
 androidTest APK, run the same class with `adb shell am instrument -w -r -e class
 kr.ivlis.ivlyricsandroid.FirstUseUiRegressionTest

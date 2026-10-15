@@ -3,6 +3,7 @@ package kr.ivlis.ivlyricsandroid;
 import android.app.Instrumentation;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -40,6 +41,7 @@ public final class SettingsUiRegressionTest {
     private int genuineWindowCaptures;
     private int taps;
     private String capturePrefix = "startup";
+    private boolean expectedLandscape;
 
     @After public void cleanup() {
         if (activity != null) {
@@ -57,16 +59,22 @@ public final class SettingsUiRegressionTest {
     @Test public void koreanSmallPortrait() throws Exception { scenario("ko", 1f, 320, 640, false); }
     @Test public void koreanLandscapeLargeText() throws Exception { scenario("ko", 1.6f, 568, 320, true); }
     @Test public void englishNarrowLargeText() throws Exception { scenario("en", 1.8f, 280, 600, false); }
+    @Test public void englishNarrowLandscapeLargeText() throws Exception { scenario("en", 1.8f, 280, 320, true); }
     @Test public void germanLandscapeLargeText() throws Exception { scenario("de", 2f, 568, 320, true); }
     @Test public void arabicRtlLargeText() throws Exception { scenario("ar", 1.6f, 320, 640, false); }
 
     private void scenario(String language, float fontScale, int width, int height, boolean landscape) throws Exception {
+        expectedLandscape = landscape;
         instrumentation.getUiAutomation().setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0);
         instrumentation.waitForIdleSync();
         SettingsUiHarnessActivity.prepareConfiguration(language, fontScale);
         Intent intent = new Intent(instrumentation.getTargetContext(), SettingsUiHarnessActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uiLanguage", language).putExtra("fontScale", fontScale);
         activity = (SettingsUiHarnessActivity) instrumentation.startActivitySync(intent);
+        // Request after launch too: a finishing prior Activity/launcher must not win
+        // the rotation transition before this fixture owns its native window.
+        assertTrue("native scenario rotation accepted", instrumentation.getUiAutomation()
+                .setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0));
         instrumentation.waitForIdleSync();
         awaitWindow(activity.getWindow().getDecorView());
         assertEquals(fontScale, activity.getResources().getConfiguration().fontScale, 0.01f);
@@ -403,7 +411,10 @@ public final class SettingsUiRegressionTest {
             onMain(() -> {
                 size[0] = root.getWidth(); size[1] = root.getHeight();
                 Rect actual = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
-                ready[0] = root.hasWindowFocus() && size[0] > 0 && size[1] > 0 && size[0] <= actual.width();
+                ready[0] = root.hasWindowFocus() && size[0] > 0 && size[1] > 0 && size[0] <= actual.width()
+                        && (actual.width() > actual.height()) == expectedLandscape
+                        && activity.getResources().getConfiguration().orientation == (expectedLandscape
+                                ? Configuration.ORIENTATION_LANDSCAPE : Configuration.ORIENTATION_PORTRAIT);
                 state[0] = "focused=" + root.hasWindowFocus() + ", root=" + size[0] + "x" + size[1]
                         + ", activityDecorFocused=" + activity.getWindow().getDecorView().hasWindowFocus()
                         + ", currentWindow=" + actual + ", resources="

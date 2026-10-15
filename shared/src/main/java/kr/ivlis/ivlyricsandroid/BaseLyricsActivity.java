@@ -10143,7 +10143,8 @@ public class BaseLyricsActivity extends Activity implements
         }
         if (mainPage != null) mainPage.setPadding(dp(22) + left, dp(16) + top, dp(22) + right, dp(16) + bottom);
         if (lyricsPage != null) lyricsPage.setPadding(left, 0, right, bottom);
-        if (settingsPanel != null) settingsPanel.setPadding(left, 0, right, bottom);
+        // The settings shell owns its system/cutout/IME insets. Padding its outer
+        // panel too subtracts the cutout twice and can collapse narrow form fields.
         if (youtubeBackgroundView != null && !youtubeBackgroundAttachedToPictureInPicture) {
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) youtubeBackgroundView.getLayoutParams();
             boolean edges = aiLyricsSettings.videoEdgeToEdge();
