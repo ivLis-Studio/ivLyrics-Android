@@ -57,6 +57,7 @@ public final class FirstUseUiRegressionTest {
     private String language;
     private Runnable onBlockedInput;
     private String originalAnimatorScale;
+    private boolean expectedLandscape;
 
     @Rule public final TestWatcher nativeEvidence = new TestWatcher() {
         @Override protected void failed(Throwable error, Description test) {
@@ -617,6 +618,7 @@ public final class FirstUseUiRegressionTest {
 
     private void launch(String locale, float scale, boolean onboarding, boolean landscape, String theme, boolean greetingMotion) {
         language = locale;
+        expectedLandscape = landscape;
         if (greetingMotion) {
             // The CI emulator deliberately disables animations. Motion scenarios establish
             // their own OS precondition and restore it even when a native assertion fails.
@@ -635,6 +637,8 @@ public final class FirstUseUiRegressionTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("language", locale).putExtra("theme", theme)
                 .putExtra("onboarding", onboarding).putExtra("greeting_motion", greetingMotion);
         activity = (FirstUseHarnessActivity) instrumentation.startActivitySync(intent);
+        assertTrue("native scenario rotation accepted", instrumentation.getUiAutomation()
+                .setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0));
         instrumentation.waitForIdleSync();
         SystemClock.sleep(400);
         awaitLayout(activity.getWindow().getDecorView());
@@ -806,6 +810,10 @@ public final class FirstUseUiRegressionTest {
                     bounds.set(xy[0], xy[1], xy[0] + view.getWidth(), xy[1] + view.getHeight());
                     ready[0] = view.isAttachedToWindow() && view.isShown() && view.isLaidOut()
                             && view.hasWindowFocus() && view.getWidth() > 0 && view.getHeight() > 0;
+                    Rect actualWindow = activity.getWindowManager().getCurrentWindowMetrics().getBounds();
+                    ready[0] &= (actualWindow.width() > actualWindow.height()) == expectedLandscape
+                            && activity.getResources().getConfiguration().orientation == (expectedLandscape
+                                    ? Configuration.ORIENTATION_LANDSCAPE : Configuration.ORIENTATION_PORTRAIT);
                     for (View ancestor = view; ancestor != null;
                             ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
                         ready[0] &= !ancestor.isLayoutRequested();
