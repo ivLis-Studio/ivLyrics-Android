@@ -481,6 +481,19 @@ public class BaseLyricsActivity extends Activity implements
     private final ContentObserver onboardingMotionObserver = new ContentObserver(handler) {
         @Override public void onChange(boolean selfChange) { updateOnboardingGreetingActivity(); }
     };
+    private Runnable onboardingAnimatorScaleCleanup;
+
+    @android.annotation.TargetApi(33)
+    private static final class OnboardingAnimatorScaleObserver {
+        static Runnable register(Handler mainHandler, Runnable onChanged) {
+            ValueAnimator.DurationScaleChangeListener listener = scale -> mainHandler.post(onChanged);
+            ValueAnimator.registerDurationScaleChangeListener(listener);
+            return () -> {
+                ValueAnimator.unregisterDurationScaleChangeListener(listener);
+                mainHandler.removeCallbacks(onChanged);
+            };
+        }
+    }
 
     private final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
     private TrackSnapshot currentTrack;
@@ -718,6 +731,11 @@ public class BaseLyricsActivity extends Activity implements
         }
         getContentResolver().registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
                 false, onboardingMotionObserver);
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Settings can notify before ValueAnimator updates its cached scale. Observe
+            // that update too, so re-enabling motion resumes a still-untouched welcome.
+            onboardingAnimatorScaleCleanup = OnboardingAnimatorScaleObserver.register(handler, this::updateOnboardingGreetingActivity);
+        }
         // Spoken-feedback services can change while another accessibility service is already
         // enabled, without an accessibility-enabled or touch-exploration state transition.
         getContentResolver().registerContentObserver(Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
@@ -1132,6 +1150,10 @@ public class BaseLyricsActivity extends Activity implements
     protected void onDestroy() {
         onboardingResumed = false;
         if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
+        if (onboardingAnimatorScaleCleanup != null) {
+            onboardingAnimatorScaleCleanup.run();
+            onboardingAnimatorScaleCleanup = null;
+        }
         getContentResolver().unregisterContentObserver(onboardingMotionObserver);
         if (onboardingAccessibilityManager != null) {
             onboardingAccessibilityManager.removeAccessibilityStateChangeListener(onboardingAccessibilityListener);

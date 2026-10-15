@@ -62,7 +62,10 @@ public final class FirstUseUiRegressionTest {
             // Capture the failing native window BEFORE cleanup, without waiting for a layout
             // which may itself be the failure. The CI collector already preserves these PNGs.
             try {
-                if (activity != null) saveNativeScreenshot("failure-" + test.getMethodName());
+                if (activity != null) {
+                    onMain(() -> android.util.Log.e("FirstUseUiRegression", "failure-" + test.getMethodName() + greetingDiagnostics()));
+                    saveNativeScreenshot("failure-" + test.getMethodName());
+                }
             } catch (Throwable captureError) {
                 error.addSuppressed(captureError);
             }
@@ -229,10 +232,49 @@ public final class FirstUseUiRegressionTest {
             try {
                 java.lang.reflect.Field pending = WelcomeGreetingRotation.class.getDeclaredField("pending");
                 pending.setAccessible(true);
-                assertEquals("welcome timer scheduled at " + source, scheduled,
-                        pending.get(activity.value("onboardingGreetingRotation")) != null);
+                WelcomeGreetingRotation rotation = (WelcomeGreetingRotation) activity.value("onboardingGreetingRotation");
+                boolean actual = pending.get(rotation) != null;
+                String diagnostics = "";
+                if (actual != scheduled) {
+                    diagnostics = greetingDiagnostics();
+                    android.util.Log.e("FirstUseUiRegression", source + diagnostics);
+                }
+                assertEquals("welcome timer scheduled at " + source + diagnostics, scheduled, actual);
             } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
         });
+    }
+
+    private String greetingDiagnostics() {
+        try {
+            WelcomeGreetingRotation rotation = (WelcomeGreetingRotation) activity.value("onboardingGreetingRotation");
+            java.lang.reflect.Field active = WelcomeGreetingRotation.class.getDeclaredField("active");
+            java.lang.reflect.Field pending = WelcomeGreetingRotation.class.getDeclaredField("pending");
+            active.setAccessible(true);
+            pending.setAccessible(true);
+            View greeting = activity.view("onboardingGreetingView");
+            Rect bounds = new Rect();
+            boolean visible = greeting != null && greeting.getGlobalVisibleRect(bounds);
+            StringBuilder windows = new StringBuilder();
+            for (View window : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+                windows.append('[').append(((WindowManager.LayoutParams) window.getLayoutParams()).getTitle())
+                        .append(":focused=").append(window.hasWindowFocus()).append(']');
+            }
+            return "; cachedAnimatorsEnabled=" + android.animation.ValueAnimator.areAnimatorsEnabled()
+                    + ", rawAnimatorScale=" + Settings.Global.getString(activity.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE)
+                    + ", visible=" + visible + ", bounds=" + bounds
+                    + ", shown=" + (greeting != null && greeting.isShown())
+                    + ", windowVisibility=" + (greeting == null ? "null" : greeting.getWindowVisibility())
+                    + ", windowFocus=" + activity.hasWindowFocus()
+                    + ", resumed=" + activity.value("onboardingResumed")
+                    + ", phase=" + activity.value("onboardingStep")
+                    + ", rotationActive=" + active.getBoolean(rotation)
+                    + ", korean=" + rotation.isKorean() + ", stopped=" + rotation.hasLanguageInteraction()
+                    + ", pending=" + (pending.get(rotation) != null)
+                    + ", appReduceMotion=" + settings().snapshot().background.reduceMotion
+                    + ", nativeWindows=" + windows;
+        } catch (ReflectiveOperationException error) {
+            return "; diagnosticError=" + error;
+        }
     }
 
     private void assertGreetingStopped(boolean korean) {
