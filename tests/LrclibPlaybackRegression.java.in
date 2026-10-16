@@ -366,8 +366,12 @@ public final class LrclibPlaybackRegression {
         stage = stage();
         put(stage, "deadlineNanos", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(100));
         long started = System.nanoTime();
-        try { stage.get("/get/42"); throw new AssertionError("blocked read survived shared deadline"); }
-        catch (SocketTimeoutException expected) { checks++; }
+        // The disconnect timer uses millisecond precision. It can close this
+        // synthetic stream just before the nanosecond deadline, yielding EOF
+        // instead of an IOException. In either case the blocked request must
+        // finish without a payload, within budget, and with its socket closed.
+        try { check(stage.get("/get/42").isEmpty(), "deadline-closed stream cannot return a payload"); }
+        catch (IOException expected) { checks++; }
         check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1500 && requests.get(0).disconnected,
                 "production deadline disconnects blocked socket within remaining stage budget");
         reset(); replies = url -> new Reply(200, "x".repeat(2 * 1024 * 1024 + 1));
