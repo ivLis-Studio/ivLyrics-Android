@@ -134,11 +134,13 @@ final class LocalAiRuntime {
         final String sample;
         final String line;
         final double seconds;
+        final LocalAiTranslator.Performance performance;
 
-        TestResult(String sample, String line, double seconds) {
+        TestResult(String sample, String line, double seconds, LocalAiTranslator.Performance performance) {
             this.sample = sample;
             this.line = line;
             this.seconds = seconds;
+            this.performance = performance;
         }
     }
 
@@ -154,6 +156,7 @@ final class LocalAiRuntime {
         int waiters;
         boolean cancelled;
         CancellationException cancellation;
+        LocalAiTranslator.Performance performance;
 
         Job(String key, List<String> rows, String language, Messages messages) {
             this.key = key;
@@ -347,7 +350,14 @@ final class LocalAiRuntime {
             if (failure != null) {
                 result.completeExceptionally(failure);
             } else {
-                result.complete(new TestResult(sample, rows.get(0), (System.nanoTime() - started) / 1e9));
+                result.complete(new TestResult(sample, rows.get(0), (System.nanoTime() - started) / 1e9, job.performance));
+            }
+        });
+        result.whenComplete((value, failure) -> {
+            if (result.isCancelled()) {
+                synchronized (lock) {
+                    cancelLocked(job, new CancellationException("The Local AI test was cancelled."));
+                }
             }
         });
         return result;
@@ -555,7 +565,11 @@ final class LocalAiRuntime {
             List<String> values;
             try {
                 values = LocalAiTranslator.translateBlock(
-                        (prompt, maxTokens) -> complete(engine, prompt, maxTokens), block, job.language);
+                        (prompt, maxTokens) -> {
+                            LocalAiTranslator.Completion completion = complete(engine, prompt, maxTokens);
+                            job.performance = completion.performance;
+                            return completion;
+                        }, block, job.language);
             } finally {
                 synchronized (lock) {
                     running = null;

@@ -18,6 +18,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
@@ -52,6 +53,11 @@ final class LocalAiSettingsView extends LinearLayout {
     private boolean testSucceeded;
     private String testText;
     private String loggedError;
+    private int testToken;
+    private CompletableFuture<LocalAiRuntime.TestResult> testFuture;
+    private String testLanguage;
+    private String testUiLanguage;
+    private String testTier;
 
     LocalAiSettingsView(Context context, AiLyricsSettings settings) {
         this(context, settings, null);
@@ -82,6 +88,7 @@ final class LocalAiSettingsView extends LinearLayout {
 
         testResult = text(12.5f, secondaryColor(), AppFonts.regular(context));
         testResult.setLineSpacing(dp(2), 1f);
+        testResult.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         addView(testResult, matchWrap(8));
 
         // Headings are set in render(), so a card reused after a UI language change follows it.
@@ -154,6 +161,7 @@ final class LocalAiSettingsView extends LinearLayout {
 
     @Override
     protected void onDetachedFromWindow() {
+        clearTest();
         runtime.removeListener(listener);
         main.removeCallbacks(render);
         super.onDetachedFromWindow();
@@ -168,7 +176,7 @@ final class LocalAiSettingsView extends LinearLayout {
         if (!tier.id.equals(settings.localAiTier())) {
             settings.setLocalAiTier(tier.id);
             confirmRemove = false;
-            testText = null;
+            clearTest();
             // A different tier releases the loaded model, as on the desktop.
             applySettings();
         }
@@ -176,6 +184,10 @@ final class LocalAiSettingsView extends LinearLayout {
     }
 
     private void render() {
+        AiLyricsSettings.Snapshot settingsSnapshot = settings.snapshot();
+        if (testTier != null && (!testTier.equals(settings.localAiTier())
+                || !testLanguage.equals(settingsSnapshot.resolveTargetLanguage(""))
+                || !testUiLanguage.equals(settingsSnapshot.uiLang))) clearTest();
         LocalAiRuntime.Status snapshot = runtime.status();
         boolean supported = snapshot.unsupportedReason == null;
         qualityTitle.setText(ui("local_ai.quality"));
@@ -217,7 +229,7 @@ final class LocalAiSettingsView extends LinearLayout {
         if (!hasModel) {
             actions.addView(button(LocalAiModels.format(ui("local_ai.download"), "size",
                     LocalAiModels.formatGigabytes(snapshot.tier.sizeBytes)), true, true, () -> {
-                testText = null;
+                clearTest();
                 applySettings();
                 runtime.startDownload();
             }), matchWrap(0));
@@ -232,7 +244,10 @@ final class LocalAiSettingsView extends LinearLayout {
         row.setBaselineAligned(false);
         actions.addView(row, matchWrap(8));
         if (snapshot.phase == LocalAiRuntime.Phase.READY) {
-            row.addView(button(ui("local_ai.unload"), false, true, runtime::unload), weighted(0));
+            row.addView(button(ui("local_ai.unload"), false, true, () -> {
+                clearTest();
+                runtime.unload();
+            }), weighted(0));
         }
         row.addView(button(ui(confirmRemove ? "local_ai.confirm_remove" : "local_ai.remove"), false, !busy, () -> {
             if (!confirmRemove) {
@@ -241,20 +256,37 @@ final class LocalAiSettingsView extends LinearLayout {
                 return;
             }
             confirmRemove = false;
-            testText = null;
+            clearTest();
             runtime.delete(snapshot.tier);
         }), weighted(row.getChildCount()));
     }
 
     private void runTest() {
+        if (testRunning) return;
+        clearTest();
+        int token = testToken;
         testRunning = true;
         testText = null;
         applySettings();
         AiLyricsSettings.Snapshot snapshot = settings.snapshot();
         String target = snapshot.resolveTargetLanguage("");
         String uiLang = snapshot.uiLang;
-        runtime.testTranslation(target, LocalAiProvider.messages(uiLang)).whenComplete((result, failure) ->
+        testLanguage = target;
+        testUiLanguage = uiLang;
+        testTier = settings.localAiTier();
+        LocalAiModels.Tier testedTier = LocalAiModels.tier(testTier);
+        testFuture = runtime.testTranslation(target, LocalAiProvider.messages(uiLang));
+        testFuture.whenComplete((result, failure) ->
                 main.post(() -> {
+                    if (token != testToken) return;
+                    AiLyricsSettings.Snapshot current = settings.snapshot();
+                    if (!testTier.equals(settings.localAiTier()) || !target.equals(current.resolveTargetLanguage(""))
+                            || !uiLang.equals(current.uiLang)) {
+                        clearTest();
+                        render();
+                        return;
+                    }
+                    testFuture = null;
                     testRunning = false;
                     testSucceeded = failure == null;
                     if (failure != null) {
@@ -262,11 +294,38 @@ final class LocalAiSettingsView extends LinearLayout {
                     }
                     testText = failure == null
                             ? "✓ " + result.sample + " → " + result.line
-                                    + String.format(Locale.ROOT, " (%.1fs)", result.seconds)
+                                    + "\n" + LocalAiModels.format(ui("local_ai.test_total_time"), "seconds",
+                                            String.format(Locale.ROOT, "%.1f", result.seconds))
+                                    + "\n" + performanceText(result, testedTier)
                             : "✗ " + LocalAiProvider.userMessage(cause(failure), uiLang);
                     render();
                 }));
         render();
+    }
+
+    private void clearTest() {
+        testToken++;
+        CompletableFuture<LocalAiRuntime.TestResult> previous = testFuture;
+        testFuture = null;
+        testRunning = false;
+        testText = null;
+        testTier = null;
+        if (previous != null) previous.cancel(true);
+    }
+
+    private String performanceText(LocalAiRuntime.TestResult result, LocalAiModels.Tier testedTier) {
+        LocalAiTranslator.Performance performance = result.performance;
+        Double speed = performance == null ? null : performance.tokensPerSecond();
+        String text = speed == null ? ui("local_ai.test_speed_unavailable")
+                : LocalAiModels.format(ui("local_ai.test_speed"),
+                        "speed", String.format(Locale.ROOT, "%.1f", speed),
+                        "tokens", String.valueOf(performance.tokens),
+                        "seconds", String.format(Locale.ROOT, "%.2f", performance.seconds))
+                        + "\n" + ui("local_ai.test_speed_scope");
+        int index = LocalAiModels.TIERS.indexOf(testedTier);
+        if (index > 0) text += "\n" + LocalAiModels.format(ui("local_ai.test_smaller_hint"),
+                "tier", ui(LocalAiModels.TIERS.get(index - 1).labelKey));
+        return text;
     }
 
     private void renderTierLabels(LocalAiModels.Tier selected, LocalAiRuntime.Status snapshot) {

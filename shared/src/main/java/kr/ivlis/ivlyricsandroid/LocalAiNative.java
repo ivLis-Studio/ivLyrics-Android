@@ -92,15 +92,18 @@ final class LocalAiNative implements LocalAiRuntime.Backend {
 
     @Override
     public LocalAiTranslator.Completion complete(long handle, String prompt, int maxTokens) throws IOException {
+        // Written by this native call only, after successful generation: output tokens and decode ns.
+        long[] statistics = new long[2];
         byte[] reply = nativeComplete(handle, prompt.getBytes(StandardCharsets.UTF_8), maxTokens,
-                TEMPERATURE, TOP_P, TOP_K, REPEAT_PENALTY);
+                TEMPERATURE, TOP_P, TOP_K, REPEAT_PENALTY, statistics);
         if (reply == null || reply.length == 0) {
             throw new IOException("Local AI returned no reply.");
         }
         // The native side appends one status byte: 0 = end of generation, 1 = token limit.
         boolean stoppedAtTokenLimit = reply[reply.length - 1] != 0;
         return new LocalAiTranslator.Completion(
-                new String(reply, 0, reply.length - 1, StandardCharsets.UTF_8), stoppedAtTokenLimit);
+                new String(reply, 0, reply.length - 1, StandardCharsets.UTF_8), stoppedAtTokenLimit,
+                new LocalAiTranslator.Performance(statistics[0], statistics[1] / 1e9));
     }
 
     @Override
@@ -128,7 +131,7 @@ final class LocalAiNative implements LocalAiRuntime.Backend {
             throws IOException;
 
     private static native byte[] nativeComplete(long handle, byte[] prompt, int maxTokens, float temperature,
-            float topP, int topK, float repeatPenalty) throws IOException;
+            float topP, int topK, float repeatPenalty, long[] statistics) throws IOException;
 
     private static native void nativeAbort(long handle, boolean abort);
 

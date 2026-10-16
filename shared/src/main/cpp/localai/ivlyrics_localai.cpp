@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -158,7 +159,7 @@ void append_piece(const Engine & engine, llama_token token, std::string & output
 }
 
 std::string complete(Engine & engine, const std::string & user_text, int max_tokens, float temperature,
-        float top_p, int top_k, float repeat_penalty, int & status) {
+        float top_p, int top_k, float repeat_penalty, int & status, jlong & tokens, jlong & decode_ns) {
     std::vector<llama_token> prompt = tokenize(engine, format_prompt(engine, user_text));
     const int context_size = static_cast<int>(llama_n_ctx(engine.context));
     const int budget = std::min(max_tokens, context_size - static_cast<int>(prompt.size()));
@@ -181,6 +182,9 @@ std::string complete(Engine & engine, const std::string & user_text, int max_tok
 
     std::string output;
     status = kStatusTokenLimit;
+    tokens = 0;
+    // Model loading, tokenization and prompt prefill have finished before generation is timed.
+    const auto decode_started = std::chrono::steady_clock::now();
     for (int generated = 0; generated < budget; ++generated) {
         if (engine.abort.load(std::memory_order_relaxed)) throw Cancelled();
         llama_token token = llama_sampler_sample(sampler.get(), engine.context, -1);
@@ -190,7 +194,11 @@ std::string complete(Engine & engine, const std::string & user_text, int max_tok
         }
         append_piece(engine, token, output);
         decode(engine, &token, 1);
+        ++tokens;
     }
+    if (engine.abort.load(std::memory_order_relaxed)) throw Cancelled();
+    decode_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - decode_started).count();
     return output;
 }
 
@@ -269,7 +277,8 @@ Java_kr_ivlis_ivlyricsandroid_LocalAiNative_nativeLoad(JNIEnv * env, jclass, jby
 // Returns the UTF-8 reply followed by one status byte: 0 = end of generation, 1 = token limit.
 JNIEXPORT jbyteArray JNICALL
 Java_kr_ivlis_ivlyricsandroid_LocalAiNative_nativeComplete(JNIEnv * env, jclass, jlong handle,
-        jbyteArray prompt, jint max_tokens, jfloat temperature, jfloat top_p, jint top_k, jfloat repeat_penalty) {
+        jbyteArray prompt, jint max_tokens, jfloat temperature, jfloat top_p, jint top_k, jfloat repeat_penalty,
+        jlongArray statistics) {
     Engine * engine = engine_from(handle);
     if (engine == nullptr) {
         throw_java(env, "java/lang/IllegalStateException", "The model is not loaded.");
@@ -277,8 +286,12 @@ Java_kr_ivlis_ivlyricsandroid_LocalAiNative_nativeComplete(JNIEnv * env, jclass,
     }
     try {
         int status = kStatusTokenLimit;
+        jlong measured[2] = {0, 0};
         std::string reply = complete(*engine, read_bytes(env, prompt), max_tokens, temperature, top_p, top_k,
-                repeat_penalty, status);
+                repeat_penalty, status, measured[0], measured[1]);
+        if (statistics != nullptr && env->GetArrayLength(statistics) >= 2) {
+            env->SetLongArrayRegion(statistics, 0, 2, measured);
+        }
         reply.push_back(static_cast<char>(status));
         return to_bytes(env, reply);
     } catch (const Cancelled &) {

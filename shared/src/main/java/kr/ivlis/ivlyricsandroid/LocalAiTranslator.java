@@ -29,13 +29,35 @@ final class LocalAiTranslator {
         void onLine(int row, String text);
     }
 
+    static final class Performance {
+        final long tokens;
+        final double seconds;
+
+        Performance(long tokens, double seconds) {
+            this.tokens = tokens;
+            this.seconds = seconds;
+        }
+
+        Double tokensPerSecond() {
+            if (tokens <= 0 || !Double.isFinite(seconds) || seconds <= 0) return null;
+            double speed = tokens / seconds;
+            return Double.isFinite(speed) ? speed : null;
+        }
+    }
+
     static final class Completion {
         final String text;
         final boolean stoppedAtTokenLimit;
+        final Performance performance;
 
         Completion(String text, boolean stoppedAtTokenLimit) {
+            this(text, stoppedAtTokenLimit, null);
+        }
+
+        Completion(String text, boolean stoppedAtTokenLimit, Performance performance) {
             this.text = text == null ? "" : text;
             this.stoppedAtTokenLimit = stoppedAtTokenLimit;
+            this.performance = performance;
         }
     }
 
