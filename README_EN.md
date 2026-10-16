@@ -1,118 +1,134 @@
-<img width="2208" height="512" alt="en" src="https://github.com/ivLis-Studio/ivLyrics/blob/main/preview_readme_en.png?raw=true" /><br>
-PLATFORM : <a href="https://github.com/ivLis-Studio/ivLyrics">PC</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-Android">Android</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-IOS">IOS</a><br>
+<img width="2208" height="512" alt="ivLyrics English banner" src="https://github.com/ivLis-Studio/ivLyrics/blob/main/preview_readme_en.png?raw=true" /><br>
+PLATFORM : <a href="https://github.com/ivLis-Studio/ivLyrics">ivLyrics (PC)</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-Android">Android</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-IOS">iOS</a><br>
 MODULE : <a href="https://github.com/ivLis-Studio/ivLyrics-overlay">Overlay</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-helper">Helper</a>
 
 # ivLyrics Android
 
 [한국어](README.md) | English
 
-This repository builds the standalone Android app (`app`) and Spotify's LSPosed/LSPatch module (`spotify-module`) from one `shared` lyrics, ivSync, translation and UI library. See [architecture and builds](ARCHITECTURE.md), [verification](tests/README.md), and the [Spotify module](spotify-module/README.md).
+Follow the music you play in Spotify with lyrics, translations, and pronunciation guides. Use ivLyrics Android as a separate app, or use the module to see lyrics inside Spotify. Spotify handles music playback.
 
-ivLyrics Android detects the song currently playing in Spotify and displays karaoke-style lyrics on Android using ivLyrics community sync data and LRCLIB lyrics.
+[Download the latest release](https://github.com/ivLis-Studio/ivLyrics-Android/releases/latest) · [Release history](https://github.com/ivLis-Studio/ivLyrics-Android/releases) · [Help on Discord](https://discord.gg/2fu36fUzdE)
 
-## Disclaimer
+## Choose how to use it
 
-> ⚠️ Disclaimer
->
-> **Unofficial Project Notice**
->
-> This project and its contributors are not affiliated with, authorized by, endorsed by, or officially connected to Spotify, its affiliates, or its subsidiaries. **This project is an independent, non-profit, unofficial extension developed by a volunteer team to provide a desktop experience.**
->
-> **Trademark Notice**
->
-> The name "Spotify" and all related names, marks, emblems, and images are registered trademarks of their respective owners. These trademarks are used only for identification and reference, and their use does not imply any association with the trademark owner. This project does not intend to infringe those trademarks or harm their owners.
->
-> **Limitation of Liability**
->
-> This application (extension) is provided "as is" and is used entirely at your own risk. The developers and contributors are not liable for any claims, damages, legal consequences, or other liability arising from the use of this software or related dealings. You are solely responsible for all consequences resulting from your use of this software.
->
-> **Copyright and Terms Compliance**
->
-> This project does not claim ownership of, or grant licenses for, lyrics, translations, videos, or any other third-party content. You are responsible for checking and complying with applicable copyright laws, platform policies, API terms of service, and local regulations. You are solely responsible for any storage, reproduction, distribution, transmission, or commercial use made through this project.
+GitHub Releases contain **two different APKs**. Matching version numbers do not make them interchangeable. These instructions use direct APK installation.
 
-## Features
-
-- Direct LRCLIB loading and LRCLIB search fallback
-- Character-level fill, bounce animation, and multi-vocal colors
-- Original lyrics, pronunciation, translation, and Japanese furigana
-- Per-song-language translation and pronunciation rules
-- Main player and full lyrics page
-- Landscape player with a split lyrics layout
-- Floating shortcut from Spotify to ivLyrics
-- Clear lyric cache for the current track or all tracks
-
-## Installation
-
-GitHub Releases include two APKs. Choose the file for the product you want to install.
-
-| File | Product |
+| Filename | What it installs |
 | --- | --- |
-| `ivLyrics-Android-version-release.apk` | Standalone ivLyrics Android app |
-| `ivLyrics-LSPatch-version.apk` | LSPosed/LSPatch module that replaces lyrics inside Spotify |
+| `ivLyrics-Android-v<version>-release.apk` | The **standalone app**, opened separately from Spotify. No root or patching required. Follow the steps below. |
+| `ivLyrics-LSPatch-v<version>.apk` | The **Spotify module**. Enable it with LSPosed or apply it to Spotify with LSPatch. Follow the [module guide](spotify-module/README.md#english). |
 
-See the [Spotify module instructions](spotify-module/README.md) to install and enable the module. The steps below are for the standalone Android app.
+The module APK does not contain Spotify or a prepatched Spotify app. Installing it alone will not change Spotify's lyrics.
+
+## What can I see?
+
+- Lyrics from LRCLIB, Lyrically (Paxsenix), LyricsPlus, and Unison, with ivLyrics community sync data. Choose providers and their lookup order.
+- Plain, line-synced, or word/character-level karaoke lyrics, depending on source data, with adjustable fill effects, vocal colors, and instrumental-break labels.
+- Separate translation and pronunciation rules for each song language, plus Japanese furigana.
+- In the standalone app: full lyrics, landscape layout, Picture in Picture (PiP), Vinyl mode, and a floating shortcut from Spotify.
+
+Not every song has lyrics or detailed timing. Quality and availability depend on the data, providers, and network connection.
+
+## Install the standalone app
+
+You need **Android 8.0+**, Spotify installed and signed in, internet access, and a **Client ID and Client Secret** from a [Spotify developer app](https://developer.spotify.com/dashboard) you manage. The current first-run setup requires both credentials and **notification access**. Spotify and installation tools may impose additional OS or account requirements.
+
+The current [Spotify Web API development-mode rules](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) require the app owner to have Premium and limit authenticated users. Check eligibility before creating your developer app.
+
+1. Download `ivLyrics-Android-v<version>-release.apk` from the [latest release](https://github.com/ivLis-Studio/ivLyrics-Android/releases/latest).
+2. Open the APK to install it. If prompted, allow **Install unknown apps** for the browser or file app opening it.
+3. Launch ivLyrics and choose your language and theme.
+4. Follow the prompt to enable **notification access** for ivLyrics in Android Settings, then return. This reads the current song and Spotify media controls.
+5. Select **Web API** in your Spotify developer app, enter its Client ID and Client Secret, and tap **Save and Start**. Expand the in-app registration guide if needed.
+
+> The in-app Redirect URI guide still shows `https://localhost/`. Spotify's current [redirect rules reject `localhost`](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri). Register a URI that meets the Dashboard's official requirements. The standalone app currently uses Client Credentials, without a browser callback. If the old example prevents registration, report the error on Discord.
+
+### Track updates with Obtainium
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/ivLis-Studio/ivLyrics-Android">
   <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="60">
 </a>
 
-Use the button above to add ivLyrics Android to Obtainium and track new versions from GitHub Releases.
+If you use Obtainium, add this repository with the button above. Because releases contain two APKs, **check the filter selects `ivLyrics-Android-…-release.apk` for the standalone app**. Module users should follow the [module update instructions](spotify-module/README.md#english).
 
-1. Download the latest `ivLyrics-Android-version-release.apk` from GitHub Releases.
-2. Install the APK on your Android device.
-3. If Android shows a security prompt, allow "Install unknown apps" for the app you used to download the APK.
-4. Open ivLyrics Android and complete the first-run setup.
+## See lyrics for your first song
 
-You can download the latest APK from [Releases](https://github.com/ivLis-Studio/ivLyrics-Android/releases).
+1. Play music in Spotify, then return to ivLyrics.
+2. Once the title and artist appear, tap the lyric preview for full lyrics, or the album cover for Vinyl mode.
+3. Open **Settings → Current track settings** for song language, provider, manual search, timing, and backgrounds. Long-pressing the title/artist area also opens the song menu.
+4. Tap a lyric line or drag the progress bar to seek. Available controls depend on Spotify playback state and account restrictions.
 
-## Lyrics Page Tips
+The floating shortcut is optional. Under **Settings → Advanced**, allow **display over other apps** and enable the **Spotify screen-detection accessibility service**. The accessibility service detects whether Spotify's now-playing screen is in front. These permissions are separate from notification access and are not needed for basic lyrics. The shortcut only appears on Spotify's now-playing screen.
 
-- Tap the title or artist once to open Spotify.
-- Long-press the title/artist area on the main screen or lyrics page to open lyric settings.
-- Tap a lyric line to jump to that position.
-- Drag the progress bar to seek.
-- If the timing feels off, adjust the sync offset from the lyric settings menu.
-- If LRCLIB selected the wrong result, use manual LRCLIB search from the same menu.
+## Translation and pronunciation
 
-## Translation, Pronunciation, and Furigana
+Choose display and output languages in Settings, then enable and order services under **AI Providers**. Failed requests try the next enabled provider. Per-language rules let you show translation and pronunciation for Japanese songs but only translation for English songs, for example.
 
-ivLyrics Android detects the song language automatically and stores translation and pronunciation settings separately for each language.
+| Feature | Provider setup |
+| --- | --- |
+| Lyric translation | Bing Translate and Google Translate need no personal API key. DeepL requires an API key. All three are translation-only. |
+| AI translation and pronunciation | Configure a supported service such as Gemini, an OpenAI-compatible API, or Claude, including its connection and model. Pronunciation needs a configured AI provider. |
+| On-device lyric translation | Enable **Local AI** and download a model. It does not generate pronunciation or translate titles and artists. |
+| Readings above Japanese kanji | Enable Japanese furigana separately from translation and AI pronunciation. |
 
-For example, you can enable both translation and pronunciation for Japanese songs, enable only translation for English songs, and disable both for Spanish songs. If the detected language is wrong, you can override it from the lyric settings menu.
+Local AI is off by default and needs **Android 9+ with a 64-bit ARM process**. Choose **Local Light / Local Medium / Local High**, about 1.13 / 1.47 / 1.91 GB per model download. Mobile defaults to Light. Runtime memory is needed too; a powerful device is recommended, so run the provider test first. Inside Spotify, the process and loader may prevent the engine from loading.
 
-Japanese songs can also show furigana above kanji when the option is enabled.
+### Cost and data use
 
-Translation and pronunciation data is cached. Once generated, it stays available after restarting the app. You can clear the cache for the current track or for all tracks from Settings.
+Online providers receive lyrics and song information needed for the request. API pricing, quotas, and data policies vary by service. Keyless translation still uses external services and may become unavailable. Generated translations and pronunciation can be wrong.
 
-## Troubleshooting
+**Enabling Local AI does not give it priority. Move it ahead of online providers** to try it first; providers above it can receive the request first. **For local-only lyric translation, disable all other online translation providers.** Inference runs on-device, but model downloads, lyric lookup, and other online features use the internet. This does not guarantee an offline app or prevent all external data transfers.
 
-### The track is not detected
+Translations and pronunciation are cached. Clear AI cache, current-song lyrics, or all lyric cache in Settings. The standalone app and Spotify module keep separate settings, caches, and downloaded models.
 
-- Make sure Spotify is actually playing music.
-- Make sure notification access is enabled for ivLyrics Android.
-- If the Spotify notification is not visible, open Spotify again and restart playback.
+## Make it your own
 
-### Lyrics or artwork do not load
+- Use **Appearance** for fonts, alignment, and backgrounds, and **Player** for landscape, PiP, and Vinyl options. Tapping the title opens Spotify by default; the action is configurable.
+- Adjust timing globally, per song, or per Bluetooth device in 10ms, 50ms, or 100ms steps. **Positive values show lyrics earlier; negative values show them later.**
+- Monthly supporters signed in with Discord can save Android settings to the cloud under **Advanced**. API keys, account information, per-song offsets, and downloaded models are excluded.
 
-- Check that your Spotify Client ID and Client Secret are correct.
-- Make sure Web API is selected in the Spotify Developer Dashboard.
-- Check your internet connection.
-- Try saving your Spotify API credentials again from Settings.
+## Updates and troubleshooting
 
-### The wrong lyrics were selected
+For the standalone app, use **Settings → Advanced → Check for updates**, [GitHub Releases](https://github.com/ivLis-Studio/ivLyrics-Android/releases/latest), or Obtainium. Update with a signed APK for the same product. If signatures differ, check the installation source before uninstalling; removing the app can erase local settings and caches. Module updates need a loader restart or repatching; see the [module guide](spotify-module/README.md#english).
 
-- Long-press the title/artist area on the main screen or lyrics page to open the menu.
-- Run manual LRCLIB search.
-- Choose the correct lyric result.
-- If needed, clear the current track cache and load the track again.
+| Problem | What to check |
+| --- | --- |
+| Setup will not finish | Client ID/Secret, Web API selection, developer-account eligibility, and notification access. If Android blocks access, check its restricted-settings message. |
+| No current song | Play music in Spotify, check notification access, and restart playback. |
+| Missing lyrics or artwork | Check internet and the Spotify credential-save result. Try another provider or manual LRCLIB search in current-track settings. |
+| Wrong lyrics or timing | Try manual search, clearing that song's cache, or song/Bluetooth offsets. Detailed sync data may be unavailable. |
+| No floating shortcut | Check overlay and Spotify-detection accessibility permissions, then open Spotify's now-playing screen. |
+| Translation without pronunciation | Check AI credentials/model and the pronunciation rule for that song language. Translation-only providers cannot generate pronunciation. |
+| Local AI fails, or a service returns 403/429 | Check the local provider test, device requirements, and model download. For online errors, check account access/quotas and wait before retrying. |
 
-### The lyrics are slightly out of sync
+Ask on [Discord](https://discord.gg/2fu36fUzdE). Include **standalone app or module**, app and Spotify versions, device/Android version, song link, provider, reproduction steps, and exact error. Redact API keys, Client Secrets, and authentication tokens.
 
-- Adjust sync offset from the lyric settings menu.
-- You can fine-tune timing in 10ms, 50ms, and 100ms steps.
+## Credits
 
-### The floating shortcut does not appear
+Thanks to ivLyrics community sync creators and contributors, [LRCLIB](https://lrclib.net/), Lyrically (Paxsenix), [LyricsPlus](https://github.com/ibratabian17/lyricsplus), [Unison](https://github.com/better-lyrics/unison), and translation providers. Check provider and creator credits on the lyrics screen. Local AI uses Tencent Hy-MT2 and llama.cpp. Existing font and library license notices remain in app resources.
 
-- Make sure display-over-other-apps permission is allowed.
-- The shortcut appears only on Spotify's now playing screen.
-- It may not appear while Spotify is in the background or on another Spotify screen.
+<details>
+<summary>Development, builds, and verification</summary>
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for product structure, builds, and signing; [tests/README.md](tests/README.md) for verification; and the [module guide](spotify-module/README.md#english) for Spotify integration and installation constraints. Shared lyrics, translation, and UI code lives in `shared`. Developer and test documentation is maintained separately.
+
+</details>
+
+## Disclaimer
+
+> **Unofficial project**
+>
+> This project and its contributors are not affiliated with, authorized by, endorsed by, or officially connected to Spotify, its affiliates, or subsidiaries. ivLyrics Android is an independent, non-profit, unofficial Android app and Spotify module developed by a volunteer team to provide the ivLyrics experience on Android.
+>
+> **Trademarks**
+>
+> “Spotify” and related names, marks, emblems, and images are registered trademarks of their respective owners. They are used for identification and reference only and imply no association with their owners. This project does not intend to infringe those trademarks or harm their owners.
+>
+> **Limitation of liability**
+>
+> The app and module are provided “as is” and used at your own risk. Developers and contributors are not liable for claims, damages, legal consequences, or other liability arising from their use or related dealings. You are responsible for the consequences of using them.
+>
+> **Copyright and terms**
+>
+> This project does not claim ownership of, or grant licenses for, lyrics, translations, videos, or other third-party content. You must check and comply with applicable copyright laws, platform policies, API terms, and local regulations, and are responsible for storage, reproduction, distribution, transmission, or commercial use through this project.
