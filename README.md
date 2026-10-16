@@ -1,4 +1,6 @@
-<img width="1122" height="1402" alt="image" src="https://github.com/user-attachments/assets/93f24505-a80d-4636-a622-2d8a8ba5f1f8" />
+<img width="2208" height="512" alt="ko" src="https://github.com/ivLis-Studio/ivLyrics/blob/main/preview_readme_ko.png?raw=true" /><br>
+PLATFORM : <a href="https://github.com/ivLis-Studio/ivLyrics">PC</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-Android">Android</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-IOS">IOS</a><br>
+MODULE : <a href="https://github.com/ivLis-Studio/ivLyrics-overlay">Overlay</a> | <a href="https://github.com/ivLis-Studio/ivLyrics-helper">Helper</a>
 
 # ivLyrics Android
 
