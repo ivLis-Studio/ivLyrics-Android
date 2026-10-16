@@ -310,6 +310,8 @@ public class BaseLyricsActivity extends Activity implements
     private View lyricsBackgroundShade;
     private LinearLayout providerButtonsContainer;
     private LinearLayout lyricsProviderSettingsContainer;
+    private EditText lrclibPlaybackEndpointInput;
+    private Runnable pendingLrclibEndpointSave;
     private View pollinationsAuthGroup;
     private TextView uiLanguageSelectButton;
     private TextView outputLanguageSelectButton;
@@ -1106,6 +1108,10 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onPause() {
+        if (pendingLrclibEndpointSave != null) {
+            handler.removeCallbacks(pendingLrclibEndpointSave);
+            pendingLrclibEndpointSave.run();
+        }
         onboardingResumed = false;
         updateOnboardingGreetingActivity();
         if (IvLyricsBridge.isEmbedded(this)) IvLyricsBridge.setLyricsPageForeground(this, false);
@@ -5540,6 +5546,44 @@ public class BaseLyricsActivity extends Activity implements
         lyricsLookupChain.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         group.addView(lyricsLookupChain, matchWrap());
 
+        lrclibPlaybackEndpointInput = settingsKit.field("https://lrclib.example/api", false, false);
+        lrclibPlaybackEndpointInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI
+                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        lrclibPlaybackEndpointInput.setMinHeight(dp(48));
+        lrclibPlaybackEndpointInput.setMinimumHeight(dp(48));
+        lrclibPlaybackEndpointInput.setTextDirection(View.TEXT_DIRECTION_LTR);
+        lrclibPlaybackEndpointInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        lrclibPlaybackEndpointInput.setContentDescription(ui("setting.lrclib_endpoint"));
+        lrclibPlaybackEndpointInput.setText(lyricsProviderSettings.lrclibPlaybackEndpoint());
+        settingsStackRow(group, ui("setting.lrclib_endpoint"), ui("setting.lrclib_endpoint_desc"), lrclibPlaybackEndpointInput);
+        lrclibPlaybackEndpointInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence value, int start, int before, int count) { }
+            @Override public void afterTextChanged(Editable value) {
+                if (suppressSettingsEvents) return;
+                if (pendingLrclibEndpointSave != null) handler.removeCallbacks(pendingLrclibEndpointSave);
+                pendingLrclibEndpointSave = null;
+                try {
+                    LrclibEndpoint.normalize(value.toString());
+                    lrclibPlaybackEndpointInput.setError(null);
+                    pendingLrclibEndpointSave = () -> {
+                        pendingLrclibEndpointSave = null;
+                        saveLrclibPlaybackEndpoint();
+                    };
+                    handler.postDelayed(pendingLrclibEndpointSave, 700L);
+                } catch (IllegalArgumentException error) {
+                    lrclibPlaybackEndpointInput.setError(ui("setting.lrclib_endpoint_error"));
+                }
+            }
+        });
+        lrclibPlaybackEndpointInput.setOnEditorActionListener((view, action, event) -> {
+            if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE) return false;
+            if (pendingLrclibEndpointSave != null) handler.removeCallbacks(pendingLrclibEndpointSave);
+            pendingLrclibEndpointSave = null;
+            saveLrclibPlaybackEndpoint();
+            return false;
+        });
+
         section = settingsSection(page, ui("section.lyrics_providers"), ui("section.lyrics_providers_desc"), -1);
         lyricsProviderSettingsContainer = settingsKit.vertical();
         section.addView(lyricsProviderSettingsContainer, matchWrap());
@@ -7514,6 +7558,18 @@ public class BaseLyricsActivity extends Activity implements
             reloadCurrentLyricsFromSettings();
         };
         handler.postDelayed(pendingLyricsProviderReload, 250L);
+    }
+
+    private void saveLrclibPlaybackEndpoint() {
+        if (lrclibPlaybackEndpointInput == null || lyricsProviderSettings == null || suppressSettingsEvents) return;
+        try {
+            if (lyricsProviderSettings.setLrclibPlaybackEndpoint(textOf(lrclibPlaybackEndpointInput))) {
+                if (lyricsRepository != null) lyricsRepository.onLrclibPlaybackEndpointChanged();
+                onLyricsProviderSettingsChanged(false);
+            }
+        } catch (IllegalArgumentException error) {
+            lrclibPlaybackEndpointInput.setError(ui("setting.lrclib_endpoint_error"));
+        }
     }
 
     /** The six-step Spotify developer dashboard guide as one card with progress, copy rows and navigation. */
@@ -12112,6 +12168,11 @@ public class BaseLyricsActivity extends Activity implements
         rebuildKaraokeDisplayGranularityButtons(snapshot.karaokeDisplayGranularity);
         if (lyricsProviderSettings != null) {
             LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
+            if (lrclibPlaybackEndpointInput != null && !lrclibPlaybackEndpointInput.hasFocus()) {
+                suppressSettingsEvents = true;
+                lrclibPlaybackEndpointInput.setText(providerSettings.lrclibPlaybackEndpoint);
+                suppressSettingsEvents = false;
+            }
             if (preferLyricsTypeFirstSwitch != null) {
                 suppressSettingsEvents = true;
                 preferLyricsTypeFirstSwitch.setChecked(providerSettings.typeFirst);

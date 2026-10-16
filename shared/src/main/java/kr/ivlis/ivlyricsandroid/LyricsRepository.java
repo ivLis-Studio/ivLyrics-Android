@@ -41,7 +41,7 @@ import java.util.regex.Pattern;
 
 final class LyricsRepository {
     private static final String TAG = "ivLyricsDebug";
-    private static final String LRCLIB_BASE = "https://lrclib.net/api";
+    private static final String LRCLIB_BASE = LrclibEndpoint.OFFICIAL;
     private static final String SYNC_DATA_BASE = "https://lyrics.api.ivl.is/lyrics/sync-data";
     private static final String SYNC_DATA_REQUEST_VERSION = "20260701";
     private static final String OPENDB_ORIGIN = "https://ivlis.kr";
@@ -120,6 +120,7 @@ final class LyricsRepository {
     private final SharedPreferences spotifyTokenPrefs;
     private final AiLyricsSettings aiLyricsSettings;
     private final LyricsProviderSettings lyricsProviderSettings;
+    private final LrclibPlaybackStage.ConnectionFactory lrclibPlaybackConnections = LrclibPlaybackConnection::new;
     private final LyricsDiskCache diskCache;
     private final RawResponseDiskCache syncDataResponseCache;
     private final SharedPreferences openDbPrefs;
@@ -462,6 +463,12 @@ final class LyricsRepository {
     void invalidateProviderSelection() {
         providerPolicyGeneration.incrementAndGet();
         latestLyricsRequest.cancel();
+    }
+
+    void onLrclibPlaybackEndpointChanged() {
+        invalidateProviderSelection();
+        clearMemoryLyricsCache();
+        if (diskCache != null) diskCache.clear();
     }
 
     void shutdown() {
@@ -1093,32 +1100,8 @@ final class LyricsRepository {
             SyncDataResult syncData,
             LogSink log
     ) {
-        LrclibCandidate candidate = null;
-        boolean loadedFromSyncSource = false;
-
-        long syncSourceLrclibId = syncData == null ? 0L : syncData.lrclibId();
-        if (syncSourceLrclibId > 0L) {
-            log.write("sync-data source: lrclibId=" + syncSourceLrclibId + ", direct loading LRCLIB");
-            candidate = fetchLrclibCandidateById(syncSourceLrclibId, log);
-            decorateCandidateForSyncData(candidate, syncData);
-            loadedFromSyncSource = candidate != null;
-            if (!loadedFromSyncSource) {
-                log.write("lrclib direct load failed; falling back to search");
-            }
-        } else if (syncData != null) {
-            log.write("sync-data source: no lrclibId; falling back to LRCLIB search");
-        }
-
-        if (candidate == null) {
-            try {
-                candidate = searchBestCandidate(track, spotifyMatch, syncData, log);
-            } catch (Exception error) {
-                String message = error.getMessage() == null
-                        ? error.getClass().getSimpleName()
-                        : error.getMessage();
-                log.write("lrclib search error: " + message + "; continuing with Unison");
-            }
-        }
+        LrclibCandidate candidate = findPlaybackLrclibCandidate(track, spotifyMatch, syncData, log);
+        boolean loadedFromSyncSource = candidate != null && candidate.loadedFromSyncSource;
 
         if (candidate == null) {
             log.write("result: no LRCLIB candidate selected");
@@ -1197,6 +1180,36 @@ final class LyricsRepository {
                 spotifyTrackId,
                 Collections.emptyList()
         );
+    }
+
+    private LrclibCandidate findPlaybackLrclibCandidate(
+            TrackSnapshot track, SpotifyTrackMatch spotifyMatch, SyncDataResult syncData, LogSink log
+    ) {
+        String customBase = lyricsProviderSettings.lrclibPlaybackEndpoint();
+        List<String> bases = new ArrayList<>();
+        if (!customBase.isEmpty()) bases.add(customBase);
+        bases.add(LRCLIB_BASE);
+        for (String base : bases) {
+            RequestCancellation.check();
+            LrclibPlaybackStage stage = new LrclibPlaybackStage(base, lrclibPlaybackConnections);
+            log.write("lrclib playback stage: " + (stage.custom ? "custom" : "official"));
+            try {
+                long sourceId = syncData != null && syncData.hasLrclibSource() ? syncData.lrclibId() : 0L;
+                if (sourceId > 0L) {
+                    LrclibCandidate direct = fetchPlaybackLrclibCandidate(stage, "/get/" + sourceId, syncData, log);
+                    if (direct != null && (stage.custom || direct.id == sourceId)) {
+                        direct.loadedFromSyncSource = true;
+                        return direct;
+                    }
+                }
+                LrclibCandidate candidate = searchBestCandidate(stage, track, spotifyMatch, syncData, log);
+                if (candidate != null) return candidate;
+            } catch (Exception error) {
+                RequestCancellation.check();
+                log.write("lrclib playback stage failed: " + error.getClass().getSimpleName());
+            }
+        }
+        return null;
     }
 
     private LyricsResult applySyncDataToCachedBase(
@@ -1527,6 +1540,7 @@ final class LyricsRepository {
     }
 
     private LrclibCandidate searchBestCandidate(
+            LrclibPlaybackStage stage,
             TrackSnapshot track,
             SpotifyTrackMatch spotifyMatch,
             SyncDataResult syncData,
@@ -1534,20 +1548,41 @@ final class LyricsRepository {
     ) throws Exception {
         List<LrclibCandidate> candidates = new ArrayList<>();
         TrackSnapshot spotifySearchTrack = buildSpotifyLrclibSearchTrack(track, spotifyMatch, log);
-        String spotifySearchLabelPrefix = spotifyMatch != null && spotifyMatch.hasEnglishMetadata() ? "spotify-en" : "spotify";
-        appendUniqueCandidates(candidates, searchLrclib(buildStructuredQuery(track), "structured", log));
-        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "structured", log);
-        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "q:title+artist", log);
-        appendSpotifyLrclibSearchCandidates(candidates, spotifySearchTrack, spotifySearchLabelPrefix, "q:title", log);
+        List<TrackSnapshot> searchTracks = new ArrayList<>();
+        searchTracks.add(track);
+        if (spotifySearchTrack != null) searchTracks.add(spotifySearchTrack);
+        for (TrackSnapshot searchTrack : searchTracks) {
+            Map<String, String> metadata = buildStructuredQuery(searchTrack);
+            if (searchTrack.durationMs > 0L) metadata.put("duration", String.valueOf(searchTrack.durationMs / 1000.0));
+            LrclibCandidate direct = fetchPlaybackLrclibCandidate(stage, "/get?" + encodeParams(metadata), syncData, log);
+            if (direct != null) {
+                appendUniqueCandidates(candidates, Collections.singletonList(direct));
+                LrclibCandidate best = rankPlaybackLrclibCandidates(track, spotifySearchTrack, syncData, candidates, log);
+                if (canFinishLrclibSearch(best, syncData, candidates)) return best;
+            }
+            List<Map<String, String>> queries = new ArrayList<>();
+            queries.add(buildStructuredQuery(searchTrack));
+            if (!searchTrack.album.isEmpty()) queries.add(buildStructuredQuery(searchTrack, false));
+            queries.add(Collections.singletonMap("q", searchTrack.title + " " + searchTrack.artist));
+            queries.add(Collections.singletonMap("q", searchTrack.title));
+            for (Map<String, String> query : queries) {
+                appendUniqueCandidates(candidates, searchPlaybackLrclib(stage, query, syncData, log));
+                LrclibCandidate best = rankPlaybackLrclibCandidates(track, spotifySearchTrack, syncData, candidates, log);
+                if (canFinishLrclibSearch(best, syncData, candidates)) return best;
+            }
+        }
+        return rankPlaybackLrclibCandidates(track, spotifySearchTrack, syncData, candidates, log);
+    }
 
-        boolean needsLegacyShapeMatch = needsLegacySyncLineShapeMatch(syncData, candidates);
-        if (candidates.isEmpty() || needsLegacyShapeMatch) {
-            appendUniqueCandidates(candidates, searchLrclib(Collections.singletonMap("q", track.title + " " + track.artist), "q:title+artist", log));
-            needsLegacyShapeMatch = needsLegacySyncLineShapeMatch(syncData, candidates);
-        }
-        if (candidates.isEmpty() || needsLegacyShapeMatch) {
-            appendUniqueCandidates(candidates, searchLrclib(Collections.singletonMap("q", track.title), "q:title", log));
-        }
+    private boolean canFinishLrclibSearch(LrclibCandidate best, SyncDataResult syncData, List<LrclibCandidate> candidates) {
+        return best != null && !needsLegacySyncLineShapeMatch(syncData, candidates)
+                && (best.instrumental || best.useSyncedLyrics() || !shouldPreferSyncedLrclibFallback(syncData));
+    }
+
+    private LrclibCandidate rankPlaybackLrclibCandidates(
+            TrackSnapshot track, TrackSnapshot spotifySearchTrack, SyncDataResult syncData,
+            List<LrclibCandidate> candidates, LogSink log
+    ) {
         if (candidates.isEmpty()) {
             log.write("lrclib search: no candidates");
             return null;
@@ -1597,38 +1632,6 @@ final class LyricsRepository {
             return null;
         }
         return best;
-    }
-
-    private void appendSpotifyLrclibSearchCandidates(
-            List<LrclibCandidate> candidates,
-            TrackSnapshot spotifySearchTrack,
-            String labelPrefix,
-            String mode,
-            LogSink log
-    ) throws Exception {
-        if (spotifySearchTrack == null || spotifySearchTrack.title.isEmpty() || spotifySearchTrack.artist.isEmpty()) {
-            return;
-        }
-        String label = (labelPrefix == null || labelPrefix.trim().isEmpty() ? "spotify" : labelPrefix.trim()) + ":" + mode;
-        if ("structured".equals(mode)) {
-            appendUniqueCandidates(candidates, searchLrclib(buildStructuredQuery(spotifySearchTrack, false), label, log));
-            return;
-        }
-        if ("q:title+artist".equals(mode)) {
-            appendUniqueCandidates(candidates, searchLrclib(
-                    Collections.singletonMap("q", spotifySearchTrack.title + " " + spotifySearchTrack.artist),
-                    label,
-                    log
-            ));
-            return;
-        }
-        if ("q:title".equals(mode)) {
-            appendUniqueCandidates(candidates, searchLrclib(
-                    Collections.singletonMap("q", spotifySearchTrack.title),
-                    label,
-                    log
-            ));
-        }
     }
 
     private TrackSnapshot buildSpotifyLrclibSearchTrack(
@@ -1877,7 +1880,7 @@ final class LyricsRepository {
         }
         return (candidate.trackName + "\n" + candidate.artistName + "\n" + candidate.albumName)
                 .toLowerCase(Locale.ROOT)
-                .trim();
+                .trim() + "\n" + lyricsFingerprint(candidate.plainLyrics) + "\n" + lyricsFingerprint(candidate.syncedLyrics);
     }
 
     private int compareLrclibCandidates(LrclibCandidate left, LrclibCandidate right) {
@@ -2002,6 +2005,116 @@ final class LyricsRepository {
             params.put("album_name", track.album);
         }
         return params;
+    }
+
+    private String getPlaybackLrclib(LrclibPlaybackStage stage, String suffix, LogSink log) throws Exception {
+        try {
+            return stage.custom ? stage.get(suffix) : get(stage.base + suffix);
+        } catch (Exception error) {
+            RequestCancellation.check();
+            if (stage.custom) throw error; // A fatal private-host failure ends only that host's stage.
+            log.write("lrclib official request unavailable: " + error.getClass().getSimpleName());
+            return ""; // An unsupported /get must not suppress the remaining official searches.
+        }
+    }
+
+    private LrclibCandidate fetchPlaybackLrclibCandidate(
+            LrclibPlaybackStage stage, String suffix, SyncDataResult syncData, LogSink log
+    ) throws Exception {
+        String response = getPlaybackLrclib(stage, suffix, log);
+        if (response.trim().isEmpty()) return null;
+        try {
+            return preparePlaybackLrclibCandidate(LrclibCandidate.fromJson(new JSONObject(response)), stage, syncData, log);
+        } catch (org.json.JSONException error) {
+            log.write("lrclib get: invalid JSON payload");
+            return null;
+        }
+    }
+
+    private List<LrclibCandidate> searchPlaybackLrclib(
+            LrclibPlaybackStage stage, Map<String, String> params, SyncDataResult syncData, LogSink log
+    ) throws Exception {
+        String response = getPlaybackLrclib(stage, "/search?" + encodeParams(params), log);
+        List<LrclibCandidate> candidates = new ArrayList<>();
+        if (response.trim().isEmpty()) return candidates;
+        try {
+            JSONArray array = new JSONArray(response);
+            for (int index = 0; index < array.length(); index++) {
+                RequestCancellation.check();
+                JSONObject object = array.optJSONObject(index);
+                if (object == null) continue;
+                LrclibCandidate candidate = preparePlaybackLrclibCandidate(LrclibCandidate.fromJson(object), stage, syncData, log);
+                if (candidate != null) candidates.add(candidate);
+            }
+        } catch (org.json.JSONException error) {
+            log.write("lrclib search: invalid JSON payload");
+        }
+        return candidates;
+    }
+
+    private LrclibCandidate preparePlaybackLrclibCandidate(
+            LrclibCandidate candidate, LrclibPlaybackStage stage, SyncDataResult syncData, LogSink log
+    ) {
+        if (!candidate.hasLyrics() || candidate.trackName.isEmpty() || candidate.artistName.isEmpty()
+                || !Double.isFinite(candidate.durationSeconds) || candidate.durationSeconds < 0) return null;
+        boolean pinned = syncData != null && syncData.hasLrclibSource()
+                && (syncData.lrclibId() > 0 || !syncData.sourceLyricsFingerprint().isEmpty()
+                || !syncData.sourceLineCharCounts().isEmpty());
+        if (stage.custom) {
+            long privateId = candidate.id;
+            // A mirror ID has no authority in LRCLIB. Only a saved source may supply a canonical ID.
+            candidate = new LrclibCandidate(0L, candidate.trackName, candidate.artistName, candidate.albumName,
+                    candidate.durationSeconds, candidate.instrumental, candidate.plainLyrics, candidate.syncedLyrics, candidate.isrc);
+            decorateCandidateForSyncData(candidate, syncData);
+            if (pinned) {
+                boolean contentEvidence = !syncData.sourceLyricsFingerprint().isEmpty()
+                        || !syncData.sourceLineCharCounts().isEmpty() || !syncData.lineCharCounts().isEmpty();
+                boolean differentId = syncData.lrclibId() > 0L && privateId != syncData.lrclibId();
+                if ((differentId && syncData.sourceLyricsFingerprint().isEmpty())
+                        || (contentEvidence ? !matchesPrivatePinnedSource(candidate, syncData) : privateId != syncData.lrclibId())) {
+                    log.write("lrclib custom: rejected conflicting pinned source");
+                    return null;
+                }
+                String validatedSource = candidate.preferredLyricsSource;
+                candidate = new LrclibCandidate(syncData.lrclibId(), candidate.trackName, candidate.artistName, candidate.albumName,
+                        candidate.durationSeconds, candidate.instrumental, candidate.plainLyrics, candidate.syncedLyrics, candidate.isrc);
+                decorateCandidateForSyncData(candidate, syncData);
+                candidate.preferredLyricsSource = validatedSource;
+            }
+        } else {
+            decorateCandidateForSyncData(candidate, syncData);
+            // Preserve official same-ID compatibility, but never choose another revision on metadata alone.
+            if (pinned && !candidate.syncSourceIdMatch) {
+                boolean fingerprint = !syncData.sourceLyricsFingerprint().isEmpty();
+                boolean counts = !syncData.sourceLineCharCounts().isEmpty();
+                if ((!fingerprint && !counts) || (fingerprint && !candidate.syncSourceTextMatch)
+                        || (counts && !candidate.syncSourceLineCountMatch)) return null;
+            }
+        }
+        List<LyricsLine> renderable = candidate.useSyncedLyrics()
+                ? LrcParser.parseSynced(candidate.syncedLyrics, secondsToMs(candidate.durationSeconds, 0L))
+                : LrcParser.parsePlain(candidate.plainLyrics);
+        return candidate.instrumental || !renderable.isEmpty() ? candidate : null;
+    }
+
+    private boolean matchesPrivatePinnedSource(LrclibCandidate candidate, SyncDataResult syncData) {
+        String preferred = syncData.preferredLyricsSource();
+        String[] sources = {preferred, candidate.preferredLyricsSource, "synced", "plain"};
+        for (String source : sources) {
+            if (source.isEmpty() || ("synced".equals(source) ? candidate.syncedLyrics == null : candidate.plainLyrics == null)) continue;
+            String text = candidateComparableText(candidate, source, syncData.shouldNormalizeParentheticalLines());
+            List<Integer> counts = lineCharCounts(comparableLyricsLines(text, false, false));
+            if (!syncData.sourceLyricsFingerprint().isEmpty()
+                    && !syncData.sourceLyricsFingerprint().equals(lyricsFingerprint(text))) continue;
+            if (!syncData.sourceLineCharCounts().isEmpty() && !hasExactLineShape(syncData.sourceLineCharCounts(), counts)) continue;
+            // Timing rows may be merged. Source rows describe the saved text; legacy timing shape
+            // is evidence only when that stronger source description is absent.
+            if (syncData.sourceLineCharCounts().isEmpty() && syncData.sourceLyricsFingerprint().isEmpty()
+                    && !syncData.lineCharCounts().isEmpty() && !hasExactLineShape(syncData.lineCharCounts(), counts)) continue;
+            candidate.preferredLyricsSource = source;
+            return true;
+        }
+        return false;
     }
 
     private List<LrclibCandidate> searchLrclib(Map<String, String> params, String label, LogSink log) throws Exception {
@@ -4098,6 +4211,7 @@ final class LyricsRepository {
         boolean hasOriginalLyricsScript;
         double albumMatchScore;
         boolean syncDataDecorationComputed;
+        boolean loadedFromSyncSource;
         SyncDataResult decoratedSyncData;
 
         LrclibCandidate(
@@ -4155,7 +4269,8 @@ final class LyricsRepository {
             if (object == null || object.isNull(key)) {
                 return null;
             }
-            String value = object.optString(key, "");
+            Object raw = object.opt(key);
+            String value = raw instanceof String ? (String) raw : "";
             return value.trim().isEmpty() ? null : value;
         }
     }

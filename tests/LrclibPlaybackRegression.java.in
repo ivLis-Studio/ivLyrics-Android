@@ -1,0 +1,415 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.SharedPreferences;
+import java.io.*;
+import java.lang.reflect.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import org.json.*;
+import sun.misc.Unsafe;
+
+/** Only HTTP responses and Android storage/dispatch are synthetic. Lookup and validation run verbatim. */
+public final class LrclibPlaybackRegression {
+    static final String PRIVATE = "https://mirror.invalid/api";
+    static final String TEXT = "Hello\nWorld";
+    static final Unsafe UNSAFE;
+    static final List<Connection> requests = new ArrayList<>();
+    static final List<String> logs = new ArrayList<>();
+    static final Object log;
+    static Function<URL, Reply> replies = url -> new Reply(404, "");
+    static int checks;
+    static LyricsRepository repo;
+    static LyricsProviderSettings settings;
+    static final LrclibPlaybackStage.ConnectionFactory MOCK_CONNECTIONS = (uri, deadline) -> (HttpURLConnection) uri.toURL().openConnection();
+    static SharedPreferences preferences;
+    static final TrackSnapshot SONG = new TrackSnapshot("Song", "Artist", "Album", "com.spotify.music", "",
+            "", 180000, 0, 1, 1f, false, null, "");
+    record Reply(int status, String body) { }
+    static {
+        try {
+            Field f = Unsafe.class.getDeclaredField("theUnsafe"); f.setAccessible(true); UNSAFE = (Unsafe) f.get(null);
+            Class<?> type = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$LogSink");
+            log = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (p, m, a) -> {
+                logs.add((String) a[0]); return null;
+            });
+        } catch (Exception error) { throw new ExceptionInInitializerError(error); }
+    }
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    static Field field(Object target, String name) throws Exception {
+        Field f = target.getClass().getDeclaredField(name); f.setAccessible(true); return f;
+    }
+    static void put(Object target, String name, Object value) throws Exception { field(target, name).set(target, value); }
+    static Object value(Object target, String name) throws Exception { return field(target, name).get(target); }
+    static Object call(Object target, String name, Object... args) throws Exception {
+        for (Method method : target.getClass().getDeclaredMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != args.length) continue;
+            method.setAccessible(true);
+            try { return method.invoke(target, args); }
+            catch (InvocationTargetException error) {
+                if (error.getCause() instanceof Exception cause) throw cause;
+                throw (Error) error.getCause();
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    static SharedPreferences prefs() {
+        Map<String, Object> data = new HashMap<>();
+        Object editor = java.lang.reflect.Proxy.newProxyInstance(SharedPreferences.Editor.class.getClassLoader(),
+                new Class<?>[]{SharedPreferences.Editor.class}, (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "putString", "putBoolean", "putInt", "putLong" -> data.put((String) args[0], args[1]);
+                        case "remove" -> data.remove(args[0]);
+                        case "clear" -> data.clear();
+                        case "apply" -> { return null; }
+                        case "commit" -> { return true; }
+                        default -> throw new AssertionError(method.getName());
+                    }
+                    return proxy;
+                });
+        return (SharedPreferences) java.lang.reflect.Proxy.newProxyInstance(SharedPreferences.class.getClassLoader(),
+                new Class<?>[]{SharedPreferences.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getString", "getBoolean", "getInt", "getLong" -> data.getOrDefault(args[0], args[1]);
+                    case "getAll" -> new HashMap<>(data);
+                    case "contains" -> data.containsKey(args[0]);
+                    case "edit" -> editor;
+                    default -> throw new AssertionError(method.getName());
+                });
+    }
+    static LyricsProviderSettings settings(SharedPreferences prefs) throws Exception {
+        LyricsProviderSettings result = new LyricsProviderSettings(null);
+        put(result, "preferences", prefs);
+        return result;
+    }
+    static void reset() { requests.clear(); logs.clear(); replies = url -> new Reply(404, ""); }
+    static LrclibPlaybackStage stage() { return new LrclibPlaybackStage(PRIVATE, MOCK_CONNECTIONS); }
+    static boolean custom(URL url) { return url.getHost().equals("mirror.invalid"); }
+    static Map<String, String> params(URL url) {
+        Map<String, String> result = new HashMap<>();
+        if (url.getQuery() != null) for (String pair : url.getQuery().split("&")) {
+            String[] parts = pair.split("=", 2);
+            result.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8), parts.length == 1 ? ""
+                    : URLDecoder.decode(parts[1], StandardCharsets.UTF_8));
+        }
+        return result;
+    }
+    static String kind(URL url) {
+        Map<String, String> p = params(url);
+        String prefix = "English Song".equals(p.get("track_name")) || String.valueOf(p.get("q")).startsWith("English Song") ? "en:" : "";
+        if (url.getPath().matches(".*/get/\\d+")) return "id";
+        if (url.getPath().endsWith("/get")) return prefix + "get";
+        if (p.containsKey("track_name")) return prefix + (p.containsKey("album_name") ? "structured" : "noalbum");
+        return prefix + (p.getOrDefault("q", "").equals(prefix.isEmpty() ? "Song Artist" : "English Song English Artist") ? "titleartist" : "title");
+    }
+    static List<String> order() { return requests.stream().map(c -> c.url.getHost() + ":" + kind(c.url)).toList(); }
+    static JSONObject candidate(long id, String text) {
+        return new JSONObject().put("id", id).put("trackName", "Song").put("artistName", "Artist")
+                .put("albumName", "Album").put("duration", 180).put("instrumental", false).put("plainLyrics", text);
+    }
+    static Reply lyric(URL url, JSONObject candidate) {
+        return new Reply(200, url.getPath().endsWith("/search") ? new JSONArray().put(candidate).toString() : candidate.toString());
+    }
+    static Object sync(String text, boolean fingerprint, boolean counts) throws Exception {
+        JSONObject source = new JSONObject().put("provider", "lrclib").put("lrclibId", 42).put("preferredLyricsSource", "plain");
+        if (fingerprint) source.put("lyricsFingerprint", call(repo, "lyricsFingerprint", text));
+        if (counts) source.put("lineCharCounts", new JSONArray(List.of(5, 5)));
+        JSONArray lines = new JSONArray().put(new JSONObject().put("start", 0).put("end", 4).put("chars", new JSONArray(List.of(1, 2, 3, 4, 5))))
+                .put(new JSONObject().put("start", 5).put("end", 9).put("chars", new JSONArray(List.of(6, 7, 8, 9, 10))));
+        JSONObject body = new JSONObject().put("version", 5).put("source", source).put("lines", lines);
+        Class<?> type = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$SyncDataResult");
+        Constructor<?> constructor = type.getDeclaredConstructor(JSONObject.class, String.class); constructor.setAccessible(true);
+        return constructor.newInstance(body, "lrclib");
+    }
+    static Object englishMetadata() throws Exception {
+        Class<?> type = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$SpotifyTrackMatch");
+        Constructor<?> constructor = type.getDeclaredConstructor(String.class, String.class, String.class, String.class,
+                long.class, String.class, String.class, int.class, int.class, String.class, String.class, String.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance("", "Song", "Artist", "Album", 180000L, "", "", 0, 0,
+                "English Song", "English Artist", "English Album");
+    }
+    static Object find(Object sync, Object spotify) throws Exception {
+        return call(repo, "findPlaybackLrclibCandidate", SONG, spotify, sync, log);
+    }
+    static final class Connection extends HttpURLConnection {
+        final URL url;
+        final Reply reply;
+        volatile boolean disconnected;
+        Connection(URL url) {
+            super(url); this.url = url;
+            check(custom(url) || url.getHost().equals("lrclib.net") || url.getHost().equals("unison.boidu.dev"), "unexpected host: " + url);
+            requests.add(this); reply = replies.apply(url);
+        }
+        public void connect() { }
+        public boolean usingProxy() { return false; }
+        public void disconnect() { disconnected = true; }
+        public int getResponseCode() throws IOException {
+            check(getRequestMethod().equals("GET"), "readonly requests");
+            check(!getDoOutput(), "no request body");
+            if (custom(url)) {
+                check(getConnectTimeout() > 0 && getConnectTimeout() <= 5000, "private connect bound");
+                check(getReadTimeout() > 0 && getReadTimeout() <= 5000, "private read bound");
+                check(!getInstanceFollowRedirects(), "private redirects forbidden");
+                check(!getAllowUserInteraction() && !getUseCaches(), "no implicit authentication/cache");
+                check(getRequestProperties().keySet().equals(Set.of("Accept", "User-Agent")), "private header allowlist");
+            }
+            if (reply.status == -1) throw new SocketTimeoutException("fixture");
+            return reply.status;
+        }
+        public String getHeaderField(String name) { return name.equals("Location") ? "https://lrclib.net/api/get/42" : null; }
+        public InputStream getInputStream() {
+            if (!reply.body.equals("BLOCK_UNTIL_DISCONNECT")) return new ByteArrayInputStream(reply.body.getBytes(StandardCharsets.UTF_8));
+            return new InputStream() {
+                public int read() throws IOException {
+                    long limit = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                    while (!disconnected && System.nanoTime() < limit) {
+                        try { Thread.sleep(1); } catch (InterruptedException error) { throw new IOException(error); }
+                    }
+                    if (!disconnected) throw new AssertionError("production deadline did not disconnect blocked read");
+                    return -1;
+                }
+            };
+        }
+        public InputStream getErrorStream() { return new ByteArrayInputStream(new byte[0]); }
+    }
+    static void lookupTests() throws Exception {
+        Object pinned = sync(TEXT, true, true);
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(9001, TEXT)) : new Reply(404, "");
+        Object found = find(pinned, null);
+        check((long) value(found, "id") == 42L, "canonical saved ID restored only after validation");
+        check(order().equals(List.of("mirror.invalid:id")), "pinned custom ID before all other requests");
+        LyricsResult result = (LyricsResult) call(repo, "loadLrclibProvider", SONG, "", "", null, pinned, log);
+        check(result.karaoke && result.lines.size() == 2, "production sync applier consumes validated custom lyrics");
+
+        reset(); replies = url -> lyric(url, candidate(9001, TEXT).put("plainLyrics", JSONObject.NULL)
+                .put("syncedLyrics", "[00:01.00]Hello\n[00:06.00]World"));
+        found = find(pinned, null);
+        check(found != null && (long) value(found, "id") == 42L, "same saved text in synced variant retains trusted ID");
+
+        Object merged = sync(TEXT, true, true);
+        ((JSONObject) value(merged, "syncBody")).put("lines", new JSONArray().put(new JSONObject().put("start", 0).put("end", 9)
+                .put("chars", new JSONArray(List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))));
+        reset(); replies = url -> lyric(url, candidate(9001, TEXT));
+        check(find(merged, null) != null && order().equals(List.of("mirror.invalid:id")), "merged timing rows do not invalidate exact saved source text");
+
+        Object idOnly = sync(TEXT, false, false);
+        ((JSONObject) value(idOnly, "syncBody")).remove("lines");
+        reset(); replies = url -> lyric(url, candidate(42, TEXT));
+        check(find(idOnly, null) != null && order().equals(List.of("mirror.invalid:id")),
+                "legacy source with no fingerprint/counts accepts matching saved canonical ID");
+        reset(); replies = url -> lyric(url, candidate(custom(url) ? 9001 : 42, TEXT));
+        check(find(idOnly, null) != null && requests.stream().filter(c -> custom(c.url)).count() == 6,
+                "legacy source with no content checks rejects an arbitrary private ID");
+
+        reset(); replies = url -> custom(url) && kind(url).equals("get") ? lyric(url, candidate(9001, TEXT)) : new Reply(404, "");
+        found = find(null, null);
+        check((long) value(found, "id") == 0L, "arbitrary private ID cannot become an official source");
+        check(order().equals(List.of("mirror.invalid:get", "mirror.invalid:structured", "mirror.invalid:noalbum", "mirror.invalid:titleartist", "mirror.invalid:title")),
+                "plain metadata /get searches for synced lyrics before finishing private stage");
+
+        reset(); replies = url -> kind(url).equals("get") ? lyric(url, candidate(9001, TEXT))
+                : kind(url).equals("structured") ? lyric(url, candidate(9002, TEXT).put("syncedLyrics", "[00:01.00]Hello\n[00:06.00]World")) : new Reply(404, "");
+        found = find(null, null);
+        check((boolean) call(found, "useSyncedLyrics") && order().equals(List.of("mirror.invalid:get", "mirror.invalid:structured")),
+                "production synced fallback is preserved after plain metadata/get");
+
+        for (String step : List.of("structured", "noalbum", "titleartist", "title", "en:get", "en:noalbum", "en:titleartist", "en:title")) {
+            reset(); replies = url -> custom(url) && kind(url).equals(step) ? lyric(url, candidate(9001, TEXT)) : new Reply(404, "");
+            check(find(null, englishMetadata()) != null, "private fallback succeeds: " + step);
+            check(requests.stream().allMatch(c -> custom(c.url)), "no premature official request: " + step);
+        }
+
+        reset(); replies = url -> new Reply(200, url.getPath().endsWith("/search") ? "[]" : "");
+        check(find(pinned, englishMetadata()) == null, "empty full stages end with no match");
+        List<String> stage = List.of("id", "get", "structured", "noalbum", "titleartist", "title", "en:get", "en:noalbum", "en:titleartist", "en:title");
+        List<String> expected = new ArrayList<>();
+        for (String host : List.of("mirror.invalid", "lrclib.net")) for (String step : stage) expected.add(host + ":" + step);
+        check(order().equals(expected), "complete non-interleaved private then official order: " + order());
+
+        // Same ID and same character counts cannot override a contradictory saved fingerprint.
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(42, "Other\nWords")) : lyric(url, candidate(42, TEXT));
+        check(find(pinned, null) != null, "official pinned fallback found");
+        check(requests.size() == 7 && requests.get(6).url.getHost().equals("lrclib.net"), "all six private attempts rejected before official pinned ID");
+
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(42, "Hello!\nWorld")) : new Reply(404, "");
+        check(find(sync("Hello!\nWorld", true, true), null) == null, "matching fingerprint cannot override contradictory saved line counts");
+
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(42, "Hello!\nWorld")) : new Reply(404, "");
+        check(find(sync(TEXT, false, true), null) == null, "counts-only pinned mismatch rejected");
+
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(9001, "Other\nWords")) : new Reply(404, "");
+        check(find(sync(TEXT, false, true), null) == null, "same counts with different private ID cannot promote canonical identity");
+
+        reset(); replies = url -> lyric(url, candidate(9001, "Other\nWords"));
+        check(find(pinned, null) == null, "neither host may silently select another pinned revision by metadata");
+
+        reset(); replies = url -> custom(url) ? new Reply(404, "") : lyric(url, candidate(42, "Other\nWords"));
+        result = (LyricsResult) call(repo, "loadLrclibProvider", SONG, "", "", null, pinned, log);
+        check(result.karaoke, "official same-ID line-shape fingerprint compatibility preserved");
+
+        for (String bad : List.of("<html>error</html>", "null", "{}", "[]", "{\"plainLyrics\":{\"x\":1}}")) {
+            reset(); replies = url -> custom(url) ? new Reply(200, bad) : lyric(url, candidate(42, TEXT));
+            check(find(pinned, null) != null, "malformed private response falls back: " + bad);
+            check(requests.stream().filter(c -> custom(c.url)).count() == 6, "malformed/empty response continues private stage");
+        }
+        reset(); replies = url -> custom(url) ? lyric(url, candidate(1, TEXT).put("trackName", "Unrelated").put("artistName", "Nobody").put("duration", 900))
+                : lyric(url, candidate(42, TEXT));
+        found = find(null, null);
+        check((long) value(found, "id") == 42L, "mismatched private metadata rejected with production ranking");
+
+        for (int failure : List.of(301, 302, 307, 308, 401, 429, 500, -1)) {
+            reset(); replies = url -> custom(url) ? new Reply(failure, "") : lyric(url, candidate(42, TEXT));
+            check(find(pinned, null) != null, "fatal private failure falls back: " + failure);
+            check(order().equals(List.of("mirror.invalid:id", "lrclib.net:id")), "fatal host failure ends private stage without redirect");
+        }
+
+        reset(); replies = url -> new Reply(404, "");
+        settings.setTypeFirst(false); settings.setPreferSyncDataProvider(false);
+        for (var provider : LyricsProviderSettings.PROVIDERS) settings.setProviderEnabled(provider.id, List.of("lrclib", "unison").contains(provider.id));
+        call(repo, "selectLyricsProvider", SONG, "", "", null, SONG.stableKey(), 0L, null, log);
+        int firstNext = -1, lastOfficial = -1;
+        for (int i = 0; i < requests.size(); i++) {
+            if (requests.get(i).url.getHost().equals("lrclib.net")) lastOfficial = i;
+            if (firstNext < 0 && requests.get(i).url.getHost().equals("unison.boidu.dev")) firstNext = i;
+        }
+        check(lastOfficial == 9 && firstNext == 10, "complete official fallback before next provider: " + order());
+
+        reset(); replies = url -> lyric(url, candidate(42, TEXT));
+        check(!((List<?>) call(repo, "searchManualLrclibCandidates", "Song", "Artist", log)).isEmpty(), "manual results retained");
+        call(repo, "fetchLrclibCandidateById", 42L, log);
+        check(requests.stream().allMatch(c -> c.url.getHost().equals("lrclib.net")), "manual/editor search and selected ID stay official");
+    }
+    static void cacheAndSettingsTests() throws Exception {
+        reset(); settings.setLrclibPlaybackEndpoint("");
+        LyricsProviderSettings.Snapshot official = settings.snapshot();
+        JSONObject oldCloud = settings.exportCloudSettings();
+        check(oldCloud.getString("lrclib_playback_endpoint").isEmpty(), "default endpoint exports an explicit empty value");
+        oldCloud.remove("lrclib_playback_endpoint"); // Simulate a cloud record from before this setting existed.
+        check(settings.setLrclibPlaybackEndpoint(" https://MIRROR.invalid:443/api/ "), "custom setting persists");
+        check(settings(preferences).lrclibPlaybackEndpoint().equals(PRIVATE), "setting survives repository/settings reload");
+        check(!settings.setLrclibPlaybackEndpoint(PRIVATE), "equivalent URL does not reload");
+        String endpointKey = "lrclib_playback_endpoint";
+        check(settings.exportCloudSettings().getString(endpointKey).equals(PRIVATE), "validated endpoint exported with existing settings");
+        settings.importCloudSettings(oldCloud);
+        check(settings.lrclibPlaybackEndpoint().equals(PRIVATE), "old settings import preserves local endpoint");
+        for (Object invalid : List.of("http://user:secret@mirror.invalid/api", "file:///api", true, 3)) {
+            settings.importCloudSettings(new JSONObject().put(endpointKey, invalid));
+            check(settings.lrclibPlaybackEndpoint().equals(PRIVATE), "invalid cloud endpoint cannot overwrite a working URL");
+        }
+        var beforeImport = settings.snapshot();
+        settings.importCloudSettings(new JSONObject().put(endpointKey, "http://localhost:8080/api/"));
+        check(settings.lrclibPlaybackEndpoint().equals("http://localhost:8080/api") && !beforeImport.cacheKey().equals(settings.snapshot().cacheKey()),
+                "valid HTTP cloud import is normalized and invalidates cache policy");
+        settings.importCloudSettings(new JSONObject().put(endpointKey, ""));
+        check(settings.lrclibPlaybackEndpoint().isEmpty() && settings.exportCloudSettings().getString(endpointKey).isEmpty(),
+                "empty cloud endpoint clears and round-trips as official-only");
+        settings.setLrclibPlaybackEndpoint(PRIVATE);
+        var custom = settings.snapshot();
+        check(!official.cacheKey().equals(custom.cacheKey()), "endpoint changes full provider cache policy");
+        check(custom.withSelectedProvider("lrclib").lrclibPlaybackEndpoint.equals(PRIVATE), "per-track selection retains endpoint");
+        LyricsResult base = new LyricsResult(LrcParser.parsePlain(TEXT), "LRCLIB plain", "", false)
+                .withSelection("lrclib", custom.cacheKeyForProvider("lrclib"));
+        check(LyricsRepository.isCachedResultReusable(base, custom), "same endpoint can reuse cache");
+        check(!LyricsRepository.isCachedResultReusable(base, official), "official cannot reuse private cache");
+        settings.setLrclibPlaybackEndpoint("https://other.invalid/api");
+        check(!LyricsRepository.isCachedResultReusable(base, settings.snapshot()), "second private host cannot reuse first host cache");
+        check(!LyricsRepository.isCachedResultReusable(base.withSelection("unison", custom.cacheKeyForProvider("unison")), settings.snapshot()),
+                "endpoint change invalidates other-provider fallback too");
+
+        LyricsDiskCache disk = (LyricsDiskCache) UNSAFE.allocateInstance(LyricsDiskCache.class);
+        File root = Files.createTempDirectory(Path.of(System.getProperty("user.dir"), "build/reports/regressions/lrclib-playback"), "disk-").toFile();
+        put(disk, "directory", root); put(disk, "cacheRoot", root); put(disk, "maxAgeMs", 0L); put(repo, "diskCache", disk);
+        disk.put("song", base); call(repo, "putMemoryCachedLyrics", "song", base);
+        check(disk.get("song") != null && call(repo, "getMemoryCachedLyrics", "song") != null, "real disk/memory cache seeded");
+        var queue = (LatestLyricsRequest) value(repo, "latestLyricsRequest");
+        RequestCancellation inFlight = queue.begin();
+        long generation = ((AtomicLong) value(repo, "providerPolicyGeneration")).get();
+        settings.setLrclibPlaybackEndpoint(""); repo.onLrclibPlaybackEndpointChanged();
+        check(inFlight.isCancelled() && ((AtomicLong) value(repo, "providerPolicyGeneration")).get() > generation, "endpoint change cancels stale requests");
+        check(disk.get("song") == null && call(repo, "getMemoryCachedLyrics", "song") == null, "clearing URL clears actual memory and disk lyric caches");
+        check(settings.snapshot().cacheKey().equals(official.cacheKey()), "clearing restores original policy/defaults");
+        reset(); replies = url -> lyric(url, candidate(42, TEXT));
+        check(find(null, null) != null && requests.stream().allMatch(c -> c.url.getHost().equals("lrclib.net")), "cleared URL immediately uses official only");
+        // Invalid input cannot change the saved endpoint.
+        settings.setLrclibPlaybackEndpoint(PRIVATE);
+        for (String invalid : List.of("https://user:secret@mirror.invalid/api", "https://mirror.invalid/api?token=secret",
+                "https://mirror.invalid/api#fragment", "ftp://mirror.invalid", "/api", "https://mirror.invalid:0", "https://mirror.invalid:65536",
+                "https://mirror.invalid/a/../api", "https://mirror.invalid/%2e%2e/api", "https://mirror.invalid/%0aapi")) {
+            try { settings.setLrclibPlaybackEndpoint(invalid); throw new AssertionError("accepted " + invalid); }
+            catch (IllegalArgumentException expected) { checks++; }
+            check(settings.lrclibPlaybackEndpoint().equals(PRIVATE), "invalid endpoint preserves previous preference");
+        }
+        check(LrclibEndpoint.normalize("https://MIRROR.invalid/").equals(PRIVATE), "origin expands to API base");
+        check(LrclibEndpoint.normalize("https://mirror.invalid/proxy/api/").equals("https://mirror.invalid/proxy/api"), "reverse-proxy base path retained");
+        check(LrclibEndpoint.normalize("https://mirror.invalid/café/가사/").equals("https://mirror.invalid/caf%C3%A9/%EA%B0%80%EC%82%AC"), "Unicode reverse-proxy path remains wire-safe");
+        check(LrclibEndpoint.normalize("https://LRCLIB.NET:443/").isEmpty(), "official URL normalized to default");
+        check(LrclibEndpoint.normalize("http://localhost:8080/api/").equals("http://localhost:8080/api"), "explicit HTTP endpoint accepted");
+        check(LrclibEndpoint.normalize("http://LOCALHOST:80/").equals("http://localhost/api"), "HTTP root and default port normalized");
+    }
+    static void deadlineTests() throws Exception {
+        reset(); replies = url -> new Reply(200, "{}");
+        LrclibPlaybackStage stage = stage();
+        put(stage, "deadlineNanos", System.nanoTime() - 1);
+        try { stage.get("/get/42"); throw new AssertionError("expired stage sent request"); }
+        catch (SocketTimeoutException expected) { checks++; }
+        check(requests.isEmpty(), "20-second stage budget does not restart for next query");
+        stage = stage();
+        put(stage, "deadlineNanos", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500));
+        stage.get("/get/42");
+        check(requests.get(0).getConnectTimeout() <= 500 && requests.get(0).getReadTimeout() <= 500, "remaining shared budget reduces next request timeout");
+        check(requests.get(0).disconnected, "private sockets always closed");
+        reset(); replies = url -> new Reply(200, "BLOCK_UNTIL_DISCONNECT");
+        stage = stage();
+        put(stage, "deadlineNanos", System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(100));
+        long started = System.nanoTime();
+        try { stage.get("/get/42"); throw new AssertionError("blocked read survived shared deadline"); }
+        catch (SocketTimeoutException expected) { checks++; }
+        check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1500 && requests.get(0).disconnected,
+                "production deadline disconnects blocked socket within remaining stage budget");
+        reset(); replies = url -> new Reply(200, "x".repeat(2 * 1024 * 1024 + 1));
+        try { stage().get("/get/42"); throw new AssertionError("unbounded response accepted"); }
+        catch (IOException expected) { checks++; }
+        check(requests.get(0).disconnected, "oversize response closes socket");
+        reset(); RequestCancellation request = new RequestCancellation();
+        request.run(() -> { request.cancel(); try { stage().get("/get/42"); }
+            catch (IOException error) { throw new RuntimeException(error); } });
+        check(requests.isEmpty(), "cancellation cannot open a fallback socket");
+        reset(); RequestCancellation duringRequest = new RequestCancellation();
+        replies = url -> { duringRequest.cancel(); return new Reply(404, ""); };
+        duringRequest.run(() -> { try { find(null, null); }
+            catch (CancellationException expected) { throw expected; }
+            catch (Exception error) { throw new RuntimeException(error); } });
+        check(order().equals(List.of("mirror.invalid:get")), "canceled playback never starts another host or query");
+    }
+    @SuppressWarnings("unchecked")
+    static void localizationTests() throws Exception {
+        Field field = AppI18n.class.getDeclaredField("STRINGS"); field.setAccessible(true);
+        Map<String, Map<String, String>> tables = (Map<String, Map<String, String>>) field.get(null);
+        check(tables.size() == 22, "all 22 locales initialize");
+        for (var language : AppI18n.UI_LANGUAGES) for (String key : AppI18n.LRCLIB_SETTING_KEYS) {
+            String translated = tables.get(language.code).get(key);
+            check(translated != null && !translated.isBlank() && translated.equals(AppI18n.t(language.code, key)), "localized without fallback: " + language.code + ":" + key);
+            if (key.endsWith("_error")) check(translated.contains("HTTP/HTTPS"), "HTTP validation copy accurate: " + language.code);
+            if (!language.code.equals("en")) check(!translated.equals(AppI18n.t("en", key)), "translated copy differs from English");
+        }
+    }
+    public static void main(String[] args) throws Exception {
+        URL.setURLStreamHandlerFactory(protocol -> protocol.equals("https") ? new URLStreamHandler() {
+            protected URLConnection openConnection(URL url) { return new Connection(url); }
+        } : null);
+        preferences = prefs(); settings = settings(preferences); settings.setLrclibPlaybackEndpoint(PRIVATE);
+        repo = (LyricsRepository) UNSAFE.allocateInstance(LyricsRepository.class);
+        put(repo, "lyricsProviderSettings", settings); put(repo, "cache", new HashMap<>());
+        put(repo, "lrclibPlaybackConnections", MOCK_CONNECTIONS);
+        put(repo, "providerPolicyGeneration", new AtomicLong());
+        ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
+        put(repo, "latestLyricsRequest", new LatestLyricsRequest(executor));
+        try { lookupTests(); cacheAndSettingsTests(); deadlineTests(); localizationTests(); }
+        finally { executor.shutdownNow(); }
+        System.out.println("PASS " + checks + " checks: production playback order/pinned validation/canonical IDs/official compatibility/next provider/manual search/cache persistence/clearing/deadlines/redirects/headers/22 locales");
+    }
+}

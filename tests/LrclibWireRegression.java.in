@@ -1,0 +1,185 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.io.*;
+import java.lang.reflect.Field;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.security.KeyStore;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.*;
+
+/** Real loopback sockets, framing and TLS; no external endpoint, device, account or trust bypass. */
+public final class LrclibWireRegression {
+    static int checks;
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    record Response(byte[] bytes, boolean stall) { }
+    static Response raw(String value) { return new Response(value.getBytes(StandardCharsets.UTF_8), false); }
+    static Response fixed(int status, String value) {
+        return raw("HTTP/1.1 " + status + " Fixture\r\nContent-Length: " + value.getBytes(StandardCharsets.UTF_8).length
+                + "\r\nContent-Type: application/json\r\nSet-Cookie: private-session=not-to-be-reused\r\nConnection: close\r\n\r\n" + value);
+    }
+    static final class Server implements AutoCloseable {
+        final ServerSocket listener;
+        final ThreadPoolExecutor workers = (ThreadPoolExecutor) Executors.newFixedThreadPool(4, work -> {
+            Thread thread = new Thread(work, "wire-fixture"); thread.setDaemon(true); return thread;
+        });
+        final List<String> requests = new CopyOnWriteArrayList<>();
+        final CountDownLatch received = new CountDownLatch(1);
+        volatile Response response = fixed(200, "{\"ok\":true}");
+        Server(ServerSocket socket) throws IOException {
+            listener = socket; listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            Thread accept = new Thread(() -> {
+                while (!listener.isClosed()) try {
+                    Socket connection = listener.accept();
+                    workers.execute(() -> {
+                        try (connection) {
+                            connection.setSoTimeout(2000);
+                            ByteArrayOutputStream request = new ByteArrayOutputStream();
+                            InputStream input = connection.getInputStream();
+                            while (request.size() < 32768) {
+                                int value = input.read(); if (value < 0) return;
+                                request.write(value);
+                                if (request.toString(StandardCharsets.US_ASCII).endsWith("\r\n\r\n")) break;
+                            }
+                            requests.add(request.toString(StandardCharsets.US_ASCII)); received.countDown();
+                            Response reply = response;
+                            connection.getOutputStream().write(reply.bytes);
+                            connection.getOutputStream().flush();
+                            if (reply.stall) {
+                                // Closing the production socket must unblock the read on both peers.
+                                while (input.read() >= 0) { }
+                            }
+                        } catch (IOException expectedDisconnectOrTlsRejection) { }
+                    });
+                } catch (IOException closed) { if (!listener.isClosed()) throw new RuntimeException(closed); }
+            }, "wire-listener");
+            accept.setDaemon(true); accept.start();
+        }
+        String base(String scheme, String hostname) { return scheme + "://" + hostname + ":" + listener.getLocalPort() + "/api"; }
+        public void close() throws IOException { listener.close(); workers.shutdownNow(); }
+    }
+    static void expectFailure(LrclibPlaybackStage stage, String label) throws Exception {
+        try { stage.get("/get/42"); throw new AssertionError("accepted " + label); }
+        catch (IOException expected) { checks++; }
+    }
+    static void expectFailure(Server server, Response response, String label) throws Exception {
+        server.response = response;
+        int before = server.requests.size();
+        expectFailure(new LrclibPlaybackStage(server.base("http", "127.0.0.1")), label);
+        check(server.requests.size() == before + 1, label + " never retries/challenges/redirects");
+    }
+    static void assertHeaders(List<String> requests) {
+        for (String request : requests) {
+            String lower = request.toLowerCase(Locale.ROOT);
+            check(request.startsWith("GET /api/") && request.endsWith("\r\n\r\n"), "GET-only HTTP request framing");
+            check(!lower.contains("cookie:") && !lower.contains("authorization:") && !lower.contains("origin:")
+                    && !lower.contains("referer:") && !lower.contains("proxy-authorization:") && !lower.contains("content-length:"),
+                    "no ambient credentials, cookies, Spotify headers or upload body on the wire");
+            check(lower.contains("\r\nhost: ") && lower.contains("\r\naccept: application/json\r\n")
+                    && lower.contains("\r\nconnection: close\r\n"), "bounded single-use connection with explicit JSON accept");
+        }
+    }
+    static void httpTests() throws Exception {
+        try (Server server = new Server(new ServerSocket())) {
+            String base = server.base("http", "127.0.0.1");
+            String unicode = "{\"plainLyrics\":\"가사 café\"}";
+            server.response = fixed(200, unicode);
+            check(new LrclibPlaybackStage(base).get("/get/42").equals(unicode), "explicit HTTP works over real wire without changing process network policy");
+            check(new LrclibPlaybackStage(base).get("/search?q=Song+Artist").equals(unicode), "response cookies not reused on next request");
+            check(new LrclibPlaybackStage(LrclibEndpoint.normalize(base + "/café")).get("/get/42").equals(unicode), "Unicode reverse-proxy base works over real HTTP");
+            check(server.requests.get(server.requests.size() - 1).startsWith("GET /api/caf%C3%A9/get/42 HTTP/1.1\r\n"), "base path reaches the server as UTF-8 percent escapes");
+            server.response = raw("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\n{\"a\"\r\n3;ignored=yes\r\n:1}\r\n0\r\nX-Trailer: ignored\r\n\r\n");
+            check(new LrclibPlaybackStage(base).get("/get/42").equals("{\"a\":1}"), "chunked framing and bounded trailers decoded");
+            server.response = raw("HTTP/1.0 200 OK\r\n\r\n{}");
+            check(new LrclibPlaybackStage(base).get("/get/42").equals("{}"), "EOF-delimited HTTP/1.0 body decoded");
+            for (int status : List.of(204, 404)) {
+                server.response = fixed(status, "");
+                check(new LrclibPlaybackStage(base).get("/get/42").isEmpty(), "HTTP miss preserved " + status);
+            }
+            for (int status : List.of(301, 302, 307, 308)) expectFailure(server,
+                    raw("HTTP/1.1 " + status + " Redirect\r\nLocation: " + base + "/forbidden\r\nContent-Length: 0\r\n\r\n"), "redirect " + status);
+            expectFailure(server, raw("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=private\r\nContent-Length: 0\r\n\r\n"), "401 challenge");
+            expectFailure(server, raw("HTTP/1.1 407 Proxy\r\nProxy-Authenticate: Basic realm=proxy\r\nContent-Length: 0\r\n\r\n"), "407 proxy challenge");
+            for (String malformed : List.of(
+                    "INVALID 200 OK\r\n\r\n{}", "HTTP/1.1 200 OK\r\nNoColon\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n{}", "HTTP/1.1 200 OK\r\nContent-Length: 20\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nZZ\r\n{}",
+                    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}bad\r\n0\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nX-Huge: " + "a".repeat(33000) + "\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\n\r\n" + "x".repeat(2097153))) {
+                expectFailure(server, raw(malformed), "malformed/oversized response");
+            }
+            // The stage's one shared deadline closes a blocked native socket, not just a fixture stream.
+            server.response = new Response("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nx".getBytes(StandardCharsets.US_ASCII), true);
+            LrclibPlaybackStage slow = new LrclibPlaybackStage(base);
+            Field deadline = LrclibPlaybackStage.class.getDeclaredField("deadlineNanos"); deadline.setAccessible(true);
+            deadline.set(slow, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(150));
+            long started = System.nanoTime(); expectFailure(slow, "slow body");
+            check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1500, "real slow body disconnected by shared deadline");
+            try (Server blocked = new Server(new ServerSocket())) {
+                blocked.response = server.response;
+                RequestCancellation request = new RequestCancellation();
+                Thread worker = new Thread(() -> request.run(() -> {
+                    try { new LrclibPlaybackStage(blocked.base("http", "127.0.0.1")).get("/get/42"); }
+                    catch (IOException error) { RequestCancellation.check(); }
+                }));
+                worker.setDaemon(true); worker.start();
+                check(blocked.received.await(2, TimeUnit.SECONDS), "cancel fixture received native request");
+                request.cancel(); worker.join(1500);
+                check(!worker.isAlive() && blocked.requests.size() == 1, "in-flight cancellation closes raw HTTP socket without retry");
+                assertHeaders(blocked.requests);
+            }
+            assertHeaders(server.requests);
+        }
+    }
+    static void tlsTests(Path keystore) throws Exception {
+        KeyStore keys = KeyStore.getInstance("PKCS12");
+        try (InputStream input = Files.newInputStream(keystore)) { keys.load(input, "fixture-only".toCharArray()); }
+        KeyManagerFactory km = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        km.init(keys, "fixture-only".toCharArray());
+        SSLContext serverContext = SSLContext.getInstance("TLS"); serverContext.init(km.getKeyManagers(), null, null);
+        KeyStore trust = KeyStore.getInstance(KeyStore.getDefaultType()); trust.load(null);
+        trust.setCertificateEntry("fixture", keys.getCertificate("fixture"));
+        TrustManagerFactory tm = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()); tm.init(trust);
+        SSLContext client = SSLContext.getInstance("TLS"); client.init(null, tm.getTrustManagers(), null);
+        LrclibPlaybackStage.ConnectionFactory trustedFactory = (uri, deadline) -> new LrclibPlaybackConnection(uri, deadline, client.getSocketFactory());
+        try (Server server = new Server(serverContext.getServerSocketFactory().createServerSocket())) {
+            String base = server.base("https", "localhost");
+            check(new LrclibPlaybackStage(base, trustedFactory).get("/get/42").equals("{\"ok\":true}"), "normal TLS chain and HTTPS hostname checks work");
+            expectFailure(new LrclibPlaybackStage(base), "untrusted TLS certificate");
+            expectFailure(new LrclibPlaybackStage(server.base("https", "127.0.0.1"), trustedFactory), "trusted certificate with wrong hostname");
+            int before = server.requests.size();
+            server.response = raw("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=private\r\nContent-Length: 0\r\n\r\n");
+            expectFailure(new LrclibPlaybackStage(base, trustedFactory), "HTTPS auth challenge");
+            check(server.requests.size() == before + 1, "HTTPS 401 never invokes ambient authenticator/retry");
+            before = server.requests.size();
+            server.response = raw("HTTP/1.1 302 Redirect\r\nLocation: http://localhost/forbidden\r\nContent-Length: 0\r\n\r\n");
+            expectFailure(new LrclibPlaybackStage(base, trustedFactory), "TLS downgrade redirect");
+            check(server.requests.size() == before + 1, "HTTPS redirects never downgrade or retry");
+            assertHeaders(server.requests);
+        }
+    }
+    public static void main(String[] args) throws Exception {
+        CookieHandler previousCookies = CookieHandler.getDefault();
+        Authenticator previousAuth = Authenticator.getDefault();
+        AtomicInteger cookieReads = new AtomicInteger(), cookieWrites = new AtomicInteger(), auth = new AtomicInteger();
+        CookieHandler.setDefault(new CookieHandler() {
+            public Map<String, List<String>> get(URI uri, Map<String, List<String>> request) { cookieReads.incrementAndGet(); return Map.of("Cookie", List.of("spotify-secret=must-not-leak")); }
+            public void put(URI uri, Map<String, List<String>> response) { cookieWrites.incrementAndGet(); }
+        });
+        Authenticator.setDefault(new Authenticator() {
+            protected PasswordAuthentication getPasswordAuthentication() { auth.incrementAndGet(); return new PasswordAuthentication("must-not-leak", "secret".toCharArray()); }
+        });
+        try {
+            httpTests(); tlsTests(Path.of(args[0]));
+            check(cookieReads.get() == 0 && cookieWrites.get() == 0 && auth.get() == 0, "isolated HTTP and HTTPS never consult global CookieHandler/Authenticator");
+        } finally { CookieHandler.setDefault(previousCookies); Authenticator.setDefault(previousAuth); }
+        System.out.println("PASS " + checks + " real-wire checks: HTTP/HTTPS, no ambient auth/cookies, redirects/401/407, framing/size/deadline/cancellation, trusted/untrusted/wrong-host TLS; loopback only");
+    }
+}

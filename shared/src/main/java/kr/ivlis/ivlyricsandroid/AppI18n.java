@@ -32,6 +32,7 @@ final class AppI18n {
             new AiLyricsSettings.Language("tr", "Turkish", "Türkçe", "")
     ));
 
+    static final String[] LRCLIB_SETTING_KEYS = {"setting.lrclib_endpoint", "setting.lrclib_endpoint_desc", "setting.lrclib_endpoint_error"};
     private static final Map<String, Map<String, String>> STRINGS = buildStrings();
 
     private AppI18n() {
@@ -151,6 +152,7 @@ final class AppI18n {
         addAccessibilityLabelStrings(languages);
         addSettingsRedesignStrings(languages);
         FirstUseI18n.apply(languages);
+        addLrclibPlaybackSettingsStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -11284,6 +11286,84 @@ final class AppI18n {
             table.put(values[index], values[index + 1]);
         }
         return Collections.unmodifiableMap(table);
+    }
+
+    private static void addLrclibPlaybackSettingsStrings(Map<String, Map<String, String>> languages) {
+        String[][] rows = {
+                {"ko", "사용자 지정 LRCLIB API (선택 사항)",
+                        "재생 가사를 이 서버에서 먼저 찾고, 없거나 연결할 수 없으면 공식 LRCLIB를 사용합니다. 비워 두면 공식 서버만 사용합니다. 수동 검색과 싱크 제출은 공식 서버를 사용합니다.",
+                        "사용자 정보, 쿼리, # 조각이 없는 유효한 HTTP/HTTPS 기본 URL을 입력하세요. 예: https://lrclib.example/api"},
+                {"en", "Custom LRCLIB API (optional)",
+                        "Look up playback lyrics on this server first, then use official LRCLIB if unavailable or not found. Leave empty to use only the official server. Manual search and sync submissions use the official server.",
+                        "Enter a valid HTTP/HTTPS base URL without credentials, a query or a # fragment. Example: https://lrclib.example/api"},
+                {"zh-CN", "自定义 LRCLIB API（可选）",
+                        "优先从此服务器查找播放歌词；未找到或无法连接时使用官方 LRCLIB。留空则仅使用官方服务器。手动搜索和同步提交使用官方服务器。",
+                        "请输入有效的 HTTP/HTTPS 基础 URL，不含用户凭据、查询参数或 # 片段。例如：https://lrclib.example/api"},
+                {"zh-TW", "自訂 LRCLIB API（選填）",
+                        "優先從此伺服器尋找播放歌詞；找不到或無法連線時使用官方 LRCLIB。留空則只使用官方伺服器。手動搜尋及同步提交使用官方伺服器。",
+                        "請輸入有效的 HTTP/HTTPS 基底 URL，不含使用者憑證、查詢參數或 # 片段。例如：https://lrclib.example/api"},
+                {"ja", "カスタム LRCLIB API（任意）",
+                        "再生用の歌詞をこのサーバーで先に探し、見つからない場合や接続できない場合は公式 LRCLIB を使います。空欄では公式サーバーのみを使います。手動検索と同期データの送信には公式サーバーを使います。",
+                        "認証情報、クエリ、# フラグメントを含まない有効な HTTP/HTTPS ベース URL を入力してください。例：https://lrclib.example/api"},
+                {"hi", "कस्टम LRCLIB API (वैकल्पिक)",
+                        "प्लेबैक के बोल पहले इस सर्वर पर खोजें। न मिलने या कनेक्शन न होने पर आधिकारिक LRCLIB का उपयोग करें। केवल आधिकारिक सर्वर के लिए खाली छोड़ें। मैन्युअल खोज और सिंक सबमिशन आधिकारिक सर्वर पर होते हैं।",
+                        "बिना लॉगिन जानकारी, क्वेरी या # खंड के मान्य HTTP/HTTPS बेस URL दर्ज करें। उदाहरण: https://lrclib.example/api"},
+                {"es", "API LRCLIB personalizada (opcional)",
+                        "Busca las letras de reproducción primero en este servidor y recurre al LRCLIB oficial si no están disponibles. Déjalo vacío para usar solo el servidor oficial. La búsqueda manual y los envíos de sincronización usan el servidor oficial.",
+                        "Introduce una URL base HTTP/HTTPS válida sin credenciales, consulta ni fragmento #. Ejemplo: https://lrclib.example/api"},
+                {"fr", "API LRCLIB personnalisée (facultatif)",
+                        "Recherche d’abord les paroles de lecture sur ce serveur, puis utilise LRCLIB officiel si elles sont introuvables ou indisponibles. Laissez vide pour utiliser uniquement le serveur officiel. La recherche manuelle et l’envoi de synchronisation utilisent le serveur officiel.",
+                        "Saisissez une URL de base HTTP/HTTPS valide sans identifiants, paramètres de requête ni fragment #. Exemple : https://lrclib.example/api"},
+                {"ar", "واجهة LRCLIB مخصصة (اختياري)",
+                        "ابحث عن كلمات التشغيل في هذا الخادم أولاً، ثم استخدم LRCLIB الرسمي إن لم تتوفر أو تعذر الاتصال. اتركه فارغاً لاستخدام الخادم الرسمي فقط. يستخدم البحث اليدوي وإرسال المزامنة الخادم الرسمي.",
+                        "أدخل عنوان HTTP/HTTPS أساسيًا صالحًا دون بيانات اعتماد أو استعلام أو جزء #. مثال: https://lrclib.example/api"},
+                {"fa", "API سفارشی LRCLIB (اختیاری)",
+                        "متن آهنگ هنگام پخش ابتدا در این سرور جستجو می‌شود؛ اگر پیدا نشود یا اتصال ممکن نباشد، LRCLIB رسمی استفاده می‌شود. برای استفاده فقط از سرور رسمی خالی بگذارید. جستجوی دستی و ارسال همگام‌سازی از سرور رسمی استفاده می‌کنند.",
+                        "یک نشانی پایه HTTP/HTTPS معتبر بدون اطلاعات ورود، پرس‌وجو یا بخش # وارد کنید. نمونه: https://lrclib.example/api"},
+                {"de", "Eigene LRCLIB-API (optional)",
+                        "Sucht Liedtexte zur Wiedergabe zuerst auf diesem Server und nutzt das offizielle LRCLIB, wenn nichts gefunden wird oder der Server nicht erreichbar ist. Leer lassen, um nur den offiziellen Server zu nutzen. Manuelle Suche und Synchronisierungsbeiträge nutzen den offiziellen Server.",
+                        "Gib eine gültige HTTP/HTTPS-Basis-URL ohne Zugangsdaten, Abfrage oder #-Fragment ein. Beispiel: https://lrclib.example/api"},
+                {"ru", "Свой API LRCLIB (необязательно)",
+                        "Сначала ищет текст для воспроизведения на этом сервере, затем использует официальный LRCLIB, если текст не найден или сервер недоступен. Оставьте пустым, чтобы использовать только официальный сервер. Ручной поиск и отправка синхронизации используют официальный сервер.",
+                        "Введите корректный базовый HTTP/HTTPS URL без учётных данных, запроса и фрагмента #. Пример: https://lrclib.example/api"},
+                {"sv", "Eget LRCLIB-API (valfritt)",
+                        "Sök sångtexter för uppspelning på denna server först och använd sedan officiella LRCLIB om de saknas eller servern inte kan nås. Lämna tomt för att endast använda den officiella servern. Manuell sökning och synkbidrag använder den officiella servern.",
+                        "Ange en giltig HTTP/HTTPS-basadress utan inloggningsuppgifter, frågeparametrar eller #-fragment. Exempel: https://lrclib.example/api"},
+                {"pt", "API LRCLIB personalizada (opcional)",
+                        "Busca letras para reprodução primeiro neste servidor e usa o LRCLIB oficial se não encontrar ou não conseguir conectar. Deixe vazio para usar apenas o servidor oficial. A busca manual e os envios de sincronização usam o servidor oficial.",
+                        "Insira uma URL base HTTP/HTTPS válida sem credenciais, consulta ou fragmento #. Exemplo: https://lrclib.example/api"},
+                {"bn", "কাস্টম LRCLIB API (ঐচ্ছিক)",
+                        "প্লেব্যাকের গানের কথা প্রথমে এই সার্ভারে খোঁজা হবে। না পেলে বা সংযোগ না হলে অফিসিয়াল LRCLIB ব্যবহার করা হবে। শুধু অফিসিয়াল সার্ভারের জন্য খালি রাখুন। ম্যানুয়াল অনুসন্ধান ও সিঙ্ক জমা অফিসিয়াল সার্ভারে হয়।",
+                        "লগইন তথ্য, কোয়েরি বা # অংশ ছাড়া একটি বৈধ HTTP/HTTPS বেস URL লিখুন। উদাহরণ: https://lrclib.example/api"},
+                {"cs", "Vlastní API LRCLIB (volitelné)",
+                        "Texty pro přehrávání hledá nejprve na tomto serveru, pak použije oficiální LRCLIB, pokud je nenajde nebo se nelze připojit. Prázdné pole použije jen oficiální server. Ruční hledání a odesílání synchronizace používají oficiální server.",
+                        "Zadejte platnou základní adresu HTTP/HTTPS bez přihlašovacích údajů, dotazu nebo fragmentu #. Příklad: https://lrclib.example/api"},
+                {"it", "API LRCLIB personalizzata (facoltativa)",
+                        "Cerca prima i testi di riproduzione su questo server, poi usa LRCLIB ufficiale se non li trova o non riesce a connettersi. Lascia vuoto per usare solo il server ufficiale. La ricerca manuale e l’invio delle sincronizzazioni usano il server ufficiale.",
+                        "Inserisci un URL di base HTTP/HTTPS valido senza credenziali, query o frammento #. Esempio: https://lrclib.example/api"},
+                {"th", "API LRCLIB ที่กำหนดเอง (ไม่บังคับ)",
+                        "ค้นหาเนื้อเพลงสำหรับการเล่นจากเซิร์ฟเวอร์นี้ก่อน แล้วใช้ LRCLIB ทางการหากไม่พบหรือเชื่อมต่อไม่ได้ เว้นว่างเพื่อใช้เซิร์ฟเวอร์ทางการเท่านั้น การค้นหาด้วยตนเองและการส่งข้อมูลซิงค์ใช้เซิร์ฟเวอร์ทางการ",
+                        "ป้อน URL หลักแบบ HTTP/HTTPS ที่ถูกต้องโดยไม่มีข้อมูลเข้าสู่ระบบ พารามิเตอร์ค้นหา หรือส่วน # ตัวอย่าง: https://lrclib.example/api"},
+                {"vi", "API LRCLIB tùy chỉnh (không bắt buộc)",
+                        "Tìm lời bài hát khi phát trên máy chủ này trước, sau đó dùng LRCLIB chính thức nếu không tìm thấy hoặc không thể kết nối. Để trống để chỉ dùng máy chủ chính thức. Tìm kiếm thủ công và gửi dữ liệu đồng bộ dùng máy chủ chính thức.",
+                        "Nhập URL cơ sở HTTP/HTTPS hợp lệ, không có thông tin đăng nhập, truy vấn hoặc đoạn #. Ví dụ: https://lrclib.example/api"},
+                {"id", "API LRCLIB khusus (opsional)",
+                        "Cari lirik pemutaran di server ini terlebih dahulu, lalu gunakan LRCLIB resmi jika tidak ditemukan atau tidak dapat terhubung. Kosongkan untuk hanya menggunakan server resmi. Pencarian manual dan pengiriman sinkronisasi menggunakan server resmi.",
+                        "Masukkan URL dasar HTTP/HTTPS yang valid tanpa kredensial, kueri, atau fragmen #. Contoh: https://lrclib.example/api"},
+                {"ms", "API LRCLIB tersuai (pilihan)",
+                        "Cari lirik main balik pada pelayan ini dahulu, kemudian gunakan LRCLIB rasmi jika tidak ditemui atau tidak dapat disambungkan. Biarkan kosong untuk menggunakan pelayan rasmi sahaja. Carian manual dan penghantaran segerak menggunakan pelayan rasmi.",
+                        "Masukkan URL asas HTTP/HTTPS yang sah tanpa kelayakan log masuk, pertanyaan atau fragmen #. Contoh: https://lrclib.example/api"},
+                {"tr", "Özel LRCLIB API'si (isteğe bağlı)",
+                        "Çalma sözlerini önce bu sunucuda arar; bulunamazsa veya bağlanamazsa resmi LRCLIB'yi kullanır. Yalnızca resmi sunucuyu kullanmak için boş bırakın. Elle arama ve senkronizasyon gönderimleri resmi sunucuyu kullanır.",
+                        "Kimlik bilgileri, sorgu veya # parçası içermeyen geçerli bir HTTP/HTTPS temel URL'si girin. Örnek: https://lrclib.example/api"}
+        };
+        for (String[] row : rows) {
+            Map<String, String> existing = languages.get(row[0]);
+            if (existing == null) throw new IllegalStateException("Missing LRCLIB locale " + row[0]);
+            Map<String, String> table = new java.util.LinkedHashMap<>(existing);
+            for (int index = 0; index < LRCLIB_SETTING_KEYS.length; index++) table.put(LRCLIB_SETTING_KEYS[index], row[index + 1]);
+            languages.put(row[0], java.util.Collections.unmodifiableMap(table));
+        }
     }
 
     private static void assertComplete(Map<String, Map<String, String>> languages) {

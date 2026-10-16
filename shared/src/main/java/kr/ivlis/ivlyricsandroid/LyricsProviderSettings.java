@@ -38,6 +38,7 @@ final class LyricsProviderSettings {
     private static final String KEY_ORDER = "provider_order";
     private static final String KEY_PREFER_SYNC_DATA = "prefer_sync_data_provider";
     private static final String KEY_TYPE_FIRST = "prefer_lyrics_type_over_provider_order";
+    private static final String KEY_LRCLIB_ENDPOINT = "lrclib_playback_endpoint";
     private static final String KEY_ENABLED_PREFIX = "enabled_";
     private static final String KEY_TYPE_PREFIX = "allow_";
 
@@ -50,6 +51,22 @@ final class LyricsProviderSettings {
                 : appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    String lrclibPlaybackEndpoint() {
+        try {
+            return LrclibEndpoint.normalize(preferences == null ? "" : preferences.getString(KEY_LRCLIB_ENDPOINT, ""));
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    boolean setLrclibPlaybackEndpoint(String value) {
+        String normalized = LrclibEndpoint.normalize(value);
+        if (preferences == null || normalized.equals(lrclibPlaybackEndpoint())) return false;
+        if (normalized.isEmpty()) preferences.edit().remove(KEY_LRCLIB_ENDPOINT).apply();
+        else preferences.edit().putString(KEY_LRCLIB_ENDPOINT, normalized).apply();
+        return true;
+    }
+
     JSONObject exportCloudSettings() throws JSONException {
         JSONObject result = new JSONObject();
         if (preferences == null) {
@@ -60,10 +77,16 @@ final class LyricsProviderSettings {
                 continue;
             }
             Object value = entry.getValue();
+            if (KEY_LRCLIB_ENDPOINT.equals(entry.getKey())) {
+                result.put(entry.getKey(), lrclibPlaybackEndpoint());
+                continue;
+            }
             if (value instanceof Boolean || value instanceof String) {
                 result.put(entry.getKey(), value);
             }
         }
+        // An explicit empty value must clear a previously configured endpoint on another device.
+        result.put(KEY_LRCLIB_ENDPOINT, lrclibPlaybackEndpoint());
         return result;
     }
 
@@ -79,6 +102,13 @@ final class LyricsProviderSettings {
                 continue;
             }
             Object value = source.get(key);
+            if (KEY_LRCLIB_ENDPOINT.equals(key)) {
+                if (value instanceof String) {
+                    try { editor.putString(key, LrclibEndpoint.normalize((String) value)); }
+                    catch (IllegalArgumentException ignored) { /* Preserve a working local endpoint. */ }
+                }
+                continue;
+            }
             if (value instanceof Boolean) {
                 editor.putBoolean(key, (Boolean) value);
             } else if (value instanceof String) {
@@ -92,6 +122,7 @@ final class LyricsProviderSettings {
         return KEY_ORDER.equals(key)
                 || KEY_PREFER_SYNC_DATA.equals(key)
                 || KEY_TYPE_FIRST.equals(key)
+                || KEY_LRCLIB_ENDPOINT.equals(key)
                 || key.startsWith(KEY_ENABLED_PREFIX)
                 || key.startsWith(KEY_TYPE_PREFIX);
     }
@@ -111,7 +142,8 @@ final class LyricsProviderSettings {
                 orderedProviderIds(),
                 configs,
                 readBoolean(KEY_PREFER_SYNC_DATA, true),
-                readBoolean(KEY_TYPE_FIRST, true)
+                readBoolean(KEY_TYPE_FIRST, true),
+                lrclibPlaybackEndpoint()
         );
     }
 
@@ -310,6 +342,7 @@ final class LyricsProviderSettings {
         final Map<String, ProviderConfig> configs;
         final boolean preferSyncDataProvider;
         final boolean typeFirst;
+        final String lrclibPlaybackEndpoint;
 
         Snapshot(
                 List<String> order,
@@ -317,10 +350,16 @@ final class LyricsProviderSettings {
                 boolean preferSyncDataProvider,
                 boolean typeFirst
         ) {
+            this(order, configs, preferSyncDataProvider, typeFirst, "");
+        }
+
+        Snapshot(List<String> order, Map<String, ProviderConfig> configs, boolean preferSyncDataProvider,
+                 boolean typeFirst, String lrclibPlaybackEndpoint) {
             this.order = Collections.unmodifiableList(new ArrayList<>(order));
             this.configs = Collections.unmodifiableMap(new LinkedHashMap<>(configs));
             this.preferSyncDataProvider = preferSyncDataProvider;
             this.typeFirst = typeFirst;
+            this.lrclibPlaybackEndpoint = lrclibPlaybackEndpoint;
         }
 
         Snapshot withSelectedProvider(String providerId) {
@@ -330,7 +369,7 @@ final class LyricsProviderSettings {
             // An explicit per-track choice enables all types for that provider only.
             selectedConfigs.put(selected.provider.id,
                     new ProviderConfig(selected.provider, true, true, true, true));
-            return new Snapshot(Collections.singletonList(selected.provider.id), selectedConfigs, false, true);
+            return new Snapshot(Collections.singletonList(selected.provider.id), selectedConfigs, false, true, lrclibPlaybackEndpoint);
         }
 
         ProviderConfig config(String providerId) {
@@ -360,6 +399,8 @@ final class LyricsProviderSettings {
                         .append(config.synced ? 's' : '-')
                         .append(config.plain ? 'p' : '-');
             }
+            // Also invalidates cached fallbacks from another provider when this endpoint changes.
+            if (!lrclibPlaybackEndpoint.isEmpty()) builder.append("|lrclib-playback:").append(lrclibPlaybackEndpoint);
             return builder.toString();
         }
 
