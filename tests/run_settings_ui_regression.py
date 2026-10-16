@@ -19,6 +19,12 @@ source = (SHARED / "BaseLyricsActivity.java").read_text()
 appearance = (SHARED / "SettingsAppearance.java").read_text()
 harness = (ROOT / "app/src/debug/java/kr/ivlis/ivlyricsandroid/SettingsUiHarnessActivity.java").read_text()
 native = (ROOT / "app/src/androidTest/java/kr/ivlis/ivlyricsandroid/SettingsUiRegressionTest.java").read_text()
+# Text alignment takes precedence over gravity for TextViews created by SettingsKit.
+# Keep ordinary labels leading-aligned, but center the fixed-size provider badges.
+rank = declaration(source, "private TextView settingsRank(")
+connection_card = declaration(source, "private View aiConnectionCard(")
+assert "view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER)" in rank
+assert "avatar.setTextAlignment(View.TEXT_ALIGNMENT_CENTER)" in connection_card
 assert ' + "  v"' not in source, "dropdown labels must not add a second textual chevron"
 assert "setThumbDrawable" not in appearance and "setThumbTintList(states(" in appearance
 assert "setMinimumHeight(dp(context, 48))" in appearance

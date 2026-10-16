@@ -109,10 +109,17 @@ public final class SettingsUiRegressionTest {
                 assertTrue("landscape body remains scrollable", scroll.getHeight() >= dp(80));
                 if ("ai".equals(tab)) {
                     View providers = activity.view("providerButtonsContainer");
+                    assertTrue("AI provider rank badges checked", assertCenteredProviderBadges(providers, dp(24)) > 0);
+                    assertTrue("AI connection initials checked", assertCenteredProviderBadges(
+                            activity.view("aiConnectionsContainer"), dp(34)) > 0);
                     int[] child = new int[2], parent = new int[2];
                     providers.getLocationInWindow(child); scroll.getChildAt(0).getLocationInWindow(parent);
                     scroll.scrollTo(0, Math.max(0, child[1] - parent[1]));
                     save(panel, prefix + "-settings-ai-providers");
+                }
+                if ("providers".equals(tab)) {
+                    assertTrue("lyrics provider rank badges checked", assertCenteredProviderBadges(
+                            activity.view("lyricsProviderSettingsContainer"), dp(24)) > 0);
                 }
                 restore(panel, oldWidth, oldHeight);
             });
@@ -488,6 +495,32 @@ public final class SettingsUiRegressionTest {
             ViewGroup group = (ViewGroup) root;
             for (int index = 0; index < group.getChildCount(); index++) assertControls(group.getChildAt(index));
         }
+    }
+
+    private int assertCenteredProviderBadges(View root, int size) {
+        int checked = 0;
+        ViewGroup.LayoutParams params = root.getLayoutParams();
+        if (root instanceof TextView && params != null && params.width == size && params.height == size) {
+            TextView badge = (TextView) root;
+            assertEquals("provider badge text alignment: " + badge.getText(),
+                    View.TEXT_ALIGNMENT_CENTER, badge.getTextAlignment());
+            Layout layout = badge.getLayout();
+            assertNotNull("provider badge has a native text layout", layout);
+            for (int line = 0; line < layout.getLineCount(); line++) {
+                float center = badge.getCompoundPaddingLeft()
+                        + (layout.getLineLeft(line) + layout.getLineRight(line)) / 2f;
+                assertEquals("provider badge drawn text is centered: " + badge.getText(),
+                        badge.getWidth() / 2f, center, 1.5f);
+            }
+            checked++;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                checked += assertCenteredProviderBadges(group.getChildAt(index), size);
+            }
+        }
+        return checked;
     }
 
     private void assertMinimum(View view, String name) {

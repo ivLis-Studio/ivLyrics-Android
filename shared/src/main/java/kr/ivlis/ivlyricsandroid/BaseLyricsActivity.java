@@ -7343,6 +7343,7 @@ public class BaseLyricsActivity extends Activity implements
         SettingsKit kit = settingsKit;
         TextView view = kit.text(String.valueOf(rank), 12f, enabled ? kit.p.text : kit.p.text3, kit.semi);
         view.setGravity(Gravity.CENTER);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         view.setBackground(kit.rect(enabled ? kit.p.surface4 : kit.p.surface3, 4f));
         view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         return view;
@@ -9222,6 +9223,7 @@ public class BaseLyricsActivity extends Activity implements
         identity.setGravity(Gravity.TOP);
         TextView avatar = kit.text(connectionInitials(provider.label), 12f, kit.p.text2, kit.semi);
         avatar.setGravity(Gravity.CENTER);
+        avatar.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         avatar.setBackground(kit.rect(kit.p.surface3, 7f, kit.p.line, 1f));
         identity.addView(avatar, new LinearLayout.LayoutParams(dp(34), dp(34)));
         LinearLayout texts = kit.vertical();
