@@ -34,5 +34,30 @@ final class SettingsExperienceTranslations {
         if (values == null) return;
         String[] keys = {"tab.general", "tab.providers", "tab.ai", "tab.appearance", "tab.lyrics", "tab.system", "settings.search", "settings.no_results", "settings.ai_autosave"};
         for (int i = 0; i < keys.length; i++) target.put(keys[i], values[i]);
+        target.put("tab.current_track", switch (language) {
+            case "ko" -> "현재 재생 곡 설정";
+            case "en" -> "Current track settings";
+            case "zh-CN" -> "当前播放歌曲设置";
+            case "zh-TW" -> "目前播放歌曲設定";
+            case "ja" -> "再生中の曲の設定";
+            case "hi" -> "वर्तमान गीत की सेटिंग्स";
+            case "es" -> "Ajustes de la canción actual";
+            case "fr" -> "Réglages du morceau en cours";
+            case "ar" -> "إعدادات الأغنية الحالية";
+            case "fa" -> "تنظیمات آهنگ در حال پخش";
+            case "de" -> "Einstellungen des aktuellen Titels";
+            case "ru" -> "Настройки текущего трека";
+            case "sv" -> "Inställningar för aktuell låt";
+            case "pt" -> "Configurações da música atual";
+            case "bn" -> "বর্তমান গানের সেটিংস";
+            case "cs" -> "Nastavení aktuální skladby";
+            case "it" -> "Impostazioni del brano in riproduzione";
+            case "th" -> "การตั้งค่าเพลงที่กำลังเล่น";
+            case "vi" -> "Cài đặt bài hát đang phát";
+            case "id" -> "Pengaturan lagu yang sedang diputar";
+            case "ms" -> "Tetapan lagu yang sedang dimainkan";
+            case "tr" -> "Çalan şarkının ayarları";
+            default -> "Current track settings";
+        });
     }
 }

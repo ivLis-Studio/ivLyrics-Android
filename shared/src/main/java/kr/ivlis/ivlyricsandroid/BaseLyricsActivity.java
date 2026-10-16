@@ -140,6 +140,7 @@ public class BaseLyricsActivity extends Activity implements
     private static final String SETTINGS_TAB_PLAYER = "player";
     private static final String SETTINGS_TAB_AI = "ai";
     private static final String SETTINGS_TAB_SYSTEM = "system";
+    private static final String SETTINGS_TAB_CURRENT_TRACK = "current_track";
     private static final String SETTINGS_ROUTE_HOME = "home";
     private static final String SETTINGS_UI_PREFS = "settings_ui";
     private static final String KEY_SETTINGS_THEME = "theme";
@@ -317,6 +318,7 @@ public class BaseLyricsActivity extends Activity implements
     // Redesigned settings (home list → menus, search, theme, live preview).
     private SettingsKit settingsKit;
     private String settingsRoute = SETTINGS_ROUTE_HOME;
+    private TextView currentTrackSettingsSummary;
     private final Map<String, Integer> settingsScrollMemory = new HashMap<>();
     private final Map<String, LinearLayout> settingsMenuPages = new LinkedHashMap<>();
     private final Map<String, List<String>> settingsMenuSections = new LinkedHashMap<>();
@@ -1500,6 +1502,7 @@ public class BaseLyricsActivity extends Activity implements
                 && currentTrack.stableKey().equals(snapshot.stableKey()) && !snapshot.isrc.isEmpty()
                 && !snapshot.isrc.equals(currentTrack.isrc);
         currentTrack = snapshot;
+        updateCurrentTrackSettingsMenu();
         onLyricsHostTrackChanged(snapshot == null || snapshot.trackId.isEmpty()
                 ? "" : "spotify:track:" + snapshot.trackId);
         updatePictureInPictureActionsIfNeeded(snapshot != null && snapshot.playing);
@@ -4546,6 +4549,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private FrameLayout buildSettingsPanel() {
+        dismissLyricsMetaMenuPopup();
         SettingsPalette palette = settingsPalette();
         settingsKit = new SettingsKit(this, palette);
         settingsKit.onChange = this::onSettingsControlChanged;
@@ -4637,6 +4641,7 @@ public class BaseLyricsActivity extends Activity implements
 
         settingsHomePage = buildSettingsHomePage();
         content.addView(settingsHomePage, matchWrap());
+        buildCurrentTrackSettingsMenu(content);
         buildGeneralSettingsMenu(content);
         buildProvidersSettingsMenu(content);
         buildAiSettingsMenu(content);
@@ -4721,6 +4726,8 @@ public class BaseLyricsActivity extends Activity implements
         for (Map.Entry<String, LinearLayout> entry : settingsMenuPages.entrySet()) {
             entry.getValue().setVisibility(entry.getKey().equals(next) ? View.VISIBLE : View.GONE);
         }
+        updateCurrentTrackSettingsMenu();
+        if (SETTINGS_TAB_CURRENT_TRACK.equals(next)) updateLyricsLanguageSettingsUi();
         updateSettingsNavBar();
         placeSettingsPreviewHost();
         Integer remembered = settingsScrollMemory.get(next);
@@ -4748,6 +4755,7 @@ public class BaseLyricsActivity extends Activity implements
 
     private String normalizeSettingsTab(String tabId) {
         if (SETTINGS_TAB_PROVIDERS.equals(tabId)
+                || SETTINGS_TAB_CURRENT_TRACK.equals(tabId)
                 || SETTINGS_TAB_LYRICS.equals(tabId)
                 || SETTINGS_TAB_APPEARANCE.equals(tabId)
                 || SETTINGS_TAB_PLAYER.equals(tabId)
@@ -4759,6 +4767,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private String settingsTabLabel(String tabId) {
+        if (SETTINGS_TAB_CURRENT_TRACK.equals(tabId)) return ui("tab.current_track");
         if (SETTINGS_TAB_PROVIDERS.equals(tabId)) return ui("tab.providers");
         if (SETTINGS_TAB_LYRICS.equals(tabId)) return ui("tab.lyrics");
         if (SETTINGS_TAB_APPEARANCE.equals(tabId)) return ui("tab.appearance");
@@ -5063,7 +5072,7 @@ public class BaseLyricsActivity extends Activity implements
         if (settingsHomeMenus == null) return;
         settingsHomeMenus.removeAllViews();
         String[][] groups = {
-                {ui("tab.general"), SETTINGS_TAB_GENERAL},
+                {ui("tab.general"), SETTINGS_TAB_CURRENT_TRACK, SETTINGS_TAB_GENERAL},
                 {ui("settings.group_sources"), SETTINGS_TAB_PROVIDERS, SETTINGS_TAB_AI},
                 {ui("tab.display"), SETTINGS_TAB_APPEARANCE, SETTINGS_TAB_LYRICS, SETTINGS_TAB_PLAYER},
                 {ui("settings.group_manage"), SETTINGS_TAB_SYSTEM}
@@ -5218,6 +5227,35 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     // ------------------------------------------------------------------ sections and rows
+
+    private void buildCurrentTrackSettingsMenu(LinearLayout content) {
+        LinearLayout page = settingsMenuPage(content, SETTINGS_TAB_CURRENT_TRACK);
+        currentTrackSettingsSummary = settingsKit.rowDescription("");
+        currentTrackSettingsSummary.setPaddingRelative(dp(4), 0, dp(4), dp(12));
+        page.addView(currentTrackSettingsSummary, matchWrap());
+        List<String> sections = settingsMenuSections.get(SETTINGS_TAB_CURRENT_TRACK);
+        Collections.addAll(sections, ui("lyrics.tab.language"), ui("lyrics.tab.sync"),
+                ui("lyrics.tab.video"), ui("lyrics.tab.background"), ui("section.lyrics_providers"));
+        registerSetting(currentTrackSettingsSummary, ui("tab.current_track"), TextUtils.join(" · ", sections), null);
+        // Keep one set of controls and callbacks: the long-press popup temporarily borrows this panel.
+        if (lyricsLanguageSettingsPanel != null) {
+            detachFromParent(lyricsLanguageSettingsPanel);
+            lyricsLanguageSettingsPanel.setBackground(lyricsLanguageSettingsPanelBackground(true));
+            page.addView(lyricsLanguageSettingsPanel, matchWrap());
+        }
+    }
+
+    private void updateCurrentTrackSettingsMenu() {
+        if (currentTrackSettingsSummary == null) return;
+        boolean hasTrack = currentTrack != null && currentTrack.hasUsableMetadata();
+        String summary = hasTrack ? currentTrack.title + "\n" + currentTrack.artist : ui("status.waiting_current_track");
+        if (!TextUtils.equals(currentTrackSettingsSummary.getText(), summary)) currentTrackSettingsSummary.setText(summary);
+        if (lyricsLanguageSettingsPanel != null
+                && lyricsLanguageSettingsPanel.getParent() == settingsMenuPages.get(SETTINGS_TAB_CURRENT_TRACK)) {
+            lyricsLanguageSettingsPanel.setVisibility(hasTrack && SETTINGS_TAB_CURRENT_TRACK.equals(settingsRoute)
+                    ? View.VISIBLE : View.GONE);
+        }
+    }
 
     private LinearLayout settingsMenuPage(LinearLayout content, String menuId) {
         LinearLayout page = settingsKit.vertical();
@@ -11533,6 +11571,10 @@ public class BaseLyricsActivity extends Activity implements
         lyricsLanguageSettingsOriginalLayoutParams = null;
         lyricsLanguageSettingsOriginalIndex = -1;
         updateLyricsLanguageButtonState();
+        if (lyricsLanguageSettingsPanel.getParent() == settingsMenuPages.get(SETTINGS_TAB_CURRENT_TRACK)) {
+            lyricsLanguageSettingsPanel.setBackground(lyricsLanguageSettingsPanelBackground(true));
+            updateCurrentTrackSettingsMenu();
+        }
     }
 
     private void enterLyricsPictureInPicture() {
@@ -11845,6 +11887,7 @@ public class BaseLyricsActivity extends Activity implements
         if (aiLyricsSettings == null) {
             return;
         }
+        updateCurrentTrackSettingsMenu();
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
         updateSourceLanguageSelect();
         populateSelectedLanguageRule(snapshot);
@@ -13749,6 +13792,7 @@ public class BaseLyricsActivity extends Activity implements
         lastBackPressElapsedMs = 0L;
         settingsPanel.animate().cancel();
         if (show) {
+            dismissLyricsMetaMenuPopup();
             if (startAtHome) {
                 // Every visit starts on the menu list; scroll positions are kept only while settings stay open.
                 settingsScrollMemory.clear();
