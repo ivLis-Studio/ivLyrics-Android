@@ -95,9 +95,11 @@ public final class LrclibWireRegression {
             check(new LrclibPlaybackStage(base).get("/get/42").equals("{\"a\":1}"), "chunked framing and bounded trailers decoded");
             server.response = raw("HTTP/1.0 200 OK\r\n\r\n{}");
             check(new LrclibPlaybackStage(base).get("/get/42").equals("{}"), "EOF-delimited HTTP/1.0 body decoded");
-            for (int status : List.of(204, 404)) {
-                server.response = fixed(status, "");
+            for (int status : List.of(204, 400, 404, 405, 410, 422)) {
+                int before = server.requests.size();
+                server.response = fixed(status, status == 204 ? "" : "{\"message\":\"query variant unavailable\"}");
                 check(new LrclibPlaybackStage(base).get("/get/42").isEmpty(), "HTTP miss preserved " + status);
+                check(server.requests.size() == before + 1, "query miss never retries/challenges/redirects " + status);
             }
             for (int status : List.of(301, 302, 307, 308)) expectFailure(server,
                     raw("HTTP/1.1 " + status + " Redirect\r\nLocation: " + base + "/forbidden\r\nContent-Length: 0\r\n\r\n"), "redirect " + status);

@@ -185,6 +185,27 @@ public final class LrclibPlaybackRegression {
         LyricsResult result = (LyricsResult) call(repo, "loadLrclibProvider", SONG, "", "", null, pinned, log);
         check(result.karaoke && result.lines.size() == 2, "production sync applier consumes validated custom lyrics");
 
+        for (int queryMiss : List.of(400, 405, 410, 422)) {
+            for (String searchStep : List.of("structured", "noalbum")) {
+                reset(); replies = url -> !custom(url) ? new Reply(404, "")
+                        : kind(url).equals(searchStep) ? lyric(url, candidate(9001, TEXT))
+                        : new Reply(queryMiss, "{\"message\":\"query variant unavailable\"}");
+                found = find(pinned, null);
+                check(found != null && (long) value(found, "id") == 42L
+                                && (boolean) value(found, "syncSourceTextMatch")
+                                && (boolean) value(found, "syncSourceLineCountMatch"),
+                        "query miss preserves canonical pin and saved content validation: " + queryMiss + " -> " + searchStep);
+                List<String> queryOrder = new ArrayList<>(List.of("mirror.invalid:id", "mirror.invalid:get", "mirror.invalid:structured"));
+                if (searchStep.equals("noalbum")) queryOrder.add("mirror.invalid:noalbum");
+                check(order().equals(queryOrder), "unsupported ID/metadata GET continues private search in order: " + queryMiss);
+                result = (LyricsResult) call(repo, "loadLrclibProvider", SONG, "", "", null, pinned, log);
+                check(result != null && result.karaoke && result.lines.size() == 2,
+                        "later private search applies canonical source timing after query miss: " + queryMiss);
+                check(requests.stream().allMatch(connection -> custom(connection.url)),
+                        "query misses never reach official lyrics before later custom success: " + queryMiss);
+            }
+        }
+
         reset(); replies = url -> lyric(url, candidate(9001, TEXT).put("plainLyrics", JSONObject.NULL)
                 .put("syncedLyrics", "[00:01.00]Hello\n[00:06.00]World"));
         found = find(pinned, null);
@@ -261,7 +282,7 @@ public final class LrclibPlaybackRegression {
         found = find(null, null);
         check((long) value(found, "id") == 42L, "mismatched private metadata rejected with production ranking");
 
-        for (int failure : List.of(301, 302, 307, 308, 401, 429, 500, -1)) {
+        for (int failure : List.of(301, 302, 307, 308, 401, 403, 407, 429, 500, 503, -1)) {
             reset(); replies = url -> custom(url) ? new Reply(failure, "") : lyric(url, candidate(42, TEXT));
             check(find(pinned, null) != null, "fatal private failure falls back: " + failure);
             check(order().equals(List.of("mirror.invalid:id", "lrclib.net:id")), "fatal host failure ends private stage without redirect");

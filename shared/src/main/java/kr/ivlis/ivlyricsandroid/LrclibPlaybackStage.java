@@ -61,7 +61,8 @@ final class LrclibPlaybackStage {
             connection.setReadTimeout(remainingMs(requestDeadline));
             int status = connection.getResponseCode();
             remainingMs(requestDeadline);
-            if (status == 404 || status == 204) return "";
+            // Unsupported/missing query variants must not suppress this host's remaining searches.
+            if (status == 204 || status == 400 || status == 404 || status == 405 || status == 410 || status == 422) return "";
             // Redirects are host failures, including redirects to the official API.
             if (status < 200 || status >= 300) throw new IOException("LRCLIB HTTP " + status);
             try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
