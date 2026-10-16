@@ -74,7 +74,12 @@ public class LocalAiRuntimeTest {
         assertEquals("one block covers every unique part", 1, backend.prompts.size());
         assertTrue(backend.prompts.get(0).contains("into Korean.") && backend.prompts.get(0).contains(BLOCK_MARKER));
         assertEquals(Arrays.asList("君の声", "夜明け", "まで"), Arrays.asList(sourceOf(backend.prompts.get(0)).split("\n")));
-        assertEquals(Arrays.asList("1=", "2=[Instrumental]", "0=KO:君の声", "3=KO:夜明け / KO:まで", "4=KO:君の声"), lines);
+        // Ready-row replay and worker progress are dispatched on different
+        // threads. Every indexed value must arrive once; their interleaving
+        // is not part of the translation contract.
+        List<String> indexedProgress = new ArrayList<>(lines);
+        Collections.sort(indexedProgress);
+        assertEquals(Arrays.asList("0=KO:君の声", "1=", "2=[Instrumental]", "3=KO:夜明け / KO:まで", "4=KO:君の声"), indexedProgress);
         assertEquals(Collections.singletonList(LocalAiModels.LIGHT.fileName), backend.loads);
         assertEquals(Collections.singletonList(4), backend.threads);
         LocalAiRuntime.Status status = runtime.status();
