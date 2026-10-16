@@ -161,6 +161,16 @@ final class SettingsKit {
         return view;
     }
 
+    TextView brandTitle() {
+        TextView view = largeTitle("ivLyrics");
+        SpannableString brand = new SpannableString("ivLyrics");
+        brand.setSpan(new FontSpan(AppFonts.brand(context, 800)), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        brand.setSpan(new FontSpan(AppFonts.brand(context, 250)), 2, brand.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        view.setText(brand);
+        view.setTextDirection(View.TEXT_DIRECTION_LTR);
+        return view;
+    }
+
     LinearLayout sectionHeader(String title, String subtitle) {
         LinearLayout header = vertical();
         header.setPaddingRelative(dp(4), 0, dp(4), dp(9));

@@ -11,6 +11,8 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.text.Layout;
+import android.text.Spanned;
+import android.text.TextPaint;
 import android.view.Surface;
 import android.view.MotionEvent;
 import android.view.View;
@@ -63,7 +65,37 @@ public final class SettingsUiRegressionTest {
     @Test public void germanLandscapeLargeText() throws Exception { scenario("de", 2f, 568, 320, true); }
     @Test public void arabicRtlLargeText() throws Exception { scenario("ar", 1.6f, 320, 640, false); }
 
-    private void scenario(String language, float fontScale, int width, int height, boolean landscape) throws Exception {
+    @Test public void homeBrandingLightAndDark() {
+        capturePrefix = "branding-home";
+        launch("ko", 1f, false);
+        onMain(() -> activity.settings("home"));
+        for (int index = 0; index < 2; index++) {
+            awaitWindow(activity.getWindow().getDecorView());
+            onMain(() -> assertBrandHeading("ko"));
+            boolean dark = ((SettingsKit) activity.value("settingsKit")).p.dark;
+            screenshot("branding-home-" + (dark ? "dark" : "light") + "-window");
+            tap(activity.view("settingsThemeButton"));
+            awaitWindow(activity.getWindow().getDecorView());
+            onMain(() -> assertEquals("native theme action rebuilds the settings home", !dark,
+                    ((SettingsKit) activity.value("settingsKit")).p.dark));
+        }
+        onMain(() -> {
+            activity.settings("general");
+            assertEquals(AppI18n.t("ko", "tab.general"),
+                    ((TextView) activity.view("settingsNavTitle")).getText().toString());
+            assertEquals(AppI18n.t("ko", "settings.back"),
+                    activity.view("settingsNavBackButton").getContentDescription());
+        });
+        tap(activity.view("settingsNavBackButton"));
+        awaitWindow(activity.getWindow().getDecorView());
+        onMain(() -> assertBrandHeading("ko"));
+        tap(activity.view("settingsNavBackButton"));
+        awaitWindow(activity.getWindow().getDecorView());
+        onMain(() -> assertEquals("native close action still closes settings", View.GONE,
+                activity.view("settingsPanel").getVisibility()));
+    }
+
+    private void launch(String language, float fontScale, boolean landscape) {
         expectedLandscape = landscape;
         instrumentation.getUiAutomation().setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0);
         instrumentation.waitForIdleSync();
@@ -78,6 +110,10 @@ public final class SettingsUiRegressionTest {
         instrumentation.waitForIdleSync();
         awaitWindow(activity.getWindow().getDecorView());
         assertEquals(fontScale, activity.getResources().getConfiguration().fontScale, 0.01f);
+    }
+
+    private void scenario(String language, float fontScale, int width, int height, boolean landscape) throws Exception {
+        launch(language, fontScale, landscape);
         final String prefix = language + "-" + width + "x" + height + "-font" + fontScale;
         capturePrefix = prefix;
         screenshot(prefix + "-window-initial");
@@ -96,6 +132,7 @@ public final class SettingsUiRegressionTest {
                 render(panel, width, height);
                 save(panel, prefix + "-settings-" + tab);
                 assertControls(panel);
+                if ("home".equals(tab)) assertBrandHeading(language);
                 assertMinimum(activity.view("settingsSearchInput"), "settings search");
                 assertChevron((TextView) activity.view("uiLanguageSelectButton"));
                 assertChevron((TextView) activity.view("outputLanguageSelectButton"));
@@ -495,6 +532,74 @@ public final class SettingsUiRegressionTest {
             ViewGroup group = (ViewGroup) root;
             for (int index = 0; index < group.getChildCount(); index++) assertControls(group.getChildAt(index));
         }
+    }
+
+    private void assertBrandHeading(String language) {
+        TextView title = (TextView) ((ViewGroup) activity.view("settingsHomePage")).getChildAt(0);
+        assertEquals("one adjacent brand label", "ivLyrics", title.getText().toString());
+        assertEquals("existing title size", android.util.TypedValue.applyDimension(
+                        android.util.TypedValue.COMPLEX_UNIT_SP, 28f, activity.getResources().getDisplayMetrics()),
+                title.getTextSize(), .01f);
+        assertEquals("neutral title color", ((SettingsKit) activity.value("settingsKit")).p.text,
+                title.getCurrentTextColor());
+        assertEquals("Latin brand direction in every locale", View.TEXT_DIRECTION_LTR, title.getTextDirection());
+        assertTrue("brand remains an accessibility heading", title.isAccessibilityHeading());
+        AccessibilityNodeInfo node = title.createAccessibilityNodeInfo();
+        assertEquals("single readable accessibility label", "ivLyrics", node.getText().toString());
+        assertTrue(node.isHeading());
+        node.recycle();
+        Layout layout = title.getLayout();
+        assertNotNull("native brand text layout", layout);
+        assertEquals("brand fits even with large text", 1, layout.getLineCount());
+        assertEquals(0, layout.getEllipsisCount(0));
+        assertTrue("native title height fits", layout.getHeight() <= title.getHeight()
+                - title.getCompoundPaddingTop() - title.getCompoundPaddingBottom());
+        assertTrue("adjacent LTR runs", layout.getPrimaryHorizontal(0) < layout.getPrimaryHorizontal(2)
+                && layout.getPrimaryHorizontal(2) < layout.getPrimaryHorizontal(8));
+        Spanned label = (Spanned) title.getText();
+        SettingsKit.FontSpan[] spans = label.getSpans(0, label.length(), SettingsKit.FontSpan.class);
+        assertEquals("only the two brand runs", 2, spans.length);
+        for (SettingsKit.FontSpan span : spans) {
+            int start = label.getSpanStart(span);
+            assertTrue("brand run starts at iv or Lyrics", start == 0 || start == 2);
+            assertEquals(start == 0 ? 2 : 8, label.getSpanEnd(span));
+            TextPaint paint = new TextPaint(title.getPaint());
+            span.updateDrawState(paint);
+            assertEquals("actual native typeface weight", start == 0 ? 800 : 250, paint.getTypeface().getWeight());
+            assertFalse("uses real outlines without synthetic bold", paint.isFakeBoldText());
+            if (start == 2) {
+                long actual = brandInk(paint);
+                TextPaint reference = new TextPaint(paint);
+                reference.setTypeface(AppFonts.brand(activity, 200));
+                long light = brandInk(reference);
+                reference.setTypeface(AppFonts.brand(activity, 300));
+                long regular = brandInk(reference);
+                assertTrue("250 renders between 200 and 300, not a rounded static weight: "
+                        + light + " < " + actual + " < " + regular, light < actual && actual < regular);
+                android.util.Log.i("SettingsUiRegression", "Brand accepted: locale=" + language
+                        + ", title=28sp/" + title.getTextSize() + "px, weights=800/250, Lyrics ink at 200/250/300="
+                        + light + "/" + actual + "/" + regular);
+            }
+        }
+        assertEquals("localized settings nav label", AppI18n.t(language, "settings.title"),
+                ((TextView) activity.view("settingsNavTitle")).getText().toString());
+        assertEquals("localized close label", AppI18n.t(language, "button.close"),
+                activity.view("settingsNavBackButton").getContentDescription());
+        assertTrue("existing search remains available", activity.view("settingsSearchInput").isShown());
+    }
+
+    private long brandInk(TextPaint source) {
+        TextPaint paint = new TextPaint(source);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(96f);
+        Bitmap pixels = Bitmap.createBitmap(512, 144, Bitmap.Config.ARGB_8888);
+        new Canvas(pixels).drawText("Lyrics", 8f, 108f, paint);
+        long ink = 0;
+        for (int y = 0; y < pixels.getHeight(); y++) for (int x = 0; x < pixels.getWidth(); x++) {
+            ink += Color.alpha(pixels.getPixel(x, y));
+        }
+        pixels.recycle();
+        return ink;
     }
 
     private int assertCenteredProviderBadges(View root, int size) {

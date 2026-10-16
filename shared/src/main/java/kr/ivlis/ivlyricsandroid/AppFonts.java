@@ -2,11 +2,13 @@ package kr.ivlis.ivlyricsandroid;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.util.SparseArray;
 
 final class AppFonts {
     private static Typeface regular;
     private static Typeface semiBold;
     private static Typeface bold;
+    private static final SparseArray<Typeface> brandWeights = new SparseArray<>(2);
 
     private AppFonts() {
     }
@@ -30,6 +32,20 @@ final class AppFonts {
             bold = load(context, "fonts/Pretendard-Bold.ttf", Typeface.BOLD);
         }
         return bold;
+    }
+
+    /** The bundled variable outlines preserve exact brand weights, including 250, on API 26+. */
+    static Typeface brand(Context context, int weight) {
+        Typeface typeface = brandWeights.get(weight);
+        if (typeface == null) {
+            typeface = new Typeface.Builder(context.getAssets(), "fonts/ivLyricsBrand-Variable.ttf")
+                    .setFontVariationSettings("'wght' " + weight)
+                    .setWeight(weight)
+                    .setItalic(false)
+                    .build();
+            brandWeights.put(weight, typeface);
+        }
+        return typeface;
     }
 
     static Typeface byWeight(Context context, String weight) {

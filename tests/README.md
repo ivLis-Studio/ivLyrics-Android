@@ -96,6 +96,12 @@ The UI workflow also runs the whole unfiltered native suite and collects first-u
 Settings scenarios wait for the requested real orientation and include English at 1.8x text
 in a 280dp landscape panel. This catches duplicate cutout padding squeezing a password field
 below 48dp; the settings shell applies safe-area insets once.
+The home heading checks retain the 28sp neutral large title and a single accessible
+`ivLyrics` label, with actual native 800/250 typefaces. Native raster coverage must
+place the 250 `Lyrics` outlines between 200 and 300 rather than rounding to either
+static weight. Every settings locale/large-text scenario checks the heading; the
+focused `homeBrandingLightAndDark` scenario captures both native window themes and
+taps theme, Back and Close while retaining localized navigation/search labels.
 For local screenshot retention without UTP cleanup, assemble/install the debug app and its
 androidTest APK, run the same class with `adb shell am instrument -w -r -e class
 kr.ivlis.ivlyricsandroid.FirstUseUiRegressionTest

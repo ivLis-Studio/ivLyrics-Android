@@ -5010,7 +5010,7 @@ public class BaseLyricsActivity extends Activity implements
     private LinearLayout buildSettingsHomePage() {
         SettingsKit kit = settingsKit;
         LinearLayout page = kit.vertical();
-        page.addView(kit.largeTitle(ui("settings.title")), matchWrap());
+        page.addView(kit.brandTitle(), matchWrap());
 
         LinearLayout searchBox = kit.horizontal();
         searchBox.setBackground(kit.rect(kit.p.surface2, 10f, kit.p.line2, 1f));
