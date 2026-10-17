@@ -31,6 +31,8 @@ public final class LyricsCenterRegression extends TestView {
     private String emptyMessage, emptyFallbackMessage = "";
     private boolean emptyLoading, karaoke, testSoftUpdate;
     private final Map<Object, Object> normalizedSpeakerKeys = new HashMap<>();
+    // Geometry fixtures only need the cache container cleared by production setResult.
+    private final Map<Integer, Object> lineRenderInputs = new HashMap<>();
     private final Map<Object, Object> rowLayoutCache = new HashMap<>();
     private float animatedVocalAnchorOffsetPx, vocalAnchorTransitionStartPx, vocalAnchorTransitionTargetPx;
     private long vocalAnchorTransitionStartUptimeMs, retainedVocalAnchorPositionMs;
@@ -406,10 +408,12 @@ public final class LyricsCenterRegression extends TestView {
         for (boolean soft : new boolean[] {false, true}) {
             rows = beginReflowFixture(300L, 0L);
             testSoftUpdate = soft;
+            lineRenderInputs.put(0, new Object());
             setResult(new LyricsResult());
             require(rows.stream().allMatch(row -> row.reflow == null) && !rowReflowActive,
                     "setResult clears previous-track row state before hard/soft update");
             require(previousFrameLayouts.isEmpty(), "setResult invalidates stored baseline geometry");
+            require(lineRenderInputs.isEmpty(), "setResult invalidates cached line inputs before hard/soft update");
         }
         rows = beginReflowFixture(300L, 0L);
         onSizeChanged(1080, 2400, 2400, 1080);
