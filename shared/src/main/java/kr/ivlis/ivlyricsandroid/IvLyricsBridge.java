@@ -206,6 +206,7 @@ public final class IvLyricsBridge {
                 durationMs, positionMs, SystemClock.elapsedRealtime(), speed, playing,
                 sameTrack ? previous.artwork : null, artworkUri,
                 sameTrack && previous.spotifyAutomix,
+                sameTrack && previous.spotifyContextKnown,
                 sameTrack ? previous.automixFadeInStartMs : 0,
                 sameTrack ? previous.automixFadeInCueMs : 0,
                 sameTrack ? previous.automixFadeOverlapMs : 0);
@@ -728,6 +729,8 @@ public final class IvLyricsBridge {
                     && !next.isrc.isEmpty() && !next.isrc.equals(track.isrc);
             track = next;
             if (next == null || !next.hasUsableMetadata()) {
+                timeline.reset();
+                djOffset = 0L;
                 if (!key.isEmpty()) {
                     generation++;
                     key = "";
@@ -741,7 +744,7 @@ public final class IvLyricsBridge {
             }
             long nowPosition = next.positionNow();
             djOffset = Math.max(0, timeline.update(next.stableKey(), nowPosition, next.playing,
-                    next.spotifyAutomix, next.isSpotifyDjSegment(), next.automixFadeInStartMs,
+                    next.spotifyAutomix, next.isSpotifyDjSegment(), next.spotifyContextKnown, next.automixFadeInStartMs,
                     next.automixFadeInCueMs, next.automixFadeOverlapMs, SystemClock.elapsedRealtime()) - nowPosition);
             if (!key.equals(next.stableKey()) || enriched) {
                 key = next.stableKey();
@@ -885,6 +888,10 @@ public final class IvLyricsBridge {
             ai.shutdown();
             furigana.shutdown();
             settings.shutdown();
+        }
+
+        @Override public void onExplicitSeek(String trackKey, long positionMs, long elapsedRealtimeMs) {
+            timeline.registerExplicitSeek(trackKey, positionMs, elapsedRealtimeMs);
         }
 
         String detectLanguage(LyricsResult value) {

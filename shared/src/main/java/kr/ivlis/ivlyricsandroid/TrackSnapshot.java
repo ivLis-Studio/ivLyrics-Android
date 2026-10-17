@@ -30,6 +30,7 @@ final class TrackSnapshot {
     final Bitmap artwork;
     final String artworkUri;
     final boolean spotifyAutomix;
+    final boolean spotifyContextKnown;
     final long automixFadeInStartMs;
     final long automixFadeInCueMs;
     final long automixFadeOverlapMs;
@@ -89,6 +90,31 @@ final class TrackSnapshot {
             long automixFadeInCueMs,
             long automixFadeOverlapMs
     ) {
+        this(title, artist, album, packageName, mediaId, isrc, durationMs, positionMs,
+                lastPositionUpdateElapsedMs, playbackSpeed, playing, artwork, artworkUri,
+                spotifyAutomix, false, automixFadeInStartMs, automixFadeInCueMs, automixFadeOverlapMs);
+    }
+
+    TrackSnapshot(
+            String title,
+            String artist,
+            String album,
+            String packageName,
+            String mediaId,
+            String isrc,
+            long durationMs,
+            long positionMs,
+            long lastPositionUpdateElapsedMs,
+            float playbackSpeed,
+            boolean playing,
+            Bitmap artwork,
+            String artworkUri,
+            boolean spotifyAutomix,
+            boolean spotifyContextKnown,
+            long automixFadeInStartMs,
+            long automixFadeInCueMs,
+            long automixFadeOverlapMs
+    ) {
         this.title = clean(title);
         this.artist = clean(artist);
         this.album = clean(album);
@@ -106,6 +132,7 @@ final class TrackSnapshot {
         this.artwork = artwork;
         this.artworkUri = clean(artworkUri);
         this.spotifyAutomix = spotifyAutomix;
+        this.spotifyContextKnown = spotifyContextKnown;
         this.automixFadeInStartMs = Math.max(0L, automixFadeInStartMs);
         this.automixFadeInCueMs = Math.max(0L, automixFadeInCueMs);
         this.automixFadeOverlapMs = Math.max(0L, automixFadeOverlapMs);
@@ -138,7 +165,7 @@ final class TrackSnapshot {
     TrackSnapshot withIsrc(String value) {
         return new TrackSnapshot(title, artist, album, packageName, mediaId, value, durationMs,
                 positionMs, lastPositionUpdateElapsedMs, playbackSpeed, playing, artwork, artworkUri,
-                spotifyAutomix, automixFadeInStartMs, automixFadeInCueMs, automixFadeOverlapMs);
+                spotifyAutomix, spotifyContextKnown, automixFadeInStartMs, automixFadeInCueMs, automixFadeOverlapMs);
     }
 
     boolean hasUsableMetadata() {
@@ -245,6 +272,7 @@ final class TrackSnapshot {
                 && Objects.equals(mediaId, that.mediaId)
                 && Objects.equals(artworkUri, that.artworkUri)
                 && spotifyAutomix == that.spotifyAutomix
+                && spotifyContextKnown == that.spotifyContextKnown
                 && automixFadeInStartMs == that.automixFadeInStartMs
                 && automixFadeInCueMs == that.automixFadeInCueMs
                 && automixFadeOverlapMs == that.automixFadeOverlapMs
@@ -264,6 +292,7 @@ final class TrackSnapshot {
                 artworkUri,
                 artwork != null,
                 spotifyAutomix,
+                spotifyContextKnown,
                 automixFadeInStartMs,
                 automixFadeInCueMs,
                 automixFadeOverlapMs

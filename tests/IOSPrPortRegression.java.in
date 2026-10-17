@@ -1,0 +1,399 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import java.lang.reflect.*;
+import java.util.*;
+
+/** Production declarations, synthetic views/animator/clock. No Android raster or device assertions. */
+public final class IOSPrPortRegression {
+    static int checks;
+    static void check(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+    static Object field(Object instance, String name) throws Exception {
+        Field field = instance.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(instance);
+    }
+    static TrackSnapshot track(String id, String album, boolean automix, boolean known, long position) {
+        return new TrackSnapshot("Song", "Artist", album, "com.spotify.music", "spotify:track:" + id,
+                "", 60_000, position, SystemClock.now, 1f, false, null, "", automix, known, 300, 1300, 0);
+    }
+
+    static void rules() throws Exception {
+        Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        unsafeField.setAccessible(true);
+        sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+        // Only invoke the production rule parser/cache; no Context, keystore or credentials are created.
+        AiLyricsSettings settings = (AiLyricsSettings) unsafe.allocateInstance(AiLyricsSettings.class);
+        Map<String, Object> values = new HashMap<>();
+        SharedPreferences prefs = (SharedPreferences) Proxy.newProxyInstance(
+                SharedPreferences.class.getClassLoader(), new Class<?>[]{SharedPreferences.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("getString") || method.getName().equals("getBoolean"))
+                        return values.getOrDefault((String) args[0], args[1]);
+                    throw new AssertionError("Unexpected preference operation: " + method.getName());
+                });
+        Field prefsField = AiLyricsSettings.class.getDeclaredField("prefs");
+        prefsField.setAccessible(true);
+        prefsField.set(settings, prefs);
+        Method load = AiLyricsSettings.class.getDeclaredMethod("loadRuleConfig");
+        load.setAccessible(true);
+        Object initial = load.invoke(settings);
+        for (int i = 0; i < 100; i++) {
+            values.put("pip_lyrics_size_percent", i);
+            check(load.invoke(settings) == initial, "Unrelated settings must reuse parsed rules");
+        }
+        values.put("translation_enabled", true);
+        Object translation = load.invoke(settings);
+        check(translation != initial, "Legacy translation changes invalidate rules");
+        check(((AiLyricsSettings.LanguageRule) field(translation, "defaultRule")).translationEnabled,
+                "Legacy translation value preserved");
+        values.put("pronunciation_enabled", true);
+        Object pronunciation = load.invoke(settings);
+        check(pronunciation != translation, "Legacy pronunciation changes invalidate rules");
+        values.put("target_lang", "default=ko;ja=en");
+        Object target = load.invoke(settings);
+        check(target != pronunciation, "Legacy target changes invalidate rules");
+        check(((AiLyricsSettings.LanguageRule) field(target, "defaultRule")).targetLang.equals("ko"),
+                "Legacy target syntax preserved");
+        String json = "{\"default\":{\"translation\":false,\"target\":\"ja\"},"
+                + "\"rules\":{\"ko\":{\"translation\":true,\"pronunciation\":false,\"target\":\"en\"}}}";
+        values.put("language_rules_v2", json);
+        Object parsed = load.invoke(settings);
+        Map<?, ?> languageRules = (Map<?, ?>) field(parsed, "languageRules");
+        check(((AiLyricsSettings.LanguageRule) languageRules.get("ko")).targetLang.equals("en"),
+                "Stored per-language rules survive caching");
+        Method withTarget = parsed.getClass().getDeclaredMethod("withTarget", String.class);
+        withTarget.setAccessible(true);
+        Object output = withTarget.invoke(parsed, "ko");
+        check(((AiLyricsSettings.LanguageRule) field(output, "defaultRule")).targetLang.equals("ko"),
+                "Output language applied separately");
+        check(((AiLyricsSettings.LanguageRule) field(parsed, "defaultRule")).targetLang.equals("ja"),
+                "Output language does not mutate cached source rules");
+        values.put("language_rules_v2", "{malformed");
+        Object malformed = load.invoke(settings);
+        check(malformed != parsed && load.invoke(settings) == malformed, "Malformed rules cache legacy fallback");
+        values.clear();
+        Object reset = load.invoke(settings);
+        check(!((AiLyricsSettings.LanguageRule) field(reset, "defaultRule")).translationEnabled,
+                "Removed preferences restore defaults");
+        System.out.println("Parsed language rules: reuse, legacy inputs, replacement, output language and malformed/reset passed");
+    }
+
+    static class AiLyricsRepository {
+        // DISPLAY_TEXT
+    }
+    static class AnnotationRenderer {
+        List<CulturalAnnotation> culturalAnnotations = Collections.emptyList();
+        Map<Integer, LineRenderInput> lineRenderInputs = new HashMap<>();
+        Map<String, Object> rowLayoutCache = new HashMap<>();
+        String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
+        int culturalAnnotationFontSize = 14, culturalAnnotationFontWeight = 300, culturalAnnotationOpacity = 60;
+        void invalidateFrameGroupCache() {} void requestLayout() {} void postInvalidateOnAnimation() {}
+        // ANNOTATIONS
+    }
+    static void annotations() {
+        AnnotationRenderer view = new AnnotationRenderer();
+        List<LyricsLine.Syllable> syllables = List.of(
+                new LyricsLine.Syllable("달빛", 1000, 3000, true, true, "glow", "a", "#ffffff", ""));
+        LyricsLine line = new LyricsLine(1000, 3000, "달빛 아래", syllables);
+        CulturalAnnotation note = new CulturalAnnotation(0, "달빛", "moonlight");
+        view.setCulturalAnnotations(List.of(note), "pretendard", 14, 300, 60);
+        var input = view.lineRenderInput(line, 0);
+        for (int frame = 0; frame < 100; frame++)
+            check(view.lineRenderInput(line, 0) == input, "Stable frames reuse prepared annotations");
+        check(input.annotations.equals(CulturalAnnotation.forLine(List.of(note), 0, line.text)),
+                "Prepared annotation matching equals original lookup");
+        view.setCulturalAnnotations(List.of(note), "pretendard", 14, 300, 60);
+        check(view.lineRenderInput(line, 0) == input, "Equivalent annotation updates keep the cache");
+        CulturalAnnotation next = new CulturalAnnotation(0, "아래", "underneath");
+        view.setCulturalAnnotations(List.of(next), "pretendard", 14, 300, 60);
+        check(view.lineRenderInput(line, 0).annotations.equals(List.of(next)), "New annotations invalidate inputs");
+        LyricsLine replacement = new LyricsLine(1000, 5000, "아래의 별", syllables);
+        check(view.lineRenderInput(replacement, 0).line == replacement, "Same-index replacement uses new line");
+        check(line.syllables == syllables || line.syllables.get(0) == syllables.get(0), "Source timing is not changed");
+        view.setCulturalAnnotations(Collections.emptyList(), "pretendard", 14, 300, 60);
+        check(view.lineRenderInput(line, 0).annotations.isEmpty(), "Disabling annotations clears matches");
+        LyricsLine.VocalPart lead = new LyricsLine.VocalPart("a", "lead", "a", "vocal", "달빛", syllables);
+        LyricsLine.VocalPart backing = new LyricsLine.VocalPart("b", "background", "b", "vocal", "아래", syllables);
+        LyricsLine duet = new LyricsLine(1000, 3000, "", List.of(), "", "vocal", List.of(lead, backing));
+        view.setCulturalAnnotations(List.of(note, next), "pretendard", 14, 300, 60);
+        var duetInput = view.lineRenderInput(duet, 0);
+        check(duetInput.displayText.equals("달빛 / 아래") && duetInput.annotations.equals(List.of(note, next)),
+                "Vocal-only lines retain combined text and annotation order");
+        System.out.println("Line render inputs: reuse, annotation updates, replacement, disabled and vocal-only rows passed");
+    }
+
+    static class View {
+        Object params;
+        View() {} View(Object context) {}
+        void setClipChildren(boolean v) {} void setClipToPadding(boolean v) {}
+        void setBackground(Object v) {} void setGravity(int v) {}
+    }
+    static class ViewGroup extends View {
+        List<View> children = new ArrayList<>();
+        ViewGroup(Object context) { super(context); }
+        void addView(View v, Object p) { v.params = p; children.add(v); }
+        static class LayoutParams {
+            static final int MATCH_PARENT = -1, WRAP_CONTENT = -2;
+            int width, height, leftMargin, rightMargin, topMargin, bottomMargin;
+            LayoutParams(int w, int h) { width = w; height = h; }
+        }
+    }
+    static class FrameLayout extends ViewGroup {
+        FrameLayout(Object context) { super(context); }
+        static class LayoutParams extends ViewGroup.LayoutParams { LayoutParams(int w, int h) { super(w,h); } }
+    }
+    static class LinearLayout extends ViewGroup {
+        static final int HORIZONTAL = 0, VERTICAL = 1;
+        LinearLayout(Object context) { super(context); }
+        void setOrientation(int v) {}
+        static class LayoutParams extends ViewGroup.LayoutParams {
+            LayoutParams(int w, int h) { super(w,h); }
+            LayoutParams(int w, int h, float weight) { super(w,h); }
+        }
+    }
+    static class ImageView extends View {
+        enum ScaleType { FIT_CENTER }
+        ImageView(Object context) { super(context); }
+        void setScaleType(ScaleType v) {} void setAdjustViewBounds(boolean v) {} void setCropToPadding(boolean v) {}
+    }
+    static class TextView extends View {
+        void setSingleLine(boolean v) {} void setEllipsize(Object v) {}
+        void setIncludeFontPadding(boolean v) {} void setShadowLayer(float r,float x,float y,int color) {}
+    }
+    static class LyricsView extends View {
+        LyricsView(Object context) { super(context); }
+        void setTrackDuration(long v) {} void setResult(Object v) {} void setSupplementLoading(boolean p,boolean t) {}
+    }
+    static class Gravity { static final int CENTER_VERTICAL = 1; }
+    static class TextUtils { static class TruncateAt { static final int END = 0; } }
+    static class AppFonts { static Object bold(Object c) { return null; } static Object regular(Object c) { return null; } }
+    static class Color {
+        static final int WHITE = -1;
+        static int argb(int a,int r,int g,int b) { return (a<<24)|(r<<16)|(g<<8)|b; }
+        static int rgb(int r,int g,int b) { return argb(255,r,g,b); }
+        static int red(int c) { return (c>>16)&255; } static int green(int c) { return (c>>8)&255; }
+        static int blue(int c) { return c&255; }
+        static int HSVToColor(float[] hsv) { return 0xffdd4488; }
+        static void RGBToHSV(int r,int g,int b,float[] hsv) { hsv[0]=1; hsv[1]=.6f; hsv[2]=.8f; }
+    }
+    static class PipPage {
+        LyricsView pictureInPictureLyricsView;
+        ImageView pictureInPictureArtworkView;
+        TextView pictureInPictureTitleView, pictureInPictureArtistView;
+        TrackSnapshot currentTrack;
+        Object currentLyricsResult;
+        boolean lyricsSupplementPronunciationLoading, lyricsSupplementTranslationLoading;
+        float density = 1;
+        int dp(float n) { return Math.round(n*density); }
+        String ui(String key) { return key; }
+        long lyricsTrackDuration(long duration) { return duration; }
+        void configureLyricsViewUiText(LyricsView v) {} void configurePictureInPictureLyricsViewFromSettings(LyricsView v,float b) {}
+        Object albumFallbackDrawable() { return null; } void clipRound(View v,int radius) {}
+        TextView label(String text,float size,int color,Object font) { return new TextView(); }
+        // PIP
+    }
+    static void pip() {
+        for (float density : new float[]{1, 1.5f, 3}) for (boolean portrait : new boolean[]{true, false}) {
+            PipPage page = new PipPage(); page.density = density;
+            FrameLayout root = new FrameLayout(page);
+            if (portrait) page.buildPortraitPictureInPictureContent(root); else page.buildSquarePictureInPictureContent(root);
+            FrameLayout content = (FrameLayout) root.children.get(0);
+            FrameLayout.LayoutParams lyrics = (FrameLayout.LayoutParams) page.pictureInPictureLyricsView.params;
+            FrameLayout.LayoutParams metadata = (FrameLayout.LayoutParams) content.children.get(1).params;
+            ViewGroup.LayoutParams artwork = (ViewGroup.LayoutParams) page.pictureInPictureArtworkView.params;
+            check(lyrics.topMargin >= metadata.topMargin + artwork.height + page.dp(18), "PiP lyrics reserve cover/header space");
+            check(lyrics.leftMargin == page.dp(portrait ? 18 : 20), "Existing horizontal position preserved");
+            check(lyrics.bottomMargin == page.dp(portrait ? 18 : 16), "PiP lyrics reserve bottom inset");
+        }
+        System.out.println("Portrait/square PiP: production layout reserves artwork space at three densities");
+    }
+
+    static class MotionPreferences { static boolean animationsEnabled(Object c) { return true; } }
+    static class LinearInterpolator {}
+    static class SimpleAnimatorEndListener { Runnable end; SimpleAnimatorEndListener(Runnable r) { end=r; } }
+    static class ValueAnimator {
+        java.util.function.Consumer<ValueAnimator> update;
+        SimpleAnimatorEndListener listener;
+        long duration; float value; int cancels;
+        static ValueAnimator ofFloat(float a,float b) { return new ValueAnimator(); }
+        void setDuration(long d) { duration=d; } void setInterpolator(Object i) {}
+        void addUpdateListener(java.util.function.Consumer<ValueAnimator> c) { update=c; }
+        void addListener(SimpleAnimatorEndListener l) { listener=l; }
+        Object getAnimatedValue() { return value; } void start() {} void cancel() { cancels++; }
+        void at(float p) { value=p; update.accept(this); }
+        void end() { listener.end.run(); }
+    }
+    static class Vinyl {
+        static final long TRACK_SEQUENCE_MS = 3216;
+        static final float TRACK_RECORD_RAISED = 3120f / TRACK_SEQUENCE_MS;
+        VisualTrack displayedTrack, incomingTrack;
+        boolean animationsEnabled = true, trackChangesEnabled = true, trackHandoffCommitted, playing;
+        float trackProgress, tonearmEngagement;
+        ValueAnimator trackAnimator;
+        Object getContext() { return null; } boolean isShown() { return true; }
+        void invalidate() {} void animateTonearmEngagement(float target,long duration) {}
+        // VINYL
+    }
+    static void vinyl() {
+        Vinyl view = new Vinyl();
+        TrackSnapshot a = track("1111111111111111111111", "old", false, false, 0);
+        TrackSnapshot b = track("2222222222222222222222", "initial", false, false, 0);
+        Bitmap artA = new Bitmap(), artB = new Bitmap();
+        view.setTrack(a, artA, false);
+        view.setTrack(b, null, true);
+        ValueAnimator animator = view.trackAnimator;
+        check(animator != null && view.incomingTrack.artwork == null, "Fallback transition starts before artwork exists");
+        animator.at(.4f);
+        TrackSnapshot hydrated = track("2222222222222222222222", "hydrated", false, false, 1000);
+        view.setTrack(hydrated, artB, false);
+        check(view.trackAnimator == animator && animator.cancels == 0 && view.trackProgress == .4f,
+                "Hydration must not collapse or restart transition");
+        check(view.incomingTrack.album.equals("hydrated") && view.incomingTrack.artwork == artB,
+                "Incoming metadata and artwork update together");
+        view.setTrack(b, null, true);
+        check(view.trackAnimator == animator && view.incomingTrack.artwork == artB, "Repeated snapshot preserves prepared artwork");
+        view.setArtwork("stale", new Bitmap());
+        check(view.incomingTrack.artwork == artB && view.displayedTrack.artwork == artA, "Stale track artwork ignored");
+        animator.at(.99f);
+        view.setTrack(hydrated, artB, false);
+        check(view.displayedTrack.album.equals("hydrated") && view.trackAnimator == animator,
+                "Metadata after handoff refreshes displayed and incoming record");
+        animator.end();
+        check(view.incomingTrack == null && view.displayedTrack.key.equals(b.stableKey()), "Transition ends on latest record");
+        // A rapid return to the outgoing track must not leave the abandoned incoming track selected.
+        view.setTrack(a, artA, true);
+        view.setTrack(b, artB, true);
+        view.trackAnimator.end();
+        check(view.displayedTrack.key.equals(b.stableKey()), "Rapid return selects current track");
+        // The same request guard used by repository artwork delivery rejects older same-track URLs.
+        int[] deliveries = {0};
+        RequestCancellation oldRequest = new RequestCancellation();
+        Runnable oldArt = RequestCancellation.guard(oldRequest, () -> deliveries[0]++);
+        oldRequest.cancel(); oldArt.run();
+        RequestCancellation.guard(new RequestCancellation(), () -> deliveries[0]++).run();
+        check(deliveries[0] == 1, "Cancelled artwork request cannot overwrite replacement");
+        System.out.println("LP transition: nonblocking fallback, incoming hydration, stable animator, rapid return and stale artwork guards passed");
+    }
+
+    static class Bundle extends HashMap<String,Object> {}
+    static class MediaMetadata extends Bundle {
+        long getLong(String key) { Object v=get(key); return v instanceof Number ? ((Number)v).longValue() : 0; }
+    }
+    static class PlaybackState {
+        Bundle extras = new Bundle();
+        Bundle getExtras() { return extras; }
+    }
+    static class MediaController {
+        Bundle extras = new Bundle(); String queueTitle = "";
+        PlaybackState state = new PlaybackState();
+        List<Long> seeks = new ArrayList<>();
+        Bundle getExtras() { return extras; } String getQueueTitle() { return queueTitle; }
+        PlaybackState getPlaybackState() { return state; }
+        MediaController getTransportControls() { return this; } void seekTo(long position) { seeks.add(position); }
+    }
+    static class NowPlayingService {
+        static final String SPOTIFY_DJ_PLAYLIST_ID = "37i9dQZF1EYkqdzj48dyYq";
+        static final Set<Listener> LISTENERS = new LinkedHashSet<>();
+        static final Handler MAIN = new Handler(Looper.getMainLooper());
+        static TrackSnapshot latestSnapshot;
+        static MediaController activeController;
+        static TrackSnapshot getLatestSnapshot() { return latestSnapshot; }
+        static String firstNonEmpty(String... values) { for (String v:values) if (v!=null&&!v.trim().isEmpty()) return v.trim(); return ""; }
+        static String metadataString(MediaMetadata m,String key) { Object v=m.get(key); return v==null?"":v.toString().trim(); }
+        // CONTEXT
+    }
+    static void context() {
+        MediaController controller = new MediaController();
+        var unknown = NowPlayingService.spotifyAutomixMetadata(controller, null);
+        check(!unknown.contextKnown && !unknown.enabled, "Missing metadata stays unknown");
+        controller.extras.put("automix.mode", "off");
+        check(!NowPlayingService.spotifyAutomixMetadata(controller, null).contextKnown,
+                "Disabled item automix alone does not establish a non-DJ context");
+        controller.queueTitle = "Spotify";
+        controller.extras.put("agentic_product_type", "music");
+        check(!NowPlayingService.spotifyAutomixMetadata(controller, null).contextKnown,
+                "Generic queue/item metadata cannot establish a non-DJ context");
+        controller.extras.put("context_uri", "spotify:playlist:normal");
+        var normal = NowPlayingService.spotifyAutomixMetadata(controller, null);
+        check(normal.contextKnown && !normal.enabled, "Confirmed playlist is known non-DJ");
+        controller.extras.put("context_uri", "spotify:playlist:" + NowPlayingService.SPOTIFY_DJ_PLAYLIST_ID);
+        var dj = NowPlayingService.spotifyAutomixMetadata(controller, null);
+        check(dj.contextKnown && dj.enabled, "DJ playlist remains authoritative");
+        controller.state.extras.put("context_uri", "spotify:album:current");
+        var playbackContext = NowPlayingService.spotifyAutomixMetadata(controller, null);
+        check(playbackContext.contextKnown && !playbackContext.enabled,
+                "Current playback extras override an older session context");
+        controller.state.extras.clear();
+        MediaMetadata metadata = new MediaMetadata(); metadata.put("spotify.context_uri", "spotify:album:normal");
+        controller.extras.clear();
+        check(NowPlayingService.spotifyAutomixMetadata(controller, metadata).contextKnown, "Namespaced metadata context detected");
+        TrackSnapshot known = track("2222222222222222222222", "", false, true, 0);
+        TrackSnapshot sparse = track("2222222222222222222222", "", false, false, 0);
+        check(known.withIsrc("JPP302400443").spotifyContextKnown, "ISRC enrichment preserves context-known state");
+        check(!known.equals(sparse), "Context updates are observable despite identical song metadata");
+        System.out.println("Spotify context: unknown/non-DJ/DJ, namespaced metadata, enrichment and equality passed");
+    }
+
+    static class SeekPage implements NowPlayingService.Listener {
+        TrackSnapshot currentTrack;
+        final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
+        long pendingSeekPositionMs = -1, pendingSeekUptimeMs, lastSeekCommandUptimeMs, lastSeekCommandPositionMs;
+        long currentSpotifyDjLyricsOffsetMs = 300, paintedLyrics, paintedProgress;
+        int currentGlobalSyncOffsetMs = 100, currentTrackSyncOffsetMs = 200, currentBluetoothLyricsOffsetMs = 50;
+        static final long PENDING_SEEK_ACK_TOLERANCE_MS = 700, PENDING_SEEK_HOLD_MS = 1500;
+        final List<Runnable> commands = new ArrayList<>();
+        public void onNowPlayingChanged(TrackSnapshot snapshot) {}
+        void setLyricsPlaybackPositionOnViews(long p) { paintedLyrics=p; } void updateLyricPreview(long p) {}
+        void updateProgressViews(long p,long d) { paintedProgress=p; } void updateYouTubeBackgroundPlaybackState() {}
+        void runTransportCommand(Runnable r) { commands.add(r); }
+        // SEEK
+    }
+    static class EngineSeek implements NowPlayingService.Listener {
+        final SpotifyDjLyricsTimeline timeline = new SpotifyDjLyricsTimeline();
+        public void onNowPlayingChanged(TrackSnapshot snapshot) {}
+        // ENGINE_SEEK
+    }
+    static void seed(SpotifyDjLyricsTimeline timeline, String key) {
+        timeline.update("old", 10000, true, true, false, true, 0,0,1000,100);
+        timeline.update(key, 6000, true, true, false, true, 300,1300,0,1000);
+    }
+    static void seeks() {
+        SystemClock.now = 1000;
+        SeekPage page = new SeekPage(); EngineSeek engine = new EngineSeek();
+        page.currentTrack = track("2222222222222222222222", "", true, true, 6000);
+        String key = page.currentTrack.stableKey();
+        seed(page.spotifyDjLyricsTimeline, key); seed(engine.timeline, key);
+        NowPlayingService.LISTENERS.clear(); NowPlayingService.LISTENERS.add(page); NowPlayingService.LISTENERS.add(engine);
+        NowPlayingService.activeController = new MediaController(); NowPlayingService.latestSnapshot = page.currentTrack;
+        SystemClock.now = 1050;
+        page.seekToPosition(1650); // lyric time maps to player time 1000 with all existing offsets.
+        check(page.pendingSeekPositionMs == 1000 && page.paintedLyrics == 1650 && page.paintedProgress == 1000,
+                "Lyric seek preserves source timing and existing offsets");
+        for (SpotifyDjLyricsTimeline timeline : List.of(page.spotifyDjLyricsTimeline, engine.timeline)) {
+            check(timeline.update(key,1000,false,true,false,true,300,1300,0,1100)==1300,
+                    "Shared page and inline engine both register explicit seek before acknowledgement");
+        }
+        page.seekPlayerBy(5000);
+        check(page.pendingSeekPositionMs == 6000, "Relative skip starts at optimistic seek position");
+        page.seekPlayerBy(-5000);
+        check(page.pendingSeekPositionMs == 1000, "Repeated relative skip preserves pending navigation");
+        // Commands run after the user selected a different track: do not seek or cancel that handoff.
+        NowPlayingService.latestSnapshot = track("3333333333333333333333", "", true, true, 4000);
+        for (Runnable command : page.commands) command.run();
+        check(NowPlayingService.activeController.seeks.isEmpty(), "Queued seek never targets a replacement track");
+        System.out.println("Explicit seeks: lyric offsets, shared page/inline delivery, relative skips and stale queued commands passed");
+    }
+
+    public static void main(String[] args) throws Exception {
+        rules(); annotations(); pip(); vinyl(); context(); seeks();
+        System.out.println("iOS PR7/8 Android adaptations: " + checks + " assertions passed (host collaborators; no device/visual acceptance)");
+    }
+}

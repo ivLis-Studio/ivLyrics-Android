@@ -555,11 +555,15 @@ final class VinylPlayerModeView extends FrameLayout {
                 invalidate();
                 return;
             }
-            if (displayedTrack.key.equals(next.key)) {
+            // Hydrate the incoming record without restarting/collapsing its animation (iOS PR #8, oneulddu).
+            if (incomingTrack != null && incomingTrack.key.equals(next.key)) {
+                incomingTrack = next.withFallbackArtwork(incomingTrack.artwork);
+                if (trackHandoffCommitted) displayedTrack = incomingTrack;
+                invalidate();
+                return;
+            }
+            if (incomingTrack == null && displayedTrack.key.equals(next.key)) {
                 displayedTrack = next.withFallbackArtwork(displayedTrack.artwork);
-                if (incomingTrack != null && incomingTrack.key.equals(next.key)) {
-                    incomingTrack = next.withFallbackArtwork(incomingTrack.artwork);
-                }
                 invalidate();
                 return;
             }

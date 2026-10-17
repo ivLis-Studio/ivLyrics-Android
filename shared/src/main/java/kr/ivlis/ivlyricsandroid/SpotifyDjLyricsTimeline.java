@@ -24,6 +24,7 @@ final class SpotifyDjLyricsTimeline {
             boolean playing,
             boolean spotifyAutomix,
             boolean spotifyDjSegment,
+            boolean spotifyContextKnown,
             long fadeInStartMs,
             long fadeInCueMs,
             long fadeOverlapMs,
@@ -36,7 +37,14 @@ final class SpotifyDjLyricsTimeline {
         long safeFadeOverlapMs = Math.max(0L, fadeOverlapMs);
         long safeNowMs = Math.max(0L, nowMs);
 
-        if (spotifyAutomix || spotifyDjSegment) {
+        // iOS PR #8 (oneulddu): omitted context is unknown; confirmed non-DJ context ends retention.
+        if (spotifyContextKnown && !spotifyAutomix && !spotifyDjSegment) {
+            djSessionActiveUntilMs = 0L;
+            handoffPending = false;
+            lyricsOffsetMs = 0L;
+            targetOffsetMs = 0L;
+            currentFadeOverlapMs = 0L;
+        } else if (spotifyAutomix || spotifyDjSegment) {
             djSessionActiveUntilMs = safeNowMs + DJ_SESSION_RETENTION_MS;
         }
         boolean djSessionActive =
@@ -92,6 +100,15 @@ final class SpotifyDjLyricsTimeline {
 
     long offsetMs() {
         return lyricsOffsetMs;
+    }
+
+    void registerExplicitSeek(String incomingTrackKey, long playerPositionMs, long nowMs) {
+        if (!trackKey.equals(incomingTrackKey)) return;
+        handoffPending = false;
+        targetOffsetMs = lyricsOffsetMs;
+        lastPlayerPositionMs = Math.max(0L, playerPositionMs);
+        lastLyricsPositionMs = lastPlayerPositionMs + lyricsOffsetMs;
+        lastSampleAtMs = Math.max(0L, nowMs);
     }
 
     void reset() {

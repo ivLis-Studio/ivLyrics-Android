@@ -1431,7 +1431,7 @@ public class BaseLyricsActivity extends Activity implements
         if (snapshot == null || snapshot.durationMs <= 0L) {
             return;
         }
-        long current = snapshot.positionNow();
+        long current = currentPlaybackPosition(snapshot);
         seekPlayerToPosition(Math.max(0L, Math.min(snapshot.durationMs, current + deltaMs)));
     }
 
@@ -1614,6 +1614,7 @@ public class BaseLyricsActivity extends Activity implements
                 snapshot.playing,
                 snapshot.spotifyAutomix,
                 snapshot.isSpotifyDjSegment(),
+                snapshot.spotifyContextKnown,
                 snapshot.automixFadeInStartMs,
                 snapshot.automixFadeInCueMs,
                 snapshot.automixFadeOverlapMs,
@@ -2883,6 +2884,8 @@ public class BaseLyricsActivity extends Activity implements
         );
         lyricsParams.leftMargin = dp(18);
         lyricsParams.rightMargin = dp(18);
+        lyricsParams.topMargin = dp(26 + 112 + 18);
+        lyricsParams.bottomMargin = dp(18);
         content.addView(pictureInPictureLyricsView, lyricsParams);
 
         LinearLayout meta = new LinearLayout(this);
@@ -2964,6 +2967,8 @@ public class BaseLyricsActivity extends Activity implements
         );
         lyricsParams.leftMargin = dp(20);
         lyricsParams.rightMargin = dp(20);
+        lyricsParams.topMargin = dp(22 + 96 + 18);
+        lyricsParams.bottomMargin = dp(16);
         content.addView(pictureInPictureLyricsView, lyricsParams);
 
         LinearLayout meta = new LinearLayout(this);
@@ -18052,6 +18057,8 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void seekPlayerToPositionInternal(long target, long duration) {
+        TrackSnapshot snapshot = currentTrack != null ? currentTrack : NowPlayingService.getLatestSnapshot();
+        NowPlayingService.registerExplicitSeek(snapshot, target);
         long now = SystemClock.uptimeMillis();
         pendingSeekPositionMs = target;
         pendingSeekUptimeMs = now;
@@ -18065,7 +18072,13 @@ public class BaseLyricsActivity extends Activity implements
         }
         lastSeekCommandUptimeMs = now;
         lastSeekCommandPositionMs = target;
-        runTransportCommand(() -> NowPlayingService.seekTo(target));
+        String trackKey = snapshot == null ? "" : snapshot.stableKey();
+        runTransportCommand(() -> NowPlayingService.seekTo(trackKey, target));
+    }
+
+    @Override
+    public void onExplicitSeek(String trackKey, long positionMs, long elapsedRealtimeMs) {
+        spotifyDjLyricsTimeline.registerExplicitSeek(trackKey, positionMs, elapsedRealtimeMs);
     }
 
     private void runTransportCommand(Runnable command) {

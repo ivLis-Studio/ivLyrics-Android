@@ -53,6 +53,7 @@ public final class NowPlayingService extends NotificationListenerService {
 
     interface Listener {
         void onNowPlayingChanged(TrackSnapshot snapshot);
+        default void onExplicitSeek(String trackKey, long positionMs, long elapsedRealtimeMs) {}
     }
 
     static void register(Listener listener) {
@@ -140,10 +141,29 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean seekTo(long positionMs) {
+        TrackSnapshot snapshot = latestSnapshot;
+        return snapshot != null && seekTo(snapshot.stableKey(), positionMs);
+    }
+
+    static boolean seekTo(String expectedTrackKey, long positionMs) {
         MediaController controller = activeController;
-        if (controller == null) return false;
+        TrackSnapshot snapshot = latestSnapshot;
+        if (controller == null || snapshot == null || !snapshot.stableKey().equals(expectedTrackKey)) return false;
+        registerExplicitSeek(snapshot, positionMs);
         controller.getTransportControls().seekTo(Math.max(0L, positionMs));
         return true;
+    }
+
+    static void registerExplicitSeek(TrackSnapshot track, long positionMs) {
+        if (track == null) return;
+        String key = track.stableKey();
+        long target = Math.max(0L, positionMs);
+        long now = SystemClock.elapsedRealtime();
+        Runnable notify = () -> {
+            for (Listener listener : LISTENERS) listener.onExplicitSeek(key, target, now);
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) notify.run();
+        else MAIN.post(notify);
     }
 
     static String navigationDestination(boolean album) {
@@ -236,7 +256,7 @@ public final class NowPlayingService extends NotificationListenerService {
                         firstNonEmpty(next.mediaId, previous.mediaId), firstNonEmpty(next.isrc, previous.isrc),
                         next.durationMs, next.positionMs, next.lastPositionUpdateElapsedMs,
                         next.playbackSpeed, next.playing, firstNonNull(next.artwork, previous.artwork),
-                        firstNonEmpty(next.artworkUri, previous.artworkUri), next.spotifyAutomix,
+                        firstNonEmpty(next.artworkUri, previous.artworkUri), next.spotifyAutomix, next.spotifyContextKnown,
                         next.automixFadeInStartMs, next.automixFadeInCueMs, next.automixFadeOverlapMs);
             }
             publishEmbeddedSnapshot(next.hasUsableMetadata() ? next : null);
@@ -410,7 +430,7 @@ public final class NowPlayingService extends NotificationListenerService {
         return new TrackSnapshot(snapshot.title, snapshot.artist, snapshot.album,
                 snapshot.packageName, snapshot.mediaId, snapshot.isrc, snapshot.durationMs,
                 snapshot.positionMs, snapshot.lastPositionUpdateElapsedMs, snapshot.playbackSpeed,
-                snapshot.playing, artwork, snapshot.artworkUri, snapshot.spotifyAutomix,
+                snapshot.playing, artwork, snapshot.artworkUri, snapshot.spotifyAutomix, snapshot.spotifyContextKnown,
                 snapshot.automixFadeInStartMs, snapshot.automixFadeInCueMs, snapshot.automixFadeOverlapMs);
     }
 
@@ -482,6 +502,7 @@ public final class NowPlayingService extends NotificationListenerService {
                 artwork,
                 artworkUri,
                 automix.enabled,
+                automix.contextKnown,
                 automix.fadeInStartMs,
                 automix.fadeInCueMs,
                 automix.fadeOverlapMs
@@ -640,6 +661,14 @@ public final class NowPlayingService extends NotificationListenerService {
             MediaMetadata metadata
     ) {
         Bundle extras = controller == null ? null : controller.getExtras();
+        PlaybackState state = controller == null ? null : controller.getPlaybackState();
+        Bundle playbackExtras = state == null ? null : state.getExtras();
+        if (playbackExtras != null && !playbackExtras.isEmpty()) {
+            Bundle combined = new Bundle();
+            if (extras != null) combined.putAll(extras);
+            combined.putAll(playbackExtras);
+            extras = combined;
+        }
         String productType = firstNamedPlaybackValue(
                 metadata,
                 extras,
@@ -692,6 +721,7 @@ public final class NowPlayingService extends NotificationListenerService {
                 || "spotify dj".equals(queueTitle);
         return new SpotifyAutomixMetadata(
                 enabled,
+                enabled || !contextTitle.isEmpty() || !contextUri.isEmpty(),
                 namedPlaybackLong(metadata, extras, "audio.fade_in_start_time"),
                 namedPlaybackLong(metadata, extras, "automix.fade_in_cuepoint.position"),
                 namedPlaybackLong(metadata, extras, "audio.fade_overlap")
@@ -784,17 +814,20 @@ public final class NowPlayingService extends NotificationListenerService {
 
     private static final class SpotifyAutomixMetadata {
         final boolean enabled;
+        final boolean contextKnown;
         final long fadeInStartMs;
         final long fadeInCueMs;
         final long fadeOverlapMs;
 
         SpotifyAutomixMetadata(
                 boolean enabled,
+                boolean contextKnown,
                 long fadeInStartMs,
                 long fadeInCueMs,
                 long fadeOverlapMs
         ) {
             this.enabled = enabled;
+            this.contextKnown = contextKnown;
             this.fadeInStartMs = fadeInStartMs;
             this.fadeInCueMs = fadeInCueMs;
             this.fadeOverlapMs = fadeOverlapMs;
