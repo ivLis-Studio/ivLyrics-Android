@@ -331,6 +331,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     private final SharedPreferences prefs;
     private final SecureStringStore secureStore;
     private volatile Snapshot cachedSnapshot;
+    private RuleConfig cachedRuleConfig;
+    private String cachedRulesSource;
+    private String cachedRulesTarget;
+    private boolean cachedRulesTranslation;
+    private boolean cachedRulesPronunciation;
     private final Map<String, OffsetTable> cachedOffsetTables = new LinkedHashMap<>();
 
     private static final class OffsetTable {
@@ -1280,10 +1285,31 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         }
     }
 
-    private RuleConfig loadRuleConfig() {
+    // Adapted from oneulddu's iOS PR #7: unrelated preferences must not reparse language rules.
+    private synchronized RuleConfig loadRuleConfig() {
         boolean legacyTranslation = prefs.getBoolean(KEY_TRANSLATION_ENABLED, false);
         boolean legacyPronunciation = prefs.getBoolean(KEY_PRONUNCIATION_ENABLED, false);
-        String legacyTarget = normalizeTargetRules(prefs.getString(KEY_TARGET_LANG, DEFAULT_TARGET_LANG_RULES));
+        String target = prefs.getString(KEY_TARGET_LANG, DEFAULT_TARGET_LANG_RULES);
+        String stored = prefs.getString(KEY_LANGUAGE_RULES, "");
+        if (cachedRuleConfig != null
+                && java.util.Objects.equals(cachedRulesSource, stored)
+                && java.util.Objects.equals(cachedRulesTarget, target)
+                && cachedRulesTranslation == legacyTranslation
+                && cachedRulesPronunciation == legacyPronunciation) {
+            return cachedRuleConfig;
+        }
+        RuleConfig value = parseRuleConfig(stored, legacyTranslation, legacyPronunciation, target);
+        cachedRulesSource = stored;
+        cachedRulesTarget = target;
+        cachedRulesTranslation = legacyTranslation;
+        cachedRulesPronunciation = legacyPronunciation;
+        cachedRuleConfig = value;
+        return value;
+    }
+
+    private RuleConfig parseRuleConfig(String stored, boolean legacyTranslation,
+            boolean legacyPronunciation, String target) {
+        String legacyTarget = normalizeTargetRules(target);
         Map<String, String> legacyTargetRules = parseTargetRules(legacyTarget);
         String defaultTarget = firstNonEmpty(
                 legacyTargetRules.get("default"),
@@ -1310,7 +1336,6 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             ));
         }
 
-        String stored = prefs.getString(KEY_LANGUAGE_RULES, "");
         if (stored == null || stored.trim().isEmpty()) {
             return new RuleConfig(defaultRule, rules);
         }

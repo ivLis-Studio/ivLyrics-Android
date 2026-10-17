@@ -129,11 +129,29 @@ final class LyricsLanguageDetector {
 
     private LyricsLanguageDetector() {}
 
+    // Bound retained payloads across the page, inline preview and supplement providers (iOS PR #7).
+    private static final int DETECTION_CACHE_SIZE = 8;
+    private static final int MAX_CACHED_TEXT_LENGTH = 65_536;
+    private static final Map<String, String> detectionCache = new LinkedHashMap<>(9, .75f, true);
+
     static String detect(String text) {
         if (text == null || text.trim().isEmpty()) {
             return null;
         }
+        if (text.length() > MAX_CACHED_TEXT_LENGTH) return detectUncached(text);
+        synchronized (detectionCache) {
+            // Null (undetectable text) is also a reusable result.
+            if (detectionCache.containsKey(text)) return detectionCache.get(text);
+            String detected = detectUncached(text);
+            detectionCache.put(text, detected);
+            while (detectionCache.size() > DETECTION_CACHE_SIZE) {
+                detectionCache.remove(detectionCache.keySet().iterator().next());
+            }
+            return detected;
+        }
+    }
 
+    private static String detectUncached(String text) {
         String normalized = Normalizer.normalize(text, Normalizer.Form.NFC);
         LinkedHashMap<Script, Integer> lineVotes = new LinkedHashMap<>();
         for (String line : normalized.split("\\R", -1)) {

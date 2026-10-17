@@ -178,6 +178,7 @@ public final class LyricsView extends View {
     private boolean pronunciationLoading;
     private boolean translationLoading;
     private List<CulturalAnnotation> culturalAnnotations = Collections.emptyList();
+    private final Map<Integer, LineRenderInput> lineRenderInputs = new HashMap<>();
     private String culturalAnnotationFontFamily = AiLyricsSettings.CULTURAL_FONT_PRETENDARD;
     private int culturalAnnotationFontSize = 14;
     private int culturalAnnotationFontWeight = 300;
@@ -263,6 +264,7 @@ public final class LyricsView extends View {
             karaoke = result.karaoke || hasTimedKaraokeData(lines);
         }
         normalizedSpeakerKeys.clear();
+        lineRenderInputs.clear();
         invalidateDisplayLineCache();
         invalidateFrameGroupCache();
         if (softUpdate) {
@@ -623,6 +625,7 @@ public final class LyricsView extends View {
             return;
         }
         culturalAnnotations = nextAnnotations;
+        lineRenderInputs.clear();
         culturalAnnotationFontFamily = nextFamily;
         culturalAnnotationFontSize = nextSize;
         culturalAnnotationFontWeight = nextWeight;
@@ -1817,11 +1820,7 @@ public final class LyricsView extends View {
             return visibleLyricGroups(groups);
         }
 
-        List<CulturalAnnotation> lineAnnotations = CulturalAnnotation.forLine(
-                culturalAnnotations,
-                lineIndex,
-                line.text
-        );
+        List<CulturalAnnotation> lineAnnotations = lineRenderInput(line, lineIndex).annotations;
         int inactiveColor = inactiveColorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, distance);
         int activeColor = shouldRenderKaraokeTiming()
                 ? colorForSpeaker(line.speaker, line.speakerColor, line.speakerFallback, "", normalActiveColor())
@@ -1908,11 +1907,7 @@ public final class LyricsView extends View {
                         normalActiveColor()
                 );
                 String groupKey = "line:" + lineIndex + ":part:" + partKey(part, renderIndex);
-                List<CulturalAnnotation> lineAnnotations = CulturalAnnotation.forLine(
-                        culturalAnnotations,
-                        lineIndex,
-                        AiLyricsRepository.displayLineText(line)
-                );
+                List<CulturalAnnotation> lineAnnotations = lineRenderInput(line, lineIndex).annotations;
                 groups.add(buildGroup(
                         CulturalAnnotation.annotateText(part.text, lineAnnotations),
                         japaneseFuriganaEnabled ? part.furiganaText : "",
@@ -2128,11 +2123,7 @@ public final class LyricsView extends View {
         if (line == null) {
             return;
         }
-        List<CulturalAnnotation> annotations = CulturalAnnotation.forLine(
-                culturalAnnotations,
-                lineIndex,
-                AiLyricsRepository.displayLineText(line)
-        );
+        List<CulturalAnnotation> annotations = lineRenderInput(line, lineIndex).annotations;
         if (annotations.isEmpty()) {
             return;
         }
@@ -2170,6 +2161,29 @@ public final class LyricsView extends View {
                     AppFonts.cultural(getContext(), culturalAnnotationFontFamily, culturalAnnotationFontWeight),
                     true
             ));
+        }
+    }
+
+    // iOS PR #7 (oneulddu): prepare stable display/annotation inputs once per source revision.
+    private LineRenderInput lineRenderInput(LyricsLine line, int lineIndex) {
+        LineRenderInput cached = lineRenderInputs.get(lineIndex);
+        if (cached != null && cached.line == line) return cached;
+        String text = AiLyricsRepository.displayLineText(line);
+        LineRenderInput input = new LineRenderInput(line, text,
+                CulturalAnnotation.forLine(culturalAnnotations, lineIndex, text));
+        lineRenderInputs.put(lineIndex, input);
+        return input;
+    }
+
+    private static final class LineRenderInput {
+        final LyricsLine line;
+        final String displayText;
+        final List<CulturalAnnotation> annotations;
+
+        LineRenderInput(LyricsLine line, String displayText, List<CulturalAnnotation> annotations) {
+            this.line = line;
+            this.displayText = displayText;
+            this.annotations = annotations;
         }
     }
 
