@@ -76,6 +76,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private View dimView;
     private YouTubeBackgroundRepository.VideoInfo currentInfo;
     private String currentVideoId = "";
+    private long videoLoadGeneration;
     private long playerPositionMs;
     private long lastPositionSetElapsedMs;
     private long firstLyricTimeMs;
@@ -226,6 +227,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
             return;
         }
         currentVideoId = info.youtubeVideoId;
+        videoLoadGeneration++;
         playerReady = false;
         lastVisibleState = false;
         setAlpha(0f);
@@ -238,6 +240,11 @@ public final class YouTubeBackgroundView extends FrameLayout {
         );
         applyVideoScaleToWebView();
         ensureSyncLoop();
+    }
+
+    YouTubeBackgroundRepository.VideoInfo appliedVideoInfo() {
+        return enabled && playerReady && currentInfo != null && currentVideoId.equals(currentInfo.youtubeVideoId)
+                ? currentInfo : null;
     }
 
     void setPlaybackState(long playerPositionMs, boolean playing, long firstLyricTimeMs, int trackOffsetMs) {
@@ -260,6 +267,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
         syncLoopStarted = false;
         currentInfo = null;
         currentVideoId = "";
+        videoLoadGeneration++;
         playerReady = false;
         lastVisibleState = false;
         setAlpha(0f);
@@ -393,8 +401,8 @@ public final class YouTubeBackgroundView extends FrameLayout {
                 + "function restorePlaybackRate(){try{if(player&&player.setPlaybackRate&&player.getPlaybackRate&&player.getPlaybackRate()!==1)player.setPlaybackRate(1);}catch(e){}}"
                 + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{host:'https://www.youtube-nocookie.com',videoId:'" + safeVideoId + "',"
                 + "playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,rel:0,iv_load_policy:3,cc_load_policy:0,mute:1,playsinline:1,modestbranding:1,autohide:1,showinfo:0,enablecastapi:0,allowfullscreen:0,disable_polymer:1,suppress_ads:1,adformat:'0_0',widget_referrer:'https://xpui.app.spotify.com',origin:'https://xpui.app.spotify.com',fflags:'disable_persistent_ads=true&kevlar_allow_multistep_video_ads=false&enable_desktop_ad_controls=false&html5_disable_ads=true&disable_new_pause_state3_player_ads=true&player_ads_enable_gcf=false&web_player_disable_afa=true&preskip_button_style_ads_backend=false&html5_player_enable_ads_client=false'},"
-                + "events:{onReady:function(e){player=e.target;ready=true;sanitizeIframe();try{player.mute();player.playVideo();}catch(x){}disableCaptions();setTimeout(disableCaptions,250);setTimeout(disableCaptions,1000);setTimeout(disableCaptions,2500);try{AndroidYouTubeBackground.onReady();}catch(x){}},"
-                + "onStateChange:function(e){sanitizeIframe();disableCaptions();suppressAds();if(!isAdPlayback())restorePlaybackRate();},onError:function(){try{AndroidYouTubeBackground.onUnavailable();}catch(x){}}}});setInterval(function(){if(player&&ready){sanitizeIframe();suppressAds();}},400);}"
+                + "events:{onReady:function(e){player=e.target;ready=true;sanitizeIframe();try{player.mute();player.playVideo();}catch(x){}disableCaptions();setTimeout(disableCaptions,250);setTimeout(disableCaptions,1000);setTimeout(disableCaptions,2500);try{AndroidYouTubeBackground.onReady('" + safeVideoId + "'," + videoLoadGeneration + ");}catch(x){}},"
+                + "onStateChange:function(e){sanitizeIframe();disableCaptions();suppressAds();if(!isAdPlayback())restorePlaybackRate();},onError:function(){try{AndroidYouTubeBackground.onUnavailable('" + safeVideoId + "'," + videoLoadGeneration + ");}catch(x){}}}});setInterval(function(){if(player&&ready){sanitizeIframe();suppressAds();}},400);}"
                 + "window.ivLyricsSyncVideo=function(playerSeconds,playing,firstLyricSeconds,offsetSeconds,hasCaption,captionStart,autoUnknown,enabled,allowHardSync){"
                 + "if(!enabled||!player||!ready||!player.getPlayerState)return;"
                 + "try{var now=Date.now();if(now-lastCaptionDisable>5000){lastCaptionDisable=now;disableCaptions();}"
@@ -413,15 +421,17 @@ public final class YouTubeBackgroundView extends FrameLayout {
 
     private final class Bridge {
         @JavascriptInterface
-        public void onUnavailable() {
+        public void onUnavailable(String videoId, long generation) {
             handler.post(() -> {
+                if (generation != videoLoadGeneration || !currentVideoId.equals(videoId)) return;
                 playerReady = false;
                 ensureVisibleState();
             });
         }
         @JavascriptInterface
-        public void onReady() {
+        public void onReady(String videoId, long generation) {
             handler.post(() -> {
+                if (generation != videoLoadGeneration || !currentVideoId.equals(videoId)) return;
                 playerReady = true;
                 ensureVisibleState();
             });

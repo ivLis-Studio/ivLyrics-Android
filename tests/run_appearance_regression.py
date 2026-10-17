@@ -144,7 +144,7 @@ if result.returncode:
 
 # Execute the exact HTML/JS emitted by the native video view, with a synthetic iframe API.
 video = (SHARED / "YouTubeBackgroundView.java").read_text()
-html_class = ('import java.util.Locale; public class VideoHtml { int videoScalePercent=100; String videoAspect="fill";'
+html_class = ('import java.util.Locale; public class VideoHtml { int videoScalePercent=100; String videoAspect="fill"; long videoLoadGeneration=7;'
               + declaration(video, "private String buildHtml(")
               + 'public static void main(String[] args) { System.out.print(new VideoHtml().buildHtml("fixture")); }}')
 html_source = work / "VideoHtml.java"

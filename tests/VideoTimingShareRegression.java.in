@@ -1,0 +1,238 @@
+package kr.ivlis.ivlyricsandroid;
+
+import org.json.JSONObject;
+import java.io.IOException;
+import java.util.*;
+
+/** Production control flow with queued workers and a recording HTTP collaborator; no network requests. */
+public final class VideoTimingShareRegression {
+    static int checks;
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    static class Queue {
+        final List<Runnable> tasks = new ArrayList<>();
+        void execute(Runnable task) { tasks.add(task); }
+        void post(Runnable task) { task.run(); }
+        void run() { tasks.remove(0).run(); }
+    }
+    @interface JavascriptInterface {}
+    static class CallbackQueue extends Queue {
+        @Override void post(Runnable task) { tasks.add(task); }
+        void removeCallbacks(Runnable task) { tasks.remove(task); }
+    }
+    static class WebView {
+        void loadDataWithBaseURL(String origin, String html, String type, String encoding, String history) {}
+        void loadUrl(String url) {}
+    }
+    static class CreatorPrivacyRepository {
+        static final String API_BASE_URL = "https://lyrics.api.ivl.is";
+        boolean authenticated, fail;
+        JSONObject sent;
+        String method, endpoint, token;
+        boolean hasAuthenticatedSession() { return authenticated; }
+        String requireAuthToken() throws AuthenticationException {
+            if (!authenticated) throw new AuthenticationException();
+            return "test-session";
+        }
+        JSONObject requestJson(String method, String endpoint, JSONObject body, String token, String language) throws Exception {
+            this.method = method; this.endpoint = endpoint; this.sent = body; this.token = token;
+            if (fail) throw new java.io.IOException("Test failure");
+            return new JSONObject().put("success", true);
+        }
+        static class AuthenticationException extends java.io.IOException {}
+        // AUTH
+    }
+    static class AppliedPlayer {
+        static final int VISIBLE = 0, GONE = 8;
+        static final String HTML_ORIGIN = "https://xpui.app.spotify.com";
+        boolean enabled, playerReady;
+        boolean lastVisibleState, syncLoopStarted;
+        long videoLoadGeneration;
+        String currentVideoId = "";
+        YouTubeBackgroundRepository.VideoInfo currentInfo;
+        final CallbackQueue handler = new CallbackQueue();
+        final Runnable syncRunnable = () -> {};
+        final WebView webView = new WebView();
+        void ensureVisibleState() {}
+        void ensureSyncLoop() {}
+        void setVisibility(int visibility) {}
+        void setAlpha(float alpha) {}
+        void applyVideoScaleToWebView() {}
+        String buildHtml(String videoId) { return ""; }
+        // APPLIED
+    }
+    static class Preferences {
+        final Map<String, Integer> offsets = new HashMap<>();
+        void setTrackVideoSyncOffsetMs(String key, int offset) { offsets.put(key, offset); }
+    }
+    static class VideoSelections {
+        final Map<String, String> saved = new HashMap<>();
+        void selectVideo(String key, YouTubeBackgroundRepository.VideoInfo info) {
+            try { saved.put(key, info.toJson().toString()); }
+            catch (Exception error) { throw new AssertionError(error); }
+        }
+    }
+    static class EditController {
+        final TrackSnapshot currentTrack = track();
+        final String currentLyricsKey = currentTrack.stableKey();
+        final Preferences aiLyricsSettings = new Preferences();
+        final VideoSelections youtubeBackgroundRepository = new VideoSelections();
+        final AppliedPlayer youtubeBackgroundView = new AppliedPlayer();
+        YouTubeBackgroundRepository.VideoInfo currentYouTubeBackgroundInfo;
+        int currentVideoSyncOffsetMs;
+        boolean isCurrentVideoSelectionTrack(String key) { return currentLyricsKey.equals(key); }
+        long currentVideoFirstLyricTimeMs() { return 5230; }
+        int clampSyncOffset(int value) { return value; }
+        void updateVideoSyncSettingsUi() {}
+        void updateYouTubeBackgroundPlaybackState() {}
+        void showSavedToast(String message) {}
+        String uiFormat(String key, String value) { return key; }
+        String formatSignedMs(int value) { return Integer.toString(value); }
+        // EDIT
+    }
+    static class Controller {
+        static final String SETTINGS_TAB_SYSTEM = "system";
+        final CreatorPrivacyRepository creatorPrivacyRepository = new CreatorPrivacyRepository();
+        final Queue creatorPrivacyExecutor = new Queue(), handler = new Queue();
+        VideoTimingSubmission selected;
+        boolean videoTimingShareInFlight, settingsVisible, dismissed;
+        String toast, tab;
+        VideoTimingSubmission captureCurrentVideoTiming() { return selected; }
+        String ui(String value) { return value; }
+        String currentUiLanguageTag() { return "en"; }
+        void updateVideoSyncSettingsUi() {}
+        void showSavedToast(String value) { toast = value; }
+        void dismissLyricsMetaMenuPopup() { dismissed = true; }
+        void showSettingsPanel(boolean visible) { settingsVisible = visible; }
+        void switchSettingsTab(String value) { tab = value; }
+        boolean isFinishing() { return false; }
+        boolean isDestroyed() { return false; }
+        // SHARE
+    }
+    static YouTubeBackgroundRepository.VideoInfo video(String id, double start) {
+        return new YouTubeBackgroundRepository.VideoInfo("USAAA2600001", "1234567890123456789012",
+                id, "Applied video", true, start, false, "");
+    }
+    static VideoTimingSubmission selection(String id, double start) {
+        return selection(video(id, start));
+    }
+    static TrackSnapshot track() {
+        return new TrackSnapshot("Song", "Artist", "Album", "com.spotify.music",
+                "spotify:track:1234567890123456789012", "USAAA2600001", 120000, 10000, 1, 1f, false, null, "");
+    }
+    static VideoTimingSubmission selection(YouTubeBackgroundRepository.VideoInfo applied) {
+        TrackSnapshot track = track();
+        return VideoTimingSubmission.capture(track, track.isrc, track.trackId, applied, 3000, 25);
+    }
+    static void staleReadiness() {
+        AppliedPlayer player = new AppliedPlayer();
+        player.enabled = true;
+        var bridge = player.new Bridge();
+        var a = video("Abc_123-XyZ", 12);
+        var b = video("Zyx_987-WvU", 25);
+        player.loadVideo(a);
+        long aGeneration = player.videoLoadGeneration;
+        bridge.onReady(a.youtubeVideoId, aGeneration); // A's callback is queued on the UI thread.
+        player.loadVideo(b);
+        long bGeneration = player.videoLoadGeneration;
+        player.handler.run(); // Deliver A's ready callback only after B has started loading.
+        check(player.appliedVideoInfo() == null && !player.playerReady, "late A-ready cannot mark B ready");
+        Controller share = new Controller();
+        share.creatorPrivacyRepository.authenticated = true;
+        share.selected = selection(player.appliedVideoInfo());
+        share.shareCurrentVideoTiming();
+        check(share.creatorPrivacyExecutor.tasks.isEmpty(), "attempting to share B after stale A-ready sends nothing");
+        bridge.onReady(b.youtubeVideoId, bGeneration);
+        player.handler.run();
+        check(player.appliedVideoInfo() == b, "B becomes shareable only after its own generation acknowledges readiness");
+        bridge.onUnavailable(a.youtubeVideoId, aGeneration);
+        player.handler.run();
+        check(player.appliedVideoInfo() == b, "late A-error cannot invalidate B");
+        player.loadVideo(a);
+        long firstA = player.videoLoadGeneration;
+        bridge.onReady(a.youtubeVideoId, firstA);
+        player.clearVideo();
+        player.loadVideo(a);
+        player.handler.run();
+        check(player.appliedVideoInfo() == null, "an old callback cannot revive even the same video after clear/reload");
+    }
+    static void explicitAutomaticCorrection() throws Exception {
+        EditController edited = new EditController();
+        var automatic = new YouTubeBackgroundRepository.VideoInfo("USAAA2600001", "1234567890123456789012",
+                "Abc_123-XyZ", "Auto match", true, 0, true, "");
+        edited.currentYouTubeBackgroundInfo = automatic;
+        edited.youtubeBackgroundView.enabled = true;
+        edited.youtubeBackgroundView.loadVideo(automatic);
+        var bridge = edited.youtubeBackgroundView.new Bridge();
+        bridge.onReady(automatic.youtubeVideoId, edited.youtubeBackgroundView.videoLoadGeneration);
+        edited.youtubeBackgroundView.handler.run();
+        check(selection(automatic) == null, "untouched automatic guess cannot be submitted");
+        edited.setCurrentVideoSyncOffset(0, true);
+        check(edited.currentYouTubeBackgroundInfo == automatic, "a no-op reset does not invent an explicit correction");
+        edited.setCurrentVideoSyncOffset(25, false);
+        check(edited.currentYouTubeBackgroundInfo == automatic, "programmatic changes do not mark automatic guesses as manual");
+        edited.setCurrentVideoSyncOffset(125, true);
+        var manual = edited.currentYouTubeBackgroundInfo;
+        check(!manual.autoGenerated && manual.youtubeVideoId.equals(automatic.youtubeVideoId), "explicit adjustment materializes the same video as manual");
+        check(Math.abs(manual.captionStartTimeSeconds - 5.230) < 0.0000001, "automatic zero materializes the first-lyric fallback");
+        check(edited.youtubeBackgroundView.appliedVideoInfo() == manual, "metadata correction preserves readiness for the same loaded video");
+        var restored = YouTubeBackgroundRepository.VideoInfo.fromJson("",
+                new JSONObject(edited.youtubeBackgroundRepository.saved.get(edited.currentLyricsKey)));
+        int offset = edited.aiLyricsSettings.offsets.get(edited.currentLyricsKey);
+        var shared = VideoTimingSubmission.capture(edited.currentTrack, edited.currentTrack.isrc,
+                edited.currentTrack.trackId, restored, 5230, offset);
+        check(shared != null && shared.videoId.equals(automatic.youtubeVideoId)
+                && Math.abs(shared.startTime - 5.355) < 0.0000001, "persistence restores the exact corrected video and share timestamp");
+        edited.setCurrentVideoSyncOffset(135, true);
+        check(edited.currentYouTubeBackgroundInfo == manual && edited.currentVideoSyncOffsetMs == 135,
+                "subsequent adjustments do not materialize or add the fallback twice");
+    }
+    public static void main(String[] args) throws Exception {
+        staleReadiness();
+        explicitAutomaticCorrection();
+        AppliedPlayer player = new AppliedPlayer();
+        player.currentInfo = video("Abc_123-XyZ", 12.345);
+        player.currentVideoId = player.currentInfo.youtubeVideoId;
+        check(player.appliedVideoInfo() == null, "disabled/unready video cannot be shared");
+        player.enabled = true;
+        check(player.appliedVideoInfo() == null, "loading video cannot be shared");
+        player.playerReady = true;
+        check(player.appliedVideoInfo() == player.currentInfo, "only applied ready info is returned");
+        player.currentVideoId = "Zyx_987-WvU";
+        check(player.appliedVideoInfo() == null, "mismatched applied video rejected");
+
+        Controller controller = new Controller();
+        controller.shareCurrentVideoTiming();
+        check(controller.creatorPrivacyExecutor.tasks.isEmpty(), "missing selection never submits");
+        controller.selected = selection("Abc_123-XyZ", 12.345);
+        check(controller.selected != null, "valid share snapshot");
+        controller.shareCurrentVideoTiming();
+        check(controller.creatorPrivacyExecutor.tasks.isEmpty(), "authentication never queues an automatic share");
+        check(controller.settingsVisible && controller.dismissed && "system".equals(controller.tab), "login is discoverable in existing account menu");
+        controller.creatorPrivacyRepository.authenticated = true;
+        check(controller.creatorPrivacyExecutor.tasks.isEmpty(), "logging in alone does not submit");
+        controller.shareCurrentVideoTiming();
+        check(controller.videoTimingShareInFlight && controller.creatorPrivacyExecutor.tasks.size() == 1, "explicit click queues one share");
+        controller.shareCurrentVideoTiming();
+        check(controller.creatorPrivacyExecutor.tasks.size() == 1, "duplicate click is blocked");
+        controller.selected = selection("Zyx_987-WvU", 99);
+        controller.creatorPrivacyExecutor.run();
+        JSONObject sent = controller.creatorPrivacyRepository.sent;
+        check(sent.getString("videoId").equals("Abc_123-XyZ"), "async work retains the exact clicked video");
+        check(Math.abs(sent.getDouble("startTime") - 12.370) < 0.0000001, "exact fractional applied timing is frozen before async work");
+        check(sent.getString("action").equals("submit") && sent.getString("isrc").equals("USAAA2600001"), "canonical API payload identity");
+        check(controller.creatorPrivacyRepository.endpoint.equals("https://lyrics.api.ivl.is/lyrics/youtube/community")
+                && controller.creatorPrivacyRepository.method.equals("POST")
+                && controller.creatorPrivacyRepository.token.equals("test-session"), "existing authenticated API transport used");
+        check(!controller.videoTimingShareInFlight && controller.toast.equals("video.timing_shared"), "success unlocks sharing");
+        controller.creatorPrivacyRepository.fail = true;
+        controller.shareCurrentVideoTiming();
+        controller.creatorPrivacyExecutor.run();
+        check(!controller.videoTimingShareInFlight && controller.toast.equals("video.share_timing_failed"), "failure unlocks explicit retry");
+        controller.creatorPrivacyRepository.fail = false;
+        controller.shareCurrentVideoTiming();
+        controller.creatorPrivacyRepository.authenticated = false;
+        controller.creatorPrivacyExecutor.run();
+        check(!controller.videoTimingShareInFlight && controller.toast.equals("creator_privacy.login_required"), "expired auth cannot silently submit");
+        System.out.println("Video timing explicit-share contracts: " + checks + " checks passed; no external submissions.");
+    }
+}

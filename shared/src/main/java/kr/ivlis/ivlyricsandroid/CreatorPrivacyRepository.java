@@ -74,6 +74,12 @@ final class CreatorPrivacyRepository {
         return true;
     }
 
+    void shareVideoTiming(VideoTimingSubmission submission, String languageTag) throws Exception {
+        JSONObject response = requestJson("POST", API_BASE_URL + "/lyrics/youtube/community",
+                submission.toJson(), requireAuthToken(), languageTag);
+        if (!response.optBoolean("success", false)) throw new IOException("Video timing share failed");
+    }
+
     String authenticatedUserHash() {
         return preferences.getString(KEY_AUTH_USER_HASH, "").trim();
     }

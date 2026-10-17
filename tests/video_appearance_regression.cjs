@@ -13,7 +13,10 @@ const context = {
   document: {documentElement: {style: {setProperty(key, value) {properties[key] = value;}}}},
   addEventListener(key, callback) {events[key] = callback;},
   setInterval() {}, setTimeout() {}, navigator: {},
-  AndroidYouTubeBackground: {onReady() {ready++;}, onUnavailable() {unavailable++;}},
+  AndroidYouTubeBackground: {
+    onReady(videoId, generation) {assert.equal(videoId, 'fixture'); assert.equal(generation, 7); ready++;},
+    onUnavailable(videoId, generation) {assert.equal(videoId, 'fixture'); assert.equal(generation, 7); unavailable++;}
+  },
   YT: {Player: function (_, options) {playerEvents = options.events; return player;}}
 };
 context.window = context;
