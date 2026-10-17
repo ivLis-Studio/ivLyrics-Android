@@ -146,6 +146,7 @@ final class AppI18n {
         addLocalAiStrings(languages);
         addAppearanceStrings(languages);
         addVinylControlStrings(languages);
+        addAlbumArtLpStrings(languages);
         addLyricsRegenerateStrings(languages);
         addSingAlongStrings(languages);
         addErrorMessageStrings(languages);
@@ -586,6 +587,38 @@ final class AppI18n {
             Map<String, String> copy = new LinkedHashMap<>(languages.get(row[0]));
             for (int index = 0; index < keys.length; index++) copy.put(keys[index], row[index + 1]);
             languages.put(row[0], Collections.unmodifiableMap(copy));
+        }
+    }
+
+    private static void addAlbumArtLpStrings(Map<String, Map<String, String>> languages) {
+        String[][] rows = {
+                {"en", "Open LP mode by tapping album artwork", "Tap the album cover to open LP mode. Turn off to prevent accidental entry."},
+                {"ko", "앨범 아트를 탭하여 LP 모드 열기", "앨범 커버를 탭하면 LP 모드를 엽니다. 실수로 진입하지 않으려면 끄세요."},
+                {"zh-CN", "点击专辑封面打开 LP 模式", "点击专辑封面即可打开 LP 模式。关闭此选项可避免误触进入。"},
+                {"zh-TW", "點選專輯封面開啟 LP 模式", "點選專輯封面即可開啟 LP 模式。關閉此選項可避免誤觸進入。"},
+                {"ja", "アルバムアートをタップしてLPモードを開く", "アルバムカバーをタップするとLPモードを開きます。誤って開かないようにするにはオフにしてください。"},
+                {"hi", "एल्बम कवर पर टैप करके LP मोड खोलें", "LP मोड खोलने के लिए एल्बम कवर पर टैप करें। गलती से खुलने से बचने के लिए इसे बंद करें।"},
+                {"es", "Abrir el modo LP al tocar la portada", "Toca la portada del álbum para abrir el modo LP. Desactívalo para evitar abrirlo por accidente."},
+                {"fr", "Ouvrir le mode LP en touchant la pochette", "Touchez la pochette de l’album pour ouvrir le mode LP. Désactivez cette option pour éviter de l’ouvrir par erreur."},
+                {"ar", "فتح وضع LP بالنقر على غلاف الألبوم", "انقر على غلاف الألبوم لفتح وضع LP. عطّل هذا الخيار لتجنب فتحه بالخطأ."},
+                {"fa", "باز کردن حالت LP با لمس جلد آلبوم", "برای باز کردن حالت LP، جلد آلبوم را لمس کنید. برای جلوگیری از ورود تصادفی، این گزینه را خاموش کنید."},
+                {"de", "LP-Modus durch Tippen auf das Albumcover öffnen", "Tippe auf das Albumcover, um den LP-Modus zu öffnen. Deaktiviere dies, um ein versehentliches Öffnen zu verhindern."},
+                {"ru", "Открывать режим LP нажатием на обложку", "Нажмите на обложку альбома, чтобы открыть режим LP. Отключите, чтобы не открывать его случайно."},
+                {"sv", "Öppna LP-läget genom att trycka på skivomslaget", "Tryck på skivomslaget för att öppna LP-läget. Stäng av för att undvika att öppna det av misstag."},
+                {"pt", "Abrir o modo LP ao tocar na capa do álbum", "Toque na capa do álbum para abrir o modo LP. Desative para evitar abri-lo por engano."},
+                {"bn", "অ্যালবামের কভারে ট্যাপ করে LP মোড খুলুন", "LP মোড খুলতে অ্যালবামের কভারে ট্যাপ করুন। ভুল করে খুলে যাওয়া এড়াতে এটি বন্ধ করুন।"},
+                {"cs", "Otevřít režim LP klepnutím na obal alba", "Klepnutím na obal alba otevřete režim LP. Vypněte tuto možnost, abyste jej neotevřeli omylem."},
+                {"it", "Apri la modalità LP toccando la copertina", "Tocca la copertina dell’album per aprire la modalità LP. Disattiva per evitare di aprirla per errore."},
+                {"th", "เปิดโหมด LP เมื่อแตะปกอัลบั้ม", "แตะปกอัลบั้มเพื่อเปิดโหมด LP ปิดตัวเลือกนี้เพื่อป้องกันการเปิดโดยไม่ตั้งใจ"},
+                {"vi", "Mở chế độ LP khi chạm vào bìa album", "Chạm vào bìa album để mở chế độ LP. Tắt để tránh vô tình mở chế độ này."},
+                {"id", "Buka mode LP dengan mengetuk sampul album", "Ketuk sampul album untuk membuka mode LP. Nonaktifkan agar tidak terbuka tanpa sengaja."},
+                {"ms", "Buka mod LP dengan mengetik kulit album", "Ketik kulit album untuk membuka mod LP. Matikan untuk mengelakkannya dibuka secara tidak sengaja."},
+                {"tr", "Albüm kapağına dokunarak LP modunu aç", "LP modunu açmak için albüm kapağına dokun. Yanlışlıkla açılmasını önlemek için bu seçeneği kapat."}
+        };
+        for (String[] row : rows) {
+            applyTranslationOverrides(languages, row[0], new String[]{
+                    "setting.album_art_open_lp", row[1], "setting.album_art_open_lp_desc", row[2]
+            });
         }
     }
 

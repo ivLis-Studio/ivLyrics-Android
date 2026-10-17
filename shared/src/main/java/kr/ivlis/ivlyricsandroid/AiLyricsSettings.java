@@ -87,6 +87,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT = "cultural_annotations_vinyl_font_weight";
     static final String KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY = "cultural_annotations_vinyl_opacity";
     static final String KEY_TYPOGRAPHY_SETTINGS = "typography_settings_v1";
+    static final String KEY_ALBUM_ART_OPEN_LP = "album_art_open_lp";
     static final String KEY_VINYL_ALBUM_SIZE_PERCENT = "vinyl_album_size_percent";
     static final String KEY_VINYL_RECORD_SIZE_PERCENT = "vinyl_record_size_percent";
     static final String KEY_VINYL_ANIMATIONS_ENABLED = "vinyl_animations_enabled";
@@ -180,7 +181,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_CULTURAL_ANNOTATIONS_OPACITY, KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_FAMILY,
             KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_SIZE, KEY_CULTURAL_ANNOTATIONS_VINYL_FONT_WEIGHT,
             KEY_CULTURAL_ANNOTATIONS_VINYL_OPACITY, KEY_TYPOGRAPHY_SETTINGS,
-            KEY_VINYL_ALBUM_SIZE_PERCENT, KEY_VINYL_RECORD_SIZE_PERCENT, KEY_VINYL_ANIMATIONS_ENABLED,
+            KEY_ALBUM_ART_OPEN_LP, KEY_VINYL_ALBUM_SIZE_PERCENT, KEY_VINYL_RECORD_SIZE_PERCENT, KEY_VINYL_ANIMATIONS_ENABLED,
             KEY_VINYL_CENTER_ROTATION_ENABLED, KEY_VINYL_LYRICS_ENABLED, KEY_VINYL_TONEARM_STYLE,
             RecordRotation.SPEED_KEY, RecordRotation.CHANGE_KEY, RecordRotation.SIMPLE_TITLE_KEY,
             KEY_VINYL_TONEARM_FINISH, KEY_VINYL_TONEARM_SIZE_PERCENT, KEY_SPEAKER_COLOR_SETTINGS,
@@ -575,6 +576,14 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 normalizeTypographyWeight(weight, slot.defaultWeight)
         ));
         saveTypographySettings(new TypographySettings(next));
+    }
+
+    boolean albumArtOpenLp() {
+        return prefs.getBoolean(KEY_ALBUM_ART_OPEN_LP, true);
+    }
+
+    void setAlbumArtOpenLp(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ALBUM_ART_OPEN_LP, enabled).apply();
     }
 
     void setVinylAlbumSizePercent(int sizePercent) {

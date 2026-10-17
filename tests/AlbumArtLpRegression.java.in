@@ -1,0 +1,293 @@
+import java.util.*;
+
+/** Executes native production declarations with synthetic views/transport, without Android rendering. */
+public final class AlbumArtLpRegression {
+    static int checks;
+    static void check(boolean ok, String message) {
+        checks++;
+        if (!ok) throw new AssertionError(message);
+    }
+
+    static class Preferences {
+        Boolean value;
+        boolean getBoolean(String key, boolean fallback) { return value == null ? fallback : value; }
+        Preferences edit() { return this; }
+        Preferences putBoolean(String key, boolean next) { value = next; return this; }
+        void apply() {}
+    }
+    static class AiLyricsSettings {
+        static final String KEY_ALBUM_ART_OPEN_LP = "album_art_open_lp";
+        final Preferences prefs = new Preferences();
+        // PRODUCTION_SETTINGS
+    }
+
+    static class Parent {
+        boolean interceptDisallowed;
+        void requestDisallowInterceptTouchEvent(boolean value) { interceptDisallowed = value; }
+    }
+    static class Animator {
+        void cancel() {}
+        Animator translationX(float value) { return this; }
+        Animator rotation(float value) { return this; }
+        Animator setDuration(long value) { return this; }
+        void start() {}
+    }
+    static class View {
+        interface OnClickListener { void onClick(View target); }
+        interface OnTouchListener { boolean onTouch(View target, MotionEvent event); }
+        OnClickListener click;
+        OnTouchListener touch;
+        boolean clickable, longClickable, focusable;
+        int haptics;
+        String description;
+        final Parent parent = new Parent();
+        void setClickable(boolean value) { clickable = value; }
+        void setLongClickable(boolean value) { longClickable = value; }
+        void setContentDescription(String value) { description = value; }
+        void setBackground(Object value) {}
+        void setOnClickListener(OnClickListener value) { click = value; }
+        void setOnTouchListener(OnTouchListener value) { touch = value; }
+        boolean performClick() { click.onClick(this); return true; }
+        void performHapticFeedback(int value) { haptics++; }
+        void setTranslationX(float value) {}
+        void setRotation(float value) {}
+        Parent getParent() { return parent; }
+        int getWidth() { return 800; }
+        Animator animate() { return new Animator(); }
+    }
+    static class TextView extends View {
+        String label;
+        TextView(String label) { this.label = label; }
+        void setPaddingRelative(int left, int top, int right, int bottom) {}
+    }
+    static class Button extends TextView { Button(String label) { super(label); } }
+    static class LinearLayout extends View {
+        final List<View> children = new ArrayList<>();
+        void addView(View view, Object params) { children.add(view); }
+    }
+    static class SettingsKit {
+        static final int ACTION_NORMAL = 0;
+        TextView rowDescription(String label) { return new TextView(label); }
+        Button actionRow(String label, String description, int kind) { return new Button(label); }
+    }
+    static class TextUtils {
+        static String join(String delimiter, Iterable<String> values) { return String.join(delimiter, values); }
+    }
+    static class IvLyricsBridge {
+        static boolean isEmbedded(MenuPlayer player) { return player.embedded; }
+    }
+    static class TrackSnapshot {
+        boolean usable = true, playing;
+        long durationMs = 120000;
+        boolean hasUsableMetadata() { return usable; }
+    }
+    static class VinylPlayerModeView {
+        final MenuPlayer owner;
+        VinylPlayerModeView(MenuPlayer owner) { this.owner = owner; }
+        void setTrack(TrackSnapshot track, Object artwork, boolean changed) {}
+        void setPlayback(long position, long duration, boolean playing) {}
+        void show(boolean animate) { owner.entries++; }
+        void hide(boolean animate, Runnable closed) { closed.run(); }
+    }
+    static class Toast {
+        static final int LENGTH_SHORT = 0;
+        final MenuPlayer owner;
+        Toast(MenuPlayer owner) { this.owner = owner; }
+        static Toast makeText(MenuPlayer owner, String text, int duration) { return new Toast(owner); }
+        void show() { owner.waitingToasts++; }
+    }
+    static class MotionEvent {
+        static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3;
+        final int action;
+        final float x, y;
+        MotionEvent(int action, float x, float y) { this.action = action; this.x = x; this.y = y; }
+        int getActionMasked() { return action; }
+        float getRawX() { return x; }
+        float getRawY() { return y; }
+    }
+    static class VelocityTracker {
+        static VelocityTracker obtain() { return new VelocityTracker(); }
+        void addMovement(MotionEvent event) {}
+        void computeCurrentVelocity(int units) {}
+        float getXVelocity() { return 0f; }
+        void recycle() {}
+    }
+    static class Handler {
+        Runnable pending;
+        void postDelayed(Runnable value, long delay) { pending = value; }
+        void removeCallbacks(Runnable value) { if (pending == value) pending = null; }
+        void fireLongPress() { Runnable value = pending; pending = null; value.run(); }
+    }
+    static class ViewConfiguration { static int getLongPressTimeout() { return 500; } }
+    static class HapticFeedbackConstants { static final int LONG_PRESS = 0; }
+    static class NowPlayingService {
+        static int next, previous;
+        static boolean skipToNext() { next++; return true; }
+        static boolean skipToPrevious() { previous++; return true; }
+    }
+    static class Player {
+        AiLyricsSettings aiLyricsSettings = new AiLyricsSettings();
+        final Handler handler = new Handler();
+        VelocityTracker artworkVelocityTracker;
+        float artworkSwipeStartX, artworkSwipeStartY;
+        boolean artworkSwipeDragging, artworkLongPressTriggered;
+        Runnable artworkLongPressRunnable;
+        int entries, research;
+        void makeRemoteFocusable(View view) { view.focusable = true; }
+        String ui(String key) { return key; }
+        int dp(float value) { return Math.round(value); }
+        private void showVinylMode(boolean show) { if (show) entries++; }
+        void showTmiForCurrentTrack(boolean refresh) { research++; }
+        void runTransportCommand(java.util.function.BooleanSupplier command) { command.getAsBoolean(); }
+        // PRODUCTION_GESTURES
+    }
+    static class MenuPlayer extends Player {
+        static final String SETTINGS_TAB_CURRENT_TRACK = "current_track";
+        final SettingsKit settingsKit = new SettingsKit();
+        final Map<String, List<String>> settingsMenuSections = new HashMap<>();
+        final Map<View, String> registeredSettings = new HashMap<>();
+        final LinearLayout lyricsLanguageSettingsPanel = new LinearLayout();
+        final VinylPlayerModeView vinylPlayerModeView = new VinylPlayerModeView(this);
+        TrackSnapshot currentTrack = new TrackSnapshot();
+        Object currentArtworkBitmap;
+        long lastBackPressElapsedMs;
+        boolean vinylModeVisible;
+        int waitingToasts;
+        LinearLayout page;
+        TextView currentTrackSettingsSummary;
+        boolean embedded, settingsVisible = true;
+        LinearLayout settingsMenuPage(LinearLayout content, String menuId) {
+            settingsMenuSections.put(menuId, new ArrayList<>());
+            page = new LinearLayout();
+            content.addView(page, matchWrap());
+            return page;
+        }
+        LinearLayout settingsGroup(LinearLayout section) {
+            LinearLayout group = new LinearLayout();
+            section.addView(group, matchWrap());
+            return group;
+        }
+        Object matchWrap() { return new Object(); }
+        Object lyricsLanguageSettingsPanelBackground(boolean popup) { return new Object(); }
+        void detachFromParent(View view) {}
+        void showSettingsPanel(boolean visible) { settingsVisible = visible; }
+        void cancelArtworkLongPress() {}
+        void updateVinylDisplayMetadata(VinylPlayerModeView view, TrackSnapshot track) {}
+        long currentPlaybackPosition(TrackSnapshot track) { return 0; }
+        long currentLyricsPlaybackPosition(TrackSnapshot track) { return 0; }
+        void updateLyricPreview(long position) {}
+        void fadeNormalPlayer(boolean show) {}
+        void requestDefaultRemoteFocusAfterVinylClose() {}
+        void registerSetting(View target, String label, String description, Runnable reveal) {
+            registeredSettings.put(target, label);
+        }
+        // PRODUCTION_MENU
+    }
+
+    static List<Button> buttons(LinearLayout parent) {
+        List<Button> result = new ArrayList<>();
+        for (View child : parent.children) {
+            if (child instanceof Button) result.add((Button) child);
+            if (child instanceof LinearLayout) result.addAll(buttons((LinearLayout) child));
+        }
+        return result;
+    }
+    static void explicitMenuRoute() {
+        for (boolean embedded : new boolean[]{false, true}) {
+            for (boolean enabled : new boolean[]{false, true}) {
+                MenuPlayer player = new MenuPlayer();
+                player.embedded = embedded;
+                player.aiLyricsSettings.setAlbumArtOpenLp(enabled);
+                player.buildCurrentTrackSettingsMenu(new LinearLayout());
+                List<Button> actions = buttons(player.page);
+                check(actions.size() == (embedded ? 0 : 1), "LP menu exists only for standalone with either preference");
+                check(player.settingsMenuSections.get("current_track").contains("vinyl.mode") != embedded,
+                        "home menu advertises LP only where supported");
+                if (embedded) continue;
+                Button action = actions.get(0);
+                check(action.label.equals("vinyl.mode"), "explicit menu reuses the localized LP label");
+                check(player.registeredSettings.get(action).equals("vinyl.mode"), "LP action participates in settings search");
+                check(action.focusable, "menu action supports remote focus");
+                action.performClick();
+                check(player.entries == 1 && !player.settingsVisible, "actual menu callback closes settings and enters LP regardless of artwork setting");
+                check(player.vinylModeVisible, "menu invokes the production LP entry function");
+                check(player.aiLyricsSettings.albumArtOpenLp() == enabled, "manual entry preserves the artwork preference");
+                player.showVinylMode(false);
+                check(!player.vinylModeVisible, "LP exit remains available with either artwork preference");
+                player.currentTrack = null;
+                action.performClick();
+                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 1,
+                        "menu retains normal missing-track guard and feedback");
+                player.currentTrack = new TrackSnapshot();
+                player.currentTrack.usable = false;
+                action.performClick();
+                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 2,
+                        "menu retains normal unusable-metadata guard and feedback");
+            }
+        }
+    }
+
+    static void touch(View view, int action, float x, float y) {
+        check(view.touch.onTouch(view, new MotionEvent(action, x, y)), "gesture consumed");
+    }
+    static void tap(View view) {
+        touch(view, MotionEvent.ACTION_DOWN, 400, 200);
+        touch(view, MotionEvent.ACTION_UP, 402, 202);
+    }
+    static void swipe(View view, float destination) {
+        touch(view, MotionEvent.ACTION_DOWN, 400, 200);
+        touch(view, MotionEvent.ACTION_MOVE, destination, 200);
+        touch(view, MotionEvent.ACTION_UP, destination, 200);
+    }
+    public static void main(String[] args) {
+        explicitMenuRoute();
+        for (boolean enabled : new boolean[]{true, false}) {
+            Player player = new Player();
+            player.aiLyricsSettings.setAlbumArtOpenLp(enabled);
+            View artwork = new View();
+            player.attachArtworkSwipe(artwork);
+            check(artwork.clickable && artwork.longClickable && artwork.focusable, "retain gestures and remote focus");
+            check(artwork.description.contains("vinyl.open_hint") == enabled, "hint follows setting");
+            check(artwork.description.contains("vinyl.tmi_hint"), "research hint remains");
+            artwork.performClick();
+            tap(artwork);
+            check(player.entries == (enabled ? 2 : 0), "touch and accessibility/remote clicks use the gate");
+            int before = player.entries;
+            touch(artwork, MotionEvent.ACTION_DOWN, 400, 200);
+            player.handler.fireLongPress();
+            touch(artwork, MotionEvent.ACTION_UP, 400, 200);
+            check(player.research == 1 && artwork.haptics == 1, "research long press remains available");
+            check(player.entries == before, "long press does not become LP entry");
+            int next = NowPlayingService.next, previous = NowPlayingService.previous;
+            swipe(artwork, 100);
+            swipe(artwork, 700);
+            check(NowPlayingService.next == next + 1 && NowPlayingService.previous == previous + 1,
+                    "track swipes work with either setting");
+            check(!artwork.parent.interceptDisallowed && player.artworkVelocityTracker == null, "swipe cleans up");
+            touch(artwork, MotionEvent.ACTION_DOWN, 400, 200);
+            touch(artwork, MotionEvent.ACTION_CANCEL, 400, 200);
+            check(player.handler.pending == null && player.artworkVelocityTracker == null, "cancellation cleans up");
+            check(player.entries == before, "swipes and cancellation never enter LP");
+            player.aiLyricsSettings.setAlbumArtOpenLp(!enabled);
+            player.updateArtworkTapHint(artwork);
+            tap(artwork);
+            check(player.entries == before + (enabled ? 0 : 1), "preference takes effect without rebuilding view");
+            check(artwork.description.contains("vinyl.open_hint") != enabled, "live hint updates");
+            View rebuilt = new View();
+            player.attachArtworkSwipe(rebuilt);
+            rebuilt.performClick();
+            check(player.entries == before + (enabled ? 0 : 2), "rebuilt portrait/landscape artwork uses saved choice");
+        }
+        Player defaults = new Player();
+        View artwork = new View();
+        defaults.attachArtworkSwipe(artwork);
+        tap(artwork);
+        check(defaults.entries == 1, "missing key defaults to enabled");
+        defaults.aiLyricsSettings = null;
+        artwork.performClick();
+        check(defaults.entries == 2, "missing settings retains existing behavior");
+        defaults.updateArtworkTapHint(null);
+        System.out.println("Album-art LP native gesture/route contracts: " + checks
+                + " checks passed. Synthetic views/transport; no device-rendering verdict.");
+    }
+}

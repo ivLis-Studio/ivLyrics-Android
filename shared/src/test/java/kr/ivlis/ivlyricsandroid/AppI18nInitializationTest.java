@@ -77,6 +77,27 @@ public final class AppI18nInitializationTest {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    @Test public void albumArtworkLpSettingHasExplicitTranslationsInAllLanguages() throws Exception {
+        java.lang.reflect.Field field = AppI18n.class.getDeclaredField("STRINGS");
+        field.setAccessible(true);
+        java.util.Map<String, java.util.Map<String, String>> tables =
+                (java.util.Map<String, java.util.Map<String, String>>) field.get(null);
+        org.junit.Assert.assertEquals(22, AppI18n.UI_LANGUAGES.size());
+        for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
+            for (String key : new String[]{"setting.album_art_open_lp", "setting.album_art_open_lp_desc"}) {
+                String value = tables.get(language.code).get(key);
+                String label = language.code + ":" + key;
+                org.junit.Assert.assertNotNull(label, value);
+                org.junit.Assert.assertFalse(label, value.isBlank());
+                org.junit.Assert.assertEquals(label, value, AppI18n.t(language.code, key));
+                if (!"en".equals(language.code)) {
+                    org.junit.Assert.assertNotEquals(label, AppI18n.t("en", key), value);
+                }
+            }
+        }
+    }
+
     @Test public void englishFallbacksOfHelperPassesKeepCzechTranslations() {
         // Helpers without a Czech case used to overwrite these entries of the Czech table with English.
         String[] keys = {"update.status_idle", "section.app_update", "button.check_updates", "section.typography",

@@ -25,7 +25,8 @@ methods = "\n".join(declaration(settings, signature) for signature in (
     "boolean videoEdgeToEdge()", "boolean landscapeShowOriginal()", "boolean landscapeShowArtwork()",
     "boolean showLyricsNotFound()", "void setAppearanceChoice(", "void setAppearanceToggle("))
 methods += "\n" + "\n".join(declaration(settings, signature) for signature in (
-    "void setVinylTrackChanges(", "void setVinylRotationSpeed(", "void setVinylSimplifiedTitle("))
+    "void setVinylTrackChanges(", "void setVinylRotationSpeed(", "void setVinylSimplifiedTitle(",
+    "boolean albumArtOpenLp()", "void setAlbumArtOpenLp("))
 filtering = declaration(renderer, "private List<DrawGroup> visibleLyricGroups(")
 work = REPORTS / "appearance"
 work.mkdir(parents=True, exist_ok=True)
@@ -67,6 +68,10 @@ public final class AppearanceRegression {
     }
     public static void main(String[] args) throws Exception {
         Settings settings = new Settings();
+        check(settings.albumArtOpenLp()); // Existing installations keep artwork entry enabled.
+        check(Settings.KEY_ALBUM_ART_OPEN_LP.equals("album_art_open_lp"));
+        settings.importCloudSettings(new JSONObject());
+        check(settings.albumArtOpenLp()); // Older backups do not turn it off.
         check(settings.videoFallback().equals("gradient-background"));
         check(settings.videoAspect().equals("fill"));
         check(settings.titleTapAction().equals("player"));
@@ -83,11 +88,23 @@ public final class AppearanceRegression {
         settings.setVinylTrackChanges(false);
         settings.setVinylRotationSpeed(175);
         settings.setVinylSimplifiedTitle(true);
+        settings.setAlbumArtOpenLp(false);
+        check(!settings.albumArtOpenLp());
+        Settings reopened = new Settings();
+        reopened.prefs = settings.prefs;
+        check(!reopened.albumArtOpenLp());
         settings.prefs.edit().putString("api_keys","private").apply();
         JSONObject exported = settings.exportCloudSettings();
         check(!exported.has("api_keys"));
+        check(exported.has(Settings.KEY_ALBUM_ART_OPEN_LP) && !exported.getBoolean(Settings.KEY_ALBUM_ART_OPEN_LP));
         Settings restored = new Settings();
         restored.importCloudSettings(new JSONObject(exported.toString()));
+        check(!restored.albumArtOpenLp());
+        restored.importCloudSettings(new JSONObject());
+        check(!restored.albumArtOpenLp()); // Partial/older backups preserve the user's choice.
+        restored.setAlbumArtOpenLp(true);
+        check(restored.albumArtOpenLp());
+        check(restored.exportCloudSettings().getBoolean(Settings.KEY_ALBUM_ART_OPEN_LP));
         check(restored.videoFallback().equals("solid-background"));
         check(restored.titleTapAction().equals("context"));
         check(restored.videoAspect().equals("fit"));

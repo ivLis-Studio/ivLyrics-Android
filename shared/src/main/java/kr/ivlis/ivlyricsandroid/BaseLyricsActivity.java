@@ -399,6 +399,7 @@ public class BaseLyricsActivity extends Activity implements
     private Switch pipShowArtworkSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
+    private Switch albumArtOpenLpSwitch;
     private Switch vinylAnimationsSwitch;
     private Switch vinylTrackChangesSwitch;
     private Switch vinylSimplifiedTitleSwitch;
@@ -5247,6 +5248,13 @@ public class BaseLyricsActivity extends Activity implements
         List<String> sections = settingsMenuSections.get(SETTINGS_TAB_CURRENT_TRACK);
         Collections.addAll(sections, ui("lyrics.tab.language"), ui("lyrics.tab.sync"),
                 ui("lyrics.tab.video"), ui("lyrics.tab.background"), ui("section.lyrics_providers"));
+        if (!IvLyricsBridge.isEmbedded(this)) {
+            sections.add(ui("vinyl.mode"));
+            settingsAction(settingsGroup(page), ui("vinyl.mode"), null, SettingsKit.ACTION_NORMAL, view -> {
+                showSettingsPanel(false);
+                showVinylMode(true);
+            });
+        }
         registerSetting(currentTrackSettingsSummary, ui("tab.current_track"), TextUtils.join(" · ", sections), null);
         // Keep one set of controls and callbacks: the long-press popup temporarily borrows this panel.
         if (lyricsLanguageSettingsPanel != null) {
@@ -6198,6 +6206,14 @@ public class BaseLyricsActivity extends Activity implements
             aiLyricsSettings.setKeepScreenOn(isChecked);
             applyKeepScreenOnSetting(aiLyricsSettings.snapshot());
             showSavedToast(isChecked ? ui("toast.keep_screen_on_on") : ui("toast.keep_screen_on_off"));
+        });
+        albumArtOpenLpSwitch = settingsToggle(group, ui("setting.album_art_open_lp"),
+                ui("setting.album_art_open_lp_desc"));
+        albumArtOpenLpSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setAlbumArtOpenLp(checked);
+            updateArtworkTapHint(artworkView);
+            showSavedToast(ui("toast.settings_saved"));
         });
         if (IvLyricsBridge.isEmbedded(this)) return;
 
@@ -12060,6 +12076,13 @@ public class BaseLyricsActivity extends Activity implements
         }
         AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
         rebuildLanguageSettingsUi(snapshot);
+        if (albumArtOpenLpSwitch != null) {
+            boolean previousSuppression = suppressSettingsEvents;
+            suppressSettingsEvents = true;
+            albumArtOpenLpSwitch.setChecked(aiLyricsSettings.albumArtOpenLp());
+            suppressSettingsEvents = previousSuppression;
+        }
+        updateArtworkTapHint(artworkView);
         if (vinylAlbumSizeSeekBar != null) {
             boolean previousVinylSuppression = suppressSettingsEvents;
             suppressSettingsEvents = true;
@@ -17685,12 +17708,22 @@ public class BaseLyricsActivity extends Activity implements
         }
     }
 
+    private void updateArtworkTapHint(View view) {
+        if (view == null) return;
+        boolean opensLp = aiLyricsSettings == null || aiLyricsSettings.albumArtOpenLp();
+        view.setContentDescription(opensLp
+                ? ui("vinyl.open_hint") + ". " + ui("vinyl.tmi_hint")
+                : ui("vinyl.tmi_hint"));
+    }
+
     private void attachArtworkSwipe(View view) {
         makeRemoteFocusable(view);
         view.setClickable(true);
         view.setLongClickable(true);
-        view.setContentDescription(ui("vinyl.open_hint") + ". " + ui("vinyl.tmi_hint"));
-        view.setOnClickListener(target -> showVinylMode(true));
+        updateArtworkTapHint(view);
+        view.setOnClickListener(target -> {
+            if (aiLyricsSettings == null || aiLyricsSettings.albumArtOpenLp()) showVinylMode(true);
+        });
         view.setOnTouchListener((target, event) -> {
             if (artworkVelocityTracker != null) {
                 artworkVelocityTracker.addMovement(event);

@@ -56,6 +56,7 @@ jobs:
       - name: Run renderer and metadata regressions
         run: |
           python3 tests/run_appearance_regression.py
+          python3 tests/run_album_art_lp_regression.py
           python3 tests/run_vinyl_regression.py
           python3 tests/run_ios_pr_port_regression.py
           python3 tests/run_interlude_handoff_regression.py
