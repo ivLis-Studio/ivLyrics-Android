@@ -453,6 +453,28 @@ public final class OpenAIRequestParamsRegression {
         provider.reset(reasoningModelApi((path, body) -> responsesStream("Researched")));
         check(repository.callOpenAiResponsesStream("fixture", settings("chatgpt", base, "gpt-6.1-sol"), KEY, deltas::add).equals("Researched")
                 && provider.bodies.size() == 1 && omitsSampling(provider.bodies.get(0)), "Responses request for gpt-6.1-sol needs no retry");
+
+        // Some compatible providers stream "content": null, e.g. while they stream reasoning_content.
+        deltas.clear();
+        provider.reset((path, body) -> new Reply(200, "text/event-stream",
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"reasoning_content\":\"plan\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":null}}]}\n\n"
+                        + "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}]}\n\n"
+                        + "data: [DONE]\n\n"));
+        check(repository.callOpenAiCompatibleStream("fixture", settings("chatgpt", base, "gpt-4.1"), KEY, deltas::add).equals("Hello")
+                && deltas.equals(List.of("Hel", "lo")), "null content deltas add no text");
+        provider.reset((path, body) -> json(200, new JSONObject().put("choices", new JSONArray().put(new JSONObject()
+                .put("index", 0)
+                .put("message", new JSONObject().put("role", "assistant").put("content", JSONObject.NULL))
+                .put("finish_reason", "stop")))));
+        String nullMessage;
+        try {
+            nullMessage = repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "gpt-4.1"), KEY);
+        } catch (IOException error) {
+            nullMessage = error.getMessage();
+        }
+        check(nullMessage.contains("Empty response from API"), "a null message content is an empty response, not the text \"null\"");
     }
 
     private static void researchHelpers(FakeProvider provider) throws Exception {

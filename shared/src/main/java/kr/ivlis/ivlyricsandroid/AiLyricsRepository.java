@@ -4331,7 +4331,9 @@ final class AiLyricsRepository {
     }
 
     private String extractOpenAiContent(Object content) {
-        if (content == null) {
+        // A JSON null is no text. Some OpenAI-compatible providers stream
+        // "content": null, for example while they stream reasoning_content.
+        if (content == null || content == JSONObject.NULL) {
             return "";
         }
         if (content instanceof String) {
@@ -4345,7 +4347,7 @@ final class AiLyricsRepository {
                 if (item instanceof JSONObject) {
                     JSONObject object = (JSONObject) item;
                     builder.append(object.optString("text", ""));
-                } else if (item != null) {
+                } else if (item != null && item != JSONObject.NULL) {
                     builder.append(item);
                 }
             }
