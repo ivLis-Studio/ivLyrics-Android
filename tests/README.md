@@ -345,3 +345,16 @@ The test reports are under `app/build/reports/androidTests/connected/debug` and
 `app/build/outputs/androidTest-results/connected/debug`. This harness does not
 prove OEM/Samsung rasterization, a real LSPatch host's native loading, Spotify
 authentication, or device playback behavior.
+
+## OpenAI request parameters
+
+`python3 tests/run_openai_request_params_regression.py` compiles the production OpenAI-compatible
+request builders, HTTP/SSE client, unsupported-parameter fallback and connection test with
+synthetic settings, and sends every request to an in-process loopback server. Reasoning models
+(the o-series and GPT-5 or newer, including routed names such as `openai/gpt-5.5` but not `-chat`
+variants) must omit `temperature`/`top_p` from Chat Completions, streaming, web-search and
+Responses requests, while other models keep the configured temperature. A provider HTTP 400 for
+an unsupported `temperature`/`top_p` or `max_tokens` is retried once per adjustment (`max_tokens`
+moves to `max_completion_tokens`), remembered per base URL and model, never resent after streamed
+text reached the sink, and still reported by the connection test as only `HTTP <code>`. It needs
+only a JDK and the pinned JSON dependency; no provider, account, key, Android SDK or device is used.

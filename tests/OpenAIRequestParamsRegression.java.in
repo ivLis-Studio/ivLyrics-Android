@@ -1,0 +1,494 @@
+package kr.ivlis.ivlyricsandroid;
+
+import com.sun.net.httpserver.HttpServer;
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.regex.*;
+import org.json.*;
+
+/**
+ * Synthetic settings and an in-process loopback provider only. The OpenAI-compatible request
+ * methods below are copied unchanged from production; no real provider, account or key is used.
+ */
+public final class OpenAIRequestParamsRegression {
+    private static final int CONNECT_TIMEOUT_MS = 5_000;
+    private static final int READ_TIMEOUT_MS = 10_000;
+    private static final String KEY = "sk-fixture-not-a-real-key";
+    private static final String TEMPERATURE_UNSUPPORTED =
+            "Unsupported parameter: 'temperature' is not supported with this model.";
+    private static final String TEMPERATURE_DEFAULT_ONLY =
+            "Unsupported value: 'temperature' does not support 0.3 with this model. Only the default (1) value is supported.";
+    private static final String MAX_TOKENS_UNSUPPORTED =
+            "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.";
+    private static int checks;
+
+    private final DirectExecutor executor = new DirectExecutor();
+    private final DirectHandler mainHandler = new DirectHandler();
+
+    // PRODUCTION_METHODS
+
+    private List<String> translateDeepL(List<String> texts, String language,
+            AiLyricsSettings.Snapshot settings, boolean preserveLyricsStructure) {
+        throw new AssertionError("DeepL is outside this regression");
+    }
+
+    private String callGemini(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) {
+        throw new AssertionError("Gemini requests are outside this regression");
+    }
+
+    private String callClaude(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) {
+        throw new AssertionError("Claude requests are outside this regression");
+    }
+
+    static final class DirectExecutor {
+        void execute(Runnable task) { task.run(); }
+    }
+
+    static final class DirectHandler {
+        boolean post(Runnable task) { task.run(); return true; }
+    }
+
+    static final class AiLyricsSettings {
+        static final class Provider {
+            final String id, label;
+            Provider(String id) { this.id = id; label = "Fixture " + id; }
+        }
+
+        static final class Snapshot {
+            final Provider provider;
+            final String apiKeys = KEY, pollinationsAccessToken = "", baseUrl, model;
+            final int maxTokens = 4096;
+            final float temperature = 0.3f;
+
+            Snapshot(String providerId, String baseUrl, String model) {
+                provider = new Provider(providerId);
+                this.baseUrl = baseUrl;
+                this.model = model;
+            }
+        }
+    }
+
+    private record Reply(int status, String contentType, String body) { }
+
+    private interface Responder {
+        Reply reply(String path, JSONObject body) throws Exception;
+    }
+
+    private interface Call {
+        Object run() throws Exception;
+    }
+
+    /** Loopback stand-in for an OpenAI-compatible endpoint that records every request it receives. */
+    private static final class FakeProvider implements AutoCloseable {
+        final HttpServer server;
+        final List<String> paths = Collections.synchronizedList(new ArrayList<>());
+        final List<JSONObject> bodies = Collections.synchronizedList(new ArrayList<>());
+        volatile Responder responder;
+
+        FakeProvider() throws IOException {
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/", exchange -> {
+                Reply reply;
+                try {
+                    String path = exchange.getRequestURI().getPath();
+                    JSONObject body = new JSONObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    paths.add(path);
+                    bodies.add(body);
+                    reply = responder.reply(path, body);
+                } catch (Exception error) {
+                    reply = new Reply(500, "text/plain", "fixture failure: " + error);
+                }
+                byte[] bytes = reply.body().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", reply.contentType());
+                exchange.sendResponseHeaders(reply.status(), bytes.length);
+                try (OutputStream output = exchange.getResponseBody()) {
+                    output.write(bytes);
+                }
+            });
+            server.start();
+        }
+
+        String baseUrl() {
+            return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        }
+
+        void reset(Responder next) {
+            paths.clear();
+            bodies.clear();
+            responder = next;
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
+    }
+
+    private static void check(boolean condition, String message) {
+        checks++;
+        if (!condition) throw new AssertionError(message);
+    }
+
+    private static AiLyricsSettings.Snapshot settings(String providerId, String model) {
+        return settings(providerId, "https://fixture.test/v1", model);
+    }
+
+    private static AiLyricsSettings.Snapshot settings(String providerId, String baseUrl, String model) {
+        return new AiLyricsSettings.Snapshot(providerId, baseUrl, model);
+    }
+
+    private static boolean sendsTemperature(JSONObject body) {
+        Object value = body.opt("temperature");
+        return value instanceof Number && ((Number) value).floatValue() == 0.3f;
+    }
+
+    private static boolean omitsSampling(JSONObject body) {
+        return !body.has("temperature") && !body.has("top_p");
+    }
+
+    private int learned(String baseUrl, String model) {
+        Integer value = openAiParameterAdjustmentCache.get(baseUrl + "|" + model);
+        return value == null ? 0 : value;
+    }
+
+    private static String connectionTest(OpenAIRequestParamsRegression repository, AiLyricsSettings.Snapshot settings) {
+        String[] shown = {"callback not invoked"};
+        repository.testConnection(settings, value -> shown[0] = value);
+        return shown[0];
+    }
+
+    private static HttpStatusException httpFailure(Call call) throws Exception {
+        try {
+            call.run();
+        } catch (HttpStatusException error) {
+            return error;
+        }
+        throw new AssertionError("Request unexpectedly succeeded");
+    }
+
+    private static Reply json(int status, JSONObject body) {
+        return new Reply(status, "application/json", body.toString());
+    }
+
+    private static Reply rejection(int status, String message, String param, String code) {
+        return json(status, new JSONObject().put("error", new JSONObject()
+                .put("message", message)
+                .put("type", "invalid_request_error")
+                .put("param", param == null ? JSONObject.NULL : param)
+                .put("code", code)));
+    }
+
+    private static Reply chatReply(String text) {
+        return json(200, new JSONObject().put("choices", new JSONArray().put(new JSONObject()
+                .put("index", 0)
+                .put("message", new JSONObject().put("role", "assistant").put("content", text))
+                .put("finish_reason", "stop"))));
+    }
+
+    private static Reply chatStream(String... deltas) {
+        StringBuilder events = new StringBuilder();
+        for (int index = 0; index < deltas.length; index++) {
+            JSONObject choice = new JSONObject().put("index", 0).put("delta", new JSONObject().put("content", deltas[index]));
+            if (index == deltas.length - 1) choice.put("finish_reason", "stop");
+            events.append("data: ").append(new JSONObject().put("choices", new JSONArray().put(choice))).append("\n\n");
+        }
+        return new Reply(200, "text/event-stream", events.append("data: [DONE]\n\n").toString());
+    }
+
+    private static Reply responsesStream(String text) {
+        return new Reply(200, "text/event-stream", "event: response.output_text.delta\ndata: "
+                + new JSONObject().put("type", "response.output_text.delta").put("delta", text)
+                + "\n\nevent: response.completed\ndata: "
+                + new JSONObject().put("type", "response.completed").put("response", new JSONObject().put("output", new JSONArray()))
+                + "\n\n");
+    }
+
+    /** The official API's reasoning-model behavior: sampling parameters and max_tokens are rejected. */
+    private static Responder reasoningModelApi(Responder accepted) {
+        return (path, body) -> {
+            if (body.has("temperature")) return rejection(400, TEMPERATURE_UNSUPPORTED, "temperature", "unsupported_parameter");
+            if (body.has("top_p")) {
+                return rejection(400, "Unsupported parameter: 'top_p' is not supported with this model.", "top_p", "unsupported_parameter");
+            }
+            if (body.has("max_tokens")) return rejection(400, MAX_TOKENS_UNSUPPORTED, "max_tokens", "unsupported_parameter");
+            return accepted.reply(path, body);
+        };
+    }
+
+    private static Responder rejectingTemperature(String message, String code, Reply accepted) {
+        return (path, body) -> body.has("temperature") ? rejection(400, message, "temperature", code) : accepted;
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Every request the production client sends must reach the counter; no silent JDK POST resend.
+        System.setProperty("sun.net.http.retryPost", "false");
+        modelFamilies();
+        requestBodies();
+        try (FakeProvider provider = new FakeProvider()) {
+            connectionTests(provider);
+            unsupportedParameterRetries(provider);
+            streamingRetries(provider);
+            researchHelpers(provider);
+        }
+        streamedTextIsNeverResent();
+        System.out.println("OpenAI request parameter regression: " + checks + " checks passed");
+    }
+
+    private static void modelFamilies() {
+        for (String model : List.of("gpt-6.1-sol", "gpt-5.5", "gpt-5", "gpt-5-mini", "gpt-5.5-pro", "gpt-5-codex", "gpt-7",
+                "o1", "o3", "o3-mini", "o3-pro", "o4-mini", "openai/gpt-5.5", "openai/o4-mini", " OpenAI/GPT-6.1-Sol ")) {
+            check(isOpenAiReasoningModel(model), model + " is an OpenAI reasoning model");
+        }
+        for (String model : Arrays.asList("gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "gpt-35-turbo",
+                "gpt-5-chat-latest", "gpt-5.1-chat-latest", "openai/gpt-5-chat", "gpt-oss-120b", "openai/gpt-oss-20b",
+                "chatgpt-4o-latest", "claude-opus-5-5", "gemini-3.7-flash", "llama-3.3-70b-versatile", "groq/compound",
+                "gemini-search", "sonar-pro", "future-reasoner", "", null)) {
+            check(!isOpenAiReasoningModel(model), model + " is not matched by the reasoning-model rule");
+        }
+    }
+
+    private static void requestBodies() throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        for (String model : List.of("gpt-6.1-sol", "gpt-5.5", "o3")) {
+            JSONObject body = repository.openAiCompatibleBody("fixture", settings("chatgpt", model));
+            check(omitsSampling(body), model + " chat body omits temperature and top_p");
+            check(body.optInt("max_completion_tokens") == 4096 && !body.has("max_tokens"), model + " keeps the chatgpt token field");
+            check(body.optString("model").equals(model)
+                    && body.getJSONArray("messages").getJSONObject(0).getString("content").equals("fixture"), model + " body retained");
+        }
+        JSONObject legacy = repository.openAiCompatibleBody("fixture", settings("chatgpt", "gpt-4.1"));
+        check(sendsTemperature(legacy) && legacy.optInt("max_completion_tokens") == 4096, "gpt-4.1 keeps temperature");
+        JSONObject routed = repository.openAiCompatibleBody("fixture", settings("openrouter", "openai/gpt-5.5"));
+        check(omitsSampling(routed) && routed.optInt("max_tokens") == 4096 && !routed.has("max_completion_tokens"),
+                "routed openai/gpt-5.5 omits temperature regardless of provider and keeps max_tokens");
+        JSONObject routedLegacy = repository.openAiCompatibleBody("fixture", settings("openrouter", "openai/gpt-4.1"));
+        check(sendsTemperature(routedLegacy) && routedLegacy.optInt("max_tokens") == 4096, "routed openai/gpt-4.1 unchanged");
+        JSONObject fixedModel = repository.openAiCompatibleBody("fixture", settings("pollinations", "gpt-6.1-sol"), "gemini-search");
+        check(fixedModel.optString("model").equals("gemini-search") && sendsTemperature(fixedModel),
+                "a fixed request model, not the configured one, decides sampling");
+
+        JSONObject responses = repository.openAiResponsesBody("fixture", settings("chatgpt", "gpt-6.1-sol"));
+        check(omitsSampling(responses), "Responses body omits temperature for reasoning models");
+        check(responses.optInt("max_output_tokens") == 4096 && !responses.has("max_tokens") && !responses.has("max_completion_tokens"),
+                "Responses body sends max_output_tokens only");
+        check(responses.getJSONArray("tools").getJSONObject(0).getString("type").equals("web_search")
+                && responses.optString("tool_choice").equals("required") && responses.optBoolean("stream")
+                && !responses.optBoolean("store", true) && responses.optString("input").equals("fixture"), "Responses web search options retained");
+        check(sendsTemperature(repository.openAiResponsesBody("fixture", settings("chatgpt", "gpt-4.1"))),
+                "Responses body keeps temperature for gpt-4.1");
+        JSONObject claude = repository.claudeBody("fixture", settings("claude", "claude-opus-5-5"));
+        check(sendsTemperature(claude) && claude.optInt("max_tokens") == 4096, "Claude body unchanged");
+
+        JSONObject sampled = new JSONObject().put("temperature", 0.3).put("max_tokens", 10);
+        check(openAiParameterAdjustmentFor("HTTP 400: " + TEMPERATURE_UNSUPPORTED, sampled) == OPENAI_OMIT_SAMPLING,
+                "unsupported temperature parameter classified");
+        check(openAiParameterAdjustmentFor("HTTP 400: " + TEMPERATURE_DEFAULT_ONLY, sampled) == OPENAI_OMIT_SAMPLING,
+                "default-only temperature value classified");
+        check(openAiParameterAdjustmentFor("HTTP 400: Unsupported parameter: 'top_p' is not supported with this model.", sampled)
+                == OPENAI_OMIT_SAMPLING, "unsupported top_p classified");
+        check(openAiParameterAdjustmentFor("HTTP 400: " + MAX_TOKENS_UNSUPPORTED, sampled) == OPENAI_MAX_COMPLETION_TOKENS,
+                "unsupported max_tokens classified");
+        check(openAiParameterAdjustmentFor("HTTP 400: Invalid 'temperature': decimal above maximum value. Expected a value <= 2, "
+                + "but got 2.5 instead.", sampled) == 0, "temperature range error is not an unsupported parameter");
+        check(openAiParameterAdjustmentFor("HTTP 400: max_tokens is too large: 900000. This model supports at most 128000 "
+                + "completion tokens, whereas you provided 900000.", sampled) == 0, "token limit error is not an unsupported parameter");
+        check(openAiParameterAdjustmentFor("HTTP 400: " + TEMPERATURE_UNSUPPORTED, new JSONObject().put("max_completion_tokens", 10)) == 0,
+                "nothing to remove means nothing to retry");
+        check(openAiParameterAdjustmentFor("HTTP 400", sampled) == 0 && openAiParameterAdjustmentFor(null, sampled) == 0,
+                "messageless errors are not retried");
+    }
+
+    private static void connectionTests(FakeProvider provider) throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        String base = provider.baseUrl();
+        // The reported failure: official OpenAI provider, a GPT-5.5-or-newer model, connection test.
+        provider.reset(reasoningModelApi((path, body) -> chatReply("OK")));
+        check(connectionTest(repository, settings("chatgpt", base, "gpt-6.1-sol")) == null, "gpt-6.1-sol connection test passes");
+        check(provider.bodies.size() == 1 && omitsSampling(provider.bodies.get(0))
+                && provider.paths.get(0).equals("/v1/chat/completions"), "gpt-6.1-sol connection test sends one request without temperature");
+        provider.reset(reasoningModelApi((path, body) -> chatReply("OK")));
+        check(connectionTest(repository, settings("chatgpt", base, "future-reasoner")) == null,
+                "connection test for a reasoning model the name rule does not know passes");
+        check(provider.bodies.size() == 2 && sendsTemperature(provider.bodies.get(0)) && omitsSampling(provider.bodies.get(1)),
+                "unknown reasoning model retried once without temperature");
+        provider.reset(reasoningModelApi((path, body) -> chatReply("OK")));
+        check(connectionTest(repository, settings("openrouter", base, "openai/gpt-5.5")) == null
+                && provider.bodies.size() == 2 && provider.bodies.get(0).has("max_tokens")
+                && provider.bodies.get(1).optInt("max_completion_tokens") == 4096 && !provider.bodies.get(1).has("max_tokens"),
+                "max_tokens provider recovers through max_completion_tokens");
+        // Only the status reaches the UI; provider payloads can echo credentials.
+        provider.reset((path, body) -> rejection(401, "Incorrect API key provided: " + KEY + ".", null, "invalid_api_key"));
+        check("HTTP 401".equals(connectionTest(repository, settings("chatgpt", base, "gpt-6.1-sol"))) && provider.bodies.size() == 1,
+                "401 shows only its status and is not retried");
+        provider.reset((path, body) -> rejection(403, "Key " + KEY + " has no access to model gpt-6.1-sol.", null, "model_not_found"));
+        check("HTTP 403".equals(connectionTest(repository, settings("chatgpt", base, "gpt-6.1-sol"))) && provider.bodies.size() == 1,
+                "403 payload echoing the key is not shown and is not retried");
+        provider.reset((path, body) -> rejection(400, TEMPERATURE_UNSUPPORTED, "temperature", "unsupported_parameter"));
+        check("HTTP 400".equals(connectionTest(repository, settings("chatgpt", base, "always-rejects"))) && provider.bodies.size() == 2,
+                "a repeated 400 is retried once and shows only its status");
+    }
+
+    private static void unsupportedParameterRetries(FakeProvider provider) throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        String base = provider.baseUrl();
+        Responder temperatureRejected = rejectingTemperature(TEMPERATURE_UNSUPPORTED, "unsupported_parameter", chatReply("OK"));
+        AiLyricsSettings.Snapshot future = settings("chatgpt", base, "future-reasoner");
+        provider.reset(temperatureRejected);
+        check(repository.callOpenAiCompatible("fixture", future, KEY).equals("OK"), "temperature rejection recovers");
+        check(provider.bodies.size() == 2, "temperature rejection is retried exactly once");
+        check(sendsTemperature(provider.bodies.get(0)), "first request used the configured temperature");
+        JSONObject retried = provider.bodies.get(1);
+        check(omitsSampling(retried), "retry omits temperature and top_p");
+        check(retried.optString("model").equals("future-reasoner") && retried.optInt("max_completion_tokens") == 4096
+                && retried.getJSONArray("messages").length() == 1, "retry keeps the rest of the body");
+        check(repository.learned(base, "future-reasoner") == OPENAI_OMIT_SAMPLING, "temperature adjustment is cached");
+        provider.reset(temperatureRejected);
+        repository.callOpenAiCompatible("fixture", future, KEY);
+        check(provider.bodies.size() == 1 && omitsSampling(provider.bodies.get(0)), "cached adjustment skips temperature immediately");
+        provider.reset(temperatureRejected);
+        repository.callOpenAiCompatible("fixture", settings("chatgpt", base + "/", "future-reasoner"), KEY);
+        check(provider.bodies.size() == 1 && omitsSampling(provider.bodies.get(0)), "cache key ignores a trailing slash");
+        provider.reset(temperatureRejected);
+        repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "future-reasoner-sibling"), KEY);
+        check(provider.bodies.size() == 2 && sendsTemperature(provider.bodies.get(0)), "other models on the endpoint are unaffected");
+        provider.reset(temperatureRejected);
+        repository.callOpenAiCompatible("fixture", settings("chatgpt", base.replace("/v1", "/other/v1"), "future-reasoner"), KEY);
+        check(provider.bodies.size() == 2 && sendsTemperature(provider.bodies.get(0)), "the same model on another endpoint is unaffected");
+
+        provider.reset(rejectingTemperature(TEMPERATURE_DEFAULT_ONLY, "unsupported_value", chatReply("OK")));
+        check(repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "future-default-only"), KEY).equals("OK")
+                && provider.bodies.size() == 2 && omitsSampling(provider.bodies.get(1)), "'only the default' value retried without temperature");
+
+        Responder maxTokensRejected = (path, body) -> body.has("max_tokens")
+                ? rejection(400, MAX_TOKENS_UNSUPPORTED, "max_tokens", "unsupported_parameter")
+                : chatReply("OK");
+        AiLyricsSettings.Snapshot routed = settings("openrouter", base, "vendor/future-reasoner");
+        provider.reset(maxTokensRejected);
+        check(repository.callOpenAiCompatible("fixture", routed, KEY).equals("OK"), "max_tokens rejection recovers");
+        check(provider.bodies.size() == 2, "max_tokens rejection is retried exactly once");
+        check(provider.bodies.get(0).optInt("max_tokens") == 4096 && !provider.bodies.get(0).has("max_completion_tokens"),
+                "first request used max_tokens");
+        check(!provider.bodies.get(1).has("max_tokens") && provider.bodies.get(1).optInt("max_completion_tokens") == 4096,
+                "retry sends the limit as max_completion_tokens only");
+        check(sendsTemperature(provider.bodies.get(1)), "max_tokens retry keeps temperature");
+        check(repository.learned(base, "vendor/future-reasoner") == OPENAI_MAX_COMPLETION_TOKENS, "max_tokens adjustment is cached");
+        provider.reset(maxTokensRejected);
+        repository.callOpenAiCompatible("fixture", routed, KEY);
+        check(provider.bodies.size() == 1 && provider.bodies.get(0).optInt("max_completion_tokens") == 4096
+                && !provider.bodies.get(0).has("max_tokens"), "cached max_completion_tokens is used immediately");
+
+        AiLyricsSettings.Snapshot both = settings("openrouter", base, "vendor/next-reasoner");
+        provider.reset(reasoningModelApi((path, body) -> chatReply("OK")));
+        check(repository.callOpenAiCompatible("fixture", both, KEY).equals("OK") && provider.bodies.size() == 3,
+                "each adjustment kind is retried once");
+        check(sendsTemperature(provider.bodies.get(0)) && provider.bodies.get(0).has("max_tokens")
+                && omitsSampling(provider.bodies.get(1)) && provider.bodies.get(1).has("max_tokens")
+                && omitsSampling(provider.bodies.get(2)) && !provider.bodies.get(2).has("max_tokens")
+                && provider.bodies.get(2).optInt("max_completion_tokens") == 4096, "adjustments accumulate across retries");
+        check(repository.learned(base, "vendor/next-reasoner") == (OPENAI_OMIT_SAMPLING | OPENAI_MAX_COMPLETION_TOKENS),
+                "both adjustments cached");
+        provider.reset(reasoningModelApi((path, body) -> chatReply("OK")));
+        repository.callOpenAiCompatible("fixture", both, KEY);
+        check(provider.bodies.size() == 1, "both cached adjustments apply to the next request");
+
+        provider.reset((path, body) -> rejection(400, "Invalid 'messages': empty array. Expected an array with minimum length 1, "
+                + "but got an empty array instead.", "messages", "empty_array"));
+        HttpStatusException unrelated = httpFailure(() -> repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "gpt-4.1"), KEY));
+        check(unrelated.statusCode == 400 && provider.bodies.size() == 1 && sendsTemperature(provider.bodies.get(0)),
+                "unrelated 400 is not retried and gpt-4.1 still sends temperature");
+        provider.reset((path, body) -> rejection(400, "Invalid 'temperature': decimal above maximum value. Expected a value <= 2, "
+                + "but got 2.5 instead.", "temperature", "decimal_above_max_value"));
+        check(httpFailure(() -> repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "range-checked"), KEY)).statusCode == 400
+                && provider.bodies.size() == 1, "temperature range error is not retried");
+        provider.reset((path, body) -> rejection(400, TEMPERATURE_UNSUPPORTED, "temperature", "unsupported_parameter"));
+        check(httpFailure(() -> repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "always-rejects"), KEY)).statusCode == 400
+                && provider.bodies.size() == 2, "a repeated rejection is retried only once");
+        // The desktop JDK drops 401 bodies in streaming mode; 403 and 429 carry the provider message here.
+        for (int status : new int[] {401, 403, 429}) {
+            provider.reset((path, body) -> rejection(status, TEMPERATURE_UNSUPPORTED, "temperature", "unsupported_parameter"));
+            HttpStatusException failure = httpFailure(() -> repository.callOpenAiCompatible("fixture", settings("chatgpt", base, "status-" + status), KEY));
+            check(failure.statusCode == status && provider.bodies.size() == 1 && repository.learned(base, "status-" + status) == 0,
+                    "HTTP " + status + " is left to the existing key/attempt handling");
+        }
+    }
+
+    private static void streamingRetries(FakeProvider provider) throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        String base = provider.baseUrl();
+        List<String> deltas = new ArrayList<>();
+        AiLyricsSettings.Snapshot streamer = settings("chatgpt", base, "future-streamer");
+        provider.reset(rejectingTemperature(TEMPERATURE_UNSUPPORTED, "unsupported_parameter", chatStream("Hel", "lo")));
+        String streamed = repository.callOpenAiCompatibleStream("fixture", streamer, KEY, deltas::add);
+        check(streamed.equals("Hello") && deltas.equals(List.of("Hel", "lo")), "streamed text reaches the sink once after the retry");
+        check(provider.bodies.size() == 2 && sendsTemperature(provider.bodies.get(0)) && omitsSampling(provider.bodies.get(1))
+                && provider.bodies.get(1).optBoolean("stream"), "stream request retried once without temperature");
+        provider.reset(rejectingTemperature(TEMPERATURE_UNSUPPORTED, "unsupported_parameter", chatReply("OK")));
+        check(repository.callOpenAiCompatible("fixture", streamer, KEY).equals("OK") && provider.bodies.size() == 1
+                && omitsSampling(provider.bodies.get(0)), "non-stream fallback reuses the adjustment learned while streaming");
+
+        provider.reset((path, body) -> chatStream("Found"));
+        repository.callOpenAiCompatibleStream("fixture", settings("openrouter", base, "openai/gpt-5.5"), KEY, deltas::add, true, 32000);
+        JSONObject webSearch = provider.bodies.get(0);
+        check(provider.bodies.size() == 1 && omitsSampling(webSearch) && webSearch.optInt("max_tokens") == 32000
+                && webSearch.getJSONArray("tools").getJSONObject(0).getString("type").equals("openrouter:web_search"),
+                "web-search stream omits temperature for routed reasoning models");
+        provider.reset((path, body) -> chatStream("Found"));
+        repository.callOpenAiCompatibleStream("fixture", settings("chatgpt", base, "gpt-6.1-sol"), KEY, deltas::add, false, 16000);
+        check(omitsSampling(provider.bodies.get(0)) && provider.bodies.get(0).optInt("max_completion_tokens") == 16000
+                && !provider.bodies.get(0).has("max_tokens"), "research stream for gpt-6.1-sol keeps max_completion_tokens only");
+        provider.reset((path, body) -> chatStream("Found"));
+        repository.callOpenAiCompatibleStream("fixture", settings("openrouter", base, "openai/gpt-4.1"), KEY, deltas::add, true, 32000);
+        check(sendsTemperature(provider.bodies.get(0)), "web-search stream keeps temperature for gpt-4.1");
+
+        deltas.clear();
+        provider.reset(rejectingTemperature(TEMPERATURE_DEFAULT_ONLY, "unsupported_value", responsesStream("Researched")));
+        String researched = repository.callOpenAiResponsesStream("fixture", settings("chatgpt", base, "future-researcher"), KEY, deltas::add);
+        check(researched.equals("Researched") && deltas.equals(List.of("Researched")), "Responses stream recovers without duplicate text");
+        check(provider.paths.equals(List.of("/v1/responses", "/v1/responses")), "Responses request retried once");
+        check(sendsTemperature(provider.bodies.get(0)) && omitsSampling(provider.bodies.get(1))
+                && provider.bodies.get(1).optInt("max_output_tokens") == 4096, "Responses retry omits only temperature");
+        deltas.clear();
+        provider.reset(reasoningModelApi((path, body) -> responsesStream("Researched")));
+        check(repository.callOpenAiResponsesStream("fixture", settings("chatgpt", base, "gpt-6.1-sol"), KEY, deltas::add).equals("Researched")
+                && provider.bodies.size() == 1 && omitsSampling(provider.bodies.get(0)), "Responses request for gpt-6.1-sol needs no retry");
+    }
+
+    private static void researchHelpers(FakeProvider provider) throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        String base = provider.baseUrl();
+        String origin = base.substring(0, base.length() - "/v1".length());
+        provider.reset((path, body) -> chatReply("Dossier https://example.com/source"));
+        // Both helpers request their own fixed models whatever model is configured, so they keep temperature.
+        repository.collectPollinationsWebResearch("Song", "Artist", settings("pollinations", origin, "gpt-6.1-sol"), KEY);
+        repository.collectGroqWebResearch("Song", "Artist", settings("groq", base, "gpt-6.1-sol"), KEY);
+        check(provider.paths.equals(List.of("/v1/chat/completions", "/v1/chat/completions")), "research helper endpoints unchanged");
+        JSONObject pollinations = provider.bodies.get(0);
+        JSONObject groq = provider.bodies.get(1);
+        check(pollinations.optString("model").equals("gemini-search") && sendsTemperature(pollinations)
+                && pollinations.optInt("max_tokens") == 4096, "Pollinations web research request unchanged");
+        check(groq.optString("model").equals("groq/compound") && sendsTemperature(groq) && groq.optInt("max_tokens") == 4096
+                && groq.getJSONObject("compound_custom").getJSONObject("tools").getJSONArray("enabled_tools").length() == 2,
+                "Groq web research request unchanged");
+    }
+
+    private static void streamedTextIsNeverResent() throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        AiLyricsSettings.Snapshot settings = settings("chatgpt", "future-streamer");
+        JSONObject body = repository.openAiCompatibleBody("fixture", settings);
+        List<String> deltas = new ArrayList<>();
+        int[] attempts = {0};
+        HttpStatusException rejected = new HttpStatusException(400, "HTTP 400: " + TEMPERATURE_UNSUPPORTED);
+        HttpStatusException thrown = httpFailure(() -> repository.sendWithOpenAiParameterFallback(settings, body, deltas::add,
+                (attemptBody, sink) -> {
+                    attempts[0]++;
+                    sink.onDelta("partial");
+                    throw rejected;
+                }));
+        check(thrown == rejected && attempts[0] == 1 && deltas.equals(List.of("partial")),
+                "a request is never resent after text reached the sink");
+        check(sendsTemperature(body) && repository.openAiParameterAdjustmentCache.isEmpty(),
+                "nothing is learned from a request that already streamed text");
+    }
+}

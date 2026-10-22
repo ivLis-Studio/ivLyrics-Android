@@ -46,6 +46,7 @@ final class AiLyricsRepository {
     private static final int MAX_TMI_CACHE_ENTRIES = 100;
     private static final int MAX_CULTURAL_CACHE_ENTRIES = 100;
     private static final int MAX_RESEARCH_MODEL_LIMIT_ENTRIES = 64;
+    private static final int MAX_OPENAI_PARAMETER_ADJUSTMENT_ENTRIES = 64;
     private static final int DEFAULT_RESEARCH_MAX_TOKENS = 16_000;
     private static final int DEFAULT_GEMINI_RESEARCH_MAX_TOKENS = 32_768;
     private static final long PERSISTENT_CACHE_MAX_AGE_MS = DiskCachePolicy.MAX_AGE_MS;
@@ -64,6 +65,10 @@ final class AiLyricsRepository {
             "(?:\\bweb[\\s_-]*search\\b[^\\n]*(?:fail|error|unavailable|unsupported|disabled|timed?\\s*out|empty)|\\b(?:google_search|web_search)\\b|\\btools?\\b[^\\n]*(?:unsupported|not supported|unavailable|invalid|unknown))",
             Pattern.CASE_INSENSITIVE
     );
+    // OpenAI reasoning models: the o-series and GPT-5 or newer (group 1 captures the GPT major version).
+    private static final Pattern OPENAI_REASONING_MODEL_PATTERN = Pattern.compile("^(?:o\\d.*|gpt-(\\d{1,3})(?:\\D.*)?)$");
+    private static final int OPENAI_OMIT_SAMPLING = 1;
+    private static final int OPENAI_MAX_COMPLETION_TOKENS = 1 << 1;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -72,6 +77,7 @@ final class AiLyricsRepository {
     private final Map<String, TmiInfo> tmiCache = newBoundedCache(MAX_TMI_CACHE_ENTRIES);
     private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
     private final Map<String, Integer> researchModelLimitCache = newBoundedCache(MAX_RESEARCH_MODEL_LIMIT_ENTRIES);
+    private final Map<String, Integer> openAiParameterAdjustmentCache = newBoundedCache(MAX_OPENAI_PARAMETER_ADJUSTMENT_ENTRIES);
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
@@ -2724,7 +2730,7 @@ final class AiLyricsRepository {
         }
         body.put("stream", true);
         Map<String, String> headers = openAiCompatibleHeaders(settings, apiKey);
-        return postJsonSse(endpoint, body, headers, (eventName, data) -> {
+        return postOpenAiJsonSse(settings, endpoint, body, headers, (eventName, data) -> {
             if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) {
                 return "";
             }
@@ -2748,7 +2754,7 @@ final class AiLyricsRepository {
         JSONObject body = openAiCompatibleBody(prompt, settings);
         Map<String, String> headers = openAiCompatibleHeaders(settings, apiKey);
 
-        JSONObject response = new JSONObject(postJson(endpoint, body, headers));
+        JSONObject response = new JSONObject(postOpenAiJson(settings, endpoint, body, headers));
         JSONArray choices = response.optJSONArray("choices");
         if (choices == null || choices.length() == 0) {
             throw new IOException("[" + settings.provider.label + "] Empty response from API");
@@ -2769,17 +2775,9 @@ final class AiLyricsRepository {
             TextDeltaSink sink
     ) throws Exception {
         String endpoint = trimRight(settings.baseUrl, "/") + "/responses";
-        JSONObject body = new JSONObject()
-                .put("model", settings.model)
-                .put("input", prompt)
-                .put("max_output_tokens", settings.maxTokens)
-                .put("temperature", settings.temperature)
-                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")))
-                .put("tool_choice", "required")
-                .put("stream", true)
-                .put("store", false);
+        JSONObject body = openAiResponsesBody(prompt, settings);
         boolean[] receivedDelta = {false};
-        return postJsonSse(endpoint, body, openAiCompatibleHeaders(settings, apiKey), (eventName, data) -> {
+        return postOpenAiJsonSse(settings, endpoint, body, openAiCompatibleHeaders(settings, apiKey), (eventName, data) -> {
             if (data == null || data.trim().isEmpty() || "[DONE]".equals(data.trim())) return "";
             JSONObject event = new JSONObject(data);
             String type = event.optString("type", eventName == null ? "" : eventName);
@@ -2820,6 +2818,22 @@ final class AiLyricsRepository {
             }
             return "";
         }, sink);
+    }
+
+    private JSONObject openAiResponsesBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        JSONObject body = new JSONObject()
+                .put("model", settings.model)
+                .put("input", prompt)
+                .put("max_output_tokens", settings.maxTokens);
+        // Reasoning models reject sampling parameters; other models keep the configured temperature.
+        if (!isOpenAiReasoningModel(settings.model)) {
+            body.put("temperature", settings.temperature);
+        }
+        return body
+                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")))
+                .put("tool_choice", "required")
+                .put("stream", true)
+                .put("store", false);
     }
 
     private JSONObject claudeWebSearchTool(String model) throws JSONException {
@@ -2872,10 +2886,11 @@ final class AiLyricsRepository {
                         + "release context, interviews, creation, performances, reception, cultural afterlife, images "
                         + "or official videos, and interesting facts. Put a complete source URL next to every claim. "
                         + "Do not invent URLs.",
-                settings
+                settings,
+                "gemini-search"
         );
-        body.put("model", "gemini-search");
-        JSONObject response = new JSONObject(postJson(openAiEndpoint(settings), body, openAiCompatibleHeaders(settings, apiKey)));
+        JSONObject response = new JSONObject(postOpenAiJson(settings, openAiEndpoint(settings), body,
+                openAiCompatibleHeaders(settings, apiKey)));
         JSONArray choices = response.optJSONArray("choices");
         JSONObject choice = choices == null ? null : choices.optJSONObject(0);
         JSONObject message = choice == null ? null : choice.optJSONObject("message");
@@ -2893,12 +2908,13 @@ final class AiLyricsRepository {
         JSONObject body = openAiCompatibleBody(
                 "Use web_search and visit_website. Return a concise factual source dossier with a complete URL next to every claim. "
                         + "Research the song \"" + title + "\" by \"" + artist + "\": official credits, release context, interviews, creation, performances, reception, cultural afterlife, and interesting facts.",
-                settings
+                settings,
+                "groq/compound"
         );
-        body.put("model", "groq/compound");
         body.put("compound_custom", new JSONObject().put("tools", new JSONObject()
                 .put("enabled_tools", new JSONArray().put("web_search").put("visit_website"))));
-        JSONObject response = new JSONObject(postJson(openAiEndpoint(settings), body, openAiCompatibleHeaders(settings, apiKey)));
+        JSONObject response = new JSONObject(postOpenAiJson(settings, openAiEndpoint(settings), body,
+                openAiCompatibleHeaders(settings, apiKey)));
         JSONArray choices = response.optJSONArray("choices");
         JSONObject choice = choices == null ? null : choices.optJSONObject(0);
         JSONObject message = choice == null ? null : choice.optJSONObject("message");
@@ -2932,15 +2948,26 @@ final class AiLyricsRepository {
     }
 
     private JSONObject openAiCompatibleBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
+        return openAiCompatibleBody(prompt, settings, settings.model);
+    }
+
+    private JSONObject openAiCompatibleBody(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String model
+    ) throws JSONException {
         JSONObject body = new JSONObject();
-        body.put("model", settings.model);
+        body.put("model", model);
         JSONArray messages = new JSONArray();
         messages.put(new JSONObject()
                 .put("role", "user")
                 .put("content", prompt));
         body.put("messages", messages);
         body.put(tokenField(settings.provider.id), settings.maxTokens);
-        body.put("temperature", settings.temperature);
+        // Reasoning models reject sampling parameters; other models keep the configured temperature.
+        if (!isOpenAiReasoningModel(model)) {
+            body.put("temperature", settings.temperature);
+        }
         return body;
     }
 
@@ -2974,6 +3001,115 @@ final class AiLyricsRepository {
         return "chatgpt".equals(providerId) || "groq".equals(providerId)
                 ? "max_completion_tokens"
                 : "max_tokens";
+    }
+
+    /**
+     * OpenAI reasoning models (o1, o3, o4-mini, gpt-5, gpt-5.5, gpt-6.1-sol, ...) reject sampling
+     * parameters such as temperature and top_p. Routed names such as "openai/gpt-5.5" match too;
+     * chat variants such as gpt-5-chat-latest are not reasoning models.
+     */
+    private static boolean isOpenAiReasoningModel(String model) {
+        String name = model == null ? "" : model.trim().toLowerCase(Locale.ROOT);
+        name = name.substring(name.lastIndexOf('/') + 1);
+        Matcher matcher = OPENAI_REASONING_MODEL_PATTERN.matcher(name);
+        if (name.contains("-chat") || !matcher.matches()) return false;
+        String major = matcher.group(1);
+        // Azure names its GPT-3.5 deployments "gpt-35-turbo".
+        return major == null || (Integer.parseInt(major) >= 5 && !"35".equals(major));
+    }
+
+    private interface OpenAiRequest {
+        String send(JSONObject body, TextDeltaSink sink) throws Exception;
+    }
+
+    private String postOpenAiJson(
+            AiLyricsSettings.Snapshot settings,
+            String endpoint,
+            JSONObject body,
+            Map<String, String> headers
+    ) throws Exception {
+        return sendWithOpenAiParameterFallback(settings, body, null,
+                (attemptBody, attemptSink) -> postJson(endpoint, attemptBody, headers));
+    }
+
+    private String postOpenAiJsonSse(
+            AiLyricsSettings.Snapshot settings,
+            String endpoint,
+            JSONObject body,
+            Map<String, String> headers,
+            SseDataHandler handler,
+            TextDeltaSink sink
+    ) throws Exception {
+        return sendWithOpenAiParameterFallback(settings, body, sink,
+                (attemptBody, attemptSink) -> postJsonSse(endpoint, attemptBody, headers, handler, attemptSink));
+    }
+
+    /**
+     * Sends an OpenAI-compatible request. When the provider rejects a parameter with HTTP 400,
+     * the body is adjusted and resent once per adjustment kind, and the adjustment is remembered
+     * for the same base URL and model so later requests omit the parameter immediately.
+     * postJsonSse reports the HTTP status before reading the stream, and a request is never
+     * resent after text reached the sink, so a retry cannot duplicate streamed output.
+     */
+    private String sendWithOpenAiParameterFallback(
+            AiLyricsSettings.Snapshot settings,
+            JSONObject body,
+            TextDeltaSink sink,
+            OpenAiRequest request
+    ) throws Exception {
+        String cacheKey = trimRight(settings.baseUrl, "/") + "|" + body.optString("model", "");
+        Integer learned = openAiParameterAdjustmentCache.get(cacheKey);
+        applyOpenAiParameterAdjustments(body, learned == null ? 0 : learned);
+        boolean[] streamed = {false};
+        TextDeltaSink trackedSink = sink == null ? null : delta -> {
+            streamed[0] = true;
+            sink.onDelta(delta);
+        };
+        int attempted = 0;
+        while (true) {
+            try {
+                return request.send(body, trackedSink);
+            } catch (HttpStatusException error) {
+                int adjustment = error.statusCode == 400 && !streamed[0]
+                        ? openAiParameterAdjustmentFor(error.getMessage(), body) & ~attempted
+                        : 0;
+                if (adjustment == 0) throw error;
+                attempted |= adjustment;
+                applyOpenAiParameterAdjustments(body, adjustment);
+                synchronized (openAiParameterAdjustmentCache) {
+                    Integer known = openAiParameterAdjustmentCache.get(cacheKey);
+                    openAiParameterAdjustmentCache.put(cacheKey, (known == null ? 0 : known) | adjustment);
+                }
+            }
+        }
+    }
+
+    /** Adjustments that address an "unsupported parameter" error for parameters present in the body. */
+    private static int openAiParameterAdjustmentFor(String errorMessage, JSONObject body) {
+        String message = errorMessage == null ? "" : errorMessage.toLowerCase(Locale.ROOT);
+        boolean unsupported = message.contains("unsupported") || message.contains("not supported");
+        int adjustment = 0;
+        if ((body.has("temperature") || body.has("top_p"))
+                && (message.contains("temperature") || message.contains("top_p"))
+                && (unsupported || message.contains("does not support") || message.contains("only the default"))) {
+            adjustment |= OPENAI_OMIT_SAMPLING;
+        }
+        if (body.has("max_tokens") && message.contains("max_tokens")
+                && (unsupported || message.contains("max_completion_tokens"))) {
+            adjustment |= OPENAI_MAX_COMPLETION_TOKENS;
+        }
+        return adjustment;
+    }
+
+    private static void applyOpenAiParameterAdjustments(JSONObject body, int adjustments) throws JSONException {
+        if ((adjustments & OPENAI_OMIT_SAMPLING) != 0) {
+            body.remove("temperature");
+            body.remove("top_p");
+        }
+        if ((adjustments & OPENAI_MAX_COMPLETION_TOKENS) != 0 && body.has("max_tokens")) {
+            Object maxTokens = body.remove("max_tokens");
+            if (!body.has("max_completion_tokens")) body.put("max_completion_tokens", maxTokens);
+        }
     }
 
     private int resolveResearchMaxTokens(AiLyricsSettings.Snapshot settings, String apiKey) {
