@@ -107,6 +107,8 @@ jobs:
           python3 tests/run_lyrics_metadata_cache_regression.py
           python3 tests/run_sync_metadata_reporting_regression.py
           python3 tests/run_lrclib_playback_regression.py
+          python3 tests/run_local_lyrics_regression.py
+          python3 tests/run_openai_request_params_regression.py
           python3 tests/run_karaoke_motion_regression.py
           python3 tests/run_card_presence_regression.py
           python3 tests/run_karaoke_controller_regression.py

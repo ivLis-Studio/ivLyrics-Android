@@ -422,6 +422,31 @@ public final class LrclibPlaybackRegression {
             if (!language.code.equals("en")) check(!translated.equals(AppI18n.t("en", key)), "translated copy differs from English");
         }
     }
+    static void localImportPriorityTests() throws Exception {
+        reset();
+        LocalLyricsStore local = (LocalLyricsStore) UNSAFE.allocateInstance(LocalLyricsStore.class);
+        put(local, "prefs", prefs());
+        local.save(SONG.stableKey(), "[00:01]Imported\n[00:02]Lyrics");
+        put(repo, "localLyrics", local);
+        List<LyricsResult> loaded = new ArrayList<>();
+        LyricsRepository.Callback callback = (LyricsRepository.Callback) java.lang.reflect.Proxy.newProxyInstance(
+                LyricsRepository.Callback.class.getClassLoader(), new Class<?>[]{LyricsRepository.Callback.class}, (p, m, a) -> {
+                    if (m.getName().equals("onLyricsLoaded")) loaded.add((LyricsResult) a[1]);
+                    else throw new AssertionError("Local import should not invoke " + m.getName());
+                    return null;
+                });
+        repo.loadLyrics(SONG, callback);
+        check(loaded.size() == 1 && loaded.get(0).providerId.equals("local"), "local override wins before network/provider selection");
+        check(loaded.get(0).lines.get(0).text.equals("Imported"), "imported text reaches playback entry point");
+        check(requests.isEmpty(), "local import needs no network");
+        put(repo, "cache", new HashMap<>());
+        repo.loadLyrics(SONG, callback);
+        check(loaded.size() == 2, "clearing disposable memory cache preserves imports");
+        local.remove(SONG.stableKey());
+        check(!repo.hasLocalLyrics(SONG), "removal restores automatic source selection");
+        put(repo, "localLyrics", null);
+    }
+
     public static void main(String[] args) throws Exception {
         URL.setURLStreamHandlerFactory(protocol -> protocol.equals("https") ? new URLStreamHandler() {
             protected URLConnection openConnection(URL url) { return new Connection(url); }
@@ -433,7 +458,7 @@ public final class LrclibPlaybackRegression {
         put(repo, "providerPolicyGeneration", new AtomicLong());
         ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
         put(repo, "latestLyricsRequest", new LatestLyricsRequest(executor));
-        try { lookupTests(); cacheAndSettingsTests(); deadlineTests(); localizationTests(); }
+        try { localImportPriorityTests(); lookupTests(); cacheAndSettingsTests(); deadlineTests(); localizationTests(); }
         finally { executor.shutdownNow(); }
         System.out.println("PASS " + checks + " checks: production playback order/pinned validation/canonical IDs/official compatibility/next provider/manual search/cache persistence/clearing/deadlines/redirects/headers/22 locales");
     }

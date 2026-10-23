@@ -1,0 +1,79 @@
+package kr.ivlis.ivlyricsandroid;
+import android.content.SharedPreferences;
+import java.io.IOException;
+import java.lang.reflect.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import sun.misc.Unsafe;
+
+public final class LocalLyricsRegression {
+    static int checks;
+    static void check(boolean value) { checks++; if (!value) throw new AssertionError("check " + checks); }
+    interface Throwing { void run() throws Exception; }
+    static void rejects(Throwing block) throws Exception {
+        boolean failed = false;
+        try { block.run(); } catch (IOException error) { failed = true; }
+        check(failed);
+    }
+    static final Map<String, String> saved = new HashMap<>();
+    static boolean failCommit;
+    static final SharedPreferences prefs = (SharedPreferences) Proxy.newProxyInstance(
+        SharedPreferences.class.getClassLoader(), new Class<?>[]{SharedPreferences.class}, (p, m, a) -> {
+            if (m.getName().equals("getString")) return saved.getOrDefault((String)a[0], (String)a[1]);
+            if (!m.getName().equals("edit")) throw new AssertionError(m.getName());
+            Map<String, String> pending = new HashMap<>();
+            return Proxy.newProxyInstance(SharedPreferences.Editor.class.getClassLoader(), new Class<?>[]{SharedPreferences.Editor.class}, (editor, method, args) -> {
+                switch (method.getName()) {
+                    case "putString": pending.put((String)args[0], (String)args[1]); return editor;
+                    case "remove": pending.put((String)args[0], null); return editor;
+                    case "commit":
+                        if (failCommit) return false;
+                        pending.forEach((key, value) -> { if (value == null) saved.remove(key); else saved.put(key, value); });
+                        return true;
+                    default: throw new AssertionError(method.getName());
+                }
+            });
+        });
+    static LocalLyricsStore store() throws Exception {
+        Field uf = Unsafe.class.getDeclaredField("theUnsafe"); uf.setAccessible(true);
+        LocalLyricsStore store = (LocalLyricsStore)((Unsafe)uf.get(null)).allocateInstance(LocalLyricsStore.class);
+        Field pf = LocalLyricsStore.class.getDeclaredField("prefs"); pf.setAccessible(true); pf.set(store, prefs);
+        return store;
+    }
+    public static void main(String[] args) throws Exception {
+        String lrc = "[ar:Artist]\r\n[offset:-250]\r[00:20.50][00:01.5]안녕 🌈\n[00:10,001]World\n[00:10.001]번역";
+        LyricsResult result = LocalLyricsStore.parse(lrc, 21000);
+        check(result.providerId.equals("local") && result.syncType.equals("line"));
+        check(result.lines.size() == 4);
+        check(result.lines.get(0).startTimeMs == 1250);
+        check(result.lines.get(0).text.equals("안녕 🌈"));
+        check(result.lines.get(1).startTimeMs == 9751);
+        check(result.lines.get(1).endTimeMs == 20250 && result.lines.get(2).endTimeMs == 20250);
+        check(result.lines.get(3).endTimeMs == 21000);
+        check(LocalLyricsStore.parse("[offset:-5000]\n[00:01]A", 0).lines.get(0).startTimeMs == 0);
+        check(LocalLyricsStore.parse("[offset:1000]\n[00:01]A", 0).lines.get(0).startTimeMs == 2000);
+        check(LocalLyricsStore.parse("[ti:Song]\nHello\rWorld", 0).lines.size() == 2);
+        for (String text : List.of("", " \n", "[ti:Song]\n[ar:Artist]", "[00:01]\n[00:02] ")) rejects(() -> LocalLyricsStore.parse(text, 0));
+        check(LocalLyricsStore.decode(("\uFEFF" + lrc).getBytes(StandardCharsets.UTF_8)).equals(lrc));
+        check(LocalLyricsStore.decode(lrc.getBytes(StandardCharsets.UTF_16)).equals(lrc));
+        byte[] le = lrc.getBytes(StandardCharsets.UTF_16LE);
+        byte[] bom = new byte[le.length + 2]; bom[0] = (byte)255; bom[1] = (byte)254; System.arraycopy(le, 0, bom, 2, le.length);
+        check(LocalLyricsStore.decode(bom).equals(lrc));
+        rejects(() -> LocalLyricsStore.decode(new byte[]{(byte)255}));
+        rejects(() -> LocalLyricsStore.decode(new byte[]{0}));
+        rejects(() -> LocalLyricsStore.decode(new byte[0]));
+        rejects(() -> LocalLyricsStore.decode(new byte[LocalLyricsStore.MAX_BYTES + 1]));
+        TrackSnapshot song = new TrackSnapshot("Song", "Artist", "Album", "player", "", "", 21000, 0, 1, 1f, false, null, "");
+        LocalLyricsStore first = store();
+        first.save(song.stableKey(), lrc);
+        check(store().load(song).lines.size() == 4); // Fresh store, same durable preferences.
+        check(!saved.containsKey("other-track"));
+        failCommit = true;
+        rejects(() -> first.save(song.stableKey(), "replacement"));
+        check(store().load(song).lines.get(0).text.equals("안녕 🌈"));
+        failCommit = false;
+        first.remove(song.stableKey());
+        check(store().load(song) == null);
+        System.out.println("Local lyrics: " + checks + " checks passed (production decode/parser/store, synthetic preferences)");
+    }
+}

@@ -13,6 +13,7 @@ python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
+python3 tests/run_local_lyrics_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_frame_layout_pool_regression.py
 python3 tests/run_render_idle_regression.py

@@ -504,6 +504,9 @@ public class BaseLyricsActivity extends Activity implements
 
     private final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
     private TrackSnapshot currentTrack;
+    private static final int IMPORT_LYRICS_REQUEST = 4871;
+    private String localLyricsImportKey;
+    private long localLyricsImportDuration;
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
     private LyricsResult currentFuriganaResult;
@@ -717,6 +720,8 @@ public class BaseLyricsActivity extends Activity implements
         LyricsWordSegmenter.initialize(getApplicationContext());
         aiLyricsSettings = new AiLyricsSettings(this);
         if (savedInstanceState != null) {
+            localLyricsImportKey = savedInstanceState.getString("local_lyrics.import_key");
+            localLyricsImportDuration = savedInstanceState.getLong("local_lyrics.import_duration");
             onboardingStep = savedInstanceState.getInt("first_use.step", -1);
             onboardingClientIdDraft = savedInstanceState.getString("first_use.client_id");
             onboardingClientSecretDraft = savedInstanceState.getString("first_use.client_secret");
@@ -786,6 +791,8 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
+        outState.putString("local_lyrics.import_key", localLyricsImportKey);
+        outState.putLong("local_lyrics.import_duration", localLyricsImportDuration);
         rememberSpotifySetupDraft();
         outState.putInt("first_use.step", onboardingStep);
         outState.putString("first_use.client_id", onboardingClientIdDraft);
@@ -1687,12 +1694,13 @@ public class BaseLyricsActivity extends Activity implements
             setLyricsSupplementLoading(false, false);
             updateLyricPreview(0L);
             if (lyricsRepository != null) {
-                LyricsResult embeddedResult = !embeddedInitialLyricsConsumed && IvLyricsBridge.isEmbedded(this)
+                boolean localOverride = lyricsRepository.hasLocalLyrics(snapshot);
+                LyricsResult embeddedResult = !localOverride && !embeddedInitialLyricsConsumed && IvLyricsBridge.isEmbedded(this)
                         ? IvLyricsBridge.cachedLyrics(snapshot) : null;
                 embeddedInitialLyricsConsumed = true;
                 if (embeddedResult != null && !embeddedResult.lines.isEmpty()) {
                     onLyricsLoaded(nextKey, embeddedResult);
-                } else if (IvLyricsBridge.isEmbedded(this) && IvLyricsBridge.awaitCardLyrics(snapshot)) {
+                } else if (!localOverride && IvLyricsBridge.isEmbedded(this) && IvLyricsBridge.awaitCardLyrics(snapshot)) {
                     // Complete the card's existing request, then hand supplements to this page.
                 } else {
                     lyricsRepository.loadLyrics(snapshot, this);
@@ -1817,6 +1825,10 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     public void onLyricsLoaded(String trackKey, LyricsResult result) {
         if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        if (result != null && !"local".equals(result.providerId) && lyricsRepository.hasLocalLyrics(currentTrack)) {
+            lyricsRepository.loadLyrics(currentTrack, this);
             return;
         }
         lyricsLookupInFlight = false;
@@ -4417,6 +4429,15 @@ public class BaseLyricsActivity extends Activity implements
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
 
+        TextView importLyrics = languageButton(ui("lyrics.local.import"), false);
+        importLyrics.setOnClickListener(view -> chooseLocalLyrics());
+        content.addView(importLyrics, topMargin(matchWrap(), dp(8)));
+        TextView localHelp = label(ui("lyrics.local.description"), 11f, Color.argb(168, 255, 255, 255), AppFonts.regular(this));
+        content.addView(localHelp, topMargin(matchWrap(), dp(5)));
+        TextView removeLyrics = languageButton(ui("lyrics.local.remove"), false);
+        removeLyrics.setOnClickListener(view -> removeLocalLyrics());
+        content.addView(removeLyrics, topMargin(matchWrap(), dp(8)));
+
         TextView chooseProvider = languageButton(ui("section.lyrics_providers"), false);
         chooseProvider.setOnClickListener(view -> showTrackLyricsProviderDialog());
         content.addView(chooseProvider, topMargin(matchWrap(), dp(8)));
@@ -4460,6 +4481,91 @@ public class BaseLyricsActivity extends Activity implements
         populateManualLrclibSearchDefaults(false);
         setManualLrclibStatus(ui("lyrics.lrclib_search.ready"));
         return content;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void chooseLocalLyrics() {
+        if (currentTrack == null || !currentTrack.hasUsableMetadata()) {
+            showSavedToast(ui("toast.current_track_missing"));
+            return;
+        }
+        localLyricsImportKey = currentTrack.stableKey();
+        localLyricsImportDuration = currentTrack.durationMs;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Many document providers label .lrc as application/octet-stream.
+        intent.setType("*/*");
+        try { startActivityForResult(intent, IMPORT_LYRICS_REQUEST); }
+        catch (ActivityNotFoundException error) {
+            localLyricsImportKey = null;
+            showSavedToast(ui("lyrics.local.error"));
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != IMPORT_LYRICS_REQUEST) return;
+        final String key = localLyricsImportKey;
+        final long duration = localLyricsImportDuration;
+        localLyricsImportKey = null;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null || key == null) return;
+        final Uri uri = data.getData();
+        new Thread(() -> {
+            try (InputStream input = getContentResolver().openInputStream(uri);
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                String name = uri.getLastPathSegment();
+                try (android.database.Cursor cursor = getContentResolver().query(uri,
+                        new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) name = cursor.getString(0);
+                }
+                if (name == null || !name.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(lrc|txt)$")) {
+                    throw new IOException("Choose LRC or TXT");
+                }
+                if (input == null) throw new IOException("File unavailable");
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (output.size() + count > LocalLyricsStore.MAX_BYTES) throw new IOException("File too large");
+                    output.write(buffer, 0, count);
+                }
+                String text = LocalLyricsStore.decode(output.toByteArray());
+                LocalLyricsStore.parse(text, duration); // Validate before replacing a previous import.
+                new LocalLyricsStore(this).save(key, text);
+                handler.post(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (currentTrack != null && key.equals(currentTrack.stableKey())) {
+                        lyricsRepository.invalidateProviderSelection();
+                        reloadCurrentLyricsFromSettings();
+                    }
+                    showSavedToast(ui("lyrics.local.saved"));
+                });
+            } catch (Exception error) {
+                handler.post(() -> { if (!isFinishing() && !isDestroyed()) showSavedToast(ui("lyrics.local.error")); });
+            }
+        }, "ivLyrics-import").start();
+    }
+
+    private void removeLocalLyrics() {
+        if (currentTrack == null || !currentTrack.hasUsableMetadata()) {
+            showSavedToast(ui("toast.current_track_missing"));
+            return;
+        }
+        final String key = currentTrack.stableKey();
+        new AlertDialog.Builder(this)
+                .setMessage(ui("lyrics.local.remove"))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    try {
+                        new LocalLyricsStore(this).remove(key);
+                        if (currentTrack != null && key.equals(currentTrack.stableKey())) {
+                            lyricsRepository.invalidateProviderSelection();
+                            reloadCurrentLyricsFromSettings();
+                        }
+                        showSavedToast(ui("lyrics.local.removed"));
+                    } catch (IOException error) { showSavedToast(ui("lyrics.local.error")); }
+                }).show();
     }
 
     private LinearLayout buildOffsetButtonRow(int first, int second, int third, OffsetAdjuster adjuster) {

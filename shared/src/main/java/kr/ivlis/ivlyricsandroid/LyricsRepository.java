@@ -94,6 +94,7 @@ final class LyricsRepository {
     private final LatestLyricsRequest latestLyricsRequest = new LatestLyricsRequest(executor);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
+    private final LocalLyricsStore localLyrics;
     private final Map<String, Bitmap> spotifyArtworkCache = new LinkedHashMap<String, Bitmap>(
             SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES + 1,
             0.75f,
@@ -134,6 +135,7 @@ final class LyricsRepository {
 
     LyricsRepository(Context context) {
         Context appContext = context == null ? null : context.getApplicationContext();
+        localLyrics = appContext == null ? null : new LocalLyricsStore(appContext);
         embeddedSpotify = IvLyricsBridge.isEmbedded(appContext);
         spotifyTokenPrefs = appContext == null || embeddedSpotify
                 ? null
@@ -342,6 +344,17 @@ final class LyricsRepository {
         }
 
         String key = track.stableKey();
+        if (localLyrics != null) {
+            try {
+                LyricsResult imported = localLyrics.load(track);
+                if (imported != null) {
+                    callback.onLyricsLoaded(key, imported);
+                    return;
+                }
+            } catch (IOException error) {
+                emitLog(key, callback, "local lyrics unavailable: " + error.getMessage(), request);
+            }
+        }
         LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshotForTrack(key);
         LyricsResult cached = getMemoryCachedLyrics(key);
         if (!isCachedResultReusable(cached, providerSettings)) {
@@ -608,6 +621,11 @@ final class LyricsRepository {
                 postManualError(key, callback, message);
             }
         });
+    }
+
+    boolean hasLocalLyrics(TrackSnapshot track) {
+        if (localLyrics == null || track == null) return false;
+        try { return localLyrics.load(track) != null; } catch (IOException error) { return false; }
     }
 
     void loadManualLrclibCandidate(
