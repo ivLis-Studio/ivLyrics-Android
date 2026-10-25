@@ -65,6 +65,59 @@ public final class SettingsUiRegressionTest {
     @Test public void germanLandscapeLargeText() throws Exception { scenario("de", 2f, 568, 320, true); }
     @Test public void arabicRtlLargeText() throws Exception { scenario("ar", 1.6f, 320, 640, false); }
 
+    @Test public void standaloneLyricsSettings() { lyricsSettingsScenario(false, false, 1f); }
+    @Test public void standaloneLyricsSettingsLargeText() { lyricsSettingsScenario(false, false, 2f); }
+    @Test public void standaloneLandscapeSettingsLargeText() { lyricsSettingsScenario(false, true, 2f); }
+    @Test public void embeddedLyricsSettingsLargeText() { lyricsSettingsScenario(true, false, 2f); }
+    @Test public void embeddedLandscapeSettingsLargeText() { lyricsSettingsScenario(true, true, 2f); }
+
+    private void lyricsSettingsScenario(boolean embedded, boolean landscape, float fontScale) {
+        capturePrefix = "lyrics-settings-" + embedded + "-" + landscape + "-" + fontScale;
+        launch("ko", fontScale, landscape, embedded);
+        final View[] settings = new View[1];
+        onMain(() -> {
+            activity.view("settingsPanel").setVisibility(View.GONE);
+            activity.call("updateTrackMetadataTextViews", new Class<?>[]{TrackSnapshot.class}, activity.value("currentTrack"));
+            // Populate the production renderers without invoking repository/host publishing.
+            LyricsResult lyrics = (LyricsResult) activity.value("currentLyricsResult");
+            ((LyricsView) activity.view("lyricsView")).setResult(lyrics);
+            if (activity.view("landscapeLyricsView") != null) {
+                ((LyricsView) activity.view("landscapeLyricsView")).setResult(lyrics);
+            }
+            activity.call("markLyricsMetaTipShown");
+            activity.call("showLyricsPage", new Class<?>[]{boolean.class}, true);
+            ((TextView) activity.view("lyricsTitleView")).setText("Long title 日本語 한국어 that must not hide the settings action");
+            if (fontScale > 1f) {
+                activity.call("setLyricsSupplementLoading", new Class<?>[]{boolean.class, boolean.class}, true, true);
+            }
+            settings[0] = landscape && !embedded ? activity.view("landscapeMenuButton")
+                    : activity.view("lyricsPage").findViewWithTag("lyrics.settings");
+            assertNotNull("settings exists on the actual lyrics destination", settings[0]);
+        });
+        tap(settings[0], landscape && !embedded ? 44 : 48);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, activity.view("settingsPanel").getVisibility());
+            assertEquals("home", activity.value("settingsRoute"));
+        });
+        tap(activity.view("settingsNavBackButton"));
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        final boolean[] closed = new boolean[1];
+        while (SystemClock.uptimeMillis() < deadline) {
+            onMain(() -> closed[0] = activity.view("settingsPanel").getVisibility() == View.GONE);
+            if (closed[0]) break;
+            SystemClock.sleep(50);
+        }
+        onMain(() -> {
+            assertEquals("settings closed", View.GONE, activity.view("settingsPanel").getVisibility());
+            assertTrue("same settings action is still on screen", settings[0].isShown());
+            if (embedded || !landscape) {
+                assertEquals("lyrics page retained", Boolean.TRUE, activity.value("lyricsPageVisible"));
+                assertEquals(View.VISIBLE, activity.view("lyricsPage").getVisibility());
+            }
+        });
+        screenshot(capturePrefix + "-returned-to-lyrics");
+    }
+
     @Test public void homeBrandingLightAndDark() {
         capturePrefix = "branding-home";
         launch("ko", 1f, false);
@@ -96,12 +149,17 @@ public final class SettingsUiRegressionTest {
     }
 
     private void launch(String language, float fontScale, boolean landscape) {
+        launch(language, fontScale, landscape, true);
+    }
+
+    private void launch(String language, float fontScale, boolean landscape, boolean embedded) {
         expectedLandscape = landscape;
         instrumentation.getUiAutomation().setRotation(landscape ? Surface.ROTATION_90 : Surface.ROTATION_0);
         instrumentation.waitForIdleSync();
         SettingsUiHarnessActivity.prepareConfiguration(language, fontScale);
         Intent intent = new Intent(instrumentation.getTargetContext(), SettingsUiHarnessActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uiLanguage", language).putExtra("fontScale", fontScale);
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uiLanguage", language).putExtra("fontScale", fontScale)
+                .putExtra("uiEmbedded", embedded);
         activity = (SettingsUiHarnessActivity) instrumentation.startActivitySync(intent);
         // Request after launch too: a finishing prior Activity/launcher must not win
         // the rotation transition before this fixture owns its native window.
@@ -342,6 +400,10 @@ public final class SettingsUiRegressionTest {
     }
 
     private void tap(View target) {
+        tap(target, 48);
+    }
+
+    private void tap(View target, int minimumDp) {
         awaitWindow(target.getRootView());
         onMain(() -> {
             assertTrue("real target enabled", target.isEnabled());
@@ -361,8 +423,8 @@ public final class SettingsUiRegressionTest {
         onMain(() -> {
             if (target instanceof EditText) assertEditorHitFrame((EditText) target);
             Rect visible = visibleHitFrame(target);
-            assertTrue("actual visible hit height >=48dp: " + visible, visible.height() >= dp(48));
-            assertTrue("actual visible hit width >=48dp: " + visible, visible.width() >= dp(48));
+            assertTrue("actual visible hit height >=" + minimumDp + "dp: " + visible, visible.height() >= dp(minimumDp));
+            assertTrue("actual visible hit width >=" + minimumDp + "dp: " + visible, visible.width() >= dp(minimumDp));
             int[] position = new int[2]; target.getLocationOnScreen(position);
             point[0] = position[0] + visible.exactCenterX(); point[1] = position[1] + visible.exactCenterY();
             if (target instanceof Switch) {

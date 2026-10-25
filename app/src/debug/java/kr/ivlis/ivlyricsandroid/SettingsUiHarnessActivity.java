@@ -74,7 +74,7 @@ public final class SettingsUiHarnessActivity extends BaseLyricsActivity {
     @Override protected void onCreate(Bundle savedState) {
         String language = getIntent().getStringExtra("uiLanguage");
         if (language == null) language = "ko";
-        getIntent().putExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE, true);
+        getIntent().putExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE, getIntent().getBooleanExtra("uiEmbedded", true));
         storage.getSharedPreferences(AiLyricsSettings.PREFS_NAME, MODE_PRIVATE).edit().clear().commit();
         AiLyricsSettings settings = new AiLyricsSettings(storage);
         settings.setUiLang(language);

@@ -3744,43 +3744,33 @@ public class BaseLyricsActivity extends Activity implements
         LinearLayout.LayoutParams lyricsContributorParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lyricsContributorParams.leftMargin = dp(8);
         lyricsSubtitleRow.addView(lyricsContributorView, lyricsContributorParams);
-        if (IvLyricsBridge.isEmbedded(this)) {
-            ImageButton settings = lyricsToolbarButton(LyricsToolbarIcon.MORE, ui("settings.title"));
-            settings.setOnClickListener(view -> showSettingsPanel(true));
-            LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(dp(46), dp(46));
-            settingsParams.leftMargin = dp(8);
-            metaRow.addView(settings, settingsParams);
-        }
+        ImageButton settings = lyricsToolbarButton(LyricsToolbarIcon.MORE, ui("settings.title"));
+        settings.setTag("lyrics.settings");
+        settings.setOnClickListener(view -> showSettingsPanel(true));
+        LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(dp(48), dp(48));
+        settingsParams.leftMargin = dp(8);
+        metaRow.addView(settings, settingsParams);
         attachLyricsMetaSwipe(lyricsTitleView);
         attachLyricsMetaSwipe(lyricsArtistView);
 
         lyricsSupplementLoadingIndicator = createLyricsSupplementLoadingIndicator();
-        if (IvLyricsBridge.isEmbedded(this)) {
-            // Provider status must not compete with the title or settings action.
-            lyricsSupplementLoadingIndicator.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-            lyricsSupplementLoadingIndicator.setBackgroundColor(Color.TRANSPARENT);
-            lyricsSupplementLoadingIndicator.setPadding(0, 0, 0, 0);
-            TextView loadingText = (TextView) lyricsSupplementLoadingIndicator.getChildAt(1);
-            loadingText.setSingleLine(true);
-            loadingText.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams loadingTextParams = new LinearLayout.LayoutParams(
-                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            );
-            loadingTextParams.leftMargin = dp(5);
-            loadingText.setLayoutParams(loadingTextParams);
-            LinearLayout.LayoutParams loadingParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(24)
-            );
-            loadingParams.topMargin = dp(6);
-            content.addView(lyricsSupplementLoadingIndicator, loadingParams);
-        } else {
-            LinearLayout.LayoutParams loadingParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(28)
-            );
-            loadingParams.leftMargin = dp(10);
-            metaRow.addView(lyricsSupplementLoadingIndicator, loadingParams);
-        }
+        // Keep status on its own row in both modes: it must never displace settings.
+        lyricsSupplementLoadingIndicator.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        lyricsSupplementLoadingIndicator.setBackgroundColor(Color.TRANSPARENT);
+        lyricsSupplementLoadingIndicator.setPadding(0, 0, 0, 0);
+        TextView loadingText = (TextView) lyricsSupplementLoadingIndicator.getChildAt(1);
+        loadingText.setSingleLine(true);
+        loadingText.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams loadingTextParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        );
+        loadingTextParams.leftMargin = dp(5);
+        loadingText.setLayoutParams(loadingTextParams);
+        LinearLayout.LayoutParams loadingParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(24)
+        );
+        loadingParams.topMargin = dp(6);
+        content.addView(lyricsSupplementLoadingIndicator, loadingParams);
         setLoadingIndicatorVisible(
                 lyricsSupplementLoadingIndicator,
                 lyricsSupplementPronunciationLoading || lyricsSupplementTranslationLoading || lyricsSupplementFuriganaLoading,
