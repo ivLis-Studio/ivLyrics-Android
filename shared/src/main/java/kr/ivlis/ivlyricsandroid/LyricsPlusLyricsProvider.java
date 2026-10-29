@@ -4,8 +4,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +19,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -31,14 +41,29 @@ final class LyricsPlusLyricsProvider {
     };
     private static final String API_PATH = "/v2/lyrics/get";
     private static final String ATTRIBUTION = "Lyrics from LyricsPlus · " + PROJECT_URL;
-    private static final int REQUEST_TIMEOUT_MS = 10_000;
+    private static final int REQUEST_TIMEOUT_MS = 5_000;
+    private static final int STAGE_TIMEOUT_MS = 10_000;
+    private static final int MIRROR_HEDGE_DELAY_MS = 750;
+    private static final int MIRROR_COOLDOWN_MS = 60_000;
+    private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
     private static final int SYLLABLE_TIMING_TOLERANCE_MS = 1_500;
     private static final double LONG_LINE_TRIGGER_WIDTH = 22.0;
     private static final double LONG_LINE_HARD_WIDTH = 26.0;
     private static final double LONG_LINE_MIN_WIDTH = 6.0;
     private static final long LONG_LINE_MIN_DURATION_MS = 500L;
     private static final int LONG_LINE_MAX_SEGMENTS = 4;
-    private static final AtomicInteger NEXT_MIRROR = new AtomicInteger();
+    private static final AtomicInteger PREFERRED_MIRROR = new AtomicInteger();
+    private static final Map<String, Long> MIRROR_UNAVAILABLE_UNTIL = new ConcurrentHashMap<>();
+    private static final ExecutorService REQUESTS = Executors.newFixedThreadPool(2, work -> {
+        Thread thread = new Thread(work, "ivLyrics-LyricsPlus");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final ScheduledExecutorService DEADLINES = Executors.newSingleThreadScheduledExecutor(work -> {
+        Thread thread = new Thread(work, "ivLyrics-LyricsPlus-deadline");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final Pattern BACKGROUND_PARENTHESES_PATTERN = Pattern.compile("[()（）]");
     private static final Pattern INLINE_WHITESPACE_PATTERN = Pattern.compile("[\\r\\n\\t\\f\\u000B ]+");
 
@@ -185,26 +210,87 @@ final class LyricsPlusLyricsProvider {
     private static JSONObject fetchPayload(TrackSnapshot track, String isrc, Logger logger) throws Exception {
         List<String> bases = decodedApiBases();
         if (bases.isEmpty()) return null;
-        int start = Math.floorMod(NEXT_MIRROR.getAndIncrement(), bases.size());
+        RequestCancellation.check();
+        RequestCancellation request = RequestCancellation.current();
+        long stageDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(STAGE_TIMEOUT_MS);
+        long hedgeAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MIRROR_HEDGE_DELAY_MS);
+        int start = Math.floorMod(PREFERRED_MIRROR.get(), bases.size());
         Exception lastError = null;
         boolean allNotFound = true;
+        List<Integer> available = new ArrayList<>();
         for (int offset = 0; offset < bases.size(); offset++) {
             int mirror = (start + offset) % bases.size();
-            String requestUrl = buildLyricsUrl(bases.get(mirror), track, isrc);
-            try {
-                HttpResult response = get(requestUrl);
+            Long unavailableUntil = MIRROR_UNAVAILABLE_UNTIL.get(bases.get(mirror));
+            if (unavailableUntil != null && unavailableUntil - System.nanoTime() > 0L) {
+                allNotFound = false;
+                lastError = new IOException("LyricsPlus mirror #" + (mirror + 1) + " temporarily unavailable");
+            } else {
+                available.add(mirror);
+            }
+        }
+        ExecutorCompletionService<MirrorResponse> completed = new ExecutorCompletionService<>(REQUESTS);
+        List<MirrorAttempt> attempts = new ArrayList<>();
+        int next = 0;
+        int pending = 0;
+        try {
+            while (next < available.size() || pending > 0) {
+                RequestCancellation.check();
+                long remaining = stageDeadline - System.nanoTime();
+                if (remaining <= 0) throw new SocketTimeoutException("LyricsPlus playback deadline reached");
+                if (next < available.size() && (pending == 0 || System.nanoTime() >= hedgeAt)) {
+                    int mirror = available.get(next++);
+                    RequestCancellation attempt = new RequestCancellation();
+                    String requestUrl = buildLyricsUrl(bases.get(mirror), track, isrc);
+                    Future<MirrorResponse> future = completed.submit(() -> {
+                        try {
+                            return new MirrorResponse(mirror, get(requestUrl, request, attempt, stageDeadline), null);
+                        } catch (Exception error) {
+                            return new MirrorResponse(mirror, null, error);
+                        }
+                    });
+                    attempts.add(new MirrorAttempt(attempt, future));
+                    pending++;
+                }
+                long wait = Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(100));
+                if (next < available.size()) wait = Math.min(wait, Math.max(1L, hedgeAt - System.nanoTime()));
+                Future<MirrorResponse> future = completed.poll(wait, TimeUnit.NANOSECONDS);
+                if (future == null) continue;
+                pending--;
+                MirrorResponse result = future.get();
+                RequestCancellation.check();
+                String base = bases.get(result.mirror);
+                if (result.error != null) {
+                    allNotFound = false;
+                    lastError = result.error;
+                    MIRROR_UNAVAILABLE_UNTIL.put(base,
+                            System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MIRROR_COOLDOWN_MS));
+                    continue;
+                }
+                HttpResult response = result.response;
                 JSONObject body = parseJson(response.body);
                 if (response.status >= 200 && response.status < 300 && isUsablePayload(body)) {
-                    logger.write("lyricsplus: mirror #" + (mirror + 1) + " matched");
+                    PREFERRED_MIRROR.set(result.mirror);
+                    MIRROR_UNAVAILABLE_UNTIL.remove(base);
+                    logger.write("lyricsplus: mirror #" + (result.mirror + 1) + " matched");
                     return body;
                 }
                 boolean notFound = response.status == 404
-                        || (response.status >= 200 && response.status < 300 && body != null && body.optJSONArray("lyrics") != null);
+                        || (response.status >= 200 && response.status < 300 && body != null
+                        && !isTruthyJsonValue(body.opt("error")) && body.optJSONArray("lyrics") != null);
                 allNotFound &= notFound;
-                lastError = new IllegalStateException("mirror #" + (mirror + 1) + " response " + response.status);
-            } catch (Exception error) {
-                allNotFound = false;
-                lastError = error;
+                if (notFound) {
+                    MIRROR_UNAVAILABLE_UNTIL.remove(base);
+                } else {
+                    lastError = new IOException("LyricsPlus mirror #" + (result.mirror + 1) + " response " + response.status);
+                    MIRROR_UNAVAILABLE_UNTIL.put(base,
+                            System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MIRROR_COOLDOWN_MS));
+                }
+            }
+        } finally {
+            // Future interruption alone does not reliably release HttpURLConnection reads.
+            for (MirrorAttempt attempt : attempts) {
+                attempt.request.cancel();
+                attempt.future.cancel(true);
             }
         }
         if (allNotFound) return null;
@@ -248,30 +334,58 @@ final class LyricsPlusLyricsProvider {
         return url.toString();
     }
 
-    private static HttpResult get(String requestUrl) throws Exception {
-        RequestCancellation.check();
+    private static HttpResult get(
+            String requestUrl, RequestCancellation request, RequestCancellation attempt, long stageDeadline
+    ) throws Exception {
+        long deadline = Math.min(stageDeadline,
+                System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(REQUEST_TIMEOUT_MS));
+        checkRequest(request, attempt, deadline);
         HttpURLConnection connection = (HttpURLConnection) new URL(requestUrl).openConnection();
-        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(connection)) {
+        ScheduledFuture<?> timeout = DEADLINES.schedule(attempt::cancel, remainingMs(deadline), TimeUnit.MILLISECONDS);
+        try (RequestCancellation.AutoCloseableConnection registration = RequestCancellation.register(request, connection);
+             RequestCancellation.AutoCloseableConnection mirrorRegistration = RequestCancellation.register(attempt, connection)) {
             connection.setRequestMethod("GET");
-            connection.setConnectTimeout(REQUEST_TIMEOUT_MS);
-            connection.setReadTimeout(REQUEST_TIMEOUT_MS);
+            connection.setConnectTimeout(remainingMs(deadline));
+            connection.setReadTimeout(remainingMs(deadline));
             connection.setRequestProperty("Accept", "application/json");
             int status = connection.getResponseCode();
-            InputStream stream = status >= 200 && status < 400 ? connection.getInputStream() : connection.getErrorStream();
-            try {
-                return new HttpResult(status, readUtf8(stream));
-            } finally {
-                RequestCancellation.check();
-            }
+            checkRequest(request, attempt, deadline);
+            // A slow error page cannot delay a fallback once the status already proves failure.
+            if (status < 200 || status >= 300) return new HttpResult(status, "");
+            InputStream stream = connection.getInputStream();
+            return new HttpResult(status, readUtf8(stream, connection, request, attempt, deadline));
+        } finally {
+            timeout.cancel(false);
         }
     }
 
-    private static String readUtf8(InputStream stream) throws Exception {
+    private static int remainingMs(long deadline) throws SocketTimeoutException {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) throw new SocketTimeoutException("LyricsPlus request deadline reached");
+        return (int) Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remaining));
+    }
+
+    private static void checkRequest(RequestCancellation request, RequestCancellation attempt, long deadline)
+            throws SocketTimeoutException {
+        if (request != null) request.throwIfCancelled();
+        remainingMs(deadline);
+        attempt.throwIfCancelled();
+    }
+
+    private static String readUtf8(InputStream stream, HttpURLConnection connection,
+                                   RequestCancellation request, RequestCancellation attempt, long deadline) throws Exception {
         if (stream == null) return "";
         try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8_192];
-            int read;
-            while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
+            while (true) {
+                checkRequest(request, attempt, deadline);
+                connection.setReadTimeout(remainingMs(deadline));
+                int read = input.read(buffer);
+                if (read < 0) break;
+                if (output.size() + read > MAX_RESPONSE_BYTES) throw new IOException("LyricsPlus response too large");
+                output.write(buffer, 0, read);
+            }
+            checkRequest(request, attempt, deadline);
             return output.toString(StandardCharsets.UTF_8.name());
         }
     }
@@ -828,6 +942,28 @@ final class LyricsPlusLyricsProvider {
         HttpResult(int status, String body) {
             this.status = status;
             this.body = body == null ? "" : body;
+        }
+    }
+
+    private static final class MirrorAttempt {
+        final RequestCancellation request;
+        final Future<MirrorResponse> future;
+
+        MirrorAttempt(RequestCancellation request, Future<MirrorResponse> future) {
+            this.request = request;
+            this.future = future;
+        }
+    }
+
+    private static final class MirrorResponse {
+        final int mirror;
+        final HttpResult response;
+        final Exception error;
+
+        MirrorResponse(int mirror, HttpResult response, Exception error) {
+            this.mirror = mirror;
+            this.response = response;
+            this.error = error;
         }
     }
 

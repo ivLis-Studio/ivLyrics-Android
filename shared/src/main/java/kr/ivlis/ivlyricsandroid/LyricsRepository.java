@@ -91,6 +91,7 @@ final class LyricsRepository {
     private static final Pattern COMPARABLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
+    private final ThreadPoolExecutor artworkExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
     private final LatestLyricsRequest latestLyricsRequest = new LatestLyricsRequest(executor);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
@@ -127,6 +128,7 @@ final class LyricsRepository {
     private final SharedPreferences openDbPrefs;
     private final boolean embeddedSpotify;
     private final Map<String, Long> syncDataServerCacheBypassUntil = new HashMap<>();
+    private final Object spotifyTokenLock = new Object();
     private String spotifyAccessToken = "";
     private String spotifyTokenSourceKey = "";
     private long spotifyTokenIssuedAtMs = 0L;
@@ -487,6 +489,7 @@ final class LyricsRepository {
     void shutdown() {
         latestLyricsRequest.cancel();
         executor.shutdownNow();
+        artworkExecutor.shutdownNow();
     }
 
     void clearCache() {
@@ -734,14 +737,14 @@ final class LyricsRepository {
                     : " / trackId=" + cachedBase.spotifyTrackId));
             publishResolvedMetadata(trackKey, firstNonEmpty(track.isrc, cachedBase.isrc),
                     firstNonEmpty(track.trackId, cachedBase.spotifyTrackId), callback);
-            resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
+            requestSpotifyArtwork(track, cachedBase, trackKey, callback, RequestCancellation.current());
         } else if (!embeddedSpotify) {
             spotifyMatch = fetchSpotifyIsrc(
                     track,
                     log,
                     match -> publishResolvedSpotifyMetadata(trackKey, match, callback)
             );
-            publishSpotifyArtwork(trackKey, spotifyMatch, callback, log);
+            requestSpotifyArtwork(trackKey, spotifyMatch, callback, log);
         }
         boolean isrcFromSpotify = spotifyMatch != null && !spotifyMatch.isrc.isEmpty();
         String isrc = firstNonEmpty(
@@ -1431,26 +1434,42 @@ final class LyricsRepository {
     }
 
     private void requestSpotifyArtwork(
+            String trackKey, SpotifyTrackMatch match, Callback callback, LogSink log
+    ) {
+        if (callback == null || match == null || match.artworkUrl.isEmpty()) return;
+        submitSpotifyArtwork(RequestCancellation.current(),
+                () -> publishSpotifyArtwork(trackKey, match, callback, log));
+    }
+
+    private void submitSpotifyArtwork(RequestCancellation request, Runnable work) {
+        if (artworkExecutor.isShutdown()) return;
+        try {
+            artworkExecutor.execute(() -> {
+                if (request == null) work.run();
+                else request.run(work);
+            });
+        } catch (RuntimeException ignored) {
+            // The activity may close while an artwork refresh is being queued.
+        }
+    }
+
+    private void requestSpotifyArtwork(
             TrackSnapshot track,
             LyricsResult cachedBase,
             String trackKey,
             Callback callback,
             RequestCancellation request
     ) {
-        if (track == null || callback == null || executor.isShutdown()) {
+        if (track == null || callback == null) {
             return;
         }
-        try {
-            executor.execute(() -> {
-                if (request == null || request.isCancelled()) return;
-                request.run(() -> {
-                    LogSink log = message -> { request.throwIfCancelled(); emitLog(trackKey, callback, message); };
-                    resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
-                });
-            });
-        } catch (RuntimeException ignored) {
-            // The activity may close while a cache-hit artwork refresh is being queued.
-        }
+        submitSpotifyArtwork(request, () -> {
+            LogSink log = message -> {
+                RequestCancellation.check();
+                emitLog(trackKey, callback, message);
+            };
+            resolveAndPublishSpotifyArtwork(track, cachedBase, trackKey, callback, log);
+        });
     }
 
     private void resolveAndPublishSpotifyArtwork(
@@ -2026,14 +2045,9 @@ final class LyricsRepository {
     }
 
     private String getPlaybackLrclib(LrclibPlaybackStage stage, String suffix, LogSink log) throws Exception {
-        try {
-            return stage.custom ? stage.get(suffix) : get(stage.base + suffix);
-        } catch (Exception error) {
-            RequestCancellation.check();
-            if (stage.custom) throw error; // A fatal private-host failure ends only that host's stage.
-            log.write("lrclib official request unavailable: " + error.getClass().getSimpleName());
-            return ""; // An unsupported /get must not suppress the remaining official searches.
-        }
+        // Missing/unsupported variants remain empty, but rate limits, outages and timeouts end
+        // this host's bounded stage instead of repeating every metadata/search variant.
+        return stage.get(suffix);
     }
 
     private LrclibCandidate fetchPlaybackLrclibCandidate(
@@ -2911,7 +2925,13 @@ final class LyricsRepository {
         return Math.abs((track.durationMs - match.durationMs) / 1000.0);
     }
 
-    private synchronized String getSpotifyAccessToken(boolean forceRefresh, LogSink log) {
+    private String getSpotifyAccessToken(boolean forceRefresh, LogSink log) {
+        synchronized (spotifyTokenLock) {
+            return getSpotifyAccessTokenLocked(forceRefresh, log);
+        }
+    }
+
+    private String getSpotifyAccessTokenLocked(boolean forceRefresh, LogSink log) {
         if (embeddedSpotify) return "";
         SpotifyCredentials credentials = readSpotifyCredentials();
         if (!credentials.configured()) {
@@ -2950,21 +2970,23 @@ final class LyricsRepository {
         }
     }
 
-    private synchronized void cacheSpotifyToken(
+    private void cacheSpotifyToken(
             SpotifyCredentials credentials,
             SpotifyTokenResponse response,
             LogSink log
     ) {
-        long issuedAtMs = System.currentTimeMillis();
-        long providerTtlMs = Math.max(60L, response.expiresInSeconds) * 1_000L;
-        long effectiveTtlMs = Math.min(providerTtlMs, SPOTIFY_TOKEN_MAX_AGE_MS);
-        spotifyAccessToken = response.accessToken;
-        spotifyTokenSourceKey = credentials.sourceKey();
-        spotifyTokenIssuedAtMs = issuedAtMs;
-        spotifyTokenExpiresAtMs = issuedAtMs + effectiveTtlMs;
-        persistSpotifyToken();
-        log.write("spotify token: refreshed and saved (" + credentials.sourceLabel()
-                + "), ttl=" + Math.round(effectiveTtlMs / 1000.0) + "s");
+        synchronized (spotifyTokenLock) {
+            long issuedAtMs = System.currentTimeMillis();
+            long providerTtlMs = Math.max(60L, response.expiresInSeconds) * 1_000L;
+            long effectiveTtlMs = Math.min(providerTtlMs, SPOTIFY_TOKEN_MAX_AGE_MS);
+            spotifyAccessToken = response.accessToken;
+            spotifyTokenSourceKey = credentials.sourceKey();
+            spotifyTokenIssuedAtMs = issuedAtMs;
+            spotifyTokenExpiresAtMs = issuedAtMs + effectiveTtlMs;
+            persistSpotifyToken();
+            log.write("spotify token: refreshed and saved (" + credentials.sourceLabel()
+                    + "), ttl=" + Math.round(effectiveTtlMs / 1000.0) + "s");
+        }
     }
 
     private SpotifyTokenResponse requestSpotifyClientCredentialsToken(SpotifyCredentials credentials, LogSink log) throws Exception {
@@ -3032,13 +3054,15 @@ final class LyricsRepository {
                 .apply();
     }
 
-    private synchronized void invalidateSpotifyToken() {
-        spotifyAccessToken = "";
-        spotifyTokenSourceKey = "";
-        spotifyTokenIssuedAtMs = 0L;
-        spotifyTokenExpiresAtMs = 0L;
-        if (spotifyTokenPrefs != null) {
-            spotifyTokenPrefs.edit().clear().apply();
+    private void invalidateSpotifyToken() {
+        synchronized (spotifyTokenLock) {
+            spotifyAccessToken = "";
+            spotifyTokenSourceKey = "";
+            spotifyTokenIssuedAtMs = 0L;
+            spotifyTokenExpiresAtMs = 0L;
+            if (spotifyTokenPrefs != null) {
+                spotifyTokenPrefs.edit().clear().apply();
+            }
         }
     }
 

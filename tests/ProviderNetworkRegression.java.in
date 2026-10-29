@@ -1,0 +1,249 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.graphics.BitmapFactory;
+import android.os.Handler;
+import java.io.*;
+import java.lang.reflect.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.function.Function;
+import org.json.JSONObject;
+
+/** Real provider/repository code; only HTTP, bitmap decoding and Android dispatch are synthetic. */
+public final class ProviderNetworkRegression {
+    static final List<Connection> requests = new CopyOnWriteArrayList<>();
+    static final String LYRICS = "{\"type\":\"line\",\"lyrics\":[{\"time\":0,\"duration\":1000,\"text\":\"Hello\"}]}";
+    static final TrackSnapshot SONG = new TrackSnapshot("Song", "Artist", "Album", "test", "",
+            "USAAA2600001", 180000, 0, 1, 1f, false, null, "");
+    static Function<Connection, Reply> replies = connection -> new Reply(404, "");
+    static List<String> bases;
+    static int checks;
+    record Reply(int status, String body) { }
+    static void check(boolean condition, String message) { checks++; if (!condition) throw new AssertionError(message); }
+    static Object call(Object target, String name, Object... args) throws Exception {
+        Class<?> type = target instanceof Class<?> ? (Class<?>) target : target.getClass();
+        for (Method method : type.getDeclaredMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != args.length) continue;
+            method.setAccessible(true);
+            try { return method.invoke(target instanceof Class<?> ? null : target, args); }
+            catch (InvocationTargetException error) {
+                if (error.getCause() instanceof Exception cause) throw cause;
+                throw (Error) error.getCause();
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+    static Object field(Object target, String name) throws Exception {
+        Class<?> type = target instanceof Class<?> ? (Class<?>) target : target.getClass();
+        Field field = type.getDeclaredField(name); field.setAccessible(true);
+        return field.get(target instanceof Class<?> ? null : target);
+    }
+    static void put(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name); field.setAccessible(true); field.set(target, value);
+    }
+    static Object allocate(Class<?> type) throws Exception {
+        Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe"); field.setAccessible(true);
+        return ((sun.misc.Unsafe) field.get(null)).allocateInstance(type);
+    }
+    static void waitFor(java.util.function.BooleanSupplier ready, String message) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!ready.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(5);
+        check(ready.getAsBoolean(), message);
+    }
+    static void reset() throws Exception {
+        waitFor(() -> requests.stream().allMatch(connection -> connection.disconnected), "previous sockets closed");
+        requests.clear();
+        ((AtomicInteger) field(LyricsPlusLyricsProvider.class, "PREFERRED_MIRROR")).set(0);
+        ((Map<?, ?>) field(LyricsPlusLyricsProvider.class, "MIRROR_UNAVAILABLE_UNTIL")).clear();
+        replies = connection -> new Reply(404, "");
+    }
+    static JSONObject fetch() throws Exception {
+        return (JSONObject) call(LyricsPlusLyricsProvider.class, "fetchPayload", SONG, SONG.isrc,
+                (LyricsPlusLyricsProvider.Logger) message -> { });
+    }
+    static final class Connection extends HttpURLConnection {
+        volatile boolean disconnected;
+        final int mirror;
+        Reply reply;
+        Connection(URL url) {
+            super(url);
+            mirror = bases == null ? -1 : bases.stream().map(URI::create).map(URI::getHost).toList().indexOf(url.getHost());
+            requests.add(this);
+        }
+        public void connect() { }
+        public boolean usingProxy() { return false; }
+        public void disconnect() { disconnected = true; }
+        public int getResponseCode() {
+            reply = replies.apply(this);
+            if (mirror >= 0) {
+                check(getConnectTimeout() > 0 && getConnectTimeout() <= 5000, "bounded mirror connect");
+                check(getReadTimeout() > 0 && getReadTimeout() <= 5000, "bounded mirror read");
+            }
+            return reply.status;
+        }
+        public InputStream getInputStream() {
+            if (!reply.body.equals("BLOCK")) return new ByteArrayInputStream(reply.body.getBytes(StandardCharsets.UTF_8));
+            return new InputStream() {
+                public int read() throws IOException {
+                    while (!disconnected) {
+                        try { Thread.sleep(5); } catch (InterruptedException ignored) { }
+                    }
+                    throw new IOException("closed");
+                }
+            };
+        }
+        public InputStream getErrorStream() { return getInputStream(); }
+        public OutputStream getOutputStream() { return new ByteArrayOutputStream(); }
+    }
+    static void mirrorTests() throws Exception {
+        reset(); replies = connection -> new Reply(200, LYRICS);
+        check(fetch() != null && requests.size() == 1, "fast primary avoids duplicate request");
+
+        reset(); replies = connection -> new Reply(200, connection.mirror == 0 ? "BLOCK" : LYRICS);
+        long started = System.nanoTime();
+        check(fetch() != null, "alternate wins while primary body stalls");
+        long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        check(elapsed >= 600 && elapsed < 2000, "hedged fallback starts around750ms: " + elapsed);
+        waitFor(() -> requests.stream().allMatch(connection -> connection.disconnected), "winning response cancels losing socket");
+        requests.clear(); replies = connection -> new Reply(200, LYRICS);
+        check(fetch() != null && requests.size() == 1 && requests.get(0).mirror == 1, "last successful mirror stays first");
+
+        reset(); replies = connection -> new Reply(connection.mirror == 0 ? 503 : 200,
+                connection.mirror == 0 ? "BLOCK" : LYRICS);
+        started = System.nanoTime();
+        check(fetch() != null, "immediate failure falls back");
+        check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 600, "failure does not wait for hedge delay");
+        requests.clear(); ((AtomicInteger) field(LyricsPlusLyricsProvider.class, "PREFERRED_MIRROR")).set(0);
+        check(fetch() != null && requests.size() == 1 && requests.get(0).mirror == 1, "failed mirror is skipped during cooldown");
+
+        reset(); check(fetch() == null && requests.size() == 2, "two404responses are a real miss");
+        reset(); replies = connection -> new Reply(200, "{\"lyrics\":[]}");
+        check(fetch() == null, "valid empty responses are a real miss");
+        reset(); replies = connection -> new Reply(connection.mirror == 0 ? 503 : 404, "");
+        try { fetch(); throw new AssertionError("outage reported as empty"); }
+        catch (IOException expected) { check(expected.getMessage().contains("503"), "outage detail survives empty fallback"); }
+        reset(); replies = connection -> new Reply(200, "{\"error\":\"busy\",\"lyrics\":[]}");
+        try { fetch(); throw new AssertionError("error envelope reported as empty"); }
+        catch (IOException expected) { checks++; }
+
+        reset(); replies = connection -> new Reply(200, "BLOCK");
+        started = System.nanoTime();
+        try { fetch(); throw new AssertionError("stalled mirrors completed"); }
+        catch (Exception expected) { checks++; }
+        check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 7000, "request deadlines include response bodies");
+        waitFor(() -> requests.stream().allMatch(connection -> connection.disconnected), "deadline closes both mirrors");
+
+        reset(); replies = connection -> new Reply(200, "BLOCK");
+        RequestCancellation request = new RequestCancellation();
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> pending = worker.submit(() -> request.run(() -> {
+                try { fetch(); throw new AssertionError("canceled request delivered lyrics"); }
+                catch (CancellationException expected) { throw expected; }
+                catch (Exception error) { throw new RuntimeException(error); }
+            }));
+            waitFor(() -> requests.size() == 2, "both hedge requests are in flight");
+            request.cancel(); pending.get(1, TimeUnit.SECONDS);
+            waitFor(() -> requests.stream().allMatch(connection -> connection.disconnected), "track change cancels both sockets");
+        } finally { worker.shutdownNow(); }
+    }
+    @SuppressWarnings("unchecked")
+    static void artworkTests() throws Exception {
+        reset(); replies = connection -> new Reply(200, "image");
+        LyricsRepository repo = new LyricsRepository(null);
+        Class<?> matchType = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$SpotifyTrackMatch");
+        Constructor<?> constructor = matchType.getDeclaredConstructors()[0]; constructor.setAccessible(true);
+        Object match = constructor.newInstance("0123456789012345678901", "Song", "Artist", "Album", 180000L,
+                SONG.isrc, "https://artwork.invalid/cover", 640, 640, "", "", "");
+        ((Map<String, Object>) field(repo, "spotifyArtworkMetadataCache")).put("0123456789012345678901", match);
+        AtomicInteger delivered = new AtomicInteger();
+        LyricsRepository.Callback callback = (LyricsRepository.Callback) java.lang.reflect.Proxy.newProxyInstance(
+                LyricsRepository.Callback.class.getClassLoader(), new Class<?>[]{LyricsRepository.Callback.class}, (p, m, a) -> {
+                    if (m.getName().equals("onLyricsArtworkLoaded")) {
+                        check(a[0].equals(SONG.stableKey()), "artwork retains original song key"); delivered.incrementAndGet();
+                    }
+                    return null;
+                });
+        Class<?> logType = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$LogSink");
+        Object log = java.lang.reflect.Proxy.newProxyInstance(logType.getClassLoader(), new Class<?>[]{logType}, (p, m, a) -> null);
+        LyricsResult cached = new LyricsResult(List.of(new LyricsLine(0, 1000, "Hello", List.of())), "Paxsenix", "", true,
+                SONG.isrc, "0123456789012345678901").withSelection("paxsenix", "test");
+        ThreadPoolExecutor lyricsWorker = (ThreadPoolExecutor) field(repo, "executor");
+        ThreadPoolExecutor artworkWorker = (ThreadPoolExecutor) field(repo, "artworkExecutor");
+        try {
+            for (boolean cancel : List.of(true, false)) {
+                ((Map<?, ?>) field(repo, "spotifyArtworkCache")).clear();
+                BitmapFactory.reset();
+                RequestCancellation request = new RequestCancellation();
+                AtomicReference<LyricsResult> result = new AtomicReference<>();
+                Future<?> lyrics = lyricsWorker.submit(() -> request.run(() -> {
+                    try { result.set((LyricsResult) call(repo, "loadLyricsBlocking", SONG, SONG.stableKey(), 0L, callback, log, cached)); }
+                    catch (Exception error) { throw new RuntimeException(error); }
+                }));
+                check(BitmapFactory.entered.await(1, TimeUnit.SECONDS), "artwork decode started");
+                lyrics.get(500, TimeUnit.MILLISECONDS);
+                check(result.get() != null && result.get().lines.size() == 1, "lyrics finish while artwork decode is blocked");
+                check(lyricsWorker.submit(() -> true).get(500, TimeUnit.MILLISECONDS), "artwork cannot occupy lyrics executor");
+                if (cancel) request.cancel();
+                BitmapFactory.release.countDown();
+                artworkWorker.submit(() -> { }).get(1, TimeUnit.SECONDS);
+                Handler.drain();
+                check(delivered.get() == (cancel ? 0 : 1), "cancellation suppresses old artwork; current artwork is delivered");
+            }
+
+            ((Map<?, ?>) field(repo, "spotifyArtworkCache")).clear();
+            BitmapFactory.reset();
+            RequestCancellation initialRequest = new RequestCancellation();
+            Future<?> initial = lyricsWorker.submit(() -> initialRequest.run(() -> {
+                try { call(repo, "requestSpotifyArtwork", SONG.stableKey(), match, callback, log); }
+                catch (Exception error) { throw new RuntimeException(error); }
+            }));
+            check(BitmapFactory.entered.await(1, TimeUnit.SECONDS), "initial Spotify match artwork decode starts");
+            initial.get(500, TimeUnit.MILLISECONDS);
+            initialRequest.cancel(); BitmapFactory.release.countDown();
+            artworkWorker.submit(() -> { }).get(1, TimeUnit.SECONDS); Handler.drain();
+            check(delivered.get() == 1, "initial-match artwork also remains asynchronous and cancel guarded");
+
+            AiLyricsSettings settings = (AiLyricsSettings) allocate(AiLyricsSettings.class);
+            AiLyricsSettings.Snapshot snapshot = (AiLyricsSettings.Snapshot) allocate(AiLyricsSettings.Snapshot.class);
+            put(snapshot, "spotifyClientId", "fixture-client"); put(snapshot, "spotifyClientSecret", "fixture-secret");
+            put(snapshot, "uiLang", "en"); put(settings, "cachedSnapshot", snapshot);
+            put(repo, "aiLyricsSettings", settings);
+            ((Map<?, ?>) field(repo, "spotifyArtworkMetadataCache")).clear();
+            replies = connection -> new Reply(200, "BLOCK");
+            RequestCancellation tokenRequest = new RequestCancellation();
+            try {
+                call(repo, "requestSpotifyArtwork", SONG, cached, SONG.stableKey(), callback, tokenRequest);
+                waitFor(() -> requests.stream().anyMatch(connection -> connection.getURL().getHost().equals("accounts.spotify.com")),
+                        "artwork metadata miss starts real token refresh");
+                LyricsProviderSettings providerSettings = (LyricsProviderSettings) field(repo, "lyricsProviderSettings");
+                LyricsResult reusable = cached.withSelection("paxsenix", providerSettings.snapshot().cacheKeyForProvider("paxsenix"));
+                Future<?> cacheWork = lyricsWorker.submit(() -> {
+                    try {
+                        call(repo, "putMemoryCachedLyrics", SONG.stableKey(), reusable);
+                        check(call(repo, "getMemoryCachedLyrics", SONG.stableKey()) == reusable,
+                                "lyric cache remains usable while token request blocks");
+                        repo.loadLyrics(SONG, callback);
+                    } catch (Exception error) { throw new RuntimeException(error); }
+                });
+                cacheWork.get(500, TimeUnit.MILLISECONDS);
+                check(requests.stream().anyMatch(connection -> connection.getURL().getHost().equals("accounts.spotify.com")
+                        && !connection.disconnected), "lyrics/cache finish before token refresh completes");
+            } finally { tokenRequest.cancel(); repo.invalidateProviderSelection(); }
+            artworkWorker.submit(() -> { }).get(1, TimeUnit.SECONDS); Handler.drain();
+        } finally { BitmapFactory.release.countDown(); repo.shutdown(); }
+        check(lyricsWorker.isShutdown() && artworkWorker.isShutdown(), "repository closes both executors");
+    }
+    @SuppressWarnings("unchecked")
+    public static void main(String[] args) throws Exception {
+        URL.setURLStreamHandlerFactory(protocol -> protocol.equals("https") ? new URLStreamHandler() {
+            protected URLConnection openConnection(URL url) { return new Connection(url); }
+        } : null);
+        bases = (List<String>) call(LyricsPlusLyricsProvider.class, "decodedApiBases");
+        mirrorTests(); artworkTests();
+        System.out.println("PASS " + checks + " checks: hedged mirrors, health preference, deadlines, cancellation and nonblocking artwork");
+    }
+}

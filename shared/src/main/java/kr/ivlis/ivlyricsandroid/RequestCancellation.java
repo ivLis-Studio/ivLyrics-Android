@@ -50,7 +50,10 @@ final class RequestCancellation {
     }
 
     static AutoCloseableConnection register(HttpURLConnection connection) {
-        RequestCancellation request = CURRENT.get();
+        return register(CURRENT.get(), connection);
+    }
+
+    static AutoCloseableConnection register(RequestCancellation request, HttpURLConnection connection) {
         if (request != null) synchronized (request) {
             request.throwIfCancelled();
             request.connections.add(connection);

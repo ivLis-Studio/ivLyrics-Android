@@ -150,10 +150,10 @@ public final class LrclibPlaybackRegression {
         public int getResponseCode() throws IOException {
             check(getRequestMethod().equals("GET"), "readonly requests");
             check(!getDoOutput(), "no request body");
-            if (custom(url)) {
-                check(getConnectTimeout() > 0 && getConnectTimeout() <= 5000, "private connect bound");
-                check(getReadTimeout() > 0 && getReadTimeout() <= 5000, "private read bound");
-                check(!getInstanceFollowRedirects(), "private redirects forbidden");
+            if (custom(url) || url.getHost().equals("lrclib.net") && !getInstanceFollowRedirects()) {
+                check(getConnectTimeout() > 0 && getConnectTimeout() <= 5000, "playback connect bound");
+                check(getReadTimeout() > 0 && getReadTimeout() <= 5000, "playback read bound");
+                check(!getInstanceFollowRedirects(), "playback redirects forbidden");
                 check(!getAllowUserInteraction() && !getUseCaches(), "no implicit authentication/cache");
                 check(getRequestProperties().keySet().equals(Set.of("Accept", "User-Agent")), "private header allowlist");
             }
@@ -287,6 +287,17 @@ public final class LrclibPlaybackRegression {
             check(find(pinned, null) != null, "fatal private failure falls back: " + failure);
             check(order().equals(List.of("mirror.invalid:id", "lrclib.net:id")), "fatal host failure ends private stage without redirect");
         }
+
+        settings.setLrclibPlaybackEndpoint("");
+        for (int failure : List.of(429, 500, 503, -1)) {
+            reset(); replies = url -> new Reply(failure, "");
+            check(find(null, englishMetadata()) == null, "official outage falls through to other providers");
+            check(order().equals(List.of("lrclib.net:get")),
+                    "official outage stops all original/Spotify metadata variants: " + failure + " " + order());
+            check(requests.get(0).getConnectTimeout() <= 5000 && requests.get(0).getReadTimeout() <= 5000,
+                    "official playback uses the bounded stage too");
+        }
+        settings.setLrclibPlaybackEndpoint(PRIVATE);
 
         reset(); replies = url -> new Reply(404, "");
         settings.setTypeFirst(false); settings.setPreferSyncDataProvider(false);

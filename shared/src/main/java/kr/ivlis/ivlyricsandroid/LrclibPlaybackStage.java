@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 
-/** One private-host playback attempt: no shared auth headers, redirects or authoring operations. */
+/** One bounded playback host attempt: no shared auth headers, redirects or authoring operations. */
 final class LrclibPlaybackStage {
     interface ConnectionFactory {
         HttpURLConnection open(URI uri, long deadlineNanos) throws IOException;

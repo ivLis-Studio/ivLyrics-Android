@@ -13,6 +13,8 @@ python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py
 python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
+python3 tests/run_provider_network_regression.py
+python3 tests/run_lrclib_playback_regression.py
 python3 tests/run_local_lyrics_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_frame_layout_pool_regression.py
@@ -49,6 +51,12 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The provider-network regression uses production mirror orchestration and the lyrics repository with
+synthetic HTTP, bitmap decoding and Android dispatch. It covers staggered mirror fallback, healthy
+mirror preference, error-vs-empty responses, deadlines and track cancellation, plus lyric/cache
+completion while artwork decoding or its Spotify token refresh is blocked. It does not contact
+provider services or measure a physical device.
 
 The first-use regression executes the production permission action, credential validation callbacks,
 draft capture/restoration and in-flight button state with a controlled token validator. It also
