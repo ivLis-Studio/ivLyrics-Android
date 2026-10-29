@@ -47,6 +47,7 @@ Spotify 안에서 ivLyrics 가사를 보고 싶은 분을 위한 LSPosed/LSPatch
 - **Local AI를 먼저 쓰려면 온라인 제공자보다 앞에 배치**하세요. 켜는 것만으로 우선하지 않으며, 기기 내 가사 번역만 원하면 다른 온라인 번역 제공자를 모두 꺼야 합니다.
 - Local AI에는 Android 9 이상·64비트 ARM 프로세스·모델 다운로드와 충분한 메모리가 필요합니다. LSPatch 등 호스트 환경에서 엔진 로딩이 실패할 수 있습니다. 가사 조회·모델 다운로드·다른 온라인 기능까지 오프라인이 되는 것은 아닙니다.
 - 모듈의 설정·캐시·모델은 Spotify 쪽 저장 공간에 보관되며 독립 앱과 자동 공유되지 않습니다.
+- 직접 가진 LRC/TXT 파일은 **설정 → 현재 재생 곡 설정 → 가사 제공자 → 가사 파일 불러오기**에서 현재 곡에 추가할 수 있습니다. 온라인 가사보다 우선 표시되며, 같은 메뉴에서 삭제할 수 있습니다. [파일 형식과 저장 안내](../README.md#내-lrc-파일로-가사-추가하기)를 참고하세요.
 
 ### Spotify 9.1.80.2221에서 사용할 수 있는 기능
 
@@ -103,6 +104,8 @@ Open **Current track settings** or long-press the title/artist area for language
 Bing, Google, DeepL, and Local AI are **translation-only**; pronunciation needs a configured AI provider and model. **Move Local AI ahead of online providers to try it first; disable all other online translation providers for local-only lyric translation.** Enabling it alone does not change priority. Local AI needs Android 9+, a 64-bit ARM process, a downloaded model, and enough memory; engine loading may fail under LSPatch or another host configuration. Lyric lookup, downloads, and other online features still use the internet. Module settings, caches, and models are stored within Spotify and are separate from the standalone app.
 
 On **9.1.80.2221**, the lyric preview above the title uses ivLyrics and follows Spotify's **Lyrics · On/Off** option. Tap it for full lyrics. Supported songs can also show Spotify's native SingAlong microphone button at the lower right of full lyrics: **OFF → LOW → HIGH → OFF**. It appears on entry/touch and hides after three idle seconds. Spotify's track support, online mode, local playback, and audio-quality restrictions apply; LOW audio quality is excluded. It does not unlock feature flags or unsupported tracks. These features are not promised for 9.1.42.2058 or the standalone app.
+
+To use your own LRC/TXT file, open **Settings → Current track settings → Lyrics Providers → Import lyrics file**. It takes priority over online lyrics and can be removed in the same menu. See the [file format and storage guide](../README_EN.md#add-lyrics-from-your-own-lrc-file); module imports are stored inside Spotify, separately from the standalone app.
 
 ### Updates and help
 

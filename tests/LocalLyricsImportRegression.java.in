@@ -1,0 +1,198 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.*;
+import android.net.Uri;
+import android.os.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.BooleanSupplier;
+
+/** Production Activity picker/result/listener methods with synthetic Android storage and dispatch. */
+public final class LocalLyricsImportRegression extends ImportActivityParent {
+    static int checks;
+    static final int IMPORT_LYRICS_REQUEST = 4871;
+    static final int RESULT_OK = -1;
+    final ApplicationContext application;
+    final Handler handler = new Handler();
+    final FakeRepository lyricsRepository = new FakeRepository();
+    final Set<String> pendingLocalLyricsRefreshes = new HashSet<>();
+    final List<String> toasts = new ArrayList<>();
+    TrackSnapshot currentTrack;
+    String localLyricsImportKey;
+    long localLyricsImportDuration;
+    Runnable localLyricsChangeCleanup;
+    boolean destroyed;
+    Intent picker;
+    int reloads;
+    String displayed = "ONLINE";
+    LocalLyricsImportRegression(ApplicationContext application, TrackSnapshot track) {
+        this.application = application; currentTrack = track; observeLocalLyricsChanges();
+    }
+    public Context getApplicationContext() { return application; }
+    public SharedPreferences getSharedPreferences(String name, int mode) { throw new AssertionError("Activity storage must resolve through host application"); }
+    public ContentResolver getContentResolver() { return application.resolver; }
+    void startActivityForResult(Intent intent, int code) { check(code == IMPORT_LYRICS_REQUEST, "picker request identity"); picker = intent; }
+    boolean isFinishing() { return destroyed; }
+    boolean isDestroyed() { return destroyed; }
+    void showSavedToast(String text) { toasts.add(text); }
+    String ui(String key) { return key; }
+    void reloadCurrentLyricsFromSettings() {
+        reloads++;
+        try {
+            LyricsResult result = new LocalLyricsStore(this).load(currentTrack);
+            displayed = result == null ? "ONLINE" : result.lines.get(0).text;
+        } catch (IOException error) { throw new AssertionError(error); }
+    }
+    void destroy() { destroyed = true; stopObservingLocalLyricsChanges(); }
+    Bundle savePending() {
+        Bundle outState = new Bundle();
+        // SAVE_PENDING
+        return outState;
+    }
+    void restorePending(Bundle savedInstanceState) {
+        // RESTORE_PENDING
+    }
+    // CHOOSE_METHOD
+    // RESULT_METHOD
+    // OBSERVE_METHOD
+    // CHANGED_METHOD
+    // STOP_OBSERVE_METHOD
+
+    static final class FakeRepository { int invalidations; void invalidateProviderSelection() { invalidations++; } }
+    static final class Document extends ByteArrayInputStream {
+        final String name;
+        final CountDownLatch entered = new CountDownLatch(1), release, closed = new CountDownLatch(1);
+        Document(String name, byte[] bytes, boolean blocked) { super(bytes); this.name = name; release = new CountDownLatch(blocked ? 1 : 0); }
+        @Override public int read(byte[] data, int offset, int count) {
+            entered.countDown();
+            try { if (!release.await(3, TimeUnit.SECONDS)) throw new AssertionError("test did not release document"); }
+            catch (InterruptedException error) { throw new AssertionError(error); }
+            return super.read(data, offset, count);
+        }
+        @Override public void close() { closed.countDown(); }
+    }
+    static final class Resolver extends ContentResolver {
+        final Map<String, Document> documents = new ConcurrentHashMap<>();
+        Uri add(String id, Document document) { Uri uri = Uri.parse("content://host.documents/" + id); documents.put(uri.toString(), document); return uri; }
+        public InputStream openInputStream(Uri uri) { return documents.get(uri.toString()); }
+        public android.database.Cursor query(Uri uri, String[] fields, String selection, String[] args, String order) {
+            Document document = documents.get(uri.toString());
+            return new android.database.Cursor() {
+                public boolean moveToFirst() { return true; }
+                public String getString(int column) { return document.name; }
+                public void close() { }
+            };
+        }
+    }
+    static final class ApplicationContext extends Context {
+        final String packageName;
+        final Resolver resolver = new Resolver();
+        final Map<String, String> values = new ConcurrentHashMap<>();
+        final Set<SharedPreferences.OnSharedPreferenceChangeListener> listeners = ConcurrentHashMap.newKeySet();
+        final SharedPreferences preferences;
+        ApplicationContext(String packageName) {
+            this.packageName = packageName;
+            preferences = (SharedPreferences) java.lang.reflect.Proxy.newProxyInstance(SharedPreferences.class.getClassLoader(),
+                    new Class<?>[]{SharedPreferences.class}, (proxy, method, args) -> {
+                        switch (method.getName()) {
+                            case "hashCode": return System.identityHashCode(proxy);
+                            case "equals": return proxy == args[0];
+                            case "getString": return values.getOrDefault(args[0], (String)args[1]);
+                            case "registerOnSharedPreferenceChangeListener": listeners.add((SharedPreferences.OnSharedPreferenceChangeListener)args[0]); return null;
+                            case "unregisterOnSharedPreferenceChangeListener": listeners.remove(args[0]); return null;
+                            case "edit":
+                                Map<String, String> pending = new HashMap<>();
+                                return java.lang.reflect.Proxy.newProxyInstance(SharedPreferences.Editor.class.getClassLoader(),
+                                        new Class<?>[]{SharedPreferences.Editor.class}, (editor, edit, data) -> {
+                                            switch (edit.getName()) {
+                                                case "putString": pending.put((String)data[0], (String)data[1]); return editor;
+                                                case "remove": pending.put((String)data[0], null); return editor;
+                                                case "commit":
+                                                    for (var entry : pending.entrySet()) {
+                                                        if (entry.getValue() == null) values.remove(entry.getKey()); else values.put(entry.getKey(), entry.getValue());
+                                                        for (var listener : new ArrayList<>(listeners)) listener.onSharedPreferenceChanged((SharedPreferences)proxy, entry.getKey());
+                                                    }
+                                                    return true;
+                                                default: throw new AssertionError(edit.getName());
+                                            }
+                                        });
+                            default: throw new AssertionError(method.getName());
+                        }
+                    });
+        }
+        public Context getApplicationContext() { return this; }
+        public SharedPreferences getSharedPreferences(String name, int mode) { check(name.equals("local_lyrics"), "same host-local import store"); return preferences; }
+        public ContentResolver getContentResolver() { return resolver; }
+    }
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    static void await(BooleanSupplier predicate, String message) throws Exception {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (!predicate.getAsBoolean() && System.nanoTime() < until) { Handler.drain(); Thread.sleep(5); }
+        Handler.drain(); check(predicate.getAsBoolean(), message);
+    }
+    static TrackSnapshot track(String id, String title) {
+        return new TrackSnapshot(title, "Artist", "Album", "com.spotify.music", "spotify:track:" + id,
+                "", 120000, 0, 1, 1f, false, null, "");
+    }
+    static Document document(String text, boolean blocked) { return new Document("lyrics.LRC", text.getBytes(StandardCharsets.UTF_8), blocked); }
+    static void deliver(LocalLyricsImportRegression page, Uri uri) {
+        page.onActivityResult(IMPORT_LYRICS_REQUEST, RESULT_OK, new Intent().setData(uri));
+    }
+    static void scenario(String hostPackage) throws Exception {
+        ApplicationContext host = new ApplicationContext(hostPackage);
+        TrackSnapshot a = track("0123456789012345678901", "Song A"), b = track("1123456789012345678901", "Song B");
+        LocalLyricsImportRegression old = new LocalLyricsImportRegression(host, a);
+        old.chooseLocalLyrics();
+        check(Intent.ACTION_OPEN_DOCUMENT.equals(old.picker.getAction()) && "*/*".equals(old.picker.getType())
+                && old.picker.hasCategory(Intent.CATEGORY_OPENABLE), "SAF picker accepts octet-stream LRC without storage permissions");
+        Bundle pending = old.savePending(); old.destroy();
+        LocalLyricsImportRegression page = new LocalLyricsImportRegression(host, a); page.restorePending(pending);
+        Document first = document("[00:01]After picker recreation", false);
+        deliver(page, host.resolver.add("first", first));
+        await(() -> page.reloads == 1, "recreated picker delivers saved file");
+        check(page.displayed.equals("After picker recreation") && old.reloads == 0, "only current Activity refreshes");
+        page.onLocalLyricsChanged(a.stableKey()); page.onLocalLyricsChanged(a.stableKey()); Handler.drain();
+        check(page.reloads == 2, "bridge and Activity notifications coalesce");
+        page.destroy();
+
+        LocalLyricsImportRegression reading = new LocalLyricsImportRegression(host, a);
+        reading.chooseLocalLyrics(); Document slow = document("[00:01]After read recreation", true);
+        deliver(reading, host.resolver.add("slow", slow)); check(slow.entered.await(1, TimeUnit.SECONDS), "document read began");
+        reading.destroy(); LocalLyricsImportRegression recreated = new LocalLyricsImportRegression(host, a);
+        slow.release.countDown(); await(() -> recreated.reloads == 1, "new Activity refreshes when old reader commits");
+        check(recreated.displayed.equals("After read recreation") && reading.reloads == 0 && reading.toasts.isEmpty(), "old Activity does not receive completion UI");
+
+        recreated.chooseLocalLyrics(); Document older = document("[00:01]Older", true);
+        deliver(recreated, host.resolver.add("older", older)); check(older.entered.await(1, TimeUnit.SECONDS), "older import is pending");
+        recreated.chooseLocalLyrics(); Document newer = document("[00:01]Newer", false);
+        deliver(recreated, host.resolver.add("newer", newer)); await(() -> recreated.displayed.equals("Newer"), "newer import completes first");
+        older.release.countDown(); check(older.closed.await(1, TimeUnit.SECONDS), "older reader finished"); Handler.drain();
+        check(new LocalLyricsStore(recreated).load(a).lines.get(0).text.equals("Newer"), "late older file cannot overwrite newer choice");
+
+        recreated.chooseLocalLyrics(); Document removed = document("[00:01]Resurrected", true);
+        deliver(recreated, host.resolver.add("removed", removed)); check(removed.entered.await(1, TimeUnit.SECONDS), "removal races pending read");
+        new LocalLyricsStore(recreated).remove(a.stableKey()); Handler.drain();
+        removed.release.countDown(); check(removed.closed.await(1, TimeUnit.SECONDS), "removed import reader finished"); Handler.drain();
+        check(new LocalLyricsStore(recreated).load(a) == null && recreated.displayed.equals("ONLINE"), "remove prevents late import resurrection");
+
+        recreated.chooseLocalLyrics(); recreated.currentTrack = b; recreated.displayed = "SONG B";
+        int reloads = recreated.reloads;
+        Document captured = document("[00:01]Song A import", false); deliver(recreated, host.resolver.add("captured", captured));
+        check(captured.closed.await(1, TimeUnit.SECONDS), "captured song import finishes"); Handler.drain();
+        check(new LocalLyricsStore(recreated).load(a).lines.get(0).text.equals("Song A import") && new LocalLyricsStore(recreated).load(b) == null,
+                "picker keeps original Spotify identity when playback changes");
+        check(recreated.reloads == reloads && recreated.displayed.equals("SONG B"), "old-song completion cannot replace current display");
+        recreated.chooseLocalLyrics(); recreated.onActivityResult(IMPORT_LYRICS_REQUEST, 0, null);
+        check(recreated.localLyricsImportKey == null, "canceled picker releases pending identity");
+        recreated.destroy(); check(host.listeners.isEmpty(), "Activity listeners are released");
+    }
+    public static void main(String[] args) throws Exception {
+        scenario("kr.ivlis.ivlyricsandroid"); scenario("com.spotify.music");
+        System.out.println("PASS " + checks + " checks: production picker/results, recreated Activity, latest import/removal, captured Spotify key and host application storage");
+    }
+}
+abstract class ImportActivityParent extends Context {
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) { }
+}

@@ -1,0 +1,198 @@
+import java.lang.ref.WeakReference;
+import java.util.*;
+import java.util.function.Consumer;
+
+/** Production bridge/engine methods; controlled storage notifications, playback, UI and provider callbacks. */
+public final class LocalLyricsBridgeRegression {
+    static final Handler MAIN = new Handler();
+    static SharedPreferences localLyricsPreferences;
+    static Runnable stopObservingLocalLyrics;
+    static Engine engine;
+    static TrackSnapshot sharedTrack;
+    static LyricsResult sharedResult;
+    static String sharedSourceLanguage = "auto";
+    static WeakReference<BaseLyricsActivity> foregroundPage = new WeakReference<>(null);
+    static final List<WeakReference<NativeSurface>> CARDS = new ArrayList<>();
+    static int checks;
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    static void pruneCards() { }
+
+    static final class Handler {
+        final ArrayDeque<Runnable> queued = new ArrayDeque<>();
+        void post(Runnable work) { queued.add(work); }
+        void drain() { Looper.main = true; while (!queued.isEmpty()) queued.remove().run(); }
+    }
+    static final class Looper {
+        static final Object MAIN_LOOPER = new Object();
+        static boolean main = true;
+        static Object myLooper() { return main ? MAIN_LOOPER : null; }
+        static Object getMainLooper() { return MAIN_LOOPER; }
+    }
+    static final class SharedPreferences {
+        final List<Consumer<String>> listeners = new ArrayList<>();
+        void changed(String key) { for (Consumer<String> listener : List.copyOf(listeners)) listener.accept(key); }
+    }
+    static final class Context {
+        static final int MODE_PRIVATE = 0;
+        final SharedPreferences prefs = new SharedPreferences();
+        SharedPreferences getSharedPreferences(String name, int mode) { return prefs; }
+    }
+    static final class LocalLyricsStore {
+        final SharedPreferences prefs;
+        LocalLyricsStore(Context context) { prefs = context.prefs; }
+        Runnable observe(Consumer<String> listener) { prefs.listeners.add(listener); return () -> prefs.listeners.remove(listener); }
+    }
+    static final class TrackSnapshot {
+        final String id;
+        String isrc = "";
+        boolean playing, spotifyAutomix, spotifyContextKnown;
+        long automixFadeInStartMs, automixFadeInCueMs, automixFadeOverlapMs;
+        TrackSnapshot(String id) { this.id = id; }
+        String stableKey() { return id; }
+        boolean hasUsableMetadata() { return true; }
+        boolean isSpotifyDjSegment() { return false; }
+        long positionNow() { return 0; }
+    }
+    static final class LyricsResult {
+        final List<String> lines;
+        final String providerId;
+        String isrc = "";
+        LyricsResult(String words, String provider) { lines = words.isEmpty() ? List.of() : List.of(words); providerId = provider; }
+        static LyricsResult empty(String reason) { return new LyricsResult("", ""); }
+        static LyricsResult loading(String reason) { return empty(reason); }
+    }
+    static final class Bitmap { }
+    static final class SystemClock { static long elapsedRealtime() { return 0; } }
+    static final class Timeline { long update(Object... ignored) { return 0; } void reset() { } }
+    interface PlaybackListener { void onNowPlayingChanged(TrackSnapshot track); }
+    static final class LyricsRepository {
+        interface Callback {
+            void onLyricsLoaded(String key, LyricsResult value);
+            void onLyricsError(String key, String message);
+            void onLyricsProviderLoading(String key, String provider);
+            void onLyricsLog(String key, String message);
+            void onLyricsArtworkLoaded(String key, Bitmap artwork, String artworkKey);
+            void onLyricsMetadataResolved(String key, String isrc, String spotifyId);
+        }
+        final List<Callback> requests = new ArrayList<>();
+        int invalidations;
+        void invalidateProviderSelection() { invalidations++; }
+        void loadLyrics(TrackSnapshot track, Callback callback) { requests.add(callback); }
+    }
+    static final class BaseLyricsActivity {
+        final String trackKey;
+        final Set<String> pending = new HashSet<>();
+        int refreshes;
+        BaseLyricsActivity(String key) { trackKey = key; }
+        void onLocalLyricsChanged(String key) {
+            if (key != null && !key.equals(trackKey)) return;
+            if (!pending.add(trackKey)) return;
+            MAIN.post(() -> { pending.remove(trackKey); refreshes++; });
+        }
+        boolean acceptEmbeddedLyrics(String key, LyricsResult value) { return false; }
+        void onLyricsError(String key, String message) { }
+    }
+    static final class NativeSurface {
+        List<String> rows = List.of();
+        void render(Engine state) { rows = state.result.lines; }
+        void drawOnceIfCovered() { }
+    }
+    // INSERT_OBSERVER
+    // INSERT_CHANGE
+    // INSERT_PUBLISH
+    // INSERT_CACHED
+    // INSERT_MATCHES
+
+    static final class Engine implements PlaybackListener {
+        final LyricsRepository repository = new LyricsRepository();
+        final Timeline timeline = new Timeline();
+        TrackSnapshot track;
+        LyricsResult base, result = LyricsResult.empty("initial"), furiganaResult;
+        List<String> annotations = List.of();
+        String sourceLanguage = "auto", key = "";
+        long generation, djOffset;
+        boolean loading, requestInFlight, pronunciationLoading, translationLoading, released;
+        String ui(String key) { return key; }
+        String detectLanguage(LyricsResult value) { return "en"; }
+        void loadSupplements(long request) { }
+        // INSERT_ENGINE_CHANGE
+        // INSERT_PLAYBACK
+        // INSERT_ACCEPT
+        // INSERT_VALID
+        // INSERT_RENDER
+    }
+
+    static final TrackSnapshot SONG = new TrackSnapshot("song");
+    static Context reset() {
+        if (stopObservingLocalLyrics != null) stopObservingLocalLyrics.run();
+        stopObservingLocalLyrics = null; localLyricsPreferences = null;
+        sharedTrack = null; sharedResult = null; sharedSourceLanguage = "auto";
+        engine = null; foregroundPage = new WeakReference<>(null); CARDS.clear(); MAIN.queued.clear(); Looper.main = true;
+        Context context = new Context(); observeLocalLyrics(context); return context;
+    }
+    static Engine withCurrent(LyricsResult value) {
+        engine = new Engine(); engine.track = SONG; engine.key = SONG.stableKey();
+        engine.base = engine.result = value;
+        publishLyrics(SONG, value, "en");
+        return engine;
+    }
+
+    public static void main(String[] args) {
+        Context context = reset();
+        observeLocalLyrics(context); observeLocalLyrics(context);
+        check(context.prefs.listeners.size() == 1, "reinitialization keeps one process observer");
+        Engine current = withCurrent(new LyricsResult("online", "remote"));
+        NativeSurface card = new NativeSurface(), inline = new NativeSurface();
+        CARDS.add(new WeakReference<>(card)); CARDS.add(new WeakReference<>(inline)); current.renderCards();
+        context.prefs.changed("song");
+        check(current.repository.invalidations == 1 && current.repository.requests.size() == 1, "closed page reloads provider through repository");
+        check(card.rows.isEmpty() && inline.rows.isEmpty() && cachedLyrics(SONG) == null, "old shared/card/inline rows clear before lookup");
+        current.repository.requests.get(0).onLyricsLoaded("song", new LyricsResult("imported", "local"));
+        check(card.rows.equals(List.of("imported")) && inline.rows.equals(card.rows), "import publishes to both mounted surfaces");
+
+        LyricsRepository.Callback old = current.repository.requests.get(0);
+        context.prefs.changed("song");
+        old.onLyricsLoaded("song", new LyricsResult("resurrected", "local"));
+        check(card.rows.isEmpty() && cachedLyrics(SONG) == null, "obsolete callback cannot resurrect removed local lyrics");
+        current.repository.requests.get(1).onLyricsLoaded("song", LyricsResult.empty("No online lyrics"));
+        check(card.rows.isEmpty() && inline.rows.isEmpty() && cachedLyrics(SONG) == null, "removal and online miss leave no local rows or shared cache");
+
+        context = reset(); current = withCurrent(new LyricsResult("old local", "local"));
+        BaseLyricsActivity page = new BaseLyricsActivity("song"); foregroundPage = new WeakReference<>(page);
+        page.onLocalLyricsChanged("song"); // BaseActivity's own store callback may arrive first.
+        context.prefs.changed("song");
+        check(current.repository.requests.isEmpty() && current.result.lines.isEmpty(), "foreground page retains sole provider ownership");
+        MAIN.drain();
+        check(page.refreshes == 1, "bridge and page notifications coalesce");
+        publishLyrics(SONG, new LyricsResult("new local", "local"), "en");
+        check(current.result.lines.equals(List.of("new local")), "page result still repopulates the engine");
+
+        BaseLyricsActivity recreated = new BaseLyricsActivity("song"); foregroundPage = new WeakReference<>(recreated);
+        context.prefs.changed("song"); MAIN.drain();
+        check(recreated.refreshes == 1 && page.refreshes == 1, "a new page receives a delayed store notification");
+        int invalidations = current.repository.invalidations;
+        publishLyrics(SONG, new LyricsResult("current", "local"), "en");
+        context.prefs.changed("other song"); MAIN.drain();
+        check(current.repository.invalidations == invalidations && recreated.refreshes == 1
+                && cachedLyrics(SONG).lines.equals(List.of("current")), "another song's import cannot disturb current playback");
+
+        context = reset(); sharedTrack = SONG; sharedResult = new LyricsResult("old import", "local");
+        context.prefs.changed("song");
+        check(sharedTrack == null && sharedResult == null, "shared state is invalidated even after idle engine release");
+        engine = new Engine(); engine.onNowPlayingChanged(SONG);
+        check(engine.repository.requests.size() == 1 && engine.result.lines.isEmpty(), "new engine cannot restore an obsolete local snapshot");
+
+        context = reset(); current = withCurrent(new LyricsResult("old", "local")); current.released = true;
+        context.prefs.changed("song");
+        check(current.repository.requests.isEmpty() && current.repository.invalidations == 0, "released engine starts no work");
+
+        context = reset(); Looper.main = false; context.prefs.changed("song");
+        Context newContext = new Context(); observeLocalLyrics(newContext);
+        sharedTrack = SONG; sharedResult = new LyricsResult("new storage", "local"); MAIN.drain();
+        check(context.prefs.listeners.isEmpty() && newContext.prefs.listeners.size() == 1, "changing storage unregisters the previous observer");
+        check(sharedResult != null, "queued callbacks from old storage are ignored");
+        newContext.prefs.changed(null);
+        check(sharedResult == null, "storage clear invalidates retained shared lyrics");
+        System.out.println("PASS " + checks + " checks: production local-store bridge notifications, card/inline invalidation and stale callbacks");
+    }
+}

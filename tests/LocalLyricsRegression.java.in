@@ -16,9 +16,14 @@ public final class LocalLyricsRegression {
         check(failed);
     }
     static final Map<String, String> saved = new HashMap<>();
+    static final Set<SharedPreferences.OnSharedPreferenceChangeListener> listeners = new HashSet<>();
     static boolean failCommit;
     static final SharedPreferences prefs = (SharedPreferences) Proxy.newProxyInstance(
         SharedPreferences.class.getClassLoader(), new Class<?>[]{SharedPreferences.class}, (p, m, a) -> {
+            if (m.getName().equals("hashCode")) return System.identityHashCode(p);
+            if (m.getName().equals("equals")) return p == a[0];
+            if (m.getName().equals("registerOnSharedPreferenceChangeListener")) { listeners.add((SharedPreferences.OnSharedPreferenceChangeListener)a[0]); return null; }
+            if (m.getName().equals("unregisterOnSharedPreferenceChangeListener")) { listeners.remove(a[0]); return null; }
             if (m.getName().equals("getString")) return saved.getOrDefault((String)a[0], (String)a[1]);
             if (!m.getName().equals("edit")) throw new AssertionError(m.getName());
             Map<String, String> pending = new HashMap<>();
@@ -29,6 +34,9 @@ public final class LocalLyricsRegression {
                     case "commit":
                         if (failCommit) return false;
                         pending.forEach((key, value) -> { if (value == null) saved.remove(key); else saved.put(key, value); });
+                        for (String key : pending.keySet()) for (SharedPreferences.OnSharedPreferenceChangeListener listener : new ArrayList<>(listeners)) {
+                            listener.onSharedPreferenceChanged((SharedPreferences)p, key);
+                        }
                         return true;
                     default: throw new AssertionError(method.getName());
                 }
@@ -74,6 +82,29 @@ public final class LocalLyricsRegression {
         failCommit = false;
         first.remove(song.stableKey());
         check(store().load(song) == null);
+        long older = first.beginImport(song.stableKey());
+        long newer = store().beginImport(song.stableKey());
+        check(first.saveIfCurrent(song.stableKey(), "Newer", newer));
+        check(!store().saveIfCurrent(song.stableKey(), "Older", older));
+        check(store().load(song).lines.get(0).text.equals("Newer"));
+        long removed = first.beginImport(song.stableKey());
+        store().remove(song.stableKey());
+        check(!first.saveIfCurrent(song.stableKey(), "Resurrected", removed));
+        check(store().load(song) == null);
+        long independent = first.beginImport("other-track");
+        long current = first.beginImport(song.stableKey());
+        check(first.saveIfCurrent("other-track", "Other", independent));
+        check(first.saveIfCurrent(song.stableKey(), "Current", current));
+        List<String> oldPage = new ArrayList<>(), recreatedPage = new ArrayList<>();
+        Runnable oldCleanup = first.observe(oldPage::add);
+        oldCleanup.run();
+        Runnable newCleanup = store().observe(recreatedPage::add);
+        long afterRecreation = first.beginImport(song.stableKey());
+        check(first.saveIfCurrent(song.stableKey(), "Recreated", afterRecreation));
+        check(oldPage.isEmpty() && recreatedPage.equals(List.of(song.stableKey())));
+        newCleanup.run();
+        first.remove(song.stableKey());
+        check(recreatedPage.size() == 1 && listeners.isEmpty());
         System.out.println("Local lyrics: " + checks + " checks passed (production decode/parser/store, synthetic preferences)");
     }
 }

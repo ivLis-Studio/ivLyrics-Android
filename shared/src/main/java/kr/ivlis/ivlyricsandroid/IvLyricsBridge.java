@@ -47,6 +47,8 @@ public final class IvLyricsBridge {
     private static TrackSnapshot sharedTrack;
     private static LyricsResult sharedResult;
     private static String sharedSourceLanguage = "auto";
+    private static SharedPreferences localLyricsPreferences;
+    private static Runnable stopObservingLocalLyrics;
     private static WeakReference<BaseLyricsActivity> foregroundPage = new WeakReference<>(null);
     private static final List<WeakReference<NativeSurface>> CARDS = new ArrayList<>();
     /** Host windows open and at rest above the player, keyed by owner; main thread only. */
@@ -101,10 +103,40 @@ public final class IvLyricsBridge {
         if (context == null) return;
         Context app = context.getApplicationContext();
         application = hostContext(app == null ? context : app);
+        observeLocalLyrics(application);
         if (!wordSegmenterInitialized) {
             LyricsWordSegmenter.initialize(application);
             wordSegmenterInitialized = true;
         }
+    }
+
+    private static void observeLocalLyrics(Context context) {
+        SharedPreferences preferences = context.getSharedPreferences("local_lyrics", Context.MODE_PRIVATE);
+        if (preferences == localLyricsPreferences) return;
+        if (stopObservingLocalLyrics != null) stopObservingLocalLyrics.run();
+        localLyricsPreferences = preferences;
+        // Keep this observer while the process lives: a pending import can
+        // complete after both the full page and the last card have closed.
+        stopObservingLocalLyrics = new LocalLyricsStore(context).observe(changedKey -> {
+            Runnable changed = () -> {
+                if (localLyricsPreferences == preferences) onLocalLyricsChanged(changedKey);
+            };
+            if (Looper.myLooper() == Looper.getMainLooper()) changed.run();
+            else MAIN.post(changed);
+        });
+    }
+
+    private static void onLocalLyricsChanged(String changedKey) {
+        if (sharedTrack != null && (changedKey == null || changedKey.equals(sharedTrack.stableKey()))) {
+            sharedTrack = null;
+            sharedResult = null;
+            sharedSourceLanguage = "auto";
+        }
+        if (engine != null) engine.onLocalLyricsChanged(changedKey);
+        BaseLyricsActivity page = foregroundPage.get();
+        // The page coalesces this with its own store notification and remains
+        // the only provider owner while visible, including after recreation.
+        if (page != null) page.onLocalLyricsChanged(changedKey);
     }
 
     public static View createPreview(Context context) {
@@ -665,6 +697,13 @@ public final class IvLyricsBridge {
             sharedResult = null;
             key = "";
             onNowPlayingChanged(NowPlayingService.getLatestSnapshot());
+        }
+
+        void onLocalLyricsChanged(String changedKey) {
+            if (released || track == null || (changedKey != null && !changedKey.equals(track.stableKey()))) return;
+            repository.invalidateProviderSelection();
+            key = "";
+            onNowPlayingChanged(track);
         }
 
         Engine(Context context) {

@@ -11,6 +11,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,10 +24,12 @@ final class LocalLyricsStore {
     private static final Pattern TIMESTAMP = Pattern.compile("\\[(\\d{1,6}):([0-5]?\\d)(?:[.,](\\d{1,3}))?\\]");
     private static final Pattern OFFSET = Pattern.compile("(?im)^\\s*\\[offset:([+-]?\\d{1,9})\\]\\s*$");
     private static final Pattern METADATA = Pattern.compile("(?i)^\\[(?:ar|al|ti|au|length|by|offset|re|ve):.*\\]$");
+    private static final Map<SharedPreferences, Map<String, Long>> EDIT_GENERATIONS = new WeakHashMap<>();
     private final SharedPreferences prefs;
 
     LocalLyricsStore(Context context) {
-        prefs = context.getSharedPreferences("local_lyrics", Context.MODE_PRIVATE);
+        Context app = context.getApplicationContext();
+        prefs = (app == null ? context : app).getSharedPreferences("local_lyrics", Context.MODE_PRIVATE);
     }
 
     LyricsResult load(TrackSnapshot track) throws IOException {
@@ -32,11 +38,48 @@ final class LocalLyricsStore {
     }
 
     void save(String key, String text) throws IOException {
-        if (!prefs.edit().putString(key, text).commit()) throw new IOException("Could not save local lyrics");
+        synchronized (EDIT_GENERATIONS) {
+            beginImport(key);
+            if (!prefs.edit().putString(key, text).commit()) throw new IOException("Could not save local lyrics");
+        }
     }
 
     void remove(String key) throws IOException {
-        if (!prefs.edit().remove(key).commit()) throw new IOException("Could not remove local lyrics");
+        synchronized (EDIT_GENERATIONS) {
+            // A file that is still being read must not restore a removed override afterwards.
+            beginImport(key);
+            if (!prefs.edit().remove(key).commit()) throw new IOException("Could not remove local lyrics");
+        }
+    }
+
+    long beginImport(String key) {
+        synchronized (EDIT_GENERATIONS) {
+            Map<String, Long> edits = EDIT_GENERATIONS.computeIfAbsent(prefs, ignored -> new HashMap<>());
+            long next = edits.getOrDefault(key, 0L) + 1L;
+            edits.put(key, next);
+            return next;
+        }
+    }
+
+    boolean saveIfCurrent(String key, String text, long generation) throws IOException {
+        synchronized (EDIT_GENERATIONS) {
+            if (!isCurrentImport(key, generation)) return false;
+            if (!prefs.edit().putString(key, text).commit()) throw new IOException("Could not save local lyrics");
+            return true;
+        }
+    }
+
+    boolean isCurrentImport(String key, long generation) {
+        synchronized (EDIT_GENERATIONS) {
+            Map<String, Long> edits = EDIT_GENERATIONS.get(prefs);
+            return edits != null && edits.getOrDefault(key, 0L) == generation;
+        }
+    }
+
+    Runnable observe(Consumer<String> onChange) {
+        SharedPreferences.OnSharedPreferenceChangeListener listener = (preferences, key) -> onChange.accept(key);
+        prefs.registerOnSharedPreferenceChangeListener(listener);
+        return () -> prefs.unregisterOnSharedPreferenceChangeListener(listener);
     }
 
     static String decode(byte[] bytes) throws IOException {

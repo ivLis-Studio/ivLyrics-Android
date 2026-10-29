@@ -16,6 +16,8 @@ python3 tests/run_provider_overlap_regression.py
 python3 tests/run_provider_network_regression.py
 python3 tests/run_lrclib_playback_regression.py
 python3 tests/run_local_lyrics_regression.py
+python3 tests/run_local_lyrics_import_regression.py
+python3 tests/run_local_lyrics_bridge_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_frame_layout_pool_regression.py
 python3 tests/run_render_idle_regression.py
@@ -57,6 +59,14 @@ synthetic HTTP, bitmap decoding and Android dispatch. It covers staggered mirror
 mirror preference, error-vs-empty responses, deadlines and track cancellation, plus lyric/cache
 completion while artwork decoding or its Spotify token refresh is blocked. It does not contact
 provider services or measure a physical device.
+
+Local-file regressions run the production decoder/store and Activity picker/result methods against
+synthetic Android storage for both the standalone and Spotify host identities. They cover picker
+state restoration, completion after Activity recreation, original-song targeting, competing imports
+and removal, and listener cleanup. The bridge regression executes the real shared-result/engine
+methods to verify closed-page imports, removal with no online replacement, both card and inline
+surfaces, and stale provider callbacks. These are host-side lifecycle tests, not a live LSPatch
+installation or Android document-provider UI test.
 
 The first-use regression executes the production permission action, credential validation callbacks,
 draft capture/restoration and in-flight button state with a controlled token validator. It also

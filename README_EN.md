@@ -61,6 +61,12 @@ If you use Obtainium, add this repository with the button above. Because release
 
 The floating shortcut is optional. Under **Settings → Advanced**, allow **display over other apps** and enable the **Spotify screen-detection accessibility service**. The accessibility service detects whether Spotify's now-playing screen is in front. These permissions are separate from notification access and are not needed for basic lyrics. The shortcut only appears on Spotify's now-playing screen.
 
+## Add lyrics from your own LRC file
+
+Play a song, then open **Settings → Current track settings → Lyrics Providers → Import lyrics file** and select a `.lrc` or `.txt` file. Files must be UTF-8 or UTF-16 and no larger than 1 MB. LRC timestamps provide line-by-line synchronization.
+
+The file is saved for the song selected when you opened the picker and takes priority over online lyrics. It survives app restarts and lyric-cache clearing. Use **Remove local lyrics for this track** in the same menu to return to online lyrics. This also works in the LSPatch/LSPosed module; imports are stored separately from the standalone app.
+
 ## Translation and pronunciation
 
 Choose display and output languages in Settings, then enable and order services under **AI Providers**. Failed requests try the next enabled provider. Per-language rules let you show translation and pronunciation for Japanese songs but only translation for English songs, for example.

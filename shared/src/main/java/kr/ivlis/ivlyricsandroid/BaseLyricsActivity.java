@@ -507,6 +507,8 @@ public class BaseLyricsActivity extends Activity implements
     private static final int IMPORT_LYRICS_REQUEST = 4871;
     private String localLyricsImportKey;
     private long localLyricsImportDuration;
+    private Runnable localLyricsChangeCleanup;
+    private final java.util.Set<String> pendingLocalLyricsRefreshes = new java.util.HashSet<>();
     private LyricsResult currentLyricsResult = LyricsResult.empty("");
     private LyricsResult currentBaseLyricsResult = LyricsResult.empty("");
     private LyricsResult currentFuriganaResult;
@@ -765,6 +767,7 @@ public class BaseLyricsActivity extends Activity implements
         aiLyricsRepository = new AiLyricsRepository(this);
         furiganaRepository = new FuriganaRepository(this);
         lyricsRepository = new LyricsRepository(this);
+        observeLocalLyricsChanges();
         youtubeBackgroundRepository = new YouTubeBackgroundRepository(this);
         if (!IvLyricsBridge.isEmbedded(this)) updateChecker = new UpdateChecker(this);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -787,6 +790,34 @@ public class BaseLyricsActivity extends Activity implements
         updateSpotifySetupGate(false);
         handleLaunchIntent(getIntent());
         requestDefaultRemoteFocus(false);
+    }
+
+    private void observeLocalLyricsChanges() {
+        stopObservingLocalLyricsChanges();
+        localLyricsChangeCleanup = new LocalLyricsStore(this).observe(this::onLocalLyricsChanged);
+    }
+
+    void onLocalLyricsChanged(String key) {
+        if (key == null) return;
+        synchronized (pendingLocalLyricsRefreshes) {
+            if (!pendingLocalLyricsRefreshes.add(key)) return;
+        }
+        handler.post(() -> {
+            synchronized (pendingLocalLyricsRefreshes) {
+                pendingLocalLyricsRefreshes.remove(key);
+            }
+            if (isFinishing() || isDestroyed() || lyricsRepository == null || currentTrack == null
+                    || !currentTrack.stableKey().equals(key)) return;
+            lyricsRepository.invalidateProviderSelection();
+            reloadCurrentLyricsFromSettings();
+        });
+    }
+
+    private void stopObservingLocalLyricsChanges() {
+        if (localLyricsChangeCleanup != null) {
+            localLyricsChangeCleanup.run();
+            localLyricsChangeCleanup = null;
+        }
     }
 
     @Override
@@ -1167,6 +1198,7 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onDestroy() {
+        stopObservingLocalLyricsChanges();
         onboardingResumed = false;
         if (onboardingGreetingRotation != null) onboardingGreetingRotation.setActive(false);
         if (onboardingAnimatorScaleCleanup != null) {
@@ -4502,6 +4534,8 @@ public class BaseLyricsActivity extends Activity implements
         localLyricsImportKey = null;
         if (resultCode != RESULT_OK || data == null || data.getData() == null || key == null) return;
         final Uri uri = data.getData();
+        final LocalLyricsStore store = new LocalLyricsStore(this);
+        final long generation = store.beginImport(key);
         new Thread(() -> {
             try (InputStream input = getContentResolver().openInputStream(uri);
                  ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -4522,17 +4556,17 @@ public class BaseLyricsActivity extends Activity implements
                 }
                 String text = LocalLyricsStore.decode(output.toByteArray());
                 LocalLyricsStore.parse(text, duration); // Validate before replacing a previous import.
-                new LocalLyricsStore(this).save(key, text);
+                if (!store.saveIfCurrent(key, text, generation)) return;
                 handler.post(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    if (currentTrack != null && key.equals(currentTrack.stableKey())) {
-                        lyricsRepository.invalidateProviderSelection();
-                        reloadCurrentLyricsFromSettings();
-                    }
+                    if (isFinishing() || isDestroyed() || !store.isCurrentImport(key, generation)) return;
                     showSavedToast(ui("lyrics.local.saved"));
                 });
             } catch (Exception error) {
-                handler.post(() -> { if (!isFinishing() && !isDestroyed()) showSavedToast(ui("lyrics.local.error")); });
+                handler.post(() -> {
+                    if (!isFinishing() && !isDestroyed() && store.isCurrentImport(key, generation)) {
+                        showSavedToast(ui("lyrics.local.error"));
+                    }
+                });
             }
         }, "ivLyrics-import").start();
     }
@@ -4549,10 +4583,6 @@ public class BaseLyricsActivity extends Activity implements
                 .setPositiveButton(android.R.string.ok, (dialog, which) -> {
                     try {
                         new LocalLyricsStore(this).remove(key);
-                        if (currentTrack != null && key.equals(currentTrack.stableKey())) {
-                            lyricsRepository.invalidateProviderSelection();
-                            reloadCurrentLyricsFromSettings();
-                        }
                         showSavedToast(ui("lyrics.local.removed"));
                     } catch (IOException error) { showSavedToast(ui("lyrics.local.error")); }
                 }).show();

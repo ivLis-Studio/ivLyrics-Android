@@ -73,6 +73,8 @@ public final class LrclibPlaybackRegression {
                 });
         return (SharedPreferences) java.lang.reflect.Proxy.newProxyInstance(SharedPreferences.class.getClassLoader(),
                 new Class<?>[]{SharedPreferences.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
                     case "getString", "getBoolean", "getInt", "getLong" -> data.getOrDefault(args[0], args[1]);
                     case "getAll" -> new HashMap<>(data);
                     case "contains" -> data.containsKey(args[0]);

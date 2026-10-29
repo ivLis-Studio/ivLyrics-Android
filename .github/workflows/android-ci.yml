@@ -79,6 +79,8 @@ jobs:
           python3 tests/run_sync_metadata_reporting_regression.py
           python3 tests/run_lrclib_playback_regression.py
           python3 tests/run_local_lyrics_regression.py
+          python3 tests/run_local_lyrics_import_regression.py
+          python3 tests/run_local_lyrics_bridge_regression.py
           python3 tests/check_module_boundaries.py --built
           python3 tests/run_release_asset_regression.py
           python3 tests/run_card_presence_regression.py
