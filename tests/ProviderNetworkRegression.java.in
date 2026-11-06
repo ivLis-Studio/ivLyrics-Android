@@ -173,8 +173,8 @@ public final class ProviderNetworkRegression {
                 });
         Class<?> logType = Class.forName("kr.ivlis.ivlyricsandroid.LyricsRepository$LogSink");
         Object log = java.lang.reflect.Proxy.newProxyInstance(logType.getClassLoader(), new Class<?>[]{logType}, (p, m, a) -> null);
-        LyricsResult cached = new LyricsResult(List.of(new LyricsLine(0, 1000, "Hello", List.of())), "Paxsenix", "", true,
-                SONG.isrc, "0123456789012345678901").withSelection("paxsenix", "test");
+        LyricsResult cached = new LyricsResult(List.of(new LyricsLine(0, 1000, "Hello", List.of())), "OpenLyrics", "", true,
+                SONG.isrc, "0123456789012345678901").withSelection("open-lyrics", "test");
         ThreadPoolExecutor lyricsWorker = (ThreadPoolExecutor) field(repo, "executor");
         ThreadPoolExecutor artworkWorker = (ThreadPoolExecutor) field(repo, "artworkExecutor");
         try {
@@ -224,7 +224,7 @@ public final class ProviderNetworkRegression {
                 waitFor(() -> requests.stream().anyMatch(connection -> connection.getURL().getHost().equals("accounts.spotify.com")),
                         "artwork metadata miss starts real token refresh");
                 LyricsProviderSettings providerSettings = (LyricsProviderSettings) field(repo, "lyricsProviderSettings");
-                LyricsResult reusable = cached.withSelection("paxsenix", providerSettings.snapshot().cacheKeyForProvider("paxsenix"));
+                LyricsResult reusable = cached.withSelection("open-lyrics", providerSettings.snapshot().cacheKeyForProvider("open-lyrics"));
                 Future<?> cacheWork = lyricsWorker.submit(() -> {
                     try {
                         call(repo, "putMemoryCachedLyrics", SONG.stableKey(), reusable);

@@ -86,12 +86,12 @@ public final class ProviderOverlapRegression {
         line(lines.get(5), 11000, 13000, "Equal");
     }
 
-    private static void paxsenix() throws Exception {
+    private static void openLyrics() throws Exception {
         JSONObject explicit = paxLine("Lead", 12, 15).put("backgroundText",
                 new JSONArray().put(paxToken("Backing", 11, 15)));
         JSONArray input = new JSONArray().put(paxLine("Long", 1, 30)).put(paxLine("Short", 2, 3))
                 .put(paxLine("Next", 2.95, 6)).put(explicit).put(paxLine("Equal", 11, 13));
-        List<LyricsLine> lines = PaxsenixLyricsProvider.parseStructuredLyrics(
+        List<LyricsLine> lines = OpenLyricsProvider.parseStructuredLyrics(
                 new JSONObject().put("syncType", "syllable").put("lyrics", input),
                 60000, "", "", "", "").karaoke.lines;
         equal(5, lines.size());
@@ -111,7 +111,27 @@ public final class ProviderOverlapRegression {
     public static void main(String[] args) throws Exception {
         unison();
         lyricsPlus();
-        paxsenix();
+        openLyrics();
+        JSONArray fixtures = new JSONArray(Files.readString(Path.of(System.getProperty("open.lyrics.fixtures"))));
+        for (int index = 0; index < fixtures.length(); index++) {
+            JSONObject fixture = fixtures.getJSONObject(index);
+            OpenLyricsProvider.Variants parsed = OpenLyricsProvider.parseOpenTrack(
+                    fixture.getJSONObject("track"), fixture.getString("source"), 10000, "", "");
+            equal(fixture.getString("kind"), parsed.karaoke != null ? "karaoke" : parsed.synced != null ? "synced" : "plain");
+            List<LyricsLine> lines = parsed.best().lines;
+            JSONArray texts = fixture.getJSONArray("texts"), starts = fixture.getJSONArray("starts");
+            equal(texts.length(), lines.size());
+            for (int i = 0; i < lines.size(); i++) {
+                equal(texts.getString(i), lines.get(i).text);
+                if (starts.length() > 0) equal(starts.getLong(i), lines.get(i).startTimeMs);
+            }
+            if (parsed.karaoke != null) {
+                StringBuilder joined = new StringBuilder();
+                for (LyricsLine.Syllable syllable : lines.get(0).syllables) joined.append(syllable.text);
+                equal(lines.get(0).text, joined.toString().trim());
+            }
+        }
+        System.out.println("Open Lyrics regression: " + fixtures.length() + " cases passed.");
         System.out.println("Provider overlap regression: " + assertions + " assertions passed.");
         if (args.length > 0) {
             List<LyricsLine> lines = UnisonLyricsProvider.parseTtmlLyrics(Files.readString(Path.of(args[0])), 214884).lines;

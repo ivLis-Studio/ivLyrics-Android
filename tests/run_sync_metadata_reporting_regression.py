@@ -2,6 +2,7 @@
 """Compare real sync GET/parsing against the pre-optimization source using local HTTP fixtures."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 from regression_runtime import ROOT, SHARED, REPORTS, android_jar, classpath, compiled_classes, java_tool, json_jar
@@ -11,6 +12,15 @@ work = REPORTS / "sync-metadata-reporting"
 work.mkdir(parents=True, exist_ok=True)
 production = SHARED / "LyricsRepository.java"
 baseline = subprocess.check_output(["git", "show", f"{BASELINE}:shared/src/main/java/kr/ivlis/ivlyricsandroid/LyricsRepository.java"], cwd=ROOT, text=True)
+# Provider renames outside the frozen sync transport are not part of this
+# comparison. Bind that unrelated branch to the current registry symbols so
+# the historical HTTP/parsing implementation can compile without old classes.
+provider_branch = r"if \(LyricsProviderSettings\.(\w+)\.equals\(config\.provider\.id\)\) \{\s*(\w+)\.Variants"
+old_symbols = re.search(provider_branch, baseline)
+new_symbols = re.search(provider_branch, production.read_text())
+assert old_symbols and new_symbols
+for old, new in zip(old_symbols.groups(), new_symbols.groups()):
+    baseline = baseline.replace(old, new)
 results = {}
 reports = []
 for name, source in (("baseline", baseline), ("candidate", production.read_text())):

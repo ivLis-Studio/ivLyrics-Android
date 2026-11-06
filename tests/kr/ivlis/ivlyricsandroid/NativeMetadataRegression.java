@@ -22,12 +22,12 @@ public final class NativeMetadataRegression {
         check(NativeTrackIdentity.canonicalUri("spotify:episode:35xfPPSPHG42a8MSoHBymZ").isEmpty(), "episode not queried as song");
         check(NativeTrackIdentity.normalizedIsrc("JPP302400443 unexpected").isEmpty(), "untrusted external id rejected");
         LyricsProviderSettings.Snapshot settings = new LyricsProviderSettings(null).snapshot();
-        LyricsResult cached = new LyricsResult(List.of(new LyricsLine(0, 1000, "test", List.of())), "Paxsenix", "", true)
-            .withSelection("paxsenix", settings.cacheKeyForProvider("paxsenix"));
+        LyricsResult cached = new LyricsResult(List.of(new LyricsLine(0, 1000, "test", List.of())), "OpenLyrics", "", true)
+            .withSelection("open-lyrics", settings.cacheKeyForProvider("open-lyrics"));
         check(!LyricsProviderSelectionPlan.shouldRecheckCachedResult(cached, settings, ""), "no repeated lookup before ISRC");
         check(LyricsProviderSelectionPlan.shouldRecheckCachedResult(cached, settings, "JPP302400443"), "late ISRC rechecks cached karaoke");
         check(!LyricsProviderSelectionPlan.shouldRecheckCachedResult(cached.withMetadata("JPP302400443", "35xfPPSPHG42a8MSoHBymZ"), settings, "JPP302400443"), "checked identity does not repeatedly recheck");
-        check(!LyricsProviderSelectionPlan.shouldRecheckCachedResult(cached.withSelection("paxsenix", "manual"), settings, "JPP302400443"), "manual selection preserved");
+        check(!LyricsProviderSelectionPlan.shouldRecheckCachedResult(cached.withSelection("open-lyrics", "manual"), settings, "JPP302400443"), "manual selection preserved");
         // An asynchronous lookup for A must not revert a newer committed song B.
         java.lang.reflect.Field latest = NowPlayingService.class.getDeclaredField("latestSnapshot");
         latest.setAccessible(true);

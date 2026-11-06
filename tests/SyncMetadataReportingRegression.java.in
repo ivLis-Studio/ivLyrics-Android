@@ -118,7 +118,7 @@ public final class SyncMetadataReportingRegression {
         LyricsRepository r = repository();
         TrackSnapshot song = track("Song", "spotify:track:0123456789012345678901");
         int start = requests.size();
-        for (String provider : List.of("lrclib", "lyricsplus", "paxsenix")) check(fetch(r, provider, song, true) != null, "provider result retained");
+        for (String provider : List.of("lrclib", "lyricsplus", "open-lyrics")) check(fetch(r, provider, song, true) != null, "provider result retained");
         int sharedMetadataCount = metadataCount(start);
         check(requests.size() - start == 3, "all three provider/privacy GETs retained");
         check(sharedMetadataCount == (candidate ? 1 : 3), "acknowledged identical metadata reported once per operation");

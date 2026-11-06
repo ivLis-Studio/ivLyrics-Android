@@ -25,21 +25,27 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Lyrics provider backed by the public Lyrically service. */
-final class PaxsenixLyricsProvider {
-    static final String PROJECT_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3Jn");
-    static final String TEXT_CACHE_REVISION = "entities-v1-ja-lines-v1";
+/** Connects to public lyrics servers on GitHub. */
+final class OpenLyricsProvider {
+    static final String PROJECT_URL = decode("aHR0cHM6Ly9naXRodWIuY29tL2l2TGlzLVN0dWRpby9pdkx5cmljcw==");
+    static final String TEXT_CACHE_REVISION = "open-lyrics-v2";
+    private static final String AGGREGATE_ONE_URL = decode("aHR0cHM6Ly9hcGkubGlyaXFvLWFsZmFycml6aS5teS5pZC92MS9seXJpY3M=");
+    private static final String AGGREGATE_TWO_URL = decode("aHR0cHM6Ly9hcGkubHJjbXV4LmRldi9nZXQ=");
 
     private static final String CATALOG_SEARCH_URL = decode("aHR0cHM6Ly9pdHVuZXMuYXBwbGUuY29tL3NlYXJjaA==");
     private static final String STRUCTURED_SEARCH_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2t1Z291L3NlYXJjaA==");
     private static final String STRUCTURED_LYRICS_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2t1Z291L2x5cmljcw==");
     private static final String CATALOG_LYRICS_URL = decode("aHR0cHM6Ly9seXJpY3MucGF4c2VuaXgub3JnL2FwcGxlLW11c2ljL2x5cmljcw==");
     private static final String STRUCTURED_PROVIDER_ID = decode("a3Vnb3U=");
-    private static final String ATTRIBUTION = "Lyrics via Lyrically API (" + PROJECT_URL + ").";
-    private static final int REQUEST_TIMEOUT_MS = 9_000;
+    private static final String ATTRIBUTION = "Lyrics via Open Lyrics.";
+    private static final int REQUEST_TIMEOUT_MS = 25_000;
     private static final double JAPANESE_LINE_SPLIT_TRIGGER_WIDTH = 22.0;
     private static final double JAPANESE_LINE_SPLIT_HARD_WIDTH = 26.0;
     private static final double JAPANESE_LINE_SPLIT_MIN_WIDTH = 6.0;
@@ -107,7 +113,7 @@ final class PaxsenixLyricsProvider {
         void write(String message);
     }
 
-    private PaxsenixLyricsProvider() {
+    private OpenLyricsProvider() {
     }
 
     static Variants fetchVariants(
@@ -118,43 +124,155 @@ final class PaxsenixLyricsProvider {
     ) throws Exception {
         if (track == null || !track.hasUsableMetadata()) return null;
 
-        CompletableFuture<Candidate> catalogFuture = CompletableFuture.supplyAsync(
-                () -> fetchCandidateSafely(false, track)
+        RequestCancellation parent = RequestCancellation.current();
+        RequestCancellation request = new RequestCancellation();
+        CompletableFuture<Candidate> winner = new CompletableFuture<>();
+        AtomicInteger remaining = new AtomicInteger(3);
+        List<Supplier<Candidate>> services = List.of(
+                () -> fetchPrimaryCandidate(track, request, isrc, spotifyTrackId),
+                () -> fetchOpenCandidate("server-a", isrc, track.durationMs, spotifyTrackId),
+                () -> fetchOpenCandidate("server-b", isrc, track.durationMs, spotifyTrackId)
         );
-        CompletableFuture<Candidate> structuredFuture = CompletableFuture.supplyAsync(
-                () -> fetchCandidateSafely(true, track)
-        );
-        CompletableFuture.allOf(catalogFuture, structuredFuture).join();
-
-        List<Candidate> candidates = new ArrayList<>();
-        Candidate catalog = catalogFuture.getNow(null);
-        Candidate structured = structuredFuture.getNow(null);
-        if (catalog != null) candidates.add(catalog);
-        if (structured != null) candidates.add(structured);
-
-        for (Candidate candidate : candidates) {
-            candidate.variants = parsePayloadVariants(
-                    candidate.payload,
-                    track.durationMs,
-                    isrc,
-                    spotifyTrackId,
-                    track.title,
-                    track.artist
-            );
-        }
-        candidates.removeIf(candidate -> quality(candidate) <= 0d);
-        candidates.sort(Comparator.comparingDouble(PaxsenixLyricsProvider::quality).reversed());
-        if (candidates.isEmpty()) {
-            logger.write("paxsenix: no lyrics found");
-            return null;
-        }
-
-        Candidate selected = candidates.get(0);
+        for (Supplier<Candidate> service : services) CompletableFuture.runAsync(() -> {
+            try { request.run(() -> {
+                try {
+                    Candidate candidate = service.get();
+                    if (candidate != null && quality(candidate) > 0) winner.complete(candidate);
+                } catch (Exception ignored) { }
+            }); } finally { if (remaining.decrementAndGet() == 0) winner.complete(null); }
+        });
+        Candidate selected;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        try {
+            while (true) {
+                if (parent != null) parent.throwIfCancelled();
+                if (System.nanoTime() >= deadline) return null;
+                try { selected = winner.get(100, TimeUnit.MILLISECONDS); break; }
+                catch (TimeoutException pending) { }
+            }
+        } finally { request.cancel(); }
+        if (selected == null) { logger.write("open lyrics: no lyrics found"); return null; }
         LyricsResult best = selected.variants.best();
-        logger.write("paxsenix loaded: source=" + selected.source
+        logger.write("open lyrics loaded: source=" + selected.source
                 + " / variants=" + selected.variants.availableTypes()
                 + " / bestLines=" + (best == null ? 0 : best.lines.size()));
         return selected.variants;
+    }
+
+    private static Candidate fetchPrimaryCandidate(TrackSnapshot track, RequestCancellation request, String isrc, String trackId) {
+        List<CompletableFuture<Candidate>> futures = new ArrayList<>();
+        for (boolean structured : new boolean[]{false, true}) futures.add(CompletableFuture.supplyAsync(() -> {
+            Candidate[] result = new Candidate[1];
+            request.run(() -> result[0] = fetchCandidateSafely(structured, track));
+            return result[0];
+        }));
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
+        Candidate best = null;
+        for (CompletableFuture<Candidate> future : futures) {
+            Candidate candidate = future.getNow(null);
+            if (candidate == null) continue;
+            candidate.variants = parsePayloadVariants(candidate.payload, track.durationMs, isrc, trackId, track.title, track.artist);
+            if (quality(candidate) > 0 && (best == null || quality(candidate) > quality(best))) best = candidate;
+        }
+        return best;
+    }
+
+    private static Candidate fetchOpenCandidate(String source, String isrc, long durationMs, String trackId) {
+        try {
+            String normalized = TrackSnapshot.normalizeIsrc(isrc);
+            if (normalized.isEmpty()) return null;
+            HttpResult response = get(("server-a".equals(source) ? AGGREGATE_ONE_URL : AGGREGATE_TWO_URL) + "?isrc=" + encode(normalized));
+            if (response.status < 200 || response.status >= 300) return null;
+            Object parsed = parseJson(response.body);
+            if (!(parsed instanceof JSONObject)) return null;
+            JSONObject body = (JSONObject) parsed;
+            JSONObject metadata = body.optJSONObject("server-a".equals(source) ? "metadata" : "track");
+            String returned = metadata == null ? "" : TrackSnapshot.normalizeIsrc(metadata.optString("isrc", ""));
+            if (!returned.isEmpty() && !returned.equals(normalized)) return null;
+            return parseOpenResponse(body, source, durationMs, normalized, trackId);
+        } catch (Exception ignored) { return null; }
+    }
+
+    static Candidate parseOpenResponse(JSONObject body, String source, long durationMs, String isrc, String trackId) {
+        if (body == null || body.has("error")) return null;
+        if ("server-a".equals(source) && body.optJSONObject("primary") != null) {
+            Candidate primary = new Candidate(source, body.optJSONObject("primary"), 0);
+            primary.variants = parseOpenTrack(primary.payload, source, durationMs, isrc, trackId);
+            if (quality(primary) > 0) return primary;
+        }
+        List<JSONObject> tracks = new ArrayList<>();
+        if ("server-a".equals(source)) {
+            if (body.optJSONObject("primary") != null) tracks.add(body.optJSONObject("primary"));
+            JSONArray alternatives = body.optJSONArray("tracks");
+            if (alternatives != null) for (int i = 0; i < alternatives.length(); i++) if (alternatives.optJSONObject(i) != null) tracks.add(alternatives.optJSONObject(i));
+        } else tracks.add(body);
+        Candidate best = null;
+        for (JSONObject track : tracks) {
+            Candidate candidate = new Candidate(source, track, 0);
+            candidate.variants = parseOpenTrack(track, source, durationMs, isrc, trackId);
+            if (quality(candidate) > 0 && (best == null || quality(candidate) > quality(best))) best = candidate;
+        }
+        return best;
+    }
+
+    static Variants parseOpenTrack(JSONObject track, String source, long durationMs, String isrc, String trackId) {
+        boolean normalizedFormat = "server-a".equals(source);
+        JSONArray rows = track.optJSONArray(normalizedFormat ? "timed" : "lines");
+        JSONObject meta = track.optJSONObject("meta");
+        String level = normalizedFormat ? track.optString("syncLevel", "") : meta == null ? "" : meta.optString("level", "");
+        List<LyricsLine> plain = new ArrayList<>(), timed = new ArrayList<>();
+        Map<String, Integer> agents = new LinkedHashMap<>();
+        boolean anyWords = false;
+        if (rows != null) for (int index = 0; index < rows.length(); index++) {
+            JSONObject row = rows.optJSONObject(index);
+            if (row == null || row.optBoolean("isInstrumental", false)) continue;
+            String text = decodeLyricEntities(row.optString("text", "")).trim();
+            if (text.isEmpty()) continue;
+            plain.add(new LyricsLine(0, 0, text, Collections.emptyList()));
+            if ("none".equals(level) || "plain".equals(level)) continue;
+            JSONArray words = row.optJSONArray("words");
+            if (words == null || words.length() == 0) {
+                Object top = track.opt("words"); int id = row.optInt("id", index);
+                words = top instanceof JSONArray ? ((JSONArray)top).optJSONArray(id) : top instanceof JSONObject ? ((JSONObject)top).optJSONArray(String.valueOf(id)) : null;
+            }
+            boolean detailed = ("word".equals(level) || "syllable".equals(level) || "character".equals(level)) && words != null && words.length() > 0;
+            StringBuilder combined = new StringBuilder();
+            if (detailed) for (int i = 0; i < words.length(); i++) {
+                JSONObject word = words.optJSONObject(i);
+                if (word == null || !(word.opt("text") instanceof String) || openTime(word.opt("start")) < 0 || openTime(word.opt("end")) <= openTime(word.opt("start"))) { detailed = false; break; }
+                combined.append(decodeLyricEntities(word.optString("text", "")));
+            }
+            detailed &= normalizeSpacingCharacters(combined.toString()).equals(normalizeSpacingCharacters(text));
+            long start = openTime(row.opt("start")), end = openTime(row.opt("end"));
+            if (start < 0 && detailed) start = openTime(words.optJSONObject(0).opt("start"));
+            if (start < 0 && !normalizedFormat && end > 0) start = 0;
+            if (start < 0) continue;
+            if (end <= start && detailed) for (int i = 0; i < words.length(); i++) end = Math.max(end, openTime(words.optJSONObject(i).opt("end")));
+            if (end <= start && index + 1 < rows.length()) end = openTime(rows.optJSONObject(index + 1) == null ? null : rows.optJSONObject(index + 1).opt("start"));
+            if (end <= start && start > 0 && index == rows.length() - 1) end = durationMs > start ? durationMs : start + 3000;
+            if (durationMs > 0) end = Math.min(end, durationMs);
+            if (end <= start) continue;
+            String agent = row.optString("agent", ""); if (!agent.isEmpty() && !agents.containsKey(agent)) agents.put(agent, agents.size());
+            SpeakerPresentation presentation = speakerPresentation(row, agents);
+            List<LyricsLine.Syllable> syllables = Collections.emptyList();
+            if (detailed) {
+                JSONArray tokens = new JSONArray();
+                try { for (int i = 0; i < words.length(); i++) { JSONObject word = words.optJSONObject(i); tokens.put(new JSONObject().put("text", word.optString("text")).put("timestamp", word.opt("start")).put("endtime", word.opt("end")).put("part", true)); } } catch (Exception ignored) { }
+                syllables = capSyllables(parseTimedTokens(tokens, start, end, text), end);
+                final long lineStart = start, lineEnd = end;
+                if (syllables.size() != words.length() || syllables.stream().anyMatch(w -> w.startTimeMs < lineStart || w.startTimeMs >= lineEnd)) syllables = Collections.emptyList();
+            }
+            anyWords |= !syllables.isEmpty();
+            timed.add(new LyricsLine(start, end, text, syllables, presentation.speaker, presentation.color, presentation.fallback, "vocal", Collections.emptyList()));
+        }
+        if (plain.isEmpty()) plain = LrcParser.parsePlain(decodeLyricEntities(track.optString("plain", "")));
+        timed.sort(Comparator.comparingLong(line -> line.startTimeMs));
+        return buildVariants(anyWords ? timed : null, timed.isEmpty() ? null : toSyncedLines(timed), plain, isrc, trackId);
+    }
+
+    private static long openTime(Object value) {
+        if (!(value instanceof Number) && !(value instanceof String && !((String)value).trim().isEmpty())) return -1;
+        try { double n = Double.parseDouble(value.toString()); return Double.isFinite(n) && n >= 0 && n <= 86400000 ? Math.round(n) : -1; } catch (Exception ignored) { return -1; }
     }
 
     private static Candidate fetchCandidateSafely(boolean structured, TrackSnapshot track) {
@@ -1179,13 +1297,13 @@ final class PaxsenixLyricsProvider {
             String spotifyTrackId
     ) {
         LyricsResult karaoke = karaokeLines == null || karaokeLines.isEmpty() ? null : new LyricsResult(
-                karaokeLines, "Lyrically (Paxsenix) karaoke", ATTRIBUTION, true, isrc, spotifyTrackId
+                karaokeLines, "Open Lyrics karaoke", ATTRIBUTION, true, isrc, spotifyTrackId
         );
         LyricsResult synced = syncedLines == null || syncedLines.isEmpty() ? null : new LyricsResult(
-                syncedLines, "Lyrically (Paxsenix) synced", ATTRIBUTION, false, isrc, spotifyTrackId
+                syncedLines, "Open Lyrics synced", ATTRIBUTION, false, isrc, spotifyTrackId
         );
         LyricsResult plain = plainLines == null || plainLines.isEmpty() ? null : new LyricsResult(
-                plainLines, "Lyrically (Paxsenix) plain", ATTRIBUTION, false, isrc, spotifyTrackId
+                plainLines, "Open Lyrics plain", ATTRIBUTION, false, isrc, spotifyTrackId
         );
         Variants variants = new Variants(karaoke, synced, plain);
         return variants.best() == null ? null : variants;
@@ -1374,7 +1492,7 @@ final class PaxsenixLyricsProvider {
 
     /**
      * Decodes exactly one layer of the XML/HTML entities that can occur in
-     * Lyrically lyric text. Unknown entities and ordinary ampersands are kept
+     * public-server lyric text. Unknown entities and ordinary ampersands are kept
      * verbatim, and replacement text is never scanned a second time.
      */
     static String decodeLyricEntities(String value) {

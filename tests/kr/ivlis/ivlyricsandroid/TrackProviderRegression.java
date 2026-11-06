@@ -8,13 +8,17 @@ public final class TrackProviderRegression {
         var automatic = new LyricsProviderSettings.Snapshot(new ArrayList<>(configs.keySet()), configs, true, true);
         for (var provider : LyricsProviderSettings.PROVIDERS) {
             var selected = automatic.withSelectedProvider(provider.id);
-            var plan = LyricsProviderSelectionPlan.create(selected, Set.of("lrclib", "paxsenix"));
+            var plan = LyricsProviderSelectionPlan.create(selected, Set.of("lrclib", "open-lyrics"));
             if (plan.providers.size() != 1 || !plan.providers.get(0).provider.id.equals(provider.id)) throw new AssertionError(provider.id);
             if (plan.attempts.isEmpty() || plan.attempts.stream().anyMatch(a -> !a.config.provider.id.equals(provider.id))) throw new AssertionError("fallback escaped selection");
             if (automatic.cacheKey().equals(selected.cacheKey())) throw new AssertionError("stale cache reused");
         }
         if (automatic.withSelectedProvider("") != automatic || automatic.withSelectedProvider("invalid") != automatic) throw new AssertionError("auto must restore original policy");
         if (automatic.config("unison").enabled || automatic.config("lrclib").karaoke) throw new AssertionError("global policy mutated");
+        if (!automatic.config("open-lyrics").provider.label.equals("Open Lyrics")) throw new AssertionError("renamed provider label");
+        var renamed = new LyricsResult(List.of(new LyricsLine(1000, 2000, "Fixture", List.of())), "Open Lyrics synced", "", false);
+        if (!LyricsProviderAttribution.displayName(renamed).equals("Open Lyrics")) throw new AssertionError("renamed legacy attribution");
+        if (!LyricsProviderAttribution.displayName(renamed.withSelection("open-lyrics", "test")).equals("Open Lyrics")) throw new AssertionError("persisted provider identity");
         System.out.println("Track provider regression: explicit choices, disabled providers, cache isolation, automatic reset passed");
     }
 }

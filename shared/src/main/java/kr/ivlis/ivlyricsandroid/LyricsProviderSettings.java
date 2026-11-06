@@ -19,7 +19,7 @@ import java.util.Set;
 
 final class LyricsProviderSettings {
     static final String PROVIDER_LYRICS_PLUS = "lyricsplus";
-    static final String PROVIDER_PAXSENIX = "paxsenix";
+    static final String PROVIDER_OPEN_LYRICS = "open-lyrics";
     static final String PROVIDER_UNISON = "unison";
     static final String PROVIDER_LRCLIB = "lrclib";
 
@@ -28,9 +28,9 @@ final class LyricsProviderSettings {
     static final String TYPE_PLAIN = "plain";
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
-            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true),
-            new Provider(PROVIDER_PAXSENIX, "Lyrically (Paxsenix)", "default", PaxsenixLyricsProvider.PROJECT_URL, true, true, true, true),
+            new Provider(PROVIDER_OPEN_LYRICS, "Open Lyrics", "default", OpenLyricsProvider.PROJECT_URL, true, true, true, true),
             new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, true),
+            new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true),
             new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", false, true, true, true)
     ));
 
@@ -227,9 +227,8 @@ final class LyricsProviderSettings {
                 if (known.contains(id) && !result.contains(id)) result.add(id);
             }
         }
-        if (!result.isEmpty() && !result.contains(PROVIDER_PAXSENIX)) {
-            int lrclibIndex = result.indexOf(PROVIDER_LRCLIB);
-            result.add(lrclibIndex >= 0 ? lrclibIndex + 1 : 0, PROVIDER_PAXSENIX);
+        if (!result.isEmpty() && !result.contains(PROVIDER_OPEN_LYRICS)) {
+            result.add(0, PROVIDER_OPEN_LYRICS);
         }
         for (Provider provider : PROVIDERS) {
             if (!result.contains(provider.id)) {
@@ -406,8 +405,8 @@ final class LyricsProviderSettings {
 
         String cacheKeyForProvider(String providerId) {
             String base = cacheKey();
-            if (PROVIDER_PAXSENIX.equals(normalizeProviderId(providerId))) {
-                return base + "|paxsenix-text:" + PaxsenixLyricsProvider.TEXT_CACHE_REVISION;
+            if (PROVIDER_OPEN_LYRICS.equals(normalizeProviderId(providerId))) {
+                return base + "|open-lyrics-text:" + OpenLyricsProvider.TEXT_CACHE_REVISION;
             }
             return base;
         }

@@ -941,8 +941,8 @@ final class LyricsRepository {
         LyricsResult result = null;
         ProviderCandidate candidate = null;
         try {
-            if (LyricsProviderSettings.PROVIDER_PAXSENIX.equals(config.provider.id)) {
-                PaxsenixLyricsProvider.Variants variants = PaxsenixLyricsProvider.fetchVariants(
+            if (LyricsProviderSettings.PROVIDER_OPEN_LYRICS.equals(config.provider.id)) {
+                OpenLyricsProvider.Variants variants = OpenLyricsProvider.fetchVariants(
                         track, isrc, spotifyTrackId, log::write
                 );
                 if (variants != null) {
