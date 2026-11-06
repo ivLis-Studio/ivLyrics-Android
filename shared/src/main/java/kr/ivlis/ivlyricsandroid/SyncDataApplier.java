@@ -39,6 +39,8 @@ final class SyncDataApplier {
             return ApplyResult.empty("missing base lyrics or sync body");
         }
 
+        try { syncBody = SyncDataV6Codec.playbackBody(syncBody); }
+        catch (Exception error) { return ApplyResult.empty(error.getMessage()); }
         JSONArray rawLines = syncBody.optJSONArray("lines");
         if (rawLines == null || rawLines.length() == 0) {
             return ApplyResult.empty("sync body has no lines");
@@ -271,6 +273,9 @@ final class SyncDataApplier {
             long charEndMs;
             if (charIndex < charCount - 1) {
                 charEndMs = secondsToMs(line.chars.get(charIndex + 1));
+            } else if (heldEnd(line.chars) != null) {
+                charEndMs = heldEnd(line.chars);
+                adjustedEndMs = charEndMs;
             } else if ("line".equals(line.granularity)) {
                 charEndMs = lineEndMs;
                 adjustedEndMs = lineEndMs;
@@ -288,7 +293,7 @@ final class SyncDataApplier {
                     line.styleRanges
             ));
         }
-        return new TimedSyllables(collapseSyllables(syllables, line.granularity, adjustedEndMs), adjustedEndMs);
+        return new TimedSyllables(collapseSyllables(syllables, line.granularity, adjustedEndMs, line.chars, null), adjustedEndMs);
     }
 
     private static List<LyricsLine.Syllable> collapseSyllables(
@@ -343,6 +348,45 @@ final class SyncDataApplier {
                     Math.max(syllable.startTimeMs, groupEnd),
                     syllable.sourceWordUnit
             ));
+        }
+        return grouped;
+    }
+
+    private static Long heldEnd(List<Double> timing) {
+        return timing instanceof SyncDataV6Codec.Timing ? ((SyncDataV6Codec.Timing) timing).endMs : null;
+    }
+
+    private static List<LyricsLine.Syllable> collapseSyllables(
+            List<LyricsLine.Syllable> source, String granularity, long endTimeMs,
+            List<Double> values, List<Integer> indices
+    ) {
+        if (!(values instanceof SyncDataV6Codec.Timing)) return collapseSyllables(source, granularity, endTimeMs);
+        SyncDataV6Codec.Timing timing = (SyncDataV6Codec.Timing) values;
+        List<LyricsLine.Syllable> grouped = new ArrayList<>();
+        List<Integer> groups = new ArrayList<>(); List<String> units = new ArrayList<>();
+        for (int position = 0; position < source.size(); position++) {
+            LyricsLine.Syllable syllable = source.get(position);
+            Integer index = indices == null ? Integer.valueOf(position) : indices.get(position);
+            String unit = index == null ? "character" : timing.unit(index);
+            int group = index == null ? Integer.MIN_VALUE : timing.group(index);
+            int last = grouped.size() - 1;
+            LyricsLine.Syllable previous = last < 0 ? null : grouped.get(last);
+            if (!"character".equals(unit) && previous != null && groups.get(last) == group
+                    && units.get(last).equals(unit) && previous.styleKey().equals(syllable.styleKey())) {
+                grouped.set(last, previous.copy(previous.text + syllable.text, previous.startTimeMs,
+                        Math.max(previous.endTimeMs, syllable.endTimeMs), "word".equals(unit)));
+            } else {
+                grouped.add(syllable.copy(syllable.text, syllable.startTimeMs, syllable.endTimeMs, "word".equals(unit)));
+                groups.add(group); units.add(unit);
+            }
+        }
+        long nextDistinctStart = endTimeMs;
+        for (int index = grouped.size() - 1; index >= 0; index--) {
+            LyricsLine.Syllable syllable = grouped.get(index);
+            if (index + 1 < grouped.size() && grouped.get(index + 1).startTimeMs > syllable.startTimeMs) nextDistinctStart = grouped.get(index + 1).startTimeMs;
+            if ("character".equals(units.get(index))) continue;
+            grouped.set(index, syllable.copy(syllable.text, syllable.startTimeMs,
+                    Math.max(syllable.startTimeMs, nextDistinctStart), syllable.sourceWordUnit));
         }
         return grouped;
     }
@@ -425,6 +469,7 @@ final class SyncDataApplier {
 
         List<LyricsLine.Syllable> syllables = new ArrayList<>();
         int partCharIndex = 0;
+        List<Integer> timingIndices = new ArrayList<>();
         for (int rangeIndex = 0; rangeIndex < part.ranges.size(); rangeIndex++) {
             Range range = part.ranges.get(rangeIndex);
             if (rangeIndex > 0) {
@@ -434,6 +479,7 @@ final class SyncDataApplier {
                             ? secondsToMs(part.chars.get(Math.max(0, Math.min(partCharIndex, part.chars.size() - 1))))
                             : syllables.get(syllables.size() - 1).endTimeMs;
                     syllables.add(new LyricsLine.Syllable(" ", previousTime, previousTime, false));
+                    timingIndices.add(null);
                 }
             }
 
@@ -449,6 +495,8 @@ final class SyncDataApplier {
                 long charEndMs;
                 if (partCharIndex + 1 < part.chars.size()) {
                     charEndMs = secondsToMs(part.chars.get(partCharIndex + 1));
+                } else if (heldEnd(part.chars) != null) {
+                    charEndMs = heldEnd(part.chars);
                 } else if ("line".equals(part.granularity)) {
                     charEndMs = fallbackEndMs;
                 } else {
@@ -458,12 +506,13 @@ final class SyncDataApplier {
                         fullChars.get(sourceIndex), charStartMs, charEndMs, false,
                         sourceIndex, line.styleRanges
                 ));
+                timingIndices.add(partCharIndex);
                 partCharIndex++;
             }
         }
 
         List<LyricsLine.Syllable> trimmed = trimWhitespaceSyllables(
-                collapseSyllables(syllables, part.granularity, fallbackEndMs)
+                collapseSyllables(syllables, part.granularity, heldEnd(part.chars) == null ? fallbackEndMs : heldEnd(part.chars), part.chars, timingIndices)
         );
         if (trimmed.isEmpty()) {
             return null;
@@ -697,6 +746,7 @@ final class SyncDataApplier {
     }
 
     private static List<Double> readCompactTiming(JSONObject object, int expectedLength, String granularity) {
+        if (object.opt(SyncDataV6Codec.TIMING_KEY) instanceof SyncDataV6Codec.Timing) return (SyncDataV6Codec.Timing) object.opt(SyncDataV6Codec.TIMING_KEY);
         List<Double> chars = readDoubleArray(object.optJSONArray("chars"));
         if (!chars.isEmpty() || expectedLength <= 0) return chars;
         if ("line".equals(granularity) && object.has("timing")) {
@@ -763,7 +813,7 @@ final class SyncDataApplier {
         if (charOffset < 0 || charEnd > part.chars.size()) {
             return part;
         }
-        List<Double> chars = new ArrayList<>(part.chars.subList(charOffset, charEnd));
+        List<Double> chars = SyncDataV6Codec.sliceTiming(part.chars, charOffset, charEnd);
         return part.withRangesAndChars(
                 Collections.singletonList(new Range(stripped.start, stripped.end)),
                 chars
@@ -843,7 +893,7 @@ final class SyncDataApplier {
                     part.granularity,
                     Collections.singletonList(range),
                     Collections.emptyList(),
-                    new ArrayList<>(part.chars.subList(charOffset, charOffset + charCount))
+                    SyncDataV6Codec.sliceTiming(part.chars, charOffset, charOffset + charCount)
             ));
             charOffset += charCount;
         }
@@ -1004,7 +1054,7 @@ final class SyncDataApplier {
         if (to - from != nextCharCount) {
             return null;
         }
-        return part.withRangesAndChars(shifted.ranges, new ArrayList<>(part.chars.subList(from, to)));
+        return part.withRangesAndChars(shifted.ranges, SyncDataV6Codec.sliceTiming(part.chars, from, to));
     }
 
     private static ShiftedRanges shiftRanges(List<Range> ranges, int charOffset) {
@@ -1069,6 +1119,7 @@ final class SyncDataApplier {
     }
 
     private static List<Double> shiftTimes(List<Double> values, double offsetSeconds) {
+        if (values instanceof SyncDataV6Codec.Timing) return ((SyncDataV6Codec.Timing) values).shifted(offsetSeconds);
         List<Double> shifted = new ArrayList<>();
         for (double value : values) {
             shifted.add(Math.max(0.0, round3(value + offsetSeconds)));
@@ -1472,7 +1523,7 @@ final class SyncDataApplier {
         ) {
             this.start = start;
             this.end = end;
-            this.chars = chars == null ? Collections.emptyList() : new ArrayList<>(chars);
+            this.chars = SyncDataV6Codec.copyTiming(chars);
             this.granularity = normalizeGranularity(granularity);
             this.speaker = speaker == null ? "" : speaker;
             this.speakerColor = speakerColor == null ? "" : speakerColor;
@@ -1530,7 +1581,7 @@ final class SyncDataApplier {
             this.granularity = normalizeGranularity(granularity);
             this.ranges = ranges == null ? Collections.emptyList() : new ArrayList<>(ranges);
             this.join = join == null ? Collections.emptyList() : new ArrayList<>(join);
-            this.chars = chars == null ? Collections.emptyList() : new ArrayList<>(chars);
+            this.chars = SyncDataV6Codec.copyTiming(chars);
         }
 
         ParallelPart withRangesAndChars(List<Range> nextRanges, List<Double> nextChars) {

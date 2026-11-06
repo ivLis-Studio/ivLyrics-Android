@@ -15,6 +15,7 @@ python3 tests/run_provider_attribution_regression.py
 python3 tests/run_provider_overlap_regression.py
 python3 tests/run_provider_network_regression.py
 python3 tests/run_lrclib_playback_regression.py
+python3 tests/run_sync_v6_regression.py
 python3 tests/run_local_lyrics_regression.py
 python3 tests/run_local_lyrics_import_regression.py
 python3 tests/run_local_lyrics_bridge_regression.py
@@ -377,3 +378,8 @@ an unsupported `temperature`/`top_p` or `max_tokens` is retried once per adjustm
 moves to `max_completion_tokens`), remembered per base URL and model, never resent after streamed
 text reached the sink, and still reported by the connection test as only `HTTP <code>`. It needs
 only a JDK and the pinned JSON dependency; no provider, account, key, Android SDK or device is used.
+
+The sync v6 regression runs the production Java codec and applier against the same
+fixed vectors used by PC, backend and iOS. It checks compact line/word timelines,
+mixed precision, Unicode codepoints, styles, independent vocals, joined ranges,
+held ends, legacy reads and malformed data. These are host checks, not device playback.

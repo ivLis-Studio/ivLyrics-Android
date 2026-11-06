@@ -49,7 +49,7 @@ final class LyricsRepository {
     private static final String OPENDB_MANIFEST_URL = OPENDB_ROOT + "/data/manifest.json";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
-    private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v2";
+    private static final String SYNC_DATA_CACHE_SCHEMA = "sync-data-api-v3-v6";
     private static final String OPENDB_PREFS = "sync_data_opendb";
     private static final String KEY_OPENDB_PROVIDER_MAP = "provider_map";
     private static final String KEY_OPENDB_FETCHED_AT_MS = "fetched_at_ms";
@@ -2235,6 +2235,7 @@ final class LyricsRepository {
             params.put("isrc", normalizedIsrc);
             params.put("provider", normalizedProvider);
             params.put("request-version", SYNC_DATA_REQUEST_VERSION);
+            params.put("format", "6");
             if (bypassServerCache) {
                 params.put("bypassCache", "1");
             }
@@ -4420,7 +4421,9 @@ final class LyricsRepository {
             for (int index = 0; index < lines.length(); index++) {
                 JSONObject line = lines.optJSONObject(index);
                 JSONArray chars = line == null ? null : line.optJSONArray("chars");
-                counts.add(chars == null ? 0 : chars.length());
+                int declaredLength = line == null ? 0 : syncBody.optInt("version", 1) == 6
+                        ? line.optInt("length", 0) : line.optInt("end", -1) - line.optInt("start", 0) + 1;
+                counts.add(chars != null ? chars.length() : declaredLength > 0 && declaredLength <= 2000 ? declaredLength : 0);
             }
             return counts;
         }

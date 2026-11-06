@@ -14,7 +14,7 @@ classes = work / "classes"
 classes.mkdir(parents=True, exist_ok=True)
 test_classpath = classpath(classes, json_jar(), compiled_classes("spotify-module"),
                            compiled_classes("shared"), android_jar())
-files = [SHARED / name for name in ["NowPlayingService.java", "TrackSnapshot.java", "LyricsProviderSelectionPlan.java", "LyricsResult.java", "SyncDataApplier.java", "LyricsRepository.java"]]
+files = [SHARED / name for name in ["NowPlayingService.java", "TrackSnapshot.java", "LyricsProviderSelectionPlan.java", "LyricsResult.java", "SyncDataApplier.java", "SyncDataV6Codec.java", "LyricsRepository.java"]]
 files += [MODULE / name for name in ["NativeTrackIdentity.java", "SpotifyMetadataBridge.java", "SpotifyNativeMetadataClient.java"]]
 files += [ROOT / "tests/android/os/Handler.java", ROOT / "tests/android/os/Looper.java",
           ROOT / "tests/kr/ivlis/ivlyricsandroid/NativeMetadataRegression.java"]

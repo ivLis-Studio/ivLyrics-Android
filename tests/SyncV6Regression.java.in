@@ -1,0 +1,90 @@
+package kr.ivlis.ivlyricsandroid;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+public final class SyncV6Regression {
+    static int checks;
+    static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    static List<Double> legacyTimes(JSONObject target, int length) {
+        List<Double> values = new ArrayList<>(); JSONArray chars = target.optJSONArray("chars");
+        if (chars != null) { for (int i = 0; i < chars.length(); i++) values.add(chars.optDouble(i)); return values; }
+        if ("line".equals(target.optString("granularity"))) { for (int i = 0; i < length; i++) values.add(target.optDouble("timing")); return values; }
+        JSONArray words = target.optJSONArray("timing");
+        if (words != null) for (int i = 0; i < words.length(); i++) { JSONArray mark = words.optJSONArray(i); while (values.size() <= mark.optInt(0)) values.add(mark.optDouble(1)); }
+        return values;
+    }
+    static JSONObject flat(JSONObject target, int length) throws Exception {
+        JSONObject result = new JSONObject(); java.util.Iterator<String> keys = target.keys();
+        while (keys.hasNext()) { String key = keys.next(); if (!key.equals(SyncDataV6Codec.TIMING_KEY) && !key.equals("timing") && !key.equals("unitLayout")) result.put(key,target.opt(key)); }
+        List<Double> times = target.opt(SyncDataV6Codec.TIMING_KEY) instanceof SyncDataV6Codec.Timing
+            ? (SyncDataV6Codec.Timing) target.opt(SyncDataV6Codec.TIMING_KEY) : legacyTimes(target,length);
+        result.put("chars",new JSONArray(times)).put("granularity",target.optString("granularity","character"));
+        JSONObject parallel=target.optJSONObject("parallel");
+        if(parallel!=null){ JSONObject next=new JSONObject(parallel.toString());JSONArray parts=parallel.optJSONArray("parts"),out=new JSONArray();
+          for(int i=0;i<parts.length();i++){JSONObject part=parts.optJSONObject(i);JSONArray ranges=part.optJSONArray("ranges");int count=0;
+            for(int j=0;j<ranges.length();j++)count+=ranges.optJSONObject(j).optInt("end")-ranges.optJSONObject(j).optInt("start")+1;
+            out.put(flat(part,count)); }
+          next.put("parts",out);result.put("parallel",next);
+        }
+        return result;
+    }
+    static List<String> expanded(List<LyricsLine.Syllable> syllables) {
+        List<String> result = new ArrayList<>();
+        for(LyricsLine.Syllable syllable:syllables){
+            for(int offset=0;offset<syllable.text.length();){int cp=syllable.text.codePointAt(offset);result.add(cp+":"+syllable.startTimeMs+":"+syllable.styleKey());offset+=Character.charCount(cp);}
+        }
+        return result;
+    }
+    public static void main(String[] args) throws Exception {
+        JSONObject fixture=new JSONObject(Files.readString(Path.of(args[0])));JSONArray vectors=fixture.getJSONArray("vectors");
+        for(int i=0;i<vectors.length();i++){
+            JSONObject vector=vectors.getJSONObject(i),wire=vector.getJSONObject("v6"),old=vector.getJSONObject("legacy");String name=vector.getString("name");
+            JSONObject body=SyncDataV6Codec.playbackBody(wire);JSONArray lines=body.getJSONArray("lines"),before=old.getJSONArray("lines");int count=0;
+            for(int j=0;j<lines.length();j++){
+                JSONObject line=lines.getJSONObject(j),reference=before.getJSONObject(j);int length=reference.getInt("end")-reference.getInt("start")+1;count=Math.max(count,reference.getInt("end")+1);
+                check(flat(line,length).similar(flat(reference,length)),"JS golden mismatch: "+name);
+                SyncDataV6Codec.Timing time=(SyncDataV6Codec.Timing)line.get(SyncDataV6Codec.TIMING_KEY);
+                if(name.equals("line"))check(time.storedMarkCount()==1&&time.size()==9,"Compact line timing");
+                if(name.equals("word"))check(time.storedMarkCount()==3&&time.size()==9,"Compact word timing");
+                if(name.equals("mixed"))check(time.unit(0).equals("word")&&time.unit(2).equals("character"),"Mixed precision retained");
+                SyncDataV6Codec.Timing sliced=time.subList(1,length),shifted=sliced.shifted(.123);
+                for(int k=0;k<shifted.size();k++)check(shifted.get(k)==Math.round((time.get(k+1)+.123)*1000)/1000.0,"Slice/offset: "+name);
+                check(java.util.Objects.equals(sliced.endMs,time.endMs),"Hold retained on surviving last character");
+            }
+            String text=vector.optString("text","x".repeat(count));List<LyricsLine> base=List.of(new LyricsLine(0,10000,text,List.of()));
+            SyncDataApplier.ApplyResult nativeResult=SyncDataApplier.applyWithDiagnostics(base,wire,null),legacy=SyncDataApplier.applyWithDiagnostics(base,old,null);
+            check(!nativeResult.lines.isEmpty(),"Native playback empty: "+name+" "+nativeResult.diagnostics);
+            check(nativeResult.lines.size()==legacy.lines.size(),"Line count: "+name);
+            for(int j=0;j<nativeResult.lines.size();j++){
+                LyricsLine line=nativeResult.lines.get(j),previous=legacy.lines.get(j);
+                check(line.text.equals(previous.text),"Visible text: "+name);
+                check(expanded(line.syllables).equals(expanded(previous.syllables)),"Codepoint timing/style: "+name);
+                check(line.vocalParts.size()==previous.vocalParts.size(),"Vocal count: "+name);
+                for(int k=0;k<line.vocalParts.size();k++){
+                    LyricsLine.VocalPart part=line.vocalParts.get(k),oldPart=previous.vocalParts.get(k);
+                    check(part.text.equals(oldPart.text),"Vocal text: "+name);check(expanded(part.syllables).equals(expanded(oldPart.syllables)),"Vocal timing: "+name);
+                }
+            }
+            if(name.equals("parallel-held")){
+                LyricsLine line=nativeResult.lines.get(0);check(line.syllables.get(line.syllables.size()-1).endTimeMs==4000,"Parent hold");
+                List<LyricsLine.Syllable> a=line.vocalParts.get(0).syllables,b=line.vocalParts.get(1).syllables;check(a.get(a.size()-1).endTimeMs==2200&&b.get(b.size()-1).endTimeMs==3500,"Independent vocal holds");
+            }
+            if(name.equals("character"))check(nativeResult.lines.get(0).syllables.get(4).endTimeMs==3000,"Held end preserved");
+            if(name.equals("mixed"))check(nativeResult.lines.get(0).syllables.size()==4&&nativeResult.lines.get(0).syllables.get(0).sourceWordUnit,"Only word runs grouped");
+        }
+        JSONArray invalid=fixture.getJSONArray("invalid");
+        for(int i=0;i<invalid.length();i++){
+            JSONObject vector=invalid.getJSONObject(i);boolean rejected=false;
+            try{SyncDataV6Codec.playbackBody(vector.getJSONObject("v6"));}catch(IllegalArgumentException expected){rejected=true;}
+            check(rejected,"Malformed v6 accepted: "+vector.getString("name"));
+        }
+        JSONObject old=new JSONObject("{\"version\":3,\"lines\":[{\"start\":0,\"end\":0,\"chars\":[0.0001]}]}");
+        check(SyncDataV6Codec.playbackBody(old)==old,"Legacy sub-ms data untouched");
+        System.out.println("Java sync v6: "+checks+" checks passed (codec + production playback; no device/network).");
+    }
+}

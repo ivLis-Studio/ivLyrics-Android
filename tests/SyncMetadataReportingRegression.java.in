@@ -177,6 +177,8 @@ public final class SyncMetadataReportingRegression {
         Map<String, String> left = Map.of("isrc", "a", "title", "b:c", "artist", "d");
         Map<String, String> right = Map.of("isrc", "a", "title", "b", "artist", "c:d");
         check(!SyncMetadataReportScope.fingerprint(left).equals(SyncMetadataReportScope.fingerprint(right)), "length-delimited metadata prevents collisions");
+        for (Map<String, String> params : requests) check(!candidate || "6".equals(params.get("format")), "new client opts into v6 for all sync GETs");
+        check(!candidate || ((String)call(r, "syncDataCacheKey", song.isrc, "lrclib")).startsWith("sync-data-api-v3-v6|"), "v6 cache namespace isolates v5 entries");
         JSONObject result = new JSONObject().put("getCount", requests.size()).put("metadataCount", metadataCount(0))
                 .put("threeProviderMetadataCount", sharedMetadataCount).put("outputs", outputs).put("assertions", checks);
         System.out.println("PASS " + checks + " checks: ACK/no ACK/failure/null/cancellation/cache clear/privacy/changed metadata");

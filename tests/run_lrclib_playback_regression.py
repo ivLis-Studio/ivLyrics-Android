@@ -14,7 +14,7 @@ wire_fixture = work / "LrclibWireRegression.java"
 wire_fixture.write_text((ROOT / "tests/LrclibWireRegression.java.in").read_text())
 production = [SHARED / name for name in (
     "LyricsRepository.java", "LrclibEndpoint.java", "LrclibPlaybackStage.java", "LrclibPlaybackConnection.java", "LyricsProviderSettings.java",
-    "LyricsProviderSelectionPlan.java", "LyricsDiskCache.java", "LrcParser.java", "SyncDataApplier.java",
+    "LyricsProviderSelectionPlan.java", "LyricsDiskCache.java", "LrcParser.java", "SyncDataApplier.java", "SyncDataV6Codec.java",
     "LyricsResult.java", "LyricsLine.java", "TrackSnapshot.java", "RequestCancellation.java",
     "LatestLyricsRequest.java", "AppI18n.java", "LocalLyricsStore.java", "LocalLyricsI18n.java",
 )]
