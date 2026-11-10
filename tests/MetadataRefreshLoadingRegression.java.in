@@ -60,6 +60,10 @@ public final class MetadataRefreshLoadingRegression {
     private void onLyricsLog(String key, String message) {}
     private void onLyricsArtworkLoaded(String key, Bitmap bitmap, String artworkKey) {}
     private void onLyricsMetadataResolved(String key, String isrc, String trackId) {}
+    private void onLyricsWordSyncStarted(String key) {}
+    private void onLyricsWordSyncFinished(String key, LyricsResult upgraded) {}
+    private LyricsResult timingUpgradeSourceBase;
+    // INSERT_SUPPLEMENT_BASE
     private void onLyricsLoaded(String key, LyricsResult value) {
         if (!currentLyricsKey.equals(key)) return;
         lyricsLookupInFlight = false;

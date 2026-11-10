@@ -519,6 +519,15 @@ public class BaseLyricsActivity extends Activity implements
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
     private boolean embeddedInitialLyricsConsumed;
+    // lrc.red word timing generated for the displayed lyrics. The line-timed base it replaced
+    // stays the identity of supplement requests started before the timing arrived.
+    private boolean lyricsWordSyncLoading;
+    private boolean lyricsWordSyncFailed;
+    private LyricsResult timingUpgradeSourceBase;
+    private final Runnable hideWordSyncFailure = () -> {
+        lyricsWordSyncFailed = false;
+        refreshWordSyncIndicator();
+    };
     private final Map<String, CreatorSupportRepository.Presentation> creatorSupportPresentations = new HashMap<>();
     private String creatorSupportInFlightKey = "";
     private String creatorSupportResolvedKey = "";
@@ -1603,6 +1612,7 @@ public class BaseLyricsActivity extends Activity implements
             setLyricsSupplementLoading(false, false, false);
             updateLyricPreview(0L);
             currentLyricsKey = "";
+            resetWordSyncState();
             currentArtworkKey = "";
             currentResolvedIsrc = "";
             currentResolvedSpotifyTrackId = "";
@@ -1689,6 +1699,7 @@ public class BaseLyricsActivity extends Activity implements
                 firstLanguagePromptDialog = null;
             }
             currentLyricsKey = nextKey;
+            resetWordSyncState();
             currentTrackSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackSyncOffsetMs(currentLyricsKey);
             currentVideoSyncOffsetMs = aiLyricsSettings == null ? 0 : aiLyricsSettings.trackVideoSyncOffsetMs(currentLyricsKey);
             aiLyricsGenerating = false;
@@ -1761,6 +1772,8 @@ public class BaseLyricsActivity extends Activity implements
                 @Override public void onLyricsLog(String key, String message) { BaseLyricsActivity.this.onLyricsLog(key, message); }
                 @Override public void onLyricsArtworkLoaded(String key, Bitmap bitmap, String artworkKey) { BaseLyricsActivity.this.onLyricsArtworkLoaded(key, bitmap, artworkKey); }
                 @Override public void onLyricsMetadataResolved(String key, String isrc, String trackId) { BaseLyricsActivity.this.onLyricsMetadataResolved(key, isrc, trackId); }
+                @Override public void onLyricsWordSyncStarted(String key) { BaseLyricsActivity.this.onLyricsWordSyncStarted(key); }
+                @Override public void onLyricsWordSyncFinished(String key, LyricsResult upgraded) { BaseLyricsActivity.this.onLyricsWordSyncFinished(key, upgraded); }
             });
         }
         updateYouTubeBackgroundPlaybackState();
@@ -1768,6 +1781,7 @@ public class BaseLyricsActivity extends Activity implements
 
     private void setSpotifyDjSegmentState(TrackSnapshot snapshot, String trackKey) {
         currentLyricsKey = trackKey == null ? "" : trackKey;
+        resetWordSyncState();
         currentResolvedIsrc = "";
         currentResolvedSpotifyTrackId = "";
         currentTrackSyncOffsetMs = 0;
@@ -1837,6 +1851,7 @@ public class BaseLyricsActivity extends Activity implements
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(0L);
         currentLyricsKey = "";
+        resetWordSyncState();
         currentArtworkKey = "";
         currentResolvedIsrc = "";
         currentResolvedSpotifyTrackId = "";
@@ -1868,6 +1883,10 @@ public class BaseLyricsActivity extends Activity implements
         aiLyricsGenerating = false;
         currentBaseLyricsResult = result;
         currentLyricsResult = result;
+        resetWordSyncState();
+        lyricsWordSyncLoading = lyricsRepository != null
+                && LyricsTimingUpgrade.canUpgrade(result)
+                && lyricsRepository.isWordSyncGenerating(trackKey);
         if (result != null) {
             currentResolvedIsrc = nonEmpty(result.isrc, currentResolvedIsrc);
             currentResolvedSpotifyTrackId = nonEmpty(result.spotifyTrackId, currentResolvedSpotifyTrackId);
@@ -1888,6 +1907,76 @@ public class BaseLyricsActivity extends Activity implements
             requestAiLyrics(false);
         }
         syncYouTubeBackgroundState();
+    }
+
+    @Override
+    public void onLyricsWordSyncStarted(String trackKey) {
+        if (!trackKey.equals(currentLyricsKey) || !LyricsTimingUpgrade.canUpgrade(currentBaseLyricsResult)) {
+            return;
+        }
+        handler.removeCallbacks(hideWordSyncFailure);
+        lyricsWordSyncFailed = false;
+        lyricsWordSyncLoading = true;
+        refreshWordSyncIndicator();
+    }
+
+    @Override
+    public void onLyricsWordSyncFinished(String trackKey, LyricsResult upgraded) {
+        if (!trackKey.equals(currentLyricsKey)) {
+            return;
+        }
+        boolean announced = lyricsWordSyncLoading;
+        lyricsWordSyncLoading = false;
+        boolean applied = upgraded != null && applyLyricsTimingUpgrade(upgraded);
+        if (!applied && announced) {
+            // Keep the current lyrics and say so, instead of finishing as if timing loaded.
+            lyricsWordSyncFailed = true;
+            handler.removeCallbacks(hideWordSyncFailure);
+            handler.postDelayed(hideWordSyncFailure, 4000L);
+            appendLog("lrc.red word timing unavailable; current lyrics kept");
+        }
+        refreshWordSyncIndicator();
+    }
+
+    /** Replaces only the timing of the displayed lyrics; supplements and requests continue. */
+    private boolean applyLyricsTimingUpgrade(LyricsResult upgraded) {
+        LyricsResult base = currentBaseLyricsResult;
+        if (!LyricsTimingUpgrade.upgrades(base, upgraded)) {
+            return false;
+        }
+        timingUpgradeSourceBase = base;
+        currentBaseLyricsResult = upgraded;
+        currentLyricsResult = LyricsTimingUpgrade.retime(currentLyricsResult, upgraded);
+        setLyricsResultOnViews(currentLyricsResult);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+        sourceView.setText(upgraded.providerLabel);
+        appendLog("lrc.red word timing applied: lines=" + upgraded.lines.size());
+        return true;
+    }
+
+    /** True for supplements generated for the displayed base, including its pre-timing form. */
+    private boolean isCurrentSupplementBase(LyricsResult result) {
+        return AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)
+                || (timingUpgradeSourceBase != null
+                && AiLyricsRepository.hasSameBaseLyrics(timingUpgradeSourceBase, result));
+    }
+
+    private void resetWordSyncState() {
+        handler.removeCallbacks(hideWordSyncFailure);
+        lyricsWordSyncLoading = false;
+        lyricsWordSyncFailed = false;
+        timingUpgradeSourceBase = null;
+        refreshWordSyncIndicator();
+    }
+
+    private void refreshWordSyncIndicator() {
+        updateLyricsSupplementLoadingText();
+        updateLyricsSupplementLoadingIndicator(lyricsSupplementPronunciationLoading
+                || lyricsSupplementTranslationLoading
+                || lyricsSupplementFuriganaLoading
+                || lyricsCulturalAnnotationsLoading
+                || metadataTranslationLoading);
+        updateVinylLoadingIndicator(true);
     }
 
     boolean acceptEmbeddedLyrics(String trackKey, LyricsResult result) {
@@ -2091,12 +2180,17 @@ public class BaseLyricsActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
-        if (!AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)) {
+        if (!isCurrentSupplementBase(result)) {
             appendLog("stale ai lyrics result discarded after base lyrics changed");
             return;
         }
         aiLyricsGenerating = false;
-        currentLyricsResult = mergeCurrentFuriganaInto(result);
+        // Supplements started on line timing keep any word timing that arrived meanwhile.
+        currentLyricsResult = mergeCurrentFuriganaInto(
+                AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)
+                        ? result
+                        : LyricsTimingUpgrade.retime(result, currentBaseLyricsResult)
+        );
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(false, false, lyricsSupplementFuriganaLoading);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
@@ -2118,7 +2212,7 @@ public class BaseLyricsActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
-        if (!AiLyricsRepository.hasSameBaseLyrics(currentBaseLyricsResult, result)) {
+        if (!isCurrentSupplementBase(result)) {
             appendLog("stale ai lyrics partial discarded after base lyrics changed");
             return;
         }
@@ -12863,6 +12957,7 @@ public class BaseLyricsActivity extends Activity implements
         }
         showCurrentTrackReloadLoading(snapshot);
         currentLyricsKey = "";
+        resetWordSyncState();
         currentArtworkKey = "";
         currentArtworkFromSpotify = false;
         onNowPlayingChanged(snapshot);
@@ -14558,7 +14653,8 @@ public class BaseLyricsActivity extends Activity implements
             return generation == aiSupplementGeneration
                     && trackKey.equals(currentLyricsKey)
                     && trackKey.equals(callbackTrackKey)
-                    && baseResult == currentBaseLyricsResult;
+                    && (baseResult == currentBaseLyricsResult
+                    || (timingUpgradeSourceBase != null && baseResult == timingUpgradeSourceBase));
         }
 
         @Override public void onAiLyricsLoaded(String key, LyricsResult result) {
@@ -14967,7 +15063,24 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsSupplementFuriganaLoading) {
             return ui("lyrics.furigana") + " · " + ui("loading.generating");
         }
+        if (lyricsWordSyncLoading) {
+            return ui("loading.word_sync");
+        }
+        if (lyricsWordSyncFailed) {
+            return ui("status.word_sync_failed");
+        }
         return ui("loading.generating");
+    }
+
+    /** The indicator reports a word timing failure only when nothing else is loading. */
+    private boolean showingWordSyncFailure() {
+        return lyricsWordSyncFailed
+                && !lyricsWordSyncLoading
+                && !lyricsCulturalAnnotationsLoading
+                && !metadataTranslationLoading
+                && !lyricsSupplementTranslationLoading
+                && !lyricsSupplementPronunciationLoading
+                && !lyricsSupplementFuriganaLoading;
     }
 
     private void updateLyricsSupplementLoadingText() {
@@ -14979,9 +15092,15 @@ public class BaseLyricsActivity extends Activity implements
         if (indicator == null || indicator.getChildCount() < 2) {
             return;
         }
+        boolean failure = showingWordSyncFailure();
+        indicator.getChildAt(0).setVisibility(failure ? View.GONE : View.VISIBLE);
+        indicator.setBackground(roundDrawable(failure ? Color.argb(214, 112, 26, 34) : Color.argb(38, 255, 255, 255), dp(14)));
+        boolean onlyWordSync = lyricsWordSyncLoading && supplementLoadingText().equals(ui("loading.word_sync"));
+        indicator.setContentDescription(onlyWordSync ? ui("loading.word_sync_desc") : null);
         View child = indicator.getChildAt(1);
         if (child instanceof TextView) {
             ((TextView) child).setText(supplementLoadingText());
+            ((TextView) child).setTextColor(failure ? Color.rgb(255, 213, 215) : Color.argb(205, 255, 255, 255));
         }
     }
 
@@ -14992,6 +15111,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void updateLyricsSupplementLoadingIndicator(boolean visible) {
+        visible = visible || lyricsWordSyncLoading || lyricsWordSyncFailed;
         updateLyricsRegenerateActions();
         setLoadingIndicatorVisible(lyricsSupplementLoadingIndicator, visible, true);
         setLoadingIndicatorVisible(landscapeLyricsSupplementLoadingIndicator, visible, true);

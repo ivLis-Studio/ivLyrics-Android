@@ -23,7 +23,7 @@ The module APK does not contain Spotify or a prepatched Spotify app. Installing 
 
 ## What can I see?
 
-- Lyrics from LRCLIB, Open Lyrics, LyricsPlus, and Unison, with ivLyrics community sync data. Choose providers and their lookup order.
+- Lyrics from LRCLIB, Open Lyrics, lrc.red, LyricsPlus, and Unison, with ivLyrics community sync data. When no source has word timing, lrc.red can generate it for the displayed lyrics. Choose providers and their lookup order.
 - Plain, line-synced, or word/character-level karaoke lyrics, depending on source data, with adjustable fill effects, vocal colors, and instrumental-break labels.
 - Separate translation and pronunciation rules for each song language, plus Japanese furigana.
 - In the standalone app: full lyrics, landscape layout, Picture in Picture (PiP), Vinyl mode, and a floating shortcut from Spotify.
@@ -112,7 +112,7 @@ Ask on [Discord](https://discord.gg/2fu36fUzdE). Include **standalone app or mod
 
 ## Credits
 
-Thanks to ivLyrics community sync creators and contributors, [LRCLIB](https://lrclib.net/), Open Lyrics, [LyricsPlus](https://github.com/ibratabian17/lyricsplus), [Unison](https://github.com/better-lyrics/unison), and translation providers. Check provider and creator credits on the lyrics screen. Local AI uses Tencent Hy-MT2 and llama.cpp. Existing font and library license notices remain in app resources.
+Thanks to ivLyrics community sync creators and contributors, [LRCLIB](https://lrclib.net/), Open Lyrics, [lrc.red](https://lrc.red), [LyricsPlus](https://github.com/ibratabian17/lyricsplus), [Unison](https://github.com/better-lyrics/unison), and translation providers. Check provider and creator credits on the lyrics screen. Local AI uses Tencent Hy-MT2 and llama.cpp. Existing font and library license notices remain in app resources.
 
 <details>
 <summary>Development, builds, and verification</summary>

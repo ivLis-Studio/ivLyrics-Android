@@ -74,6 +74,7 @@ public final class ProviderAttributionRegression {
     private long aiSupplementGeneration = 10L;
     private String currentLyricsKey = "fixture-a";
     private LyricsResult currentBaseLyricsResult = base();
+    private LyricsResult timingUpgradeSourceBase;
     final class GenerationGate {
         private final long generation;
         private final String trackKey;
@@ -117,6 +118,13 @@ public final class ProviderAttributionRegression {
         aiSupplementGeneration = 10L;
         currentBaseLyricsResult = base();
         check(!callback.current("fixture-a"), "replaced base lyrics invalidate old callback");
+        LyricsResult lineTimed = currentBaseLyricsResult;
+        GenerationGate beforeTiming = new GenerationGate(10L, currentLyricsKey, lineTimed);
+        timingUpgradeSourceBase = lineTimed;
+        currentBaseLyricsResult = base();
+        check(beforeTiming.current("fixture-a"), "generated word timing keeps the running supplement request");
+        timingUpgradeSourceBase = null;
+        check(!beforeTiming.current("fixture-a"), "a reloaded base still rejects the earlier request");
         System.out.println("PASS actual loading/generation guard: task-specific attribution, generic TMI, stale/canceled callbacks");
     }
 

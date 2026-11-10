@@ -18,7 +18,8 @@ public final class LrclibPlaybackRegression {
     static final String PRIVATE = "https://mirror.invalid/api";
     static final String TEXT = "Hello\nWorld";
     static final Unsafe UNSAFE;
-    static final List<Connection> requests = new ArrayList<>();
+    // Independent providers are requested beside LRCLIB, so connections arrive from several threads.
+    static final List<Connection> requests = Collections.synchronizedList(new ArrayList<>());
     static final List<String> logs = new ArrayList<>();
     static final Object log;
     static Function<URL, Reply> replies = url -> new Reply(404, "");
@@ -305,12 +306,11 @@ public final class LrclibPlaybackRegression {
         settings.setTypeFirst(false); settings.setPreferSyncDataProvider(false);
         for (var provider : LyricsProviderSettings.PROVIDERS) settings.setProviderEnabled(provider.id, List.of("lrclib", "unison").contains(provider.id));
         call(repo, "selectLyricsProvider", SONG, "", "", null, SONG.stableKey(), 0L, null, log);
-        int firstNext = -1, lastOfficial = -1;
-        for (int i = 0; i < requests.size(); i++) {
-            if (requests.get(i).url.getHost().equals("lrclib.net")) lastOfficial = i;
-            if (firstNext < 0 && requests.get(i).url.getHost().equals("unison.boidu.dev")) firstNext = i;
-        }
-        check(lastOfficial == 9 && firstNext == 10, "complete official fallback before next provider: " + order());
+        // Unison is looked up beside LRCLIB; LRCLIB's own fallback still runs completely, in order.
+        List<String> lrclib = order().stream().filter(value -> !value.startsWith("unison.boidu.dev:")).toList();
+        check(lrclib.size() == 10 && lrclib.get(9).startsWith("lrclib.net:")
+                        && order().stream().anyMatch(value -> value.startsWith("unison.boidu.dev:")),
+                "complete official fallback while the next provider loads in parallel: " + order());
 
         reset(); replies = url -> lyric(url, candidate(42, TEXT));
         check(!((List<?>) call(repo, "searchManualLrclibCandidates", "Song", "Artist", log)).isEmpty(), "manual results retained");
@@ -467,6 +467,12 @@ public final class LrclibPlaybackRegression {
         preferences = prefs(); settings = settings(preferences); settings.setLrclibPlaybackEndpoint(PRIVATE);
         repo = (LyricsRepository) UNSAFE.allocateInstance(LyricsRepository.class);
         put(repo, "lyricsProviderSettings", settings); put(repo, "cache", new HashMap<>());
+        ThreadFactory daemon = work -> { Thread thread = new Thread(work); thread.setDaemon(true); return thread; };
+        put(repo, "providerLookupExecutor", Executors.newCachedThreadPool(daemon));
+        put(repo, "wordSyncExecutor", Executors.newSingleThreadExecutor(daemon));
+        put(repo, "wordSyncLock", new Object());
+        put(repo, "wordSyncJobs", new LinkedHashMap<>());
+        put(repo, "lrcRedRecordIsrcs", new LinkedHashMap<>());
         put(repo, "lrclibPlaybackConnections", MOCK_CONNECTIONS);
         put(repo, "providerPolicyGeneration", new AtomicLong());
         ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);

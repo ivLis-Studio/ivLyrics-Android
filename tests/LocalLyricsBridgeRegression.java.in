@@ -73,11 +73,17 @@ public final class LocalLyricsBridgeRegression {
             void onLyricsLog(String key, String message);
             void onLyricsArtworkLoaded(String key, Bitmap artwork, String artworkKey);
             void onLyricsMetadataResolved(String key, String isrc, String spotifyId);
+            default void onLyricsWordSyncStarted(String key) { }
+            default void onLyricsWordSyncFinished(String key, LyricsResult upgraded) { }
         }
         final List<Callback> requests = new ArrayList<>();
         int invalidations;
         void invalidateProviderSelection() { invalidations++; }
         void loadLyrics(TrackSnapshot track, Callback callback) { requests.add(callback); }
+    }
+    static final class LyricsTimingUpgrade {
+        static boolean upgrades(LyricsResult source, LyricsResult upgraded) { return false; }
+        static LyricsResult retime(LyricsResult shown, LyricsResult timed) { return timed; }
     }
     static final class BaseLyricsActivity {
         final String trackKey;
@@ -108,6 +114,7 @@ public final class LocalLyricsBridgeRegression {
         final Timeline timeline = new Timeline();
         TrackSnapshot track;
         LyricsResult base, result = LyricsResult.empty("initial"), furiganaResult;
+        LyricsResult timingSource;
         List<String> annotations = List.of();
         String sourceLanguage = "auto", key = "";
         long generation, djOffset;

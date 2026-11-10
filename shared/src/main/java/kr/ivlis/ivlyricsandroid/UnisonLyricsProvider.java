@@ -546,7 +546,7 @@ final class UnisonLyricsProvider {
         );
     }
 
-    private static ParsedLyrics parseLrcLyrics(String lrc, long durationMs) {
+    static ParsedLyrics parseLrcLyrics(String lrc, long durationMs) {
         String clean = stripBom(lrc);
         String[] rawLines = clean.split("\\r?\\n", -1);
         long offset = 0L;

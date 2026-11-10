@@ -664,6 +664,8 @@ public final class IvLyricsBridge {
         final SpotifyDjLyricsTimeline timeline = new SpotifyDjLyricsTimeline();
         TrackSnapshot track;
         LyricsResult base;
+        // The line-timed base replaced by generated lrc.red word timing, if any.
+        LyricsResult timingSource;
         LyricsResult result;
         LyricsResult furiganaResult;
         List<CulturalAnnotation> annotations = Collections.emptyList();
@@ -839,6 +841,14 @@ public final class IvLyricsBridge {
                     @Override public void onLyricsLog(String callbackKey, String message) {}
                     @Override public void onLyricsArtworkLoaded(String callbackKey, Bitmap artwork, String artworkKey) {}
                     @Override public void onLyricsMetadataResolved(String callbackKey, String isrc, String spotifyTrackId) {}
+                    @Override public void onLyricsWordSyncFinished(String callbackKey, LyricsResult upgraded) {
+                        // Only the timing changes; the card keeps its supplements and requests.
+                        if (!current(callbackKey) || !LyricsTimingUpgrade.upgrades(base, upgraded)) return;
+                        timingSource = base;
+                        base = upgraded;
+                        result = LyricsTimingUpgrade.retime(result, upgraded);
+                        renderCards();
+                    }
                 });
             }
             renderCards();
@@ -874,7 +884,7 @@ public final class IvLyricsBridge {
             if (snapshot.japaneseFuriganaEnabled && "ja".equals(sourceLanguage)) {
                 furigana.loadFurigana(track, base, false, new FuriganaRepository.Callback() {
                     @Override public void onFuriganaLoaded(String callbackKey, LyricsResult value) {
-                        if (!valid(request, callbackKey) || requestBase != base) return;
+                        if (!valid(request, callbackKey) || !isCurrentBase(requestBase)) return;
                         furiganaResult = value;
                         result = withFurigana(result, value);
                         renderCards();
@@ -887,6 +897,16 @@ public final class IvLyricsBridge {
         }
 
         boolean valid(long request, String callbackKey) { return !released && generation == request && key.equals(callbackKey); }
+        /** The displayed base, or the line-timed base its generated word timing replaced. */
+        boolean isCurrentBase(LyricsResult requestBase) {
+            return requestBase == base
+                    || (timingSource != null && requestBase == timingSource && LyricsTimingUpgrade.upgrades(timingSource, base));
+        }
+        LyricsResult onCurrentTiming(LyricsResult value) {
+            return value != null && base != null && base.karaoke && !value.karaoke && value.lines.size() == base.lines.size()
+                    ? LyricsTimingUpgrade.retime(value, base)
+                    : value;
+        }
         long position() {
             if (track == null) return 0;
             long value = track.positionNow() + djOffset + settings.globalSyncOffsetMs() + settings.trackSyncOffsetMs(key) + bluetoothOffset;
@@ -975,17 +995,17 @@ public final class IvLyricsBridge {
             final long request;
             final LyricsResult requestBase;
             AiCallback(long request, LyricsResult requestBase) { this.request = request; this.requestBase = requestBase; }
-            boolean current(String callbackKey) { return valid(request, callbackKey) && requestBase == base; }
+            boolean current(String callbackKey) { return valid(request, callbackKey) && isCurrentBase(requestBase); }
             @Override public void onAiLyricsLoaded(String callbackKey, LyricsResult value) {
                 if (!current(callbackKey)) return;
-                result = withFurigana(value, furiganaResult);
+                result = withFurigana(requestBase == base ? value : onCurrentTiming(value), furiganaResult);
                 pronunciationLoading = translationLoading = false;
                 renderCards();
             }
             @Override public void onAiLyricsPartialLoaded(String callbackKey, LyricsResult value,
                     boolean pronunciation, boolean translation, boolean finished, boolean hadError) {
                 if (!current(callbackKey)) return;
-                result = withFurigana(value, furiganaResult);
+                result = withFurigana(requestBase == base ? value : onCurrentTiming(value), furiganaResult);
                 pronunciationLoading = !finished && pronunciation;
                 translationLoading = !finished && translation;
                 renderCards();

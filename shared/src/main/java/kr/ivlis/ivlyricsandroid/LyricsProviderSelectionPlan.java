@@ -36,7 +36,8 @@ final class LyricsProviderSelectionPlan {
                 : new LinkedHashSet<>(availableSyncDataProviders);
         List<LyricsProviderSettings.ProviderConfig> providers = preferredProviders(settings, syncProviders);
         List<Attempt> attempts = new ArrayList<>();
-        if (settings.typeFirst) {
+        // Generating lrc.red word timing first needs every source checked for karaoke lyrics.
+        if (settings.typeFirst || settings.automaticWordSyncFallback()) {
             for (String type : TYPES) {
                 for (LyricsProviderSettings.ProviderConfig config : providers) {
                     if (canParticipate(config, type, syncProviders)) {

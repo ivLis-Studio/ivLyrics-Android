@@ -16,6 +16,7 @@ python3 tests/run_provider_overlap_regression.py
 python3 tests/run_provider_network_regression.py
 python3 tests/run_lrclib_playback_regression.py
 python3 tests/run_sync_v6_regression.py
+python3 tests/run_lrcred_regression.py
 python3 tests/run_local_lyrics_regression.py
 python3 tests/run_local_lyrics_import_regression.py
 python3 tests/run_local_lyrics_bridge_regression.py

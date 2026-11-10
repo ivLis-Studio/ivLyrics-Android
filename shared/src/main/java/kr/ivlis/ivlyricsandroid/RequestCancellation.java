@@ -37,6 +37,14 @@ final class RequestCancellation {
         finally { if (previous == null) CURRENT.remove(); else CURRENT.set(previous); }
     }
 
+    /** Runs work on another thread as part of this request, so cancelling it also stops that work. */
+    <T> T call(java.util.concurrent.Callable<T> work) throws Exception {
+        RequestCancellation previous = CURRENT.get();
+        CURRENT.set(this);
+        try { throwIfCancelled(); return work.call(); }
+        finally { if (previous == null) CURRENT.remove(); else CURRENT.set(previous); }
+    }
+
     void cancel() {
         Set<HttpURLConnection> pending;
         synchronized (this) {

@@ -7,6 +7,7 @@ final class LyricsProviderAttribution {
     private static final String[] KNOWN_PROVIDER_IDS = {
             LyricsProviderSettings.PROVIDER_LRCLIB,
             LyricsProviderSettings.PROVIDER_OPEN_LYRICS,
+            LyricsProviderSettings.PROVIDER_LRC_RED,
             LyricsProviderSettings.PROVIDER_LYRICS_PLUS,
             LyricsProviderSettings.PROVIDER_UNISON
     };
@@ -28,11 +29,13 @@ final class LyricsProviderAttribution {
 
         String providerLabel = result.providerLabel == null ? "" : result.providerLabel.trim();
         if (providerLabel.toLowerCase(Locale.ROOT).startsWith("open lyrics")) return "Open Lyrics";
+        if (providerLabel.toLowerCase(Locale.ROOT).startsWith("lrc.red")) return "lrc.red";
         return displayId(providerFromLegacyLabel(providerLabel));
     }
 
     private static String displayId(String providerId) {
-        return LyricsProviderSettings.PROVIDER_OPEN_LYRICS.equals(providerId) ? "Open Lyrics" : providerId;
+        if (LyricsProviderSettings.PROVIDER_OPEN_LYRICS.equals(providerId)) return "Open Lyrics";
+        return LyricsProviderSettings.PROVIDER_LRC_RED.equals(providerId) ? "lrc.red" : providerId;
     }
 
     static String contributorNames(LyricsResult result) {

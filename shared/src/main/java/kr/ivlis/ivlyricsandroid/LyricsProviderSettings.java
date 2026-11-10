@@ -20,6 +20,7 @@ import java.util.Set;
 final class LyricsProviderSettings {
     static final String PROVIDER_LYRICS_PLUS = "lyricsplus";
     static final String PROVIDER_OPEN_LYRICS = "open-lyrics";
+    static final String PROVIDER_LRC_RED = "lrcred";
     static final String PROVIDER_UNISON = "unison";
     static final String PROVIDER_LRCLIB = "lrclib";
 
@@ -29,6 +30,7 @@ final class LyricsProviderSettings {
 
     static final List<Provider> PROVIDERS = Collections.unmodifiableList(Arrays.asList(
             new Provider(PROVIDER_OPEN_LYRICS, "Open Lyrics", "default", OpenLyricsProvider.PROJECT_URL, true, true, true, true),
+            new Provider(PROVIDER_LRC_RED, "lrc.red", "default", LrcRedLyricsProvider.PROJECT_URL, true, true, true, true),
             new Provider(PROVIDER_LYRICS_PLUS, "LyricsPlus", "default", LyricsPlusLyricsProvider.PROJECT_URL, true, true, true, true),
             new Provider(PROVIDER_LRCLIB, "LRCLIB", "default", "https://lrclib.net", true, false, true, true),
             new Provider(PROVIDER_UNISON, "Unison", "default", "https://github.com/better-lyrics/unison", false, true, true, true)
@@ -230,6 +232,11 @@ final class LyricsProviderSettings {
         if (!result.isEmpty() && !result.contains(PROVIDER_OPEN_LYRICS)) {
             result.add(0, PROVIDER_OPEN_LYRICS);
         }
+        // lrc.red is new on mobile, so a saved order has never placed it. Give it the
+        // default second position instead of appending it after every other source.
+        if (!result.isEmpty() && !result.contains(PROVIDER_LRC_RED)) {
+            result.add(result.indexOf(PROVIDER_OPEN_LYRICS) + 1, PROVIDER_LRC_RED);
+        }
         for (Provider provider : PROVIDERS) {
             if (!result.contains(provider.id)) {
                 result.add(provider.id);
@@ -373,6 +380,16 @@ final class LyricsProviderSettings {
 
         ProviderConfig config(String providerId) {
             return configs.get(normalizeProviderId(providerId));
+        }
+
+        /**
+         * After every enabled source lacks karaoke timing, lrc.red's own text is preferred while
+         * it generates word timing. This needs its karaoke type and is never used for a source
+         * the user chose for one track, which does not mean the others were searched.
+         */
+        boolean automaticWordSyncFallback() {
+            ProviderConfig config = config(PROVIDER_LRC_RED);
+            return config != null && config.enabled && config.karaoke && order.size() > 1;
         }
 
         List<ProviderConfig> enabledProviders() {

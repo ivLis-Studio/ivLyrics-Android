@@ -28,6 +28,7 @@ callback = callback.replace("BaseLyricsActivity.this.", "MetadataRefreshLoadingR
 provider_loading = declaration(source, "public void onLyricsProviderLoading(String trackKey, String providerName)")
 guard = declaration(source, "private boolean current(String callbackTrackKey)")
 loaded = declaration(source, "public void onAiLyricsLoaded(String trackKey, LyricsResult result)")
+supplement_base = declaration(source, "private boolean isCurrentSupplementBase(LyricsResult result)")
 loading = declaration(source, "private void setLyricsSupplementLoading(boolean pronunciation, boolean translation, boolean furigana)")
 delivery = declaration(source[source.index("private final class SupplementGenerationCallback"):], "@Override public void onAiLyricsLoaded(String key, LyricsResult result)")
 delivery = delivery.replace("@Override ", "").replace("BaseLyricsActivity.this.", "MetadataRefreshLoadingRegression.this.")
@@ -37,6 +38,7 @@ test_file.write_text((ROOT / "tests/MetadataRefreshLoadingRegression.java.in").r
                      .replace("// INSERT_PROVIDER_LOADING", provider_loading)
                      .replace("// INSERT_GENERATION_GUARD", guard)
                      .replace("// INSERT_AI_LOADED", loaded)
+                     .replace("// INSERT_SUPPLEMENT_BASE", supplement_base)
                      .replace("// INSERT_SUPPLEMENT_LOADING", loading)
                      .replace("// INSERT_GUARDED_DELIVERY", delivery))
 files = [SHARED / name for name in ("LyricsLine.java", "LyricsResult.java", "LyricsDiskCache.java", "AiLyricsRepository.java")]

@@ -1,0 +1,147 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.SharedPreferences;
+import java.lang.reflect.*;
+import java.util.*;
+import org.json.JSONObject;
+
+/** Production lrc.red parsing/matching, provider order and timing carry-over with synthetic data. */
+public final class LrcRedRegression {
+    private static int checks;
+
+    static void check(boolean condition, String message) {
+        checks++;
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static void fails(Runnable work, String message) {
+        try { work.run(); } catch (RuntimeException expected) { checks++; return; }
+        throw new AssertionError(message);
+    }
+
+    static String payload(String id, String timing, String lineText, String wordsJson) {
+        return "{\"id\":\"" + id + "\",\"lyrics\":{\"timing\":\"" + timing + "\",\"lines\":[{\"text\":" + JSONObject.quote(lineText)
+                + ",\"begin\":1,\"end\":2,\"words\":" + wordsJson + "}]}}";
+    }
+
+    static SharedPreferences prefs(Map<String, Object> data) {
+        Object editor = Proxy.newProxyInstance(SharedPreferences.Editor.class.getClassLoader(),
+                new Class<?>[]{SharedPreferences.Editor.class}, (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "putString", "putBoolean" -> data.put((String) args[0], args[1]);
+                        case "remove" -> data.remove(args[0]);
+                        case "apply" -> { return null; }
+                        case "commit" -> { return true; }
+                        default -> { }
+                    }
+                    return proxy;
+                });
+        return (SharedPreferences) Proxy.newProxyInstance(SharedPreferences.class.getClassLoader(),
+                new Class<?>[]{SharedPreferences.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getString", "getBoolean" -> data.getOrDefault(args[0], args[1]);
+                    case "getAll" -> new HashMap<>(data);
+                    case "edit" -> editor;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> null;
+                });
+    }
+
+    static LyricsProviderSettings settings(Map<String, Object> data) throws Exception {
+        LyricsProviderSettings settings = (LyricsProviderSettings) unsafe().allocateInstance(LyricsProviderSettings.class);
+        Field field = LyricsProviderSettings.class.getDeclaredField("preferences");
+        field.setAccessible(true);
+        field.set(settings, prefs(data));
+        return settings;
+    }
+
+    static sun.misc.Unsafe unsafe() throws Exception {
+        Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        field.setAccessible(true);
+        return (sun.misc.Unsafe) field.get(null);
+    }
+
+    static List<String> ids(List<LyricsProviderSettings.ProviderConfig> configs) {
+        List<String> ids = new ArrayList<>();
+        for (LyricsProviderSettings.ProviderConfig config : configs) ids.add(config.provider.id);
+        return ids;
+    }
+
+    public static void main(String[] args) throws Exception {
+        String isrc = "JPAAA2600001";
+        // Words carry the following whitespace; fragments join without inserted spaces.
+        List<LyricsLine> spaced = LrcRedLyricsProvider.parseWordSyncResponse(payload(isrc, "word", "Bodies moving",
+                "[[{\"text\":\"Bod\",\"begin\":1,\"end\":1.2},{\"text\":\"ies\",\"begin\":1.2,\"end\":1.5}],[{\"text\":\"moving\",\"begin\":1.5,\"end\":2}]]"), isrc);
+        check(spaced.size() == 1 && spaced.get(0).syllables.size() == 2, "one line with two timed words");
+        check(spaced.get(0).syllables.get(0).text.equals("Bodies ") && spaced.get(0).syllables.get(0).endTimeMs == 1500,
+                "fragments join and keep the trailing space: " + spaced.get(0).syllables.get(0).text);
+        check(spaced.get(0).syllables.get(1).text.equals("moving") && spaced.get(0).startTimeMs == 1000, "second word and line start");
+        List<LyricsLine> japanese = LrcRedLyricsProvider.parseWordSyncResponse(payload(isrc, "word", "テスト歌詞",
+                "[[{\"text\":\"テスト\",\"begin\":1,\"end\":1.5}],[{\"text\":\"歌詞\",\"begin\":1.5,\"end\":2}]]"), isrc);
+        check(String.join("", japanese.get(0).syllables.stream().map(s -> s.text).toList()).equals("テスト歌詞"), "unspaced text unchanged");
+        fails(() -> LrcRedLyricsProvider.parseWordSyncResponse(payload("JPAAA2600099", "word", "Line", "[[{\"text\":\"Line\",\"begin\":1,\"end\":2}]]"), isrc),
+                "another recording is rejected");
+        fails(() -> LrcRedLyricsProvider.parseWordSyncResponse(payload(isrc, "line", "Line", "[]"), isrc), "line timing is rejected");
+        fails(() -> LrcRedLyricsProvider.parseWordSyncResponse(payload(isrc, "word", "Line", "[[{\"text\":\"Other\",\"begin\":1,\"end\":2}]]"), isrc),
+                "different word text is rejected");
+        fails(() -> LrcRedLyricsProvider.parseWordSyncResponse(payload(isrc, "word", "Line", "[[{\"text\":\"Line\",\"begin\":2,\"end\":1}]]"), isrc),
+                "reversed timing is rejected");
+        check(LrcRedLyricsProvider.stripEnhancedLrcTags("[00:01.00]<00:01.00>Hello <00:01.50>world").equals("[00:01.00]Hello world"), "enhanced LRC tags");
+        check(LrcRedLyricsProvider.parseRetryAfterMs("60") == 60_000L, "Retry-After seconds");
+
+        // Matching accepts only the same song.
+        check(LrcRedLyricsProvider.titleMatchScore("Song (Remastered 2011)", "Song") == 0.9, "version label ignored");
+        check(LrcRedLyricsProvider.titleMatchScore("Song (Part II)", "Song") == 0, "different part rejected");
+        check(LrcRedLyricsProvider.sameArtist("Artist feat. Guest", "Artist"), "featured artist accepted");
+        check(!LrcRedLyricsProvider.sameArtist("Artist Tribute Band", "Artist"), "tribute act rejected");
+        check(LrcRedLyricsProvider.normalizeString("Beyoncé").equals("beyonce"), "Latin accents folded");
+        check(LrcRedLyricsProvider.normalizeString("が").equals("が"), "Japanese voicing kept");
+        JSONObject hit = new JSONObject().put("isrc", isrc).put("title", "Song").put("artist", "Artist").put("duration", 200);
+        check(LrcRedLyricsProvider.scoreSearchHit(hit, "Song", "Artist", 200) > 0.99, "same song scores");
+        check(LrcRedLyricsProvider.scoreSearchHit(hit, "Other", "Artist", 200) == null, "other song rejected");
+        check(LrcRedLyricsProvider.buildSearchQueries("Song (Taylor's Version)", "Artist")
+                .equals(List.of("Song (Taylor's Version) Artist", "Song (Taylor's Version)", "Song Artist", "Song")), "query fallbacks");
+
+        // A new install searches lrc.red second and enables it; saved orders gain it after Open Lyrics.
+        Map<String, Object> fresh = new HashMap<>();
+        LyricsProviderSettings.Snapshot defaults = settings(fresh).snapshot();
+        check(defaults.order.equals(List.of("open-lyrics", "lrcred", "lyricsplus", "lrclib", "unison")), "default order " + defaults.order);
+        check(ids(defaults.enabledProviders()).equals(List.of("open-lyrics", "lrcred", "lyricsplus", "lrclib")), "lrc.red enabled by default");
+        check(defaults.automaticWordSyncFallback(), "fallback enabled by default");
+        Map<String, Object> saved = new HashMap<>();
+        saved.put("provider_order", "[\"lyricsplus\",\"open-lyrics\",\"lrclib\",\"unison\"]");
+        check(settings(saved).snapshot().order.equals(List.of("lyricsplus", "open-lyrics", "lrcred", "lrclib", "unison")),
+                "saved order keeps its choices and places lrc.red after Open Lyrics");
+        saved.put("enabled_lrcred", false);
+        check(!settings(saved).snapshot().automaticWordSyncFallback(), "explicit opt-out kept");
+        check(!defaults.withSelectedProvider("lrcred").automaticWordSyncFallback(), "a per-track source choice never generates");
+
+        // Generating needs every source checked for karaoke lyrics first.
+        Map<String, Object> providerFirst = new HashMap<>();
+        providerFirst.put("prefer_lyrics_type_over_provider_order", false);
+        LyricsProviderSelectionPlan plan = LyricsProviderSelectionPlan.create(settings(providerFirst).snapshot(), Set.of());
+        check(plan.attempts.get(0).type.equals("karaoke") && plan.attempts.get(1).type.equals("karaoke"), "fallback forces type-first attempts");
+        providerFirst.put("enabled_lrcred", false);
+        plan = LyricsProviderSelectionPlan.create(settings(providerFirst).snapshot(), Set.of());
+        check(plan.attempts.get(1).type.equals("synced"), "provider-first order remains without lrc.red");
+
+        // Timing replaces line timing on the same text and keeps supplements.
+        List<LyricsLine> base = List.of(new LyricsLine(1000, 3000, "Bodies moving", List.of()));
+        LyricsResult lineTimed = new LyricsResult(base, "lrc.red synced", "attribution", false, isrc, "", List.of())
+                .withSelection("lrcred", "policy");
+        LyricsResult upgraded = LyricsTimingUpgrade.upgradedBase(lineTimed, spaced);
+        check(upgraded != null && upgraded.karaoke && upgraded.providerLabel.equals("lrc.red karaoke"), "upgrade produced");
+        check(upgraded.selectionPolicyKey.equals("policy") && upgraded.isrc.equals(isrc), "identity kept");
+        check(LyricsTimingUpgrade.upgrades(lineTimed, upgraded), "upgrade matches its source");
+        LyricsResult translated = new LyricsResult(List.of(base.get(0).withSupplements("pron", "translation", "")),
+                "lrc.red synced", "attribution", false, isrc, "", List.of()).withSelection("lrcred", "policy");
+        LyricsResult shown = LyricsTimingUpgrade.retime(translated, upgraded);
+        check(shown.karaoke && shown.lines.get(0).translationText.equals("translation") && shown.lines.get(0).syllables.size() == 2,
+                "translation kept on word timing");
+        check(LyricsTimingUpgrade.upgradedBase(lineTimed, japanese) == null, "different text never replaces lyrics");
+        check(LyricsTimingUpgrade.upgradedBase(lineTimed.withSelection("lyricsplus", "policy"), spaced) == null, "other provider never upgraded");
+        check(!LyricsTimingUpgrade.upgrades(lineTimed.withSelection("lrcred", "other"), upgraded), "changed policy rejects upgrade");
+        System.out.println("PASS " + checks + " checks: lrc.red word sync parsing, matching, default order, type-first fallback, timing carry-over");
+    }
+}
+
