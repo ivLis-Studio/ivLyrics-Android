@@ -469,10 +469,7 @@ public final class LrclibPlaybackRegression {
         put(repo, "lyricsProviderSettings", settings); put(repo, "cache", new HashMap<>());
         ThreadFactory daemon = work -> { Thread thread = new Thread(work); thread.setDaemon(true); return thread; };
         put(repo, "providerLookupExecutor", Executors.newCachedThreadPool(daemon));
-        put(repo, "wordSyncExecutor", Executors.newSingleThreadExecutor(daemon));
-        put(repo, "wordSyncLock", new Object());
-        put(repo, "wordSyncJobs", new LinkedHashMap<>());
-        put(repo, "lrcRedRecordIsrcs", new LinkedHashMap<>());
+        put(repo, "wordSync", call(repo, "createWordSync", (Object) null));
         put(repo, "lrclibPlaybackConnections", MOCK_CONNECTIONS);
         put(repo, "providerPolicyGeneration", new AtomicLong());
         ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);

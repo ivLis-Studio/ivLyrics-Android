@@ -35,9 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -103,28 +101,10 @@ final class LyricsRepository {
         thread.setDaemon(true);
         return thread;
     });
-    // lrc.red word timing: one generation at a time and at most four waiting.
-    private static final int MAX_PENDING_WORD_SYNCS = 4;
-    private static final long WORD_SYNC_RETRY_MS = 10L * 60L * 1000L;
-    private static final long WORD_SYNC_SUCCESS_RETRY_MS = 60L * 60L * 1000L;
-    private final ExecutorService wordSyncExecutor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "ivlyrics-word-sync");
-        thread.setDaemon(true);
-        return thread;
-    });
-    private final Object wordSyncLock = new Object();
-    private final Map<String, WordSyncJob> wordSyncJobs = new LinkedHashMap<>();
-    private final Map<String, String> lrcRedRecordIsrcs = new LinkedHashMap<String, String>(65, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-            return size() > 64;
-        }
-    };
-    private int pendingWordSyncs;
-    private long wordSyncUnavailableUntilMs;
     private volatile boolean shutdown;
     private final LatestLyricsRequest latestLyricsRequest = new LatestLyricsRequest(executor);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final LrcRedWordSync wordSync = createWordSync(mainHandler);
     private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
     private final LocalLyricsStore localLyrics;
     private final Map<String, Bitmap> spotifyArtworkCache = new LinkedHashMap<String, Bitmap>(
@@ -410,7 +390,7 @@ final class LyricsRepository {
             LyricsResult cachedPresentation = privacySafeContributorFallback(cached);
             callback.onLyricsLoaded(key, cachedPresentation);
             requestSpotifyArtwork(track, cached, key, callback, request);
-            maybeRequestWordSync(track, key, cachedPresentation, callback, true);
+            wordSync.request(track, key, cachedPresentation, callback, true);
             return;
         }
         if (cached != null) {
@@ -446,7 +426,7 @@ final class LyricsRepository {
                     LyricsResult finalCached = safeCached;
                     postLyricsIfCurrent(requestGeneration, callback, key, finalCached);
                     requestSpotifyArtwork(track, safeCached, key, callback, request);
-                    maybeRequestWordSync(track, key, safeCached, callback, true);
+                    wordSync.request(track, key, safeCached, callback, true);
                     return;
                 }
                 if (reusableCached != null) {
@@ -484,7 +464,7 @@ final class LyricsRepository {
                 } else {
                     log.write("background sync-data recheck complete: cached lyrics kept");
                 }
-                maybeRequestWordSync(track, key, result, callback, false);
+                wordSync.request(track, key, result, callback, false);
             } catch (Exception error) {
                 if (request.isCancelled()) return;
                 String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
@@ -538,8 +518,8 @@ final class LyricsRepository {
         executor.shutdownNow();
         artworkExecutor.shutdownNow();
         providerLookupExecutor.shutdownNow();
-        // A running generation still finishes and updates the cache for the next visit.
-        wordSyncExecutor.shutdown();
+        // A running word-timing generation still finishes and updates the cache for the next visit.
+        wordSync.close();
     }
 
     void clearCache() {
@@ -943,8 +923,11 @@ final class LyricsRepository {
         Map<String, ProviderCandidate> attempts = new HashMap<>();
         // Lookups start in the configured order, three at a time; results are still taken in
         // that order, so a faster lower-priority source never replaces a higher one.
-        ProviderLookups lookups = new ProviderLookups(
-                plan.providers,
+        ProviderLookupWindow<ProviderCandidate> lookups = new ProviderLookupWindow<>(
+                concurrentProviders(plan.providers),
+                providerLookupExecutor,
+                MAX_CONCURRENT_PROVIDER_LOOKUPS,
+                () -> shutdown,
                 config -> fetchConcurrentCandidate(config, track, isrc, spotifyTrackId, trackKey, log)
         );
         boolean wordSyncFallbackChecked = !settings.automaticWordSyncFallback();
@@ -1012,7 +995,7 @@ final class LyricsRepository {
             long requestGeneration,
             Callback callback,
             LogSink log,
-            ProviderLookups lookups
+            ProviderLookupWindow<ProviderCandidate> lookups
     ) {
         if (attempts.containsKey(config.provider.id)) return attempts.get(config.provider.id);
         postProviderLoadingIfCurrent(
@@ -1105,6 +1088,16 @@ final class LyricsRepository {
                 || LyricsProviderSettings.PROVIDER_UNISON.equals(providerId);
     }
 
+    private static List<LyricsProviderSettings.ProviderConfig> concurrentProviders(
+            List<LyricsProviderSettings.ProviderConfig> providers
+    ) {
+        List<LyricsProviderSettings.ProviderConfig> concurrent = new ArrayList<>();
+        for (LyricsProviderSettings.ProviderConfig config : providers) {
+            if (isConcurrentProvider(config.provider.id)) concurrent.add(config);
+        }
+        return concurrent;
+    }
+
     private ProviderCandidate fetchConcurrentCandidate(
             LyricsProviderSettings.ProviderConfig config,
             TrackSnapshot track,
@@ -1127,9 +1120,7 @@ final class LyricsRepository {
             } else if (LyricsProviderSettings.PROVIDER_LRC_RED.equals(providerId)) {
                 LrcRedLyricsProvider.Fetched fetched = LrcRedLyricsProvider.fetch(track, isrc, spotifyTrackId, log::write);
                 if (fetched != null) {
-                    synchronized (wordSyncLock) {
-                        lrcRedRecordIsrcs.put(trackKey, fetched.recordIsrc);
-                    }
+                    wordSync.rememberRecording(trackKey, fetched.recordIsrc);
                     result = fetched.result;
                 }
             }
@@ -1145,179 +1136,28 @@ final class LyricsRepository {
         }
     }
 
-    private interface ProviderFetch {
-        ProviderCandidate load(LyricsProviderSettings.ProviderConfig config) throws Exception;
-    }
-
-    /** A rolling window of independent provider lookups within one lyrics request. */
-    private final class ProviderLookups {
-        private final List<LyricsProviderSettings.ProviderConfig> waiting = new ArrayList<>();
-        private final Map<String, Future<ProviderCandidate>> started = new HashMap<>();
-        private final RequestCancellation request = RequestCancellation.current();
-        private final ProviderFetch fetch;
-
-        ProviderLookups(List<LyricsProviderSettings.ProviderConfig> providers, ProviderFetch fetch) {
-            this.fetch = fetch;
-            for (LyricsProviderSettings.ProviderConfig config : providers) {
-                if (isConcurrentProvider(config.provider.id)) waiting.add(config);
-            }
-        }
-
-        ProviderCandidate await(LyricsProviderSettings.ProviderConfig config) throws Exception {
-            Future<ProviderCandidate> future = start(config);
-            fill();
-            try {
-                return future.get();
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new CancellationException();
-            } catch (ExecutionException failed) {
-                Throwable cause = failed.getCause();
-                if (cause instanceof Exception) throw (Exception) cause;
-                throw new IllegalStateException(cause);
-            } finally {
-                fill();
-            }
-        }
-
-        void fill() {
-            int running = 0;
-            for (Future<ProviderCandidate> future : started.values()) {
-                if (!future.isDone()) running++;
-            }
-            while (running < MAX_CONCURRENT_PROVIDER_LOOKUPS && !waiting.isEmpty() && !shutdown) {
-                start(waiting.get(0));
-                running++;
-            }
-        }
-
-        void cancel() {
-            waiting.clear();
-            for (Future<ProviderCandidate> future : started.values()) {
-                if (!future.isDone()) future.cancel(true);
-            }
-        }
-
-        private Future<ProviderCandidate> start(LyricsProviderSettings.ProviderConfig config) {
-            Future<ProviderCandidate> future = started.get(config.provider.id);
-            if (future != null) return future;
-            waiting.remove(config);
-            future = providerLookupExecutor.submit(() -> request == null
-                    ? fetch.load(config)
-                    : request.call(() -> fetch.load(config)));
-            started.put(config.provider.id, future);
-            return future;
-        }
-    }
-
     /** Whether lrc.red is currently generating word timing for this track. */
     boolean isWordSyncGenerating(String trackKey) {
-        synchronized (wordSyncLock) {
-            WordSyncJob job = wordSyncJobs.get(trackKey);
-            return job != null && !job.finished && job.generating;
-        }
+        return wordSync.isGenerating(trackKey);
     }
 
-    /**
-     * Generates lrc.red word timing for line-timed lrc.red lyrics that were chosen because no
-     * enabled source had karaoke lyrics. The lyrics stay displayed; only timing is added later.
-     */
-    private void maybeRequestWordSync(TrackSnapshot track, String key, LyricsResult result, Callback callback, boolean checkFresh) {
-        if (shutdown || track == null || callback == null || key == null || key.isEmpty()
-                || !LyricsTimingUpgrade.canUpgrade(result)
-                || !lyricsProviderSettings.snapshotForTrack(key).automaticWordSyncFallback()) {
-            return;
-        }
-        WordSyncJob job;
-        synchronized (wordSyncLock) {
-            long now = System.currentTimeMillis();
-            WordSyncJob existing = wordSyncJobs.get(key);
-            if (existing != null && (!existing.finished || now < existing.retryAtMs)) {
-                // A reopened page receives the result of the generation already under way.
-                existing.callback = callback;
-                if (!existing.finished && existing.generating) {
-                    mainHandler.post(() -> { if (!shutdown) callback.onLyricsWordSyncStarted(key); });
-                }
-                return;
+    private LrcRedWordSync createWordSync(Handler handler) {
+        return new LrcRedWordSync(new LrcRedWordSync.Host() {
+            @Override
+            public boolean enabled(String trackKey) {
+                return lyricsProviderSettings.snapshotForTrack(trackKey).automaticWordSyncFallback();
             }
-            if (now < wordSyncUnavailableUntilMs || pendingWordSyncs >= MAX_PENDING_WORD_SYNCS) return;
-            String recordIsrc = checkFresh ? "" : lrcRedRecordIsrcs.getOrDefault(key, "");
-            job = new WordSyncJob(key, track, result, recordIsrc, checkFresh, callback);
-            wordSyncJobs.remove(key);
-            wordSyncJobs.put(key, job);
-            Iterator<Map.Entry<String, WordSyncJob>> entries = wordSyncJobs.entrySet().iterator();
-            while (wordSyncJobs.size() > 32 && entries.hasNext()) {
-                if (entries.next().getValue().finished) entries.remove();
-            }
-            pendingWordSyncs++;
-        }
-        try {
-            wordSyncExecutor.execute(() -> runWordSync(job));
-        } catch (java.util.concurrent.RejectedExecutionException closed) {
-            synchronized (wordSyncLock) {
-                job.finished = true;
-                pendingWordSyncs--;
-            }
-        }
-    }
 
-    private void runWordSync(WordSyncJob job) {
-        LogSink log = message -> {
-            Callback callback = job.callback;
-            if (!shutdown && callback != null) emitLog(job.key, callback, "word sync: " + message, null);
-        };
-        LyricsResult upgraded = null;
-        try {
-            if (System.currentTimeMillis() < wordSyncUnavailableUntilMs) throw new IllegalStateException("server cooling down");
-            String recordIsrc = job.recordIsrc;
-            List<LyricsLine> timedLines = null;
-            if (job.checkFresh || recordIsrc.isEmpty()) {
-                // Cached line timing may predate a generation by another client.
-                LrcRedLyricsProvider.Fetched fresh = LrcRedLyricsProvider.fetch(job.track, job.base.isrc, job.base.spotifyTrackId, log::write);
-                if (fresh != null) {
-                    recordIsrc = fresh.recordIsrc;
-                    if (fresh.result.karaoke) timedLines = fresh.result.lines;
-                }
+            @Override
+            public void persist(String trackKey, LyricsResult upgraded) {
+                persistWordSync(trackKey, upgraded);
             }
-            if (timedLines == null) {
-                if (recordIsrc.isEmpty()) throw new IllegalStateException("no lrc.red recording");
-                synchronized (wordSyncLock) {
-                    job.generating = true;
-                }
-                Callback callback = job.callback;
-                mainHandler.post(() -> { if (!shutdown && callback != null) callback.onLyricsWordSyncStarted(job.key); });
-                log.write("generating for " + recordIsrc);
-                timedLines = LrcRedLyricsProvider.requestWordSync(recordIsrc);
+
+            @Override
+            public void log(String trackKey, Callback callback, String message) {
+                emitLog(trackKey, callback, message, null);
             }
-            upgraded = LyricsTimingUpgrade.upgradedBase(job.base, timedLines);
-            if (upgraded == null) throw new IllegalStateException("generated text differs from the displayed lyrics");
-            persistWordSync(job.key, upgraded);
-            log.write("word timing applied: lines=" + upgraded.lines.size());
-        } catch (LrcRedLyricsProvider.HttpStatusException error) {
-            if (error.status == 429 || error.status == 503) {
-                synchronized (wordSyncLock) {
-                    wordSyncUnavailableUntilMs = System.currentTimeMillis() + Math.max(WORD_SYNC_RETRY_MS, error.retryAfterMs);
-                }
-            }
-            log.write("unavailable: " + error.getMessage());
-        } catch (Exception error) {
-            log.write("unavailable: " + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()));
-        } finally {
-            boolean announced;
-            Callback callback;
-            synchronized (wordSyncLock) {
-                announced = job.generating;
-                job.finished = true;
-                job.retryAtMs = System.currentTimeMillis() + (upgraded != null ? WORD_SYNC_SUCCESS_RETRY_MS : WORD_SYNC_RETRY_MS);
-                pendingWordSyncs--;
-                callback = job.callback;
-            }
-            LyricsResult delivered = upgraded;
-            // A failure is reported only for a generation the page was told about.
-            if (callback != null && (announced || delivered != null)) {
-                mainHandler.post(() -> { if (!shutdown) callback.onLyricsWordSyncFinished(job.key, delivered); });
-            }
-        }
+        }, handler);
     }
 
     /** Stores generated timing only where the same line-timed lrc.red lyrics are still cached. */
@@ -1327,27 +1167,6 @@ final class LyricsRepository {
         if (diskCache == null) return;
         LyricsResult disk = diskCache.get(key);
         if (disk == null || LyricsTimingUpgrade.upgrades(disk, upgraded)) diskCache.put(key, upgraded);
-    }
-
-    private static final class WordSyncJob {
-        final String key;
-        final TrackSnapshot track;
-        final LyricsResult base;
-        final String recordIsrc;
-        final boolean checkFresh;
-        volatile Callback callback;
-        boolean generating;
-        boolean finished;
-        long retryAtMs = Long.MAX_VALUE;
-
-        WordSyncJob(String key, TrackSnapshot track, LyricsResult base, String recordIsrc, boolean checkFresh, Callback callback) {
-            this.key = key;
-            this.track = track;
-            this.base = base;
-            this.recordIsrc = recordIsrc == null ? "" : recordIsrc;
-            this.checkFresh = checkFresh;
-            this.callback = callback;
-        }
     }
 
     private LyricsResult resultForType(ProviderCandidate candidate, String type) {

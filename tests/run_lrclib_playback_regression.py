@@ -17,6 +17,7 @@ production = [SHARED / name for name in (
     "LyricsProviderSelectionPlan.java", "LyricsDiskCache.java", "LrcParser.java", "SyncDataApplier.java", "SyncDataV6Codec.java",
     "LyricsResult.java", "LyricsLine.java", "TrackSnapshot.java", "RequestCancellation.java",
     "LatestLyricsRequest.java", "AppI18n.java", "LocalLyricsStore.java", "LocalLyricsI18n.java",
+    "LrcRedWordSync.java", "ProviderLookupWindow.java",
 )]
 files = production + [ROOT / "tests/android/os/Handler.java", ROOT / "tests/android/os/Looper.java", fixture, wire_fixture]
 cp = classpath(work, json_jar(), compiled_classes("shared"), android_jar())

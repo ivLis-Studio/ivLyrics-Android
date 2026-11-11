@@ -51,7 +51,7 @@ fixture.write_text((ROOT / "tests/ProviderNetworkRegression.java.in").read_text(
 files += [SHARED / name for name in (
     "LyricsRepository.java", "LyricsPlusLyricsProvider.java", "RequestCancellation.java", "LatestLyricsRequest.java",
     "LyricsResult.java", "LyricsLine.java", "TrackSnapshot.java", "LyricsProviderSettings.java",
-    "LocalLyricsStore.java", "LocalLyricsI18n.java",
+    "LocalLyricsStore.java", "LocalLyricsI18n.java", "LrcRedWordSync.java", "ProviderLookupWindow.java",
 )]
 files += [ROOT / "tests/android/os/Looper.java", fixture]
 cp = classpath(work, json_jar(), compiled_classes("shared"), android_jar())
