@@ -231,9 +231,87 @@ public final class OpenAIRequestParamsRegression {
             unsupportedParameterRetries(provider);
             streamingRetries(provider);
             researchHelpers(provider);
+            perplexityAgentApi(provider);
         }
         streamedTextIsNeverResent();
         System.out.println("OpenAI request parameter regression: " + checks + " checks passed");
+    }
+
+    private static Reply agentResponse(String status, String text) {
+        JSONObject response = new JSONObject().put("id", "resp_fixture").put("object", "response").put("status", status)
+                .put("output", new JSONArray()
+                        .put(new JSONObject().put("type", "search_results").put("results", new JSONArray()))
+                        .put(new JSONObject().put("type", "message").put("role", "assistant").put("content", new JSONArray()
+                                .put(new JSONObject().put("type", "output_text").put("text", text)))));
+        if ("failed".equals(status)) response.put("error", new JSONObject().put("message", "model not supported"));
+        return json(200, response);
+    }
+
+    private static Reply agentStream(JSONObject... events) {
+        StringBuilder stream = new StringBuilder();
+        for (JSONObject event : events) stream.append("data: ").append(event).append("\n\n");
+        return new Reply(200, "text/event-stream", stream.toString());
+    }
+
+    private static JSONObject agentEvent(String type, String field, Object value) {
+        return new JSONObject().put("type", type).put(field, value);
+    }
+
+    /** Sonar Chat Completions support ended on 2026-09-27; Perplexity is reached through /v1/agent. */
+    private static void perplexityAgentApi(FakeProvider provider) throws Exception {
+        OpenAIRequestParamsRegression repository = new OpenAIRequestParamsRegression();
+        String base = provider.baseUrl();
+        provider.reset((path, body) -> agentResponse("completed", "OK"));
+        check(connectionTest(repository, settings("perplexity", base, "sonar-pro")) == null, "Perplexity connection test passes");
+        JSONObject body = provider.bodies.get(0);
+        check(provider.paths.get(0).equals("/v1/agent"), "Perplexity posts to the Agent API, not /chat/completions");
+        check(body.optString("model").equals("perplexity/sonar") && body.optString("input").equals("Reply with only OK.")
+                && body.optInt("max_output_tokens") == 4096 && sendsTemperature(body) && !body.optBoolean("store", true),
+                "Agent body maps the Sonar request");
+        for (String sonarField : List.of("messages", "max_tokens", "max_completion_tokens", "tools", "stream", "search_mode",
+                "web_search_options", "disable_search", "return_images")) {
+            check(!body.has(sonarField), "Agent body never sends " + sonarField);
+        }
+
+        provider.reset((path, request) -> agentResponse("failed", ""));
+        try { repository.callProviderRawOnce("fixture", settings("perplexity", base, "perplexity/sonar"), KEY); throw new AssertionError("Failed run accepted"); }
+        catch (IOException expected) { check(expected.getMessage().contains("model not supported"), "HTTP 200 failed run keeps its message"); }
+
+        provider.reset((path, request) -> request.has("temperature")
+                ? rejection(400, TEMPERATURE_UNSUPPORTED, "temperature", "invalid_parameter")
+                : agentResponse("completed", "Hi"));
+        check(repository.callProviderRawOnce("fixture", settings("perplexity", base, "openai/gpt-6-luna"), KEY).equals("Hi")
+                && provider.bodies.size() == 2 && omitsSampling(provider.bodies.get(1)), "a served model rejecting temperature is resent without it");
+
+        provider.reset((path, request) -> rejection(403, "Access to this model is not enabled for this key", null, "forbidden"));
+        HttpStatusException forbidden = httpFailure(() -> repository.callProviderRawOnce("fixture", settings("perplexity", base, "perplexity/sonar"), KEY));
+        check(forbidden.statusCode == 403 && forbidden.getMessage().contains("not enabled for this key"), "403 keeps the server message");
+
+        List<String> deltas = new ArrayList<>();
+        provider.reset((path, request) -> agentStream(
+                agentEvent("response.created", "response", new JSONObject().put("status", "in_progress")),
+                agentEvent("response.output_text.delta", "delta", "{\"trivia\":[\"Recorded in 2006.[web:1]"),
+                agentEvent("response.output_text.delta", "delta", "[web:2]\"]}"),
+                agentEvent("response.completed", "response", new JSONObject().put("status", "completed").put("output", new JSONArray()))));
+        String research = repository.callPerplexityAgentStream("fixture", settings("perplexity", base, "perplexity/sonar"), KEY,
+                deltas::add, true, 4096);
+        check(research.equals("{\"trivia\":[\"Recorded in 2006.\"]}") && deltas.size() == 2, "Research stream reads typed events without citation markers");
+        JSONObject researchBody = provider.bodies.get(0);
+        check(researchBody.optBoolean("stream") && researchBody.getJSONArray("tools").length() == 1
+                && researchBody.getJSONArray("tools").getJSONObject(0).getString("type").equals("web_search"),
+                "Research offers the web_search tool");
+
+        provider.reset((path, request) -> agentStream(agentEvent("response.output_text.delta", "delta", "Cut off")));
+        try { repository.callPerplexityAgentStream("fixture", settings("perplexity", base, "perplexity/sonar"), KEY, null, false, 4096); throw new AssertionError("Unterminated stream accepted"); }
+        catch (IOException expected) { check(expected.getMessage().contains("missing_completion"), "A stream without a terminal event is rejected"); }
+        check(!provider.bodies.get(0).has("tools"), "Lyrics streams never search the web");
+
+        provider.reset((path, request) -> agentStream(
+                agentEvent("response.output_text.delta", "delta", "Partial"),
+                agentEvent("response.failed", "response", new JSONObject().put("status", "failed")
+                        .put("error", new JSONObject().put("message", "upstream model error")))));
+        try { repository.callPerplexityAgentStream("fixture", settings("perplexity", base, "perplexity/sonar"), KEY, null, false, 4096); throw new AssertionError("Failed stream accepted"); }
+        catch (IOException expected) { check(expected.getMessage().contains("upstream model error"), "A failed stream keeps its message"); }
     }
 
     private static void modelFamilies() {

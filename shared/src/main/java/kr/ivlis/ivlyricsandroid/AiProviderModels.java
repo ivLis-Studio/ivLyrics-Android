@@ -7,7 +7,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -33,18 +32,13 @@ final class AiProviderModels {
 
     static final class Catalog {
         final List<Model> models;
-        final boolean builtIn;
 
-        Catalog(List<Model> models, boolean builtIn) {
+        Catalog(List<Model> models) {
             this.models = Collections.unmodifiableList(models);
-            this.builtIn = builtIn;
         }
     }
 
     static Catalog fetch(String provider, String baseUrl, String apiKey) throws Exception {
-        // Sonar's chat API has no model catalog. /v1/models lists Agent API models,
-        // which cannot be sent to Sonar's /chat/completions endpoint.
-        if (usesSonarCatalog(provider, baseUrl)) return sonarCatalog();
         if (apiKey.isEmpty() && !"pollinations".equals(provider) && !"openrouter".equals(provider)) {
             throw new IOException("API key is required");
         }
@@ -57,32 +51,19 @@ final class AiProviderModels {
             cursor = nextCursor(provider, root);
             if (cursor.isEmpty()) {
                 List<Model> result = new ArrayList<>(models.values());
-                result.sort(Comparator.comparing(model -> model.id.toLowerCase(Locale.ROOT)));
-                return new Catalog(result, false);
+                result.sort(PerplexityAgentApi.PROVIDER_ID.equals(provider)
+                        ? Comparator.comparing((Model model) -> model.id, PerplexityAgentApi.MODEL_ORDER)
+                        : Comparator.comparing(model -> model.id.toLowerCase(Locale.ROOT)));
+                return new Catalog(result);
             }
             if (!cursors.add(cursor)) throw new IOException("Repeated model page cursor");
         }
         throw new IOException("Too many model pages");
     }
 
-    static boolean usesSonarCatalog(String provider, String baseUrl) {
-        if (!"perplexity".equals(provider)) return false;
-        try {
-            URI uri = URI.create(baseUrl);
-            return "api.perplexity.ai".equalsIgnoreCase(uri.getHost())
-                    && (uri.getPath().isEmpty() || "/".equals(uri.getPath()));
-        } catch (Exception ignored) { return false; }
-    }
-
-    private static Catalog sonarCatalog() {
-        List<Model> result = new ArrayList<>();
-        for (String id : new String[]{"sonar", "sonar-pro", "sonar-reasoning-pro", "sonar-deep-research"}) {
-            result.add(new Model(id, id));
-        }
-        return new Catalog(result, true);
-    }
-
     static String endpoint(String provider, String baseUrl, String cursor) throws IOException {
+        // Perplexity lists its Agent API models at /v1/models; GET /models is a 404.
+        if (PerplexityAgentApi.PROVIDER_ID.equals(provider)) return PerplexityAgentApi.modelsEndpoint(baseUrl);
         String base = baseUrl.trim().replaceAll("/+$", "");
         if ("pollinations".equals(provider) && !base.endsWith("/v1")) base += "/v1";
         String url = base + "/models";
@@ -134,6 +115,7 @@ final class AiProviderModels {
     static List<Model> parse(String provider, JSONObject root) throws IOException {
         JSONArray rows = root.optJSONArray("gemini".equals(provider) ? "models" : "data");
         if (rows == null) throw new IOException("Invalid model list response");
+        boolean perplexity = PerplexityAgentApi.PROVIDER_ID.equals(provider);
         List<Model> result = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < rows.length(); i++) {
@@ -144,7 +126,9 @@ final class AiProviderModels {
             if (gemini && id.startsWith("models/")) id = id.substring(7);
             if (id.isEmpty()) continue;
             if (gemini && !contains(row.optJSONArray("supportedGenerationMethods"), "generateContent", false)) continue;
-            if (!isTextChatModel(row, id) || !seen.add(id)) continue;
+            // Every Agent API model is served through /v1/agent; only provider-prefixed ids exist there.
+            boolean usable = perplexity ? id.contains("/") : isTextChatModel(row, id);
+            if (!usable || !seen.add(id)) continue;
             String name = row.optString(gemini ? "displayName" : "display_name", "").trim();
             if (name.isEmpty()) name = row.optString("name", "").trim();
             if (name.isEmpty()) name = row.optString("title", "").trim();

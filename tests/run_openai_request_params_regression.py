@@ -64,5 +64,6 @@ methods = "\n".join([
 source = work / "OpenAIRequestParamsRegression.java"
 source.write_text((ROOT / "tests/OpenAIRequestParamsRegression.java.in").read_text().replace("    // PRODUCTION_METHODS", methods))
 dependencies = classpath(work, json_jar())
-subprocess.run([java_tool("javac"), "-cp", dependencies, "-d", str(work), str(source), str(SHARED / "PaxsenixAiModels.java")], check=True)
+subprocess.run([java_tool("javac"), "-cp", dependencies, "-d", str(work), str(source), str(SHARED / "PaxsenixAiModels.java"),
+                str(SHARED / "PerplexityAgentApi.java")], check=True)
 subprocess.run([java_tool("java"), "-cp", dependencies, "kr.ivlis.ivlyricsandroid.OpenAIRequestParamsRegression"], check=True)

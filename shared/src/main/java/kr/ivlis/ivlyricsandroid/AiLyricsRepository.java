@@ -2512,6 +2512,9 @@ final class AiLyricsRepository {
         if ("claude".equals(providerId)) {
             return callClaudeStream(prompt, settings, apiKey, sink, webSearch, researchMaxTokens);
         }
+        if (PerplexityAgentApi.PROVIDER_ID.equals(providerId)) {
+            return callPerplexityAgentStream(prompt, settings, apiKey, sink, webSearch, researchMaxTokens);
+        }
         if ("chatgpt".equals(providerId) && webSearch) {
             return callOpenAiResponsesStream(prompt, settings, apiKey, sink);
         }
@@ -2557,6 +2560,9 @@ final class AiLyricsRepository {
         }
         if ("claude".equals(providerId)) {
             return callClaudeStream(prompt, settings, apiKey, sink);
+        }
+        if (PerplexityAgentApi.PROVIDER_ID.equals(providerId)) {
+            return callPerplexityAgentStream(prompt, settings, apiKey, sink, false, settings.maxTokens);
         }
         return callOpenAiCompatibleStream(prompt, settings, apiKey, sink);
     }
@@ -2605,6 +2611,9 @@ final class AiLyricsRepository {
         }
         if ("claude".equals(providerId)) {
             return callClaude(prompt, settings, apiKey);
+        }
+        if (PerplexityAgentApi.PROVIDER_ID.equals(providerId)) {
+            return callPerplexityAgent(prompt, settings, apiKey);
         }
         return callOpenAiCompatible(prompt, settings, apiKey);
     }
@@ -2967,6 +2976,39 @@ final class AiLyricsRepository {
         }, sink);
     }
 
+    // Sonar Chat Completions support ended on September 27, 2026; Perplexity is reached through
+    // its Agent API (PerplexityAgentApi). The OpenAI parameter fallback still applies, so a
+    // served model that rejects temperature is resent once without it.
+    private String callPerplexityAgent(String prompt, AiLyricsSettings.Snapshot settings, String apiKey) throws Exception {
+        JSONObject body = PerplexityAgentApi.requestBody(prompt, settings.model, settings.maxTokens,
+                settings.temperature, false, false);
+        String raw = PerplexityAgentApi.responseText(new JSONObject(postOpenAiJson(settings,
+                PerplexityAgentApi.agentEndpoint(settings.baseUrl), body, openAiCompatibleHeaders(settings, apiKey))));
+        if (raw.trim().isEmpty()) {
+            throw new IOException("[" + settings.provider.label + "] Empty response from API");
+        }
+        return raw;
+    }
+
+    private String callPerplexityAgentStream(
+            String prompt,
+            AiLyricsSettings.Snapshot settings,
+            String apiKey,
+            TextDeltaSink sink,
+            boolean webSearch,
+            int maxTokens
+    ) throws Exception {
+        JSONObject body = PerplexityAgentApi.requestBody(prompt, settings.model, maxTokens,
+                settings.temperature, true, webSearch);
+        PerplexityAgentApi.StreamState stream = new PerplexityAgentApi.StreamState();
+        String raw = postOpenAiJsonSse(settings, PerplexityAgentApi.agentEndpoint(settings.baseUrl), body,
+                openAiCompatibleHeaders(settings, apiKey), stream::consume, sink);
+        if (!stream.completed()) {
+            throw new IOException("[" + settings.provider.label + "] Response rejected (missing_completion)");
+        }
+        return webSearch ? PerplexityAgentApi.stripWebCitations(raw) : raw;
+    }
+
     private JSONObject openAiResponsesBody(String prompt, AiLyricsSettings.Snapshot settings) throws JSONException {
         JSONObject body = new JSONObject()
                 .put("model", settings.model)
@@ -3007,15 +3049,6 @@ final class AiLyricsRepository {
             } else {
                 body.put("tools", new JSONArray());
                 body.put("plugins", new JSONArray().put(new JSONObject().put("id", "web").put("enabled", false)));
-            }
-            return;
-        }
-        if ("perplexity".equals(providerId)) {
-            body.put("disable_search", !webSearch);
-            body.put("return_images", webSearch);
-            if (webSearch) {
-                body.put("search_mode", "web");
-                body.put("web_search_options", new JSONObject().put("search_context_size", "high"));
             }
             return;
         }
@@ -3131,9 +3164,6 @@ final class AiLyricsRepository {
 
     private String openAiEndpoint(AiLyricsSettings.Snapshot settings) {
         String base = trimRight(settings.baseUrl, "/");
-        if ("perplexity".equals(settings.provider.id)) {
-            return base + "/chat/completions";
-        }
         if ("pollinations".equals(settings.provider.id)) {
             return base + "/v1/chat/completions";
         }

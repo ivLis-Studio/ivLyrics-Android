@@ -18,10 +18,21 @@ public final class AiModelsRegression {
         return AiProviderModels.parse(provider, new JSONObject(json));
     }
     public static void main(String[] args) throws Exception {
-        for (String provider : new String[]{"chatgpt", "groq", "openrouter", "perplexity", "pollinations", "paxsenix"}) {
+        for (String provider : new String[]{"chatgpt", "groq", "openrouter", "pollinations", "paxsenix"}) {
             var models = parse(provider, "{\"data\":[{\"id\":\"text-model\"},{\"id\":\"text-model\"},{\"id\":\"whisper-large\"},{\"id\":\"text-embedding-3\"},{\"id\":\"\"}]}");
             check(models.size() == 1 && models.get(0).id.equals("text-model"), provider + " text filtering/deduplication");
         }
+        // Perplexity's Agent API serves every listed model through /v1/agent; bare Sonar names are gone.
+        var perplexity = parse("perplexity", "{\"object\":\"list\",\"data\":[{\"id\":\"openai/gpt-6-luna\",\"object\":\"model\"},{\"id\":\"sonar-pro\"},{\"id\":\"perplexity/sonar\",\"supported_endpoints\":[\"/v1/responses\"]},{\"id\":\"anthropic/claude-sonnet-5-5\",\"display_name\":\"Claude Sonnet 5.5\"},{\"id\":\"perplexity/sonar\"}]}");
+        check(perplexity.size() == 3 && perplexity.stream().noneMatch(model -> model.id.equals("sonar-pro"))
+                && perplexity.get(2).name.equals("Claude Sonnet 5.5"), "Perplexity keeps provider-prefixed Agent API models");
+        check(AiProviderModels.endpoint("perplexity", "https://api.perplexity.ai", "").equals("https://api.perplexity.ai/v1/models")
+                && AiProviderModels.endpoint("perplexity", "https://api.perplexity.ai/v1/", "").equals("https://api.perplexity.ai/v1/models"),
+                "Perplexity models come from /v1/models, never the 404 /models");
+        check(PerplexityAgentApi.normalizeModel("sonar-pro").equals("perplexity/sonar")
+                && PerplexityAgentApi.normalizeModel(" ").equals("perplexity/sonar")
+                && PerplexityAgentApi.normalizeModel("openai/gpt-6-luna").equals("openai/gpt-6-luna")
+                && PerplexityAgentApi.normalizeModel("chatgpt", "gpt-6-luna").equals("gpt-6-luna"), "Retired Sonar ids become the Agent default");
         var gemini = parse("gemini", "{\"models\":[{\"name\":\"models/gemini-test\",\"displayName\":\"Test Gemini\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/embedding\",\"supportedGenerationMethods\":[\"embedContent\"]}]}");
         check(gemini.size() == 1 && gemini.get(0).id.equals("gemini-test") && gemini.get(0).name.equals("Test Gemini"), "Gemini resource prefix/name/capability");
         check(parse("claude", "{\"data\":[{\"id\":\"claude-test\",\"type\":\"model\",\"display_name\":\"Test Claude\"}]}").get(0).name.equals("Test Claude"), "Claude display name");
@@ -35,8 +46,8 @@ public final class AiModelsRegression {
         check(AiProviderModels.headers("claude", "fixture").get("anthropic-version").equals("2023-06-01"), "Claude version header");
         check(AiProviderModels.headers("pollinations", "token").get("Authorization").equals("Bearer token"), "Pollinations bearer");
         check(!AiProviderModels.headers("openrouter", "").containsKey("Authorization"), "Anonymous public catalog");
-        check(AiProviderModels.fetch("perplexity", "https://api.perplexity.ai", "").builtIn, "Sonar catalog is explicitly built in");
-        check(!AiProviderModels.usesSonarCatalog("perplexity", "https://api.perplexity.ai/router/v1"), "Router uses its own dynamic catalog");
+        try { AiProviderModels.fetch("perplexity", "https://api.perplexity.ai", ""); throw new AssertionError("Perplexity catalog without a key"); }
+        catch (java.io.IOException expected) { check(expected.getMessage().contains("API key"), "Perplexity's catalog needs the key"); }
         try { parse("chatgpt", "{\"error\":{\"message\":\"failed\"}}"); throw new AssertionError("Invalid response accepted"); }
         catch (java.io.IOException expected) { checks++; }
         try { AiProviderModels.nextCursor("claude", new JSONObject("{\"has_more\":true}")); throw new AssertionError("Missing cursor accepted"); }
@@ -63,11 +74,21 @@ public final class AiModelsRegression {
             try (var output = exchange.getResponseBody()) { output.write(body); }
         });
         server.createContext("/denied/models", exchange -> { exchange.sendResponseHeaders(401, -1); exchange.close(); });
+        server.createContext("/v1/models", exchange -> {
+            check("Bearer fixture".equals(exchange.getRequestHeaders().getFirst("Authorization")), "Perplexity catalog bearer");
+            byte[] body = "{\"data\":[{\"id\":\"openai/gpt-6-luna\"},{\"id\":\"perplexity/kimi-k3\"},{\"id\":\"anthropic/claude-haiku-5-5\"},{\"id\":\"perplexity/sonar\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
         server.start();
         try {
             String base = "http://127.0.0.1:" + server.getAddress().getPort();
             var catalog = AiProviderModels.fetch("gemini", base, "fixture");
             check(pages.get() == 2 && catalog.models.size() == 2 && catalog.models.get(0).id.equals("a"), "All pages merged, deduplicated and sorted");
+            var agentModels = AiProviderModels.fetch("perplexity", base, "fixture").models.stream().map(model -> model.id).toList();
+            check(agentModels.equals(List.of("perplexity/sonar", "perplexity/kimi-k3", "anthropic/claude-haiku-5-5", "openai/gpt-6-luna")),
+                    "Perplexity default model first, then its own models, then the rest");
             try { AiProviderModels.fetch("chatgpt", base + "/denied", "fixture"); throw new AssertionError("401 accepted"); }
             catch (java.io.IOException expected) { check(expected.getMessage().contains("401"), "HTTP error propagated"); }
         } finally { server.stop(0); }

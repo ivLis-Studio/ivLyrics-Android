@@ -1,9 +1,14 @@
 package kr.ivlis.ivlyricsandroid;
 
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** UI shells only; model loading/selection methods below are copied unchanged from production. */
 public final class AiModelPickerRegression {
+    /** Loopback stand-in for Perplexity's Agent API model list (GET /v1/models). */
+    private static String fixtureBaseUrl = "https://api.perplexity.ai";
     private final AiLyricsSettings aiLyricsSettings = new AiLyricsSettings();
     private final TextView aiModelPickerButton = new TextView();
     private final TextView aiSettingsStatusView = new TextView();
@@ -51,7 +56,7 @@ public final class AiModelPickerRegression {
             final String id, defaultBaseUrl; final boolean keyless;
             boolean translationOnly() { return keyless || id.equals("deepl"); }
             Provider(String id) {
-                this.id = id; defaultBaseUrl = "https://api.perplexity.ai"; keyless = id.equals("bing");
+                this.id = id; defaultBaseUrl = fixtureBaseUrl; keyless = id.equals("bing");
             }
         }
         static class Snapshot {
@@ -81,7 +86,23 @@ public final class AiModelPickerRegression {
         count++;
         if (!condition) throw new AssertionError(message);
     }
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models", exchange -> {
+            byte[] body = "{\"data\":[{\"id\":\"openai/gpt-6-luna\"},{\"id\":\"perplexity/sonar\"}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        server.start();
+        fixtureBaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        try {
+            run();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static void run() {
         var ui = new AiModelPickerRegression();
         ui.modelInput.setText("saved-custom");
         for (String provider : new String[]{"gemini", "chatgpt", "claude", "groq", "openrouter", "perplexity", "pollinations", "paxsenix", "bing", "deepl"}) {
@@ -93,13 +114,15 @@ public final class AiModelPickerRegression {
         ui.loadAiModels();
         check(ui.aiModelExecutor.queue.isEmpty(), "DeepL never requests an AI model catalog");
         ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("perplexity");
+        ui.apiKeysInput.setText("fixture-key");
         ui.loadAiModels();
         check(!ui.aiModelPickerButton.enabled, "Loading disables button");
         ui.aiModelExecutor.drain();
         check(ui.dialog != null && ui.aiModelPickerButton.enabled, "Blank base URL uses provider default and opens catalog");
         check(ui.modelInput.text.equals("saved-custom"), "Loading preserves custom selection");
+        check(ui.dialog.labels[0].equals("perplexity/sonar"), "Perplexity's default model leads its catalog");
         ui.dialog.listener.onClick(ui.dialog, 1);
-        check(ui.modelInput.text.equals("sonar-pro") && ui.aiLyricsSettings.model.equals("sonar-pro") && ui.dialog.dismissed, "Selection is saved and dialog closes");
+        check(ui.modelInput.text.equals("openai/gpt-6-luna") && ui.aiLyricsSettings.model.equals("openai/gpt-6-luna") && ui.dialog.dismissed, "Selection is saved and dialog closes");
 
         ui.dialog = null;
         ui.loadAiModels();
@@ -114,13 +137,14 @@ public final class AiModelPickerRegression {
         ui.aiModelExecutor.drain();
         check(ui.dialog == null && ui.aiModelPickerButton.enabled, "Old credentials response is ignored");
 
-        ui.apiKeysInput.setText("");
+        ui.apiKeysInput.setText("fixture-key");
         ui.loadAiModels(); ui.aiModelExecutor.drain();
         var opened = ui.dialog;
         ui.aiLyricsSettings.provider = new AiLyricsSettings.Provider("chatgpt");
         opened.listener.onClick(opened, 0);
-        check(ui.aiLyricsSettings.model.equals("sonar-pro"), "An old dialog cannot change another provider");
+        check(ui.aiLyricsSettings.model.equals("openai/gpt-6-luna"), "An old dialog cannot change another provider");
         ui.dialog = null;
+        ui.apiKeysInput.setText("");
         ui.loadAiModels(); ui.aiModelExecutor.drain();
         check(ui.dialog == null && ui.aiModelPickerButton.enabled && ui.toast.equals("toast.model_load_failed"), "Failed fetch re-enables picker without changing the model");
         System.out.println("AI model picker regression: " + count + " checks passed");

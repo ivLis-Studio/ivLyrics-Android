@@ -6,7 +6,7 @@ from regression_runtime import ROOT, SHARED, REPORTS, classpath, java_tool, json
 work = REPORTS / "ai-models"
 work.mkdir(parents=True, exist_ok=True)
 dependencies = classpath(work, json_jar())
-sources = [SHARED / name for name in ("AiProviderModels.java", "PollinationsAuthClient.java", "PaxsenixAiModels.java")]
+sources = [SHARED / name for name in ("AiProviderModels.java", "PerplexityAgentApi.java", "PollinationsAuthClient.java", "PaxsenixAiModels.java")]
 sources.append(ROOT / "tests/kr/ivlis/ivlyricsandroid/AiModelsRegression.java")
 activity = (SHARED / "BaseLyricsActivity.java").read_text()
 methods = activity[activity.index("    private void updateAiModelPickerUi("):activity.index("    private void saveOpenAIConnections(")]

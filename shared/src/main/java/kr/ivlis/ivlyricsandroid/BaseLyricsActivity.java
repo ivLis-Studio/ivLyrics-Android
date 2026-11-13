@@ -9966,7 +9966,6 @@ public class BaseLyricsActivity extends Activity implements
                     showSavedToast(ui("toast.model_empty"));
                     return;
                 }
-                if (loaded.builtIn) showSavedToast(ui("status.models_builtin_sonar"));
                 showAiModelDialog(loaded.models, requestId, snapshot);
             });
         });

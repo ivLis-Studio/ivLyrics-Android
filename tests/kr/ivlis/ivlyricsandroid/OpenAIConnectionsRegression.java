@@ -101,7 +101,7 @@ public final class OpenAIConnectionsRegression {
         field.setAccessible(true);
         @SuppressWarnings("unchecked") var languages = (Map<String, Map<String, String>>) field.get(null);
         var reference = languages.get("ko");
-        List<String> newKeys = List.of("openai.connections", "openai.connections_desc", "openai.add_connection", "openai.connection_name", "openai.remove_connection", "openai.save_connection", "status.models_builtin_sonar");
+        List<String> newKeys = List.of("openai.connections", "openai.connections_desc", "openai.add_connection", "openai.connection_name", "openai.remove_connection", "openai.save_connection");
         for (var language : languages.entrySet()) {
             var missing = new TreeSet<>(reference.keySet());
             missing.removeAll(language.getValue().keySet());

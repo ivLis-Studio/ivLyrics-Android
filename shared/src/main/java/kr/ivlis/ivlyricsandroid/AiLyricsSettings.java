@@ -246,9 +246,9 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             new Provider(
                     "perplexity",
                     "Perplexity",
-                    "Sonar API 사용",
+                    "Agent API 사용",
                     "https://api.perplexity.ai",
-                    "sonar-pro",
+                    PerplexityAgentApi.DEFAULT_MODEL,
                     "https://www.perplexity.ai/settings/api"
             ),
             new Provider(
@@ -2513,7 +2513,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.apiKeys = apiKeys == null ? "" : apiKeys;
             this.pollinationsAccessToken = pollinationsAccessToken == null ? "" : pollinationsAccessToken.trim();
             this.baseUrl = baseUrl == null ? "" : baseUrl;
-            this.model = model == null ? "" : model;
+            // A saved Sonar name (sonar-pro, ...) no longer exists on Perplexity's Agent API.
+            this.model = PerplexityAgentApi.normalizeModel(provider == null ? null : provider.id, model == null ? "" : model);
             this.maxTokens = Math.max(256, maxTokens);
             this.temperature = clampFloat(temperature, 0f, 2f);
             this.previewMode = normalizePreviewMode(previewMode);
