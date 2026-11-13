@@ -132,6 +132,13 @@ final class MainLyricPreviewView extends View {
         boolean layoutChanged = (previewMatches & PREVIEW_LAYOUT_MATCH) == 0;
         boolean segmentInputsChanged = (previewMatches & PREVIEW_INSTANCES_MATCH) == 0;
         boolean lineWidthInputsChanged = (previewMatches & PREVIEW_WIDTH_INPUTS_MATCH) == 0;
+        // The host republishes the preview every 250 ms. Paused on the same rows and position,
+        // the frame it would draw is the one already on screen (see setPlaybackFrame).
+        boolean unchangedPaused = previewMatches == (PREVIEW_LAYOUT_MATCH | PREVIEW_INSTANCES_MATCH | PREVIEW_WIDTH_INPUTS_MATCH)
+                && !playing && !isPlaying
+                && basePositionMs == Math.max(0L, positionMs)
+                && lineStartMs == Math.max(0L, startTimeMs)
+                && lineEndMs == Math.max(lineStartMs, endTimeMs);
         lines.clear();
         lines.addAll(safeLines);
         timeDrivenVisuals = false;
@@ -152,13 +159,17 @@ final class MainLyricPreviewView extends View {
         if (layoutChanged) {
             requestLayout();
         }
+        if (unchangedPaused && !timeDrivenVisuals
+                && frameAnimationsEnabled == MotionPreferences.animationsEnabled(getContext())) return;
         postInvalidateOnAnimation();
     }
 
     void clear() {
+        boolean exitShown = exitingInterlude != null;
         lastDrawnInterlude = null;
         exitingInterlude = null;
         setPreview(Collections.emptyList(), 0L, 0L, 0L, false);
+        if (exitShown) postInvalidateOnAnimation();
     }
 
     /** Native inline lyrics reserve only their selected rows, without player-page spacing. */

@@ -16212,15 +16212,21 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void updateProgressLabels(long position, long duration) {
+        // Called every 250 ms; the labels change once a second, and an equal setText still
+        // lays the label out again and repaints it.
         if (elapsedView != null) {
-            elapsedView.setText(formatTime(position));
+            setTextIfChanged(elapsedView, formatTime(position));
         }
         if (remainingView != null) {
-            remainingView.setText(formatRemaining(position, duration));
+            setTextIfChanged(remainingView, formatRemaining(position, duration));
         }
         if (debugProgressView != null) {
-            debugProgressView.setText(formatTime(position) + " / " + formatTime(duration));
+            setTextIfChanged(debugProgressView, formatTime(position) + " / " + formatTime(duration));
         }
+    }
+
+    private static void setTextIfChanged(TextView view, CharSequence text) {
+        if (!TextUtils.equals(view.getText(), text)) view.setText(text);
     }
 
     private void updateLyricPreview(long positionMs) {
