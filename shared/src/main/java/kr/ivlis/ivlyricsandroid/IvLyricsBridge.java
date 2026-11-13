@@ -311,6 +311,9 @@ public final class IvLyricsBridge {
         abstract void render(Engine state);
         /** frameTimeNanos is the Choreographer frame time, or 0 outside a frame. */
         abstract void updatePosition(Engine state, long frameTimeNanos);
+        boolean needsPlaybackFrames(Engine state) {
+            return state != null && state.track != null && state.track.playing;
+        }
         /** Draw-time state that could not advance while this surface was covered resumes from now. */
         void resumeAfterCover() {}
         // A visible surface follows every display frame at its vsync time; a hidden one polls.
@@ -332,8 +335,14 @@ public final class IvLyricsBridge {
             }
             boolean visible = isShown() && getWindowVisibility() == View.VISIBLE;
             if (visible && engine != null) updatePosition(engine, frameTimeNanos);
-            if (visible) Choreographer.getInstance().postFrameCallback(frameTick);
+            if (visible && needsPlaybackFrames(engine)) Choreographer.getInstance().postFrameCallback(frameTick);
             else postDelayed(idleTick, 250L);
+        }
+
+        void wakeTicks() {
+            if (!isAttachedToWindow() || covered) return;
+            stopTicks();
+            Choreographer.getInstance().postFrameCallback(frameTick);
         }
 
         void refreshCover() {
@@ -478,6 +487,7 @@ public final class IvLyricsBridge {
                     MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
         @Override void updatePosition(Engine state, long frameTimeNanos) {
+            if (frameTimeNanos == 0L) lyrics.refreshMotionPreferences();
             if (frameTimeNanos > 0L) lyrics.setPlaybackFrame(state.positionAtFrame(frameTimeNanos), frameTimeNanos);
             else lyrics.setPlaybackPosition(state.position());
         }
@@ -566,6 +576,12 @@ public final class IvLyricsBridge {
         }
 
         @Override public boolean onInterceptTouchEvent(MotionEvent event) { return true; }
+
+        @Override boolean needsPlaybackFrames(Engine state) {
+            return super.needsPlaybackFrames(state) || preview.needsHostFrames()
+                    || (model == null && getVisibility() == View.VISIBLE
+                        && SystemClock.uptimeMillis() - emptySince < 3000L);
+        }
 
         @Override void render(Engine state) {
             AiLyricsSettings.Snapshot settings = state.settings.snapshot();
@@ -933,6 +949,7 @@ public final class IvLyricsBridge {
                 if (card == null) continue;
                 card.render(this);
                 card.drawOnceIfCovered();
+                card.wakeTicks();
             }
         }
         void release() {

@@ -102,6 +102,7 @@ public final class LocalLyricsBridgeRegression {
         List<String> rows = List.of();
         void render(Engine state) { rows = state.result.lines; }
         void drawOnceIfCovered() { }
+        void wakeTicks() { }
     }
     // INSERT_OBSERVER
     // INSERT_CHANGE

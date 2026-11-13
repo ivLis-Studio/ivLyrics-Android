@@ -343,6 +343,7 @@ public final class IOSPrPortRegression {
     }
 
     static class SeekPage implements NowPlayingService.Listener {
+        void requestPlaybackFrame() {}
         TrackSnapshot currentTrack;
         final SpotifyDjLyricsTimeline spotifyDjLyricsTimeline = new SpotifyDjLyricsTimeline();
         long pendingSeekPositionMs = -1, pendingSeekUptimeMs, lastSeekCommandUptimeMs, lastSeekCommandPositionMs;

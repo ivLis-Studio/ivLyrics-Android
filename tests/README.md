@@ -23,6 +23,7 @@ python3 tests/run_local_lyrics_bridge_regression.py
 python3 tests/run_renderer_overlap_regression.py
 python3 tests/run_frame_layout_pool_regression.py
 python3 tests/run_render_idle_regression.py
+python3 tests/run_playback_scheduler_regression.py
 python3 tests/run_card_presence_regression.py
 python3 tests/run_karaoke_controller_regression.py
 python3 tests/run_inline_gate_regression.py
@@ -55,6 +56,19 @@ It also rejects direct standard WebKit or Spotify module references in shared
 Java. When the private WebKit JAR exists, it checks that AndroidX class definitions
 are isolated while public Chromium boundary interface names remain intact.
 These checks complement physical playback/UI validation.
+
+The playback scheduler regression executes the production Activity scheduler with a deterministic
+vsync/timer queue: coalesced wakes, immediate resume, idle polling, pending seeks, effect rows and
+lifecycle cancellation. On an Android emulator/device, `PlaybackFrameGatingTest` draws the actual
+lyric/preview Views with fonts and Canvas and compares every skipped bitmap with a freshly drawn
+reference, including line/word/character display, reverse seeks and late timing replacement:
+
+```sh
+./build.sh :app:assembleDebug :app:assembleDebugAndroidTest
+adb -s DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s DEVICE_SERIAL install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s DEVICE_SERIAL shell am instrument -w -e class kr.ivlis.ivlyricsandroid.PlaybackFrameGatingTest kr.ivlis.ivlyricsandroid.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 The provider-network regression uses production mirror orchestration and the lyrics repository with
 synthetic HTTP, bitmap decoding and Android dispatch. It covers staggered mirror fallback, healthy
