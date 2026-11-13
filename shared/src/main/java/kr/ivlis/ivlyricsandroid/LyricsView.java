@@ -172,6 +172,8 @@ public final class LyricsView extends View {
     private boolean emptyNoticeVisible = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = false;
     private boolean karaokeBounceEffectEnabled = true;
+    // Pronunciation rows that fill along karaoke timing (Settings > Karaoke).
+    private PronunciationFirst.Fill pronunciationFill = PronunciationFirst.Fill.NONE;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
     private String lyricsSegmentationLocale = "auto";
     private boolean japaneseFuriganaEnabled;
@@ -497,6 +499,17 @@ public final class LyricsView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
+        postInvalidateOnAnimation();
+    }
+
+    /** Timed units for pronunciation rows; rows without units keep their plain text. */
+    void setPronunciationFill(PronunciationFirst.Fill fill) {
+        PronunciationFirst.Fill next = fill == null ? PronunciationFirst.Fill.NONE : fill;
+        if (pronunciationFill == next) {
+            return;
+        }
+        pronunciationFill = next;
+        invalidateFrameGroupCache();
         postInvalidateOnAnimation();
     }
 
@@ -1814,7 +1827,7 @@ public final class LyricsView extends View {
                     partSupplements
             ));
             if (!partSupplements) {
-                addSupplementGroups(groups, lineIndex, line, completedColorOpacity, distance);
+                addSupplementGroups(groups, lineIndex, line, animationActive, completedColorOpacity, distance);
             }
             addCulturalAnnotationGroups(groups, lineIndex, line, highlighted, distance);
             return visibleLyricGroups(groups);
@@ -1842,7 +1855,7 @@ public final class LyricsView extends View {
                 "line:" + lineIndex,
                 AiLyricsSettings.TYPO_LYRICS_ORIGINAL
         ));
-        addSupplementGroups(groups, lineIndex, line, completedColorOpacity, distance);
+        addSupplementGroups(groups, lineIndex, line, animationActive, completedColorOpacity, distance);
         addCulturalAnnotationGroups(groups, lineIndex, line, highlighted, distance);
         return visibleLyricGroups(groups);
     }
@@ -1931,6 +1944,7 @@ public final class LyricsView extends View {
                             lineIndex,
                             part,
                             renderIndex,
+                            partAnimationActive,
                             completedColorOpacity,
                             distance
                     );
@@ -1946,6 +1960,7 @@ public final class LyricsView extends View {
             int lineIndex,
             LyricsLine.VocalPart part,
             int partIndex,
+            boolean animationActive,
             float completedColorOpacity,
             float distance
     ) {
@@ -1971,7 +1986,24 @@ public final class LyricsView extends View {
         int pronunciationColor = blendColor(inactiveColor, activePronunciationColor, completedColorOpacity);
         int translationColor = blendColor(inactiveColor, activeTranslationColor, completedColorOpacity);
         String key = partKey(part, partIndex);
-        if (!pronunciation.isEmpty()) {
+        List<LyricsLine.Syllable> fillUnits = pronunciation.isEmpty()
+                ? null
+                : PronunciationFirst.Fill.matching(pronunciationFill.parts.get(part), pronunciation);
+        if (fillUnits != null) {
+            groups.add(buildPronunciationFillGroup(
+                    fillUnits,
+                    part.startTimeMs,
+                    part.endTimeMs,
+                    inactiveColor,
+                    activePronunciationColor,
+                    animationActive,
+                    completedColorOpacity,
+                    lineIndex,
+                    "part:" + key + ":pron",
+                    groups.size(),
+                    supplementPlaceholderText(part)
+            ));
+        } else if (!pronunciation.isEmpty()) {
             groups.add(buildSupplementGroup(
                     pronunciation,
                     pronunciationColor,
@@ -2049,6 +2081,7 @@ public final class LyricsView extends View {
             List<DrawGroup> groups,
             int lineIndex,
             LyricsLine line,
+            boolean animationActive,
             float completedColorOpacity,
             float distance
     ) {
@@ -2073,7 +2106,24 @@ public final class LyricsView extends View {
         );
         int pronunciationColor = blendColor(inactiveColor, activePronunciationColor, completedColorOpacity);
         int translationColor = blendColor(inactiveColor, activeTranslationColor, completedColorOpacity);
-        if (!pronunciation.isEmpty()) {
+        List<LyricsLine.Syllable> fillUnits = pronunciation.isEmpty()
+                ? null
+                : PronunciationFirst.Fill.matching(pronunciationFill.lines.get(line), pronunciation);
+        if (fillUnits != null) {
+            groups.add(buildPronunciationFillGroup(
+                    fillUnits,
+                    line.startTimeMs,
+                    line.endTimeMs,
+                    inactiveColor,
+                    activePronunciationColor,
+                    animationActive,
+                    completedColorOpacity,
+                    lineIndex,
+                    "pron",
+                    groups.size(),
+                    supplementPlaceholderText(line)
+            ));
+        } else if (!pronunciation.isEmpty()) {
             groups.add(buildSupplementGroup(
                     pronunciation,
                     pronunciationColor,
@@ -2282,6 +2332,69 @@ public final class LyricsView extends View {
                 "line:" + lineIndex + ":supp-placeholder:" + type,
                 typographySlotId
         );
+    }
+
+    /**
+     * A pronunciation row that fills along its timed units like the karaoke row above it. It keeps
+     * the pronunciation row's typography and colors (inactive until sung, then the row's active
+     * color) and gets no bounce or other karaoke effect.
+     */
+    private DrawGroup buildPronunciationFillGroup(
+            List<LyricsLine.Syllable> units,
+            long startTimeMs,
+            long endTimeMs,
+            int inactiveColor,
+            int activeColor,
+            boolean active,
+            float completedColorOpacity,
+            int lineIndex,
+            String type,
+            int rowSeed,
+            String reserveText
+    ) {
+        // Characters, as in a plain pronunciation row, so the row wraps exactly as before;
+        // each unit's time is shared evenly by its sounding characters.
+        StringBuilder text = new StringBuilder();
+        List<LyricsLine.Syllable> characters = new ArrayList<>();
+        int timing = 17;
+        for (LyricsLine.Syllable unit : units) {
+            text.append(unit.text);
+            timing = timing * 31 + unit.text.length();
+            timing = timing * 31 + Long.hashCode(unit.startTimeMs);
+            timing = timing * 31 + Long.hashCode(unit.endTimeMs);
+            List<String> pieces = splitChars(unit.text);
+            int sounding = 0;
+            for (String piece : pieces) {
+                if (!isWhitespace(piece)) sounding++;
+            }
+            long duration = Math.max(0L, unit.endTimeMs - unit.startTimeMs);
+            int sung = 0;
+            for (String piece : pieces) {
+                long start = unit.startTimeMs + Math.round(duration * (sung / (float) Math.max(1, sounding)));
+                if (!isWhitespace(piece)) sung++;
+                long end = unit.startTimeMs + Math.round(duration * (sung / (float) Math.max(1, sounding)));
+                characters.add(new LyricsLine.Syllable(piece, start, end));
+            }
+        }
+        String value = text.toString();
+        DrawGroup group = buildGroup(
+                value,
+                "",
+                characters,
+                startTimeMs,
+                endTimeMs,
+                SUPPLEMENT_TEXT_SP,
+                inactiveColor,
+                activeColor,
+                "vocal",
+                active,
+                completedColorOpacity,
+                rowSeed,
+                "line:" + lineIndex + ":supp-fill:" + type + ":" + value.hashCode() + ":" + timing,
+                "line:" + lineIndex + ":supp:" + type,
+                AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION
+        );
+        return withSupplementReserveRows(group, lineIndex, type, AiLyricsSettings.TYPO_LYRICS_PRONUNCIATION, reserveText);
     }
 
     private DrawGroup withSupplementReserveRows(
@@ -4980,7 +5093,8 @@ public final class LyricsView extends View {
     }
 
     private KaraokeMotion.Values karaokeBounce(TextSegment segment, DrawGroup group) {
-        if (!frameAnimationsEnabled || isLineDisplayGranularity() || !karaokeBounceEffectEnabled) {
+        // Pronunciation and translation rows never bounce, including a filling pronunciation row.
+        if (!frameAnimationsEnabled || isLineDisplayGranularity() || !karaokeBounceEffectEnabled || group.supplement) {
             return karaokeBounceResult.idle();
         }
         // Each source unit owns its hold/release window. A subsequent character,

@@ -49,6 +49,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_PREVIEW_ITEMS = "preview_items";
     static final String KEY_AUTO_INSTRUMENTAL_BREAK = "auto_instrumental_break";
     static final String KEY_PRONUNCIATION_FIRST = "pronunciation_first_enabled";
+    static final String KEY_PRONUNCIATION_KARAOKE_FILL = "pronunciation_karaoke_fill_enabled";
     static final String KEY_INTERLUDE_LABELS_ENABLED = "interlude_labels_enabled";
     static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_KARAOKE_BOUNCE_EFFECT = "karaoke_bounce_effect";
@@ -906,6 +907,15 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setPronunciationFirstEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_PRONUNCIATION_FIRST, enabled).apply();
+    }
+
+    /** Pronunciation rows fill along karaoke timing while pronunciation-first is off. */
+    boolean pronunciationKaraokeFillEnabled() {
+        return prefs.getBoolean(KEY_PRONUNCIATION_KARAOKE_FILL, false);
+    }
+
+    void setPronunciationKaraokeFillEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PRONUNCIATION_KARAOKE_FILL, enabled).apply();
     }
 
     void setInterludeLabelsEnabled(boolean enabled) {

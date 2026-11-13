@@ -4,9 +4,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.text.BreakIterator;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -136,8 +138,123 @@ final class PronunciationFirst {
     private static List<String> groupParts(Map<String, List<String>> timed, int lineIndex, Group group) {
         int length = group.syllables.size();
         List<String> stored = timed == null ? null : timed.get(lineIndex + ":" + group.key);
-        List<String> parts = isValidParts(stored, length) ? stored : distribute(unitTexts(group.syllables), group.pronunciation);
+        List<String> aligned = isValidParts(stored, length) ? alignParts(stored, group.pronunciation) : null;
+        List<String> parts = aligned != null ? aligned : distribute(unitTexts(group.syllables), group.pronunciation);
         return normalizeParts(parts, length);
+    }
+
+    /** Letters of a pronunciation (graphemes without spaces), for comparing AI splits. */
+    static List<String> letters(String value) {
+        List<String> result = new ArrayList<>();
+        for (String grapheme : graphemes(Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFC))) {
+            if (!isSpace(grapheme)) result.add(grapheme);
+        }
+        return result;
+    }
+
+    /** Whether a split gives back the pronunciation; only spaces may differ. */
+    static boolean spells(List<String> parts, String pronunciation) {
+        return parts != null && letters(String.join("", parts)).equals(letters(pronunciation));
+    }
+
+    /**
+     * Lays an AI split back onto the pronunciation itself: each unit keeps the letters AI gave
+     * it, and the pronunciation's own spaces return after the letter they follow. AI sometimes
+     * drops or moves word spaces; the shown pronunciation must not change. Null when the
+     * letters differ.
+     */
+    static List<String> alignParts(List<String> parts, String pronunciation) {
+        if (parts == null || !spells(parts, pronunciation)) return null;
+        int[] counts = new int[parts.size()];
+        for (int index = 0; index < counts.length; index++) counts[index] = letters(parts.get(index)).size();
+        List<StringBuilder> aligned = new ArrayList<>(counts.length);
+        for (int index = 0; index < counts.length; index++) aligned.add(new StringBuilder());
+        int unit = 0;
+        int used = 0;
+        int last = -1;
+        for (String grapheme : graphemes(Normalizer.normalize(pronunciation.trim(), Normalizer.Form.NFC))) {
+            if (isSpace(grapheme)) {
+                if (last >= 0) aligned.get(last).append(grapheme);
+                continue;
+            }
+            while (unit < counts.length - 1 && used >= counts[unit]) {
+                unit++;
+                used = 0;
+            }
+            aligned.get(unit).append(grapheme);
+            used++;
+            last = unit;
+        }
+        return toStrings(aligned);
+    }
+
+    // ---------------------------------------------------------------------
+    // Pronunciation fill
+    // ---------------------------------------------------------------------
+
+    /** Timed pronunciation units of the rows that fill along karaoke timing. */
+    static final class Fill {
+        static final Fill NONE = new Fill(Collections.emptyMap(), Collections.emptyMap());
+
+        final Map<LyricsLine, List<LyricsLine.Syllable>> lines;
+        final Map<LyricsLine.VocalPart, List<LyricsLine.Syllable>> parts;
+
+        Fill(Map<LyricsLine, List<LyricsLine.Syllable>> lines, Map<LyricsLine.VocalPart, List<LyricsLine.Syllable>> parts) {
+            this.lines = lines;
+            this.parts = parts;
+        }
+
+        boolean isEmpty() {
+            return lines.isEmpty() && parts.isEmpty();
+        }
+
+        /** The row's units, only when they spell exactly the pronunciation shown. */
+        static List<LyricsLine.Syllable> matching(List<LyricsLine.Syllable> units, String pronunciation) {
+            if (units == null || units.isEmpty() || pronunciation == null || pronunciation.trim().isEmpty()) return null;
+            StringBuilder joined = new StringBuilder();
+            for (LyricsLine.Syllable unit : units) joined.append(unit.text);
+            String shown = pronunciation.replaceAll("\\s+", " ").trim();
+            return joined.toString().replaceAll("\\s+", " ").trim().equals(shown) ? units : null;
+        }
+    }
+
+    /**
+     * Pronunciation rows of karaoke lines split over their units (AI split when it fits, else
+     * proportional). Rows keep their text; units carry their karaoke unit's timing. Keys are the
+     * displayed line and part objects, so the result belongs to this result only.
+     */
+    static Fill fill(LyricsResult result, Map<String, List<String>> timed) {
+        if (result == null || !result.karaoke || result.lines.isEmpty()) return Fill.NONE;
+        Map<LyricsLine, List<LyricsLine.Syllable>> lines = new IdentityHashMap<>();
+        Map<LyricsLine.VocalPart, List<LyricsLine.Syllable>> parts = new IdentityHashMap<>();
+        for (int lineIndex = 0; lineIndex < result.lines.size(); lineIndex++) {
+            LyricsLine line = result.lines.get(lineIndex);
+            for (Group group : unitGroups(line)) {
+                if (group.pronunciation.isEmpty()) continue;
+                List<LyricsLine.Syllable> units = fillUnits(group.syllables, groupParts(timed, lineIndex, group));
+                if (units.isEmpty()) continue;
+                if ("line".equals(group.key)) {
+                    lines.put(line, units);
+                    continue;
+                }
+                LyricsLine.VocalPart part = line.vocalParts.get(Integer.parseInt(group.key.substring(5)));
+                // A voice without its own reading carries the line's reading on the line row.
+                if (part.pronunciationText.trim().isEmpty()) lines.put(line, units);
+                else parts.put(part, units);
+            }
+        }
+        return lines.isEmpty() && parts.isEmpty() ? Fill.NONE : new Fill(lines, parts);
+    }
+
+    private static List<LyricsLine.Syllable> fillUnits(List<LyricsLine.Syllable> syllables, List<String> parts) {
+        List<LyricsLine.Syllable> units = new ArrayList<>(syllables.size());
+        for (int index = 0; index < syllables.size(); index++) {
+            String text = index < parts.size() ? parts.get(index) : "";
+            if (text.isEmpty()) continue;
+            LyricsLine.Syllable syllable = syllables.get(index);
+            units.add(new LyricsLine.Syllable(text, syllable.startTimeMs, syllable.endTimeMs));
+        }
+        return units;
     }
 
     private static List<LyricsLine.Syllable> swapSyllables(List<LyricsLine.Syllable> syllables, List<String> parts) {
@@ -396,7 +513,10 @@ final class PronunciationFirst {
                 for (int slot = 0; slot < values.length(); slot++) {
                     parts.add(values.isNull(slot) ? "" : values.optString(slot, ""));
                 }
-                if (isValidParts(parts, item.units.size())) parsed.put(item.key, Collections.unmodifiableList(parts));
+                // A split must spell the pronunciation; one that changes letters is repaired.
+                if (isValidParts(parts, item.units.size()) && spells(parts, item.pronunciation)) {
+                    parsed.put(item.key, Collections.unmodifiableList(parts));
+                }
             }
         } catch (Exception ignored) {
             // A malformed response leaves the proportional timing in place.

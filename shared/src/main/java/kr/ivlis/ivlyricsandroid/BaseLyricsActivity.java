@@ -391,6 +391,7 @@ public class BaseLyricsActivity extends Activity implements
     private Switch interludeLabelsSwitch;
     private Switch syncedLyricsKaraokeSwitch;
     private Switch karaokeBounceSwitch;
+    private Switch pronunciationFillSwitch;
     private Switch preferSyncDataProviderSwitch;
     private Switch preferLyricsTypeFirstSwitch;
     private Switch useSyncCreatorSpeakerColorsSwitch;
@@ -530,6 +531,9 @@ public class BaseLyricsActivity extends Activity implements
     private String pronunciationTimingRequestKey = "";
     private String pronunciationTimingRequestSignature = "";
     private LyricsResult pronunciationSignatureSource;
+    private LyricsResult pronunciationFillSource;
+    private Map<String, List<String>> pronunciationFillTimed;
+    private PronunciationFirst.Fill pronunciationFill = PronunciationFirst.Fill.NONE;
     private String pronunciationSignature = "";
     private boolean pronunciationSyncLoading;
     private boolean pronunciationSyncFailed;
@@ -2467,6 +2471,38 @@ public class BaseLyricsActivity extends Activity implements
                 && pronunciationShownForCurrentSource();
     }
 
+    /** Pronunciation rows fill along karaoke timing (only while pronunciation-first is off). */
+    private boolean pronunciationFillActive() {
+        return aiLyricsSettings != null
+                && aiLyricsSettings.pronunciationKaraokeFillEnabled()
+                && !aiLyricsSettings.pronunciationFirstEnabled()
+                && pronunciationShownForCurrentSource();
+    }
+
+    /** Either display needs AI unit timing for the pronunciation. */
+    private boolean pronunciationTimingWanted() {
+        return pronunciationFirstActive() || pronunciationFillActive();
+    }
+
+    /** AI unit timing when it was made for this result's units and readings. */
+    private Map<String, List<String>> currentPronunciationTiming(LyricsResult result) {
+        String signature = result != null && result.karaoke ? pronunciationSignatureOf(result) : "";
+        return !signature.isEmpty() && signature.equals(pronunciationTimedSignature) ? pronunciationTimedParts : null;
+    }
+
+    private PronunciationFirst.Fill pronunciationFillFor(LyricsResult result) {
+        if (result == null || !result.karaoke || !pronunciationFillActive()) {
+            return PronunciationFirst.Fill.NONE;
+        }
+        Map<String, List<String>> timed = currentPronunciationTiming(result);
+        if (result != pronunciationFillSource || timed != pronunciationFillTimed) {
+            pronunciationFillSource = result;
+            pronunciationFillTimed = timed;
+            pronunciationFill = PronunciationFirst.fill(result, timed);
+        }
+        return pronunciationFill;
+    }
+
     /** Cached pronunciation signature of the given result (karaoke units and their readings). */
     private String pronunciationSignatureOf(LyricsResult result) {
         if (result != pronunciationSignatureSource) {
@@ -2485,11 +2521,7 @@ public class BaseLyricsActivity extends Activity implements
 
     private LyricsResult pronunciationFirstDisplay(LyricsResult result) {
         if (result == null || result.lines.isEmpty() || !pronunciationFirstActive()) return result;
-        String signature = result.karaoke ? pronunciationSignatureOf(result) : "";
-        Map<String, List<String>> timed = !signature.isEmpty() && signature.equals(pronunciationTimedSignature)
-                ? pronunciationTimedParts
-                : null;
-        return PronunciationFirst.apply(result, timed);
+        return PronunciationFirst.apply(result, currentPronunciationTiming(result));
     }
 
     private void updatePronunciationFirstButton(LyricsResult result) {
@@ -2503,7 +2535,7 @@ public class BaseLyricsActivity extends Activity implements
     private void togglePronunciationFirst(boolean enabled) {
         if (aiLyricsSettings == null) return;
         aiLyricsSettings.setPronunciationFirstEnabled(enabled);
-        if (!enabled) {
+        if (!pronunciationTimingWanted()) {
             handler.removeCallbacks(requestPronunciationTimingRunnable);
             pronunciationSyncLoading = false;
             refreshWordSyncIndicator();
@@ -2512,16 +2544,27 @@ public class BaseLyricsActivity extends Activity implements
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
     }
 
+    private void setPronunciationKaraokeFill(boolean enabled) {
+        if (aiLyricsSettings == null) return;
+        aiLyricsSettings.setPronunciationKaraokeFillEnabled(enabled);
+        if (!pronunciationTimingWanted()) {
+            handler.removeCallbacks(requestPronunciationTimingRunnable);
+            pronunciationSyncLoading = false;
+            refreshWordSyncIndicator();
+        }
+        setLyricsResultOnViews(currentLyricsResult);
+    }
+
     /** Asks AI for unit timing once the pronunciation of a karaoke result has settled. */
     private void schedulePronunciationTiming() {
         handler.removeCallbacks(requestPronunciationTimingRunnable);
-        if (!pronunciationFirstActive() || currentLyricsResult == null || !currentLyricsResult.karaoke) return;
+        if (!pronunciationTimingWanted() || currentLyricsResult == null || !currentLyricsResult.karaoke) return;
         handler.postDelayed(requestPronunciationTimingRunnable, 700L);
     }
 
     private void requestPronunciationTiming() {
         LyricsResult result = currentLyricsResult;
-        if (!pronunciationFirstActive() || result == null || !result.karaoke || currentTrack == null
+        if (!pronunciationTimingWanted() || result == null || !result.karaoke || currentTrack == null
                 || aiLyricsRepository == null || lyricsSupplementPronunciationLoading) {
             return;
         }
@@ -6577,6 +6620,15 @@ public class BaseLyricsActivity extends Activity implements
             }
             aiLyricsSettings.setKaraokeBounceEffectEnabled(isChecked);
             setKaraokeBounceEffectOnViews(isChecked);
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        pronunciationFillSwitch = settingsToggle(group, ui("setting.pronunciation_karaoke_fill"),
+                ui("setting.pronunciation_karaoke_fill_desc"));
+        pronunciationFillSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) {
+                return;
+            }
+            setPronunciationKaraokeFill(isChecked);
             showSavedToast(ui("toast.settings_saved"));
         });
     }
@@ -12660,6 +12712,11 @@ public class BaseLyricsActivity extends Activity implements
             karaokeBounceSwitch.setChecked(snapshot.karaokeBounceEffectEnabled);
             suppressSettingsEvents = false;
         }
+        if (pronunciationFillSwitch != null && aiLyricsSettings != null) {
+            suppressSettingsEvents = true;
+            pronunciationFillSwitch.setChecked(aiLyricsSettings.pronunciationKaraokeFillEnabled());
+            suppressSettingsEvents = false;
+        }
         rebuildKaraokeDisplayGranularityButtons(snapshot.karaokeDisplayGranularity);
         if (lyricsProviderSettings != null) {
             LyricsProviderSettings.Snapshot providerSettings = lyricsProviderSettings.snapshot();
@@ -15341,6 +15398,8 @@ public class BaseLyricsActivity extends Activity implements
         }
         // Pronunciation-first swaps only what these views show.
         LyricsResult display = pronunciationFirstDisplay(result);
+        // The pronunciation fill only adds timing to the pronunciation rows of these views.
+        PronunciationFirst.Fill fill = pronunciationFillFor(result);
         updatePronunciationFirstButton(result);
         schedulePronunciationTiming();
         if (lyricsView != null) {
@@ -15348,6 +15407,7 @@ public class BaseLyricsActivity extends Activity implements
             lyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             lyricsView.setLoadingState(lyricsLookupInFlight);
             lyricsView.setResult(display);
+            lyricsView.setPronunciationFill(fill);
             applyCulturalAnnotationsToView(lyricsView);
         }
         if (landscapeLyricsView != null) {
@@ -15355,6 +15415,7 @@ public class BaseLyricsActivity extends Activity implements
             landscapeLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             landscapeLyricsView.setLoadingState(lyricsLookupInFlight);
             landscapeLyricsView.setResult(display);
+            landscapeLyricsView.setPronunciationFill(fill);
             applyCulturalAnnotationsToView(landscapeLyricsView);
         }
         if (pictureInPictureLyricsView != null) {
@@ -15362,6 +15423,7 @@ public class BaseLyricsActivity extends Activity implements
             pictureInPictureLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             pictureInPictureLyricsView.setLoadingState(lyricsLookupInFlight);
             pictureInPictureLyricsView.setResult(display);
+            pictureInPictureLyricsView.setPronunciationFill(fill);
         }
         updateLyricsProviderAttribution(result);
         updateLyricsContributorCredit(result);

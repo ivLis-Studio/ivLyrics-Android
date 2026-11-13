@@ -103,7 +103,7 @@ public final class KaraokeMotionRegression {
     private double framePositionMs;
     private final KaraokeMotion.Values karaokeBounceResult = new KaraokeMotion.Values();
     private boolean isLineDisplayGranularity() { return lineMode; }
-    private static final class DrawGroup { float textSize = 25f; }
+    private static final class DrawGroup { float textSize = 25f; boolean supplement; }
     private static final class TextSegment {
         String text, rubyText = "";
         int sourceIndex, sourceLength;
@@ -141,6 +141,9 @@ public final class KaraokeMotionRegression {
         check("Backward seek before onset is idle", !karaokeBounce(segment, lead).active);
         framePositionMs = 2000;
         close("Seek returns to original source envelope", lifted, karaokeBounce(segment, lead).offsetY, .000001);
+        DrawGroup pronunciationRow = new DrawGroup();
+        pronunciationRow.supplement = true;
+        check("A filling pronunciation row does not bounce", !karaokeBounce(segment, pronunciationRow).active);
         TextSegment word = new TextSegment("abcdefgh", 7, 8, 1000, 2600);
         TextSegment wrapped = createSplitSegment(word, List.of("e", "f", "g", "h"), 4);
         check("Wrapped piece keeps absolute source offset", wrapped.sourceIndex == 11 && wrapped.sourceLength == 4);

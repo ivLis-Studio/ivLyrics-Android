@@ -115,6 +115,57 @@ public final class PronunciationFirstRegression {
         check(staleSplit.syllables.size() == 2 && String.join("", List.of(staleSplit.syllables.get(0).text,
                 staleSplit.syllables.get(1).text)).equals("유루사레루"), "a split for other units is not applied");
 
+        // AI splits keep the pronunciation's own spaces and never its changed letters.
+        check(PronunciationFirst.alignParts(List.of("와라우", "요오", "니 나", "쿠"), "와라우 요오니 나쿠")
+                .equals(List.of("와라우 ", "요오", "니 나", "쿠")), "a dropped word space returns");
+        check(PronunciationFirst.alignParts(List.of("센넨", "츠즈쿠", "니주우", "요지노", "타비에"), "센넨 츠즈쿠 니주우요지노 타비에")
+                .equals(List.of("센넨 ", "츠즈쿠 ", "니주우", "요지노 ", "타비에")), "every dropped space returns");
+        check(PronunciationFirst.alignParts(List.of("지분", "라시", "사나", "은테"), "지분라시사난테") == null,
+                "changed letters are rejected");
+        List<PronunciationFirst.Item> spellItems = List.of(new PronunciationFirst.Item("0:line", "사난 테",
+                List.of(unit("さ", 0, 1), unit("な", 1, 2))));
+        check(PronunciationFirst.parse("{\"l\":[{\"i\":0,\"p\":[\"사나\",\"은테\"]}]}", spellItems).isEmpty(),
+                "a split that changes letters is dropped for repair");
+        check(PronunciationFirst.parse("{\"l\":[{\"i\":0,\"p\":[\"사난\",\"테\"]}]}", spellItems).size() == 1,
+                "a split that only moves spaces is kept");
+        LyricsLine spaced2 = new LyricsLine(0, 1600, "笑うように泣く", List.of(unit("笑う", 0, 400), unit("よう", 400, 800),
+                unit("に泣", 800, 1200), unit("く", 1200, 1600)), "", "vocal", Collections.emptyList(), "와라우 요오니 나쿠", "", "");
+        LyricsResult spacedResult = new LyricsResult(List.of(spaced2), "fixture", "", true);
+        Map<String, List<String>> droppedSpaces = Map.of("0:line", List.of("와라우", "요오", "니 나", "쿠"));
+        StringBuilder swappedText = new StringBuilder();
+        for (LyricsLine.Syllable syllable : PronunciationFirst.apply(spacedResult, droppedSpaces).lines.get(0).syllables) swappedText.append(syllable.text);
+        check(swappedText.toString().equals("와라우 요오니 나쿠"), "pronunciation-first shows the pronunciation's spacing: " + swappedText);
+
+        // Pronunciation fill: timed units for the pronunciation rows, keyed by the shown objects.
+        PronunciationFirst.Fill fill = PronunciationFirst.fill(spacedResult, droppedSpaces);
+        List<LyricsLine.Syllable> fillUnits = fill.lines.get(spaced2);
+        check(fillUnits != null && fillUnits.size() == 4 && fillUnits.get(0).text.equals("와라우 ")
+                && fillUnits.get(2).startTimeMs == 800 && fillUnits.get(2).endTimeMs == 1200, "line row units carry unit timing");
+        check(PronunciationFirst.Fill.matching(fillUnits, "와라우 요오니 나쿠") == fillUnits, "units that spell the row are used");
+        check(PronunciationFirst.Fill.matching(fillUnits, "와라우 요오니 나쿠다") == null, "units for other text are not used");
+        check(PronunciationFirst.fill(new LyricsResult(List.of(spaced2), "fixture", "", false), droppedSpaces).isEmpty(),
+                "line-timed lyrics have no fill");
+        PronunciationFirst.Fill proportionalFill = PronunciationFirst.fill(spacedResult, null);
+        StringBuilder proportionalText = new StringBuilder();
+        for (LyricsLine.Syllable syllable : proportionalFill.lines.get(spaced2)) proportionalText.append(syllable.text);
+        check(proportionalText.toString().equals("와라우 요오니 나쿠"), "proportional fill until AI timing arrives");
+        PronunciationFirst.Fill soloFill = PronunciationFirst.fill(new LyricsResult(List.of(parted), "fixture", "", true), null);
+        check(soloFill.lines.containsKey(parted) && soloFill.parts.isEmpty(), "a voice without its own reading fills the line row");
+        // VocalPart(id, role, speaker, color, fallback, kind, text, syllables, pronunciation, translation, furigana)
+        LyricsLine.VocalPart backing = new LyricsLine.VocalPart("bg", "background", "", "", "", "vocal", "あ",
+                List.of(unit("あ", 2300, 2600)), "아", "", "");
+        LyricsLine.VocalPart leadOwn = new LyricsLine.VocalPart("lead", "lead", "", "", "", "vocal", "許される",
+                karaokeLine("", "").syllables, "유루사레루", "", "");
+        LyricsLine duet = new LyricsLine(1000, 2600, "許される (あ)", Collections.emptyList(), "", "vocal",
+                List.of(leadOwn, backing), "", "", "");
+        PronunciationFirst.Fill duetFill = PronunciationFirst.fill(new LyricsResult(List.of(duet), "fixture", "", true), null);
+        check(duetFill.parts.get(backing) != null && duetFill.parts.get(backing).get(0).text.equals("아")
+                && duetFill.parts.get(leadOwn) != null && duetFill.lines.isEmpty(), "each voice with its own reading fills its own row");
+        PronunciationFirst.Fill lateFill = PronunciationFirst.fill(upgraded, null);
+        check(PronunciationFirst.fill(lineTimed, null).isEmpty() && lateFill.lines.get(upgraded.lines.get(0)) != null
+                && lateFill.lines.get(upgraded.lines.get(0)).get(3).startTimeMs == 1800,
+                "late lrc.red word timing gives the pronunciation row units");
+
         System.out.println("PronunciationFirstRegression passed " + checks + " checks");
     }
 }
