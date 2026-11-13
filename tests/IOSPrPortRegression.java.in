@@ -349,6 +349,7 @@ public final class IOSPrPortRegression {
         long pendingSeekPositionMs = -1, pendingSeekUptimeMs, lastSeekCommandUptimeMs, lastSeekCommandPositionMs;
         long currentSpotifyDjLyricsOffsetMs = 300, paintedLyrics, paintedProgress;
         int currentGlobalSyncOffsetMs = 100, currentTrackSyncOffsetMs = 200, currentBluetoothLyricsOffsetMs = 50;
+        long pronunciationLeadMs; // Pronunciation-first lead; off in these seek scenarios.
         static final long PENDING_SEEK_ACK_TOLERANCE_MS = 700, PENDING_SEEK_HOLD_MS = 1500;
         final List<Runnable> commands = new ArrayList<>();
         public void onNowPlayingChanged(TrackSnapshot snapshot) {}

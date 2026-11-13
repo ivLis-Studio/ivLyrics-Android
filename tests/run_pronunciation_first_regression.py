@@ -32,5 +32,9 @@ assert "if (!requests.get(index).text.trim().isEmpty() && combined.get(index).tr
 assert "restorePronunciationSlots(trackKey, pronunciationCacheKey);" in repository, "cached pronunciation brings its slots back"
 assert "if (!derived.containsKey(item.key)) items.add(item);" in repository, "only lines without slots ask AI for unit timing"
 assert "run.accept(PronunciationSlots.chunks(missing), true);" in repository, "one repair pass"
+# Pronunciation-first reads 200 ms ahead on the lyric clock, outside the sync offsets.
+assert activity.count("+ pronunciationLeadMs;") == 2 and "- pronunciationLeadMs;" in activity
+assert "pronunciationLeadMs = display != null && display != result ? PRONUNCIATION_FIRST_LEAD_MS : 0L;" in activity
+assert "static final long PRONUNCIATION_FIRST_LEAD_MS = 200L;" in activity
 
 raise SystemExit(result.returncode)

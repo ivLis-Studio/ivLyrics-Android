@@ -633,6 +633,13 @@ public class BaseLyricsActivity extends Activity implements
     private int currentBluetoothLyricsOffsetMs;
     private int currentVideoSyncOffsetMs;
     private long currentSpotifyDjLyricsOffsetMs;
+    /**
+     * Singing along reads slightly ahead of the voice: while pronunciation-first is shown, the
+     * lyric clock runs this much earlier. It is not a sync offset and never appears with them.
+     */
+    static final long PRONUNCIATION_FIRST_LEAD_MS = 200L;
+    /** Lead of the lyrics on the views, refreshed with them in {@link #setLyricsResultOnViews}. */
+    private long pronunciationLeadMs;
     private boolean lyricsLanguageSettingsVisible;
     private ViewGroup lyricsLanguageSettingsOriginalParent;
     private ViewGroup.LayoutParams lyricsLanguageSettingsOriginalLayoutParams;
@@ -11676,7 +11683,8 @@ public class BaseLyricsActivity extends Activity implements
                 + currentSpotifyDjLyricsOffsetMs
                 + currentGlobalSyncOffsetMs
                 + currentTrackSyncOffsetMs
-                + currentBluetoothLyricsOffsetMs;
+                + currentBluetoothLyricsOffsetMs
+                + pronunciationLeadMs;
         long lyricsDurationMs = lyricsTrackDuration(durationMs);
         return lyricsDurationMs > 0L
                 ? Math.max(0L, Math.min(lyricsDurationMs, adjusted))
@@ -11690,7 +11698,8 @@ public class BaseLyricsActivity extends Activity implements
                 + currentSpotifyDjLyricsOffsetMs
                 + currentGlobalSyncOffsetMs
                 + currentTrackSyncOffsetMs
-                + currentBluetoothLyricsOffsetMs;
+                + currentBluetoothLyricsOffsetMs
+                + pronunciationLeadMs;
         long lyricsDurationMs = lyricsTrackDuration(durationMs);
         return lyricsDurationMs > 0L
                 ? Math.max(0d, Math.min(lyricsDurationMs, adjusted))
@@ -11703,7 +11712,8 @@ public class BaseLyricsActivity extends Activity implements
                 - currentSpotifyDjLyricsOffsetMs
                 - currentGlobalSyncOffsetMs
                 - currentTrackSyncOffsetMs
-                - currentBluetoothLyricsOffsetMs;
+                - currentBluetoothLyricsOffsetMs
+                - pronunciationLeadMs;
         return durationMs > 0L
                 ? Math.max(0L, Math.min(durationMs, target))
                 : Math.max(0L, target);
@@ -15434,6 +15444,7 @@ public class BaseLyricsActivity extends Activity implements
         }
         // Pronunciation-first swaps only what these views show.
         LyricsResult display = pronunciationFirstDisplay(result);
+        pronunciationLeadMs = display != null && display != result ? PRONUNCIATION_FIRST_LEAD_MS : 0L;
         // The pronunciation fill only adds timing to the pronunciation rows of these views.
         PronunciationFirst.Fill fill = pronunciationFillFor(result);
         updatePronunciationFirstButton(result);
