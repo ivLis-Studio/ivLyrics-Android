@@ -1906,7 +1906,9 @@ public class BaseLyricsActivity extends Activity implements
         if (!trackKey.equals(currentLyricsKey)) {
             return;
         }
-        if (result != null && !"local".equals(result.providerId) && lyricsRepository.hasLocalLyrics(currentTrack)) {
+        // The debug page fixtures deliver rows without a repository.
+        if (result != null && !"local".equals(result.providerId)
+                && lyricsRepository != null && lyricsRepository.hasLocalLyrics(currentTrack)) {
             lyricsRepository.loadLyrics(currentTrack, this);
             return;
         }
