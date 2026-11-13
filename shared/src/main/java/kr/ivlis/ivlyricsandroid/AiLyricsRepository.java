@@ -76,12 +76,14 @@ final class AiLyricsRepository {
     private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
     private final Map<String, TmiInfo> tmiCache = newBoundedCache(MAX_TMI_CACHE_ENTRIES);
     private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
+    private final Map<String, Map<String, List<String>>> timedPronunciationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
     private final Map<String, Integer> researchModelLimitCache = newBoundedCache(MAX_RESEARCH_MODEL_LIMIT_ENTRIES);
     private final Map<String, Integer> openAiParameterAdjustmentCache = newBoundedCache(MAX_OPENAI_PARAMETER_ADJUSTMENT_ENTRIES);
     private final LyricsDiskCache diskCache;
     private final SharedPreferences metadataPrefs;
     private final SharedPreferences tmiPrefs;
     private final SharedPreferences culturalAnnotationPrefs;
+    private final SharedPreferences timedPronunciationPrefs;
     private final Context localAiContext;
 
     AiLyricsRepository() {
@@ -89,6 +91,7 @@ final class AiLyricsRepository {
         metadataPrefs = null;
         tmiPrefs = null;
         culturalAnnotationPrefs = null;
+        timedPronunciationPrefs = null;
         localAiContext = null;
     }
 
@@ -105,6 +108,9 @@ final class AiLyricsRepository {
         culturalAnnotationPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_cultural_annotations", Context.MODE_PRIVATE);
+        timedPronunciationPrefs = context == null
+                ? null
+                : context.getApplicationContext().getSharedPreferences("ai_timed_pronunciation", Context.MODE_PRIVATE);
         localAiContext = context == null ? null : context.getApplicationContext();
     }
 
@@ -190,6 +196,12 @@ final class AiLyricsRepository {
         );
 
         void onAiCulturalAnnotationsError(String trackKey, String requestKey, String message);
+
+        default void onTimedPronunciationStarted(String trackKey, String requestKey) { }
+
+        default void onTimedPronunciationLoaded(String trackKey, String requestKey, Map<String, List<String>> parts) { }
+
+        default void onTimedPronunciationError(String trackKey, String requestKey, String message) { }
     }
 
     static final class MetadataTranslation {
@@ -1639,6 +1651,141 @@ final class AiLyricsRepository {
             }
         });
         return cacheKey;
+    }
+
+
+    /**
+     * Pronunciation-first karaoke: AI splits each line's pronunciation across its timed units.
+     * Returns the request key; results arrive on the main thread.
+     */
+    String loadTimedPronunciation(
+            TrackSnapshot track,
+            LyricsResult result,
+            AiLyricsSettings.Snapshot settings,
+            String sourceLang,
+            Callback callback
+    ) {
+        if (track == null || result == null || settings == null || callback == null) {
+            return "";
+        }
+        List<PronunciationFirst.Item> items = PronunciationFirst.timingItems(result);
+        if (items.isEmpty()) {
+            return "";
+        }
+        String trackKey = track.stableKey();
+        String source = sourceLang == null || sourceLang.trim().isEmpty() ? "auto" : sourceLang.trim();
+        String targetLang = settings.resolveTargetLanguage(source);
+        String cacheKey = "timed-pronunciation|" + trackKey + "|"
+                + sha256(PronunciationFirst.signature(items, targetLang, source));
+        Map<String, List<String>> cached = timedPronunciationCache.get(cacheKey);
+        if (cached == null) {
+            cached = timedPronunciationFromPrefs(cacheKey);
+        }
+        if (cached != null) {
+            timedPronunciationCache.put(cacheKey, cached);
+            Map<String, List<String>> hit = cached;
+            emitLog(trackKey, callback, "pronunciation timing cache hit: items=" + hit.size());
+            mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, hit));
+            return cacheKey;
+        }
+        if (!settings.hasApiKey() || !settings.hasModel()) {
+            mainHandler.post(() -> callback.onTimedPronunciationError(
+                    trackKey,
+                    cacheKey,
+                    AppI18n.t(settings.uiLang, settings.hasApiKey() ? "status.ai_model_needed" : "tmi.require_key")
+            ));
+            return cacheKey;
+        }
+        emitLog(trackKey, callback, "pronunciation timing: provider=" + settings.provider.label + " / items=" + items.size());
+        mainHandler.post(() -> callback.onTimedPronunciationStarted(trackKey, cacheKey));
+        executor.execute(() -> {
+            try {
+                String context = PronunciationFirst.lyricsText(result);
+                Map<String, List<String>> aligned = new HashMap<>();
+                Exception firstError = null;
+                for (List<PronunciationFirst.Item> chunk : PronunciationFirst.chunks(items)) {
+                    try {
+                        aligned.putAll(requestTimedPronunciation(chunk, context, source, settings));
+                    } catch (Exception error) {
+                        if (error instanceof InterruptedException) throw error;
+                        if (firstError == null) firstError = error;
+                    }
+                }
+                // One repair pass, in smaller requests, for items whose slots did not match.
+                List<PronunciationFirst.Item> missing = new ArrayList<>();
+                for (PronunciationFirst.Item item : items) {
+                    if (!aligned.containsKey(item.key)) missing.add(item);
+                }
+                if (!missing.isEmpty() && !aligned.isEmpty()) {
+                    for (List<PronunciationFirst.Item> chunk : PronunciationFirst.chunks(missing, 200, 8)) {
+                        try {
+                            aligned.putAll(requestTimedPronunciation(chunk, context, source, settings));
+                        } catch (Exception error) {
+                            if (error instanceof InterruptedException) throw error;
+                        }
+                    }
+                }
+                if (aligned.isEmpty()) {
+                    throw firstError != null ? firstError : new IOException("AI returned no usable pronunciation timing");
+                }
+                Map<String, List<String>> immutable = Collections.unmodifiableMap(aligned);
+                timedPronunciationCache.put(cacheKey, immutable);
+                putTimedPronunciationToPrefs(cacheKey, immutable);
+                emitLog(trackKey, callback, "pronunciation timing response: " + immutable.size() + "/" + items.size());
+                mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, immutable));
+            } catch (Exception error) {
+                String message = errorMessage(error);
+                emitLog(trackKey, callback, "pronunciation timing error: " + message);
+                mainHandler.post(() -> callback.onTimedPronunciationError(trackKey, cacheKey, message));
+            }
+        });
+        return cacheKey;
+    }
+
+    private Map<String, List<String>> requestTimedPronunciation(
+            List<PronunciationFirst.Item> chunk,
+            String context,
+            String sourceLang,
+            AiLyricsSettings.Snapshot settings
+    ) throws Exception {
+        String prompt = PronunciationFirst.prompt(chunk, context, sourceLang);
+        String raw = withOpenAIConnections(settings, null, connection -> callProviderRaw(prompt, connection));
+        return PronunciationFirst.parse(raw, chunk);
+    }
+
+    private Map<String, List<String>> timedPronunciationFromPrefs(String cacheKey) {
+        if (timedPronunciationPrefs == null) {
+            return null;
+        }
+        try {
+            String raw = cachedPreferenceValue(timedPronunciationPrefs, sha256(cacheKey));
+            if (raw.isEmpty()) {
+                return null;
+            }
+            JSONObject object = new JSONObject(raw);
+            if (!cacheKey.equals(object.optString("cacheKey"))) {
+                return null;
+            }
+            Map<String, List<String>> parts = PronunciationFirst.fromJson(object.getJSONObject("parts").toString());
+            return parts.isEmpty() ? null : Collections.unmodifiableMap(parts);
+        } catch (Exception ignored) {
+            timedPronunciationPrefs.edit().remove(sha256(cacheKey)).apply();
+            return null;
+        }
+    }
+
+    private void putTimedPronunciationToPrefs(String cacheKey, Map<String, List<String>> parts) {
+        if (timedPronunciationPrefs == null) {
+            return;
+        }
+        try {
+            JSONObject object = new JSONObject();
+            object.put("cacheKey", cacheKey);
+            object.put("parts", new JSONObject(PronunciationFirst.toJson(parts)));
+            object.put("savedAtMs", System.currentTimeMillis());
+            putBoundedPreference(timedPronunciationPrefs, sha256(cacheKey), object.toString(), MAX_CULTURAL_CACHE_ENTRIES);
+        } catch (Exception ignored) {
+        }
     }
 
     private TmiInfo generateTmiForConnection(TrackSnapshot track, LyricsResult lyrics, String title, String artist,

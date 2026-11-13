@@ -1,0 +1,120 @@
+package kr.ivlis.ivlyricsandroid;
+
+import java.util.*;
+
+/** Pronunciation-first display: value swap, unit timing, AI response handling and late word timing. */
+public final class PronunciationFirstRegression {
+    private static int checks;
+
+    static void check(boolean condition, String message) {
+        checks++;
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static LyricsLine.Syllable unit(String text, long start, long end) {
+        return new LyricsLine.Syllable(text, start, end);
+    }
+
+    static LyricsLine karaokeLine(String pronunciation, String translation) {
+        List<LyricsLine.Syllable> units = List.of(unit("許", 1000, 1400), unit("さ", 1400, 1600),
+                unit("れ", 1600, 1800), unit("る", 1800, 2200));
+        return new LyricsLine(1000, 2200, "許される", units, "", "vocal", Collections.emptyList(),
+                pronunciation, translation, "");
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Proportional split keeps every sound, in order, on the singing units.
+        List<String> spread = PronunciationFirst.distribute(List.of("許", "さ", "れ", "る"), "유루사레루");
+        check(spread.size() == 4 && String.join("", spread).equals("유루사레루"), "proportional split keeps the reading: " + spread);
+        for (String part : spread) check(!part.isEmpty(), "every sung unit receives a sound: " + spread);
+        List<String> spaced = PronunciationFirst.distribute(List.of("I ", "love ", "you"), "아이 러브 유");
+        check(String.join("", spaced).equals("아이 러브 유"), "spaces stay in the split: " + spaced);
+        check(PronunciationFirst.distribute(List.of(" ", "!"), "아").equals(List.of("", "아")),
+                "an otherwise unplaceable reading goes to the first visible unit");
+        check(PronunciationFirst.normalizeParts(List.of("a ", " b", "c "), 3).equals(List.of("a ", "b", "c")),
+                "boundary spaces are not doubled and the line is trimmed");
+
+        // Line-synced rows only swap values.
+        LyricsLine synced = new LyricsLine(1000, 2000, "空", Collections.emptyList(), "", "vocal",
+                Collections.emptyList(), "sora", "하늘", "");
+        LyricsLine swapped = PronunciationFirst.swapLine(synced, 0, null);
+        check(swapped.text.equals("sora") && swapped.pronunciationText.equals("空"), "line-synced row swaps values");
+        check(swapped.translationText.equals("하늘") && swapped.startTimeMs == 1000 && swapped.endTimeMs == 2000,
+                "translation and timing stay");
+        LyricsLine bare = new LyricsLine(0, 1000, "(intro)", Collections.emptyList());
+        check(PronunciationFirst.swapLine(bare, 0, null) == bare, "rows without pronunciation are untouched");
+
+        // Karaoke rows keep unit timing and use the AI split only when it fits.
+        LyricsResult karaoke = new LyricsResult(List.of(karaokeLine("유루사레루", "용서받다")), "fixture", "", true);
+        LyricsLine proportional = PronunciationFirst.apply(karaoke, null).lines.get(0);
+        check(proportional.text.equals("유루사레루") && proportional.pronunciationText.equals("許される"), "karaoke row swaps values");
+        check(proportional.syllables.size() == 4 && proportional.syllables.get(3).startTimeMs == 1800
+                && proportional.syllables.get(3).endTimeMs == 2200, "unit timing stays");
+        Map<String, List<String>> timed = Map.of("0:line", List.of("유루", "사", "레", "루"));
+        LyricsLine aligned = PronunciationFirst.apply(karaoke, timed).lines.get(0);
+        check(aligned.syllables.get(0).text.equals("유루") && aligned.syllables.get(1).text.equals("사"), "AI split is used");
+        LyricsLine mismatched = PronunciationFirst.apply(karaoke, Map.of("0:line", List.of("유루사레루"))).lines.get(0);
+        check(mismatched.syllables.get(0).text.equals(proportional.syllables.get(0).text),
+                "a split with the wrong slot count falls back to the proportional split");
+
+        // A single timed voice part carries the line reading; the row keeps its original below the part.
+        LyricsLine.VocalPart lead = new LyricsLine.VocalPart("lead", "lead", "", "vocal", "許される",
+                karaokeLine("", "").syllables);
+        LyricsLine parted = new LyricsLine(1000, 2200, "許される", Collections.emptyList(), "", "vocal",
+                List.of(lead), "유루사레루", "", "");
+        List<PronunciationFirst.Group> groups = PronunciationFirst.unitGroups(parted);
+        check(groups.size() == 1 && groups.get(0).key.equals("part:0") && groups.get(0).pronunciation.equals("유루사레루"),
+                "single voice part uses the line reading");
+        LyricsLine partSwapped = PronunciationFirst.swapLine(parted, 0, null);
+        check(partSwapped.vocalParts.get(0).text.equals("유루사레루") && partSwapped.pronunciationText.isEmpty(),
+                "voice part shows the reading and the line does not repeat the original");
+
+        // AI items, prompt and response parsing.
+        List<PronunciationFirst.Item> items = PronunciationFirst.timingItems(karaoke);
+        check(items.size() == 1 && items.get(0).key.equals("0:line") && items.get(0).units.size() == 4, "one timing item");
+        String prompt = PronunciationFirst.prompt(items, PronunciationFirst.lyricsText(karaoke), "ja");
+        check(prompt.contains("\"n\":4") && prompt.contains("\"r\":\"유루사레루\"") && prompt.contains("許される"),
+                "prompt carries unit count, reading and context");
+        Map<String, List<String>> parsed = PronunciationFirst.parse(
+                "```json\n{\"l\":[{\"i\":0,\"p\":[\"유루\",\"사\",\"레\",\"루\"]}]}\n```", items);
+        check(parsed.get("0:line").equals(List.of("유루", "사", "레", "루")), "fenced response is parsed");
+        check(PronunciationFirst.parse("{\"l\":[{\"i\":0,\"p\":[\"유루사레루\"]}]}", items).isEmpty(),
+                "slot-count mismatch is dropped");
+        check(PronunciationFirst.parse("not json", items).isEmpty(), "malformed response leaves nothing");
+        check(PronunciationFirst.fromJson(PronunciationFirst.toJson(parsed)).equals(parsed), "cache round trip");
+        List<PronunciationFirst.Item> many = new ArrayList<>();
+        for (int index = 0; index < 30; index++) many.add(new PronunciationFirst.Item(index + ":line", "a", items.get(0).units));
+        check(PronunciationFirst.chunks(many).size() == 2 && PronunciationFirst.chunks(many, 8, 99).size() == 15,
+                "chunks respect item and unit caps");
+
+        // lrc.red late word timing: the reading carries over, the signature changes, a stale split is not used.
+        LyricsResult lineTimed = new LyricsResult(List.of(new LyricsLine(1000, 2200, "許される", Collections.emptyList(),
+                "", "vocal", Collections.emptyList(), "유루사레루", "용서받다", "")), "lrc.red", "", false);
+        check(PronunciationFirst.timingItems(lineTimed).isEmpty(), "line timing asks AI for nothing");
+        LyricsLine shownBefore = PronunciationFirst.apply(lineTimed, null).lines.get(0);
+        check(shownBefore.text.equals("유루사레루") && shownBefore.syllables.isEmpty(), "line-timed swap before the upgrade");
+        LyricsResult wordTimed = new LyricsResult(List.of(new LyricsLine(1000, 2200, "許される",
+                karaokeLine("", "").syllables)), "lrc.red karaoke", "", true);
+        LyricsResult upgraded = LyricsTimingUpgrade.retime(lineTimed, wordTimed);
+        check(upgraded.karaoke && upgraded.lines.get(0).pronunciationText.equals("유루사레루")
+                && upgraded.lines.get(0).translationText.equals("용서받다"), "upgrade keeps reading and translation");
+        List<PronunciationFirst.Item> upgradedItems = PronunciationFirst.timingItems(upgraded);
+        check(upgradedItems.size() == 1, "upgraded lyrics ask AI for unit timing");
+        String upgradedSignature = PronunciationFirst.signature(upgradedItems, "ko", "ja");
+        LyricsResult retimedAgain = new LyricsResult(List.of(new LyricsLine(1000, 2200, "許される", List.of(
+                unit("許さ", 1000, 1600), unit("れる", 1600, 2200)), "", "vocal", Collections.emptyList(),
+                "유루사레루", "", "")), "lrc.red karaoke", "", true);
+        check(!upgradedSignature.equals(PronunciationFirst.signature(PronunciationFirst.timingItems(retimedAgain), "ko", "ja")),
+                "different unit timing gives a different signature");
+        check(!upgradedSignature.equals(PronunciationFirst.signature(upgradedItems, "en", "ja")),
+                "a different reading language gives a different signature");
+        LyricsLine upgradedShown = PronunciationFirst.apply(upgraded, null).lines.get(0);
+        check(upgradedShown.syllables.size() == 4 && upgradedShown.text.equals("유루사레루")
+                && upgradedShown.pronunciationText.equals("許される"), "upgraded lyrics show timed reading units");
+        LyricsLine staleSplit = PronunciationFirst.apply(retimedAgain, Map.of("0:line", List.of("유루", "사", "레", "루"))).lines.get(0);
+        check(staleSplit.syllables.size() == 2 && String.join("", List.of(staleSplit.syllables.get(0).text,
+                staleSplit.syllables.get(1).text)).equals("유루사레루"), "a split for other units is not applied");
+
+        System.out.println("PronunciationFirstRegression passed " + checks + " checks");
+    }
+}

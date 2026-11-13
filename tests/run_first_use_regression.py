@@ -19,7 +19,8 @@ def declaration(source, signature):
 
 
 source = (SHARED / "BaseLyricsActivity.java").read_text()
-touch_dispatch = declaration(source, "public boolean dispatchTouchEvent(MotionEvent event)")
+touch_dispatch = "\n".join(declaration(source, signature) for signature in (
+    "public boolean dispatchTouchEvent(MotionEvent event)", "private boolean dispatchLyricsTouchEvent(MotionEvent event)"))
 methods = "\n".join(declaration(source, signature) for signature in (
     "private void rememberSpotifySetupDraft()", "private void updateOnboardingActionState()",
     "private void handleOnboardingNextAction()", "private String onboardingNextButtonText()",
@@ -46,7 +47,11 @@ public final class FirstUseRegression {
         int visibility = VISIBLE;
         int getVisibility() { return visibility; }
     }
-    static class MotionEvent {}
+    static class MotionEvent {
+        static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2;
+        int getActionMasked() { return ACTION_DOWN; }
+    }
+    static class PronunciationFirstButton { int reveals; void revealTemporarily() { reveals++; } }
     static class NativeDispatch {
         int dispatched;
         public boolean dispatchTouchEvent(MotionEvent event) { dispatched++; return false; }
@@ -54,6 +59,7 @@ public final class FirstUseRegression {
     static class TouchFlow extends NativeDispatch {
         boolean vinylModeVisible;
         View spotifySetupPanel;
+        PronunciationFirstButton pronunciationFirstButton;
         int playerGestures;
         boolean handlePictureInPicturePinch(MotionEvent event) { playerGestures++; return false; }
         // Reproduce a hidden landscape player control under the onboarding button.

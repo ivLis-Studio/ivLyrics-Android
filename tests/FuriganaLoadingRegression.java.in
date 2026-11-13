@@ -146,6 +146,7 @@ public final class FuriganaLoadingRegression {
     private boolean lyricsCulturalAnnotationsLoading, metadataTranslationLoading;
     private boolean lyricsSupplementTranslationLoading, lyricsSupplementPronunciationLoading, lyricsSupplementFuriganaLoading;
     private boolean lyricsWordSyncLoading, lyricsWordSyncFailed;
+    private boolean pronunciationSyncLoading, pronunciationSyncFailed;
     private boolean lyricsLookupInFlight;
     private LyricsResult currentLyricsResult;
     private String ui(String key) { return key; }

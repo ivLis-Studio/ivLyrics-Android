@@ -523,6 +523,21 @@ public class BaseLyricsActivity extends Activity implements
     // stays the identity of supplement requests started before the timing arrived.
     private boolean lyricsWordSyncLoading;
     private boolean lyricsWordSyncFailed;
+    // Pronunciation-first: AI unit timing for the displayed pronunciation.
+    private PronunciationFirstButton pronunciationFirstButton;
+    private Map<String, List<String>> pronunciationTimedParts = Collections.emptyMap();
+    private String pronunciationTimedSignature = "";
+    private String pronunciationTimingRequestKey = "";
+    private String pronunciationTimingRequestSignature = "";
+    private LyricsResult pronunciationSignatureSource;
+    private String pronunciationSignature = "";
+    private boolean pronunciationSyncLoading;
+    private boolean pronunciationSyncFailed;
+    private final Runnable hidePronunciationSyncFailure = () -> {
+        pronunciationSyncFailed = false;
+        refreshWordSyncIndicator();
+    };
+    private final Runnable requestPronunciationTimingRunnable = this::requestPronunciationTiming;
     private LyricsResult timingUpgradeSourceBase;
     private final Runnable hideWordSyncFailure = () -> {
         lyricsWordSyncFailed = false;
@@ -1067,6 +1082,19 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        // Dispatch first so a touch on the hidden control only reveals it, like the vocal control.
+        boolean handled = dispatchLyricsTouchEvent(event);
+        if (pronunciationFirstButton != null && event != null) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE
+                    || action == MotionEvent.ACTION_UP) {
+                pronunciationFirstButton.revealTemporarily();
+            }
+        }
+        return handled;
+    }
+
+    private boolean dispatchLyricsTouchEvent(MotionEvent event) {
         // First-use controls own their gestures even where hidden player controls overlap.
         if (vinylModeVisible || (spotifySetupPanel != null && spotifySetupPanel.getVisibility() == View.VISIBLE)) {
             return super.dispatchTouchEvent(event);
@@ -1966,6 +1994,15 @@ public class BaseLyricsActivity extends Activity implements
         lyricsWordSyncLoading = false;
         lyricsWordSyncFailed = false;
         timingUpgradeSourceBase = null;
+        // Generated pronunciation timing belongs to the replaced lyrics as well.
+        handler.removeCallbacks(hidePronunciationSyncFailure);
+        handler.removeCallbacks(requestPronunciationTimingRunnable);
+        pronunciationTimedParts = Collections.emptyMap();
+        pronunciationTimedSignature = "";
+        pronunciationTimingRequestKey = "";
+        pronunciationTimingRequestSignature = "";
+        pronunciationSyncLoading = false;
+        pronunciationSyncFailed = false;
         refreshWordSyncIndicator();
     }
 
@@ -2413,6 +2450,128 @@ public class BaseLyricsActivity extends Activity implements
         setCulturalAnnotationsLoading(false);
         appendLog("ai cultural annotations failed: " + message);
     }
+
+    // ------------------------------------------------------------------
+    // Pronunciation-first mode
+    // ------------------------------------------------------------------
+
+    private boolean pronunciationShownForCurrentSource() {
+        if (aiLyricsSettings == null) return false;
+        AiLyricsSettings.Snapshot snapshot = aiLyricsSettings.snapshot();
+        return snapshot.enabled() && snapshot.ruleForSource(effectiveSelectedSourceLang()).pronunciationEnabled;
+    }
+
+    private boolean pronunciationFirstActive() {
+        return aiLyricsSettings != null
+                && aiLyricsSettings.pronunciationFirstEnabled()
+                && pronunciationShownForCurrentSource();
+    }
+
+    /** Cached pronunciation signature of the given result (karaoke units and their readings). */
+    private String pronunciationSignatureOf(LyricsResult result) {
+        if (result != pronunciationSignatureSource) {
+            pronunciationSignatureSource = result;
+            List<PronunciationFirst.Item> items = PronunciationFirst.timingItems(result);
+            if (items.isEmpty() || aiLyricsSettings == null) {
+                pronunciationSignature = "";
+            } else {
+                String source = effectiveSelectedSourceLang();
+                String target = aiLyricsSettings.snapshot().resolveTargetLanguage(source);
+                pronunciationSignature = PronunciationFirst.signature(items, target, source);
+            }
+        }
+        return pronunciationSignature;
+    }
+
+    private LyricsResult pronunciationFirstDisplay(LyricsResult result) {
+        if (result == null || result.lines.isEmpty() || !pronunciationFirstActive()) return result;
+        String signature = result.karaoke ? pronunciationSignatureOf(result) : "";
+        Map<String, List<String>> timed = !signature.isEmpty() && signature.equals(pronunciationTimedSignature)
+                ? pronunciationTimedParts
+                : null;
+        return PronunciationFirst.apply(result, timed);
+    }
+
+    private void updatePronunciationFirstButton(LyricsResult result) {
+        if (pronunciationFirstButton == null || aiLyricsSettings == null) return;
+        boolean available = result != null && !result.lines.isEmpty()
+                && pronunciationShownForCurrentSource() && result.hasSupplement(true);
+        pronunciationFirstButton.setDescriptions(ui("pronunciation_first.state_on"), ui("pronunciation_first.state_off"));
+        pronunciationFirstButton.setState(available, aiLyricsSettings.pronunciationFirstEnabled());
+    }
+
+    private void togglePronunciationFirst(boolean enabled) {
+        if (aiLyricsSettings == null) return;
+        aiLyricsSettings.setPronunciationFirstEnabled(enabled);
+        if (!enabled) {
+            handler.removeCallbacks(requestPronunciationTimingRunnable);
+            pronunciationSyncLoading = false;
+            refreshWordSyncIndicator();
+        }
+        setLyricsResultOnViews(currentLyricsResult);
+        updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
+    }
+
+    /** Asks AI for unit timing once the pronunciation of a karaoke result has settled. */
+    private void schedulePronunciationTiming() {
+        handler.removeCallbacks(requestPronunciationTimingRunnable);
+        if (!pronunciationFirstActive() || currentLyricsResult == null || !currentLyricsResult.karaoke) return;
+        handler.postDelayed(requestPronunciationTimingRunnable, 700L);
+    }
+
+    private void requestPronunciationTiming() {
+        LyricsResult result = currentLyricsResult;
+        if (!pronunciationFirstActive() || result == null || !result.karaoke || currentTrack == null
+                || aiLyricsRepository == null || lyricsSupplementPronunciationLoading) {
+            return;
+        }
+        String signature = pronunciationSignatureOf(result);
+        if (signature.isEmpty() || signature.equals(pronunciationTimedSignature)
+                || signature.equals(pronunciationTimingRequestSignature)) {
+            return;
+        }
+        pronunciationTimingRequestSignature = signature;
+        pronunciationTimingRequestKey = aiLyricsRepository.loadTimedPronunciation(
+                currentTrack,
+                result,
+                aiLyricsSettings.snapshot(),
+                effectiveSelectedSourceLang(),
+                this
+        );
+    }
+
+    @Override
+    public void onTimedPronunciationStarted(String trackKey, String requestKey) {
+        if (!trackKey.equals(currentLyricsKey) || !requestKey.equals(pronunciationTimingRequestKey)) return;
+        handler.removeCallbacks(hidePronunciationSyncFailure);
+        pronunciationSyncFailed = false;
+        pronunciationSyncLoading = true;
+        refreshWordSyncIndicator();
+    }
+
+    @Override
+    public void onTimedPronunciationLoaded(String trackKey, String requestKey, Map<String, List<String>> parts) {
+        if (!trackKey.equals(currentLyricsKey) || !requestKey.equals(pronunciationTimingRequestKey)) return;
+        pronunciationSyncLoading = false;
+        pronunciationTimedParts = parts == null ? Collections.emptyMap() : parts;
+        pronunciationTimedSignature = pronunciationTimingRequestSignature;
+        refreshWordSyncIndicator();
+        setLyricsResultOnViews(currentLyricsResult);
+        appendLog("pronunciation timing applied: items=" + pronunciationTimedParts.size());
+    }
+
+    @Override
+    public void onTimedPronunciationError(String trackKey, String requestKey, String message) {
+        if (!trackKey.equals(currentLyricsKey) || !requestKey.equals(pronunciationTimingRequestKey)) return;
+        pronunciationSyncLoading = false;
+        // Proportional timing stays on screen; say that the AI timing failed.
+        pronunciationSyncFailed = true;
+        handler.removeCallbacks(hidePronunciationSyncFailure);
+        handler.postDelayed(hidePronunciationSyncFailure, 4000L);
+        refreshWordSyncIndicator();
+        appendLog("pronunciation timing failed: " + message);
+    }
+
 
     private View buildContentView() {
         // Settings are built first and populate credential fields; capture the old form before that.
@@ -3940,23 +4099,28 @@ public class BaseLyricsActivity extends Activity implements
         attributionParams.gravity = Gravity.CENTER_HORIZONTAL;
         attributionParams.topMargin = dp(4);
         View footerAccessory = IvLyricsBridge.isEmbedded(this) ? createLyricsFooterAccessory() : null;
-        if (footerAccessory == null) {
-            content.addView(lyricsProviderAttributionView.container, attributionParams);
-        } else {
-            FrameLayout footer = new FrameLayout(this);
-            LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            footerParams.topMargin = dp(4);
-            content.addView(footer, footerParams);
-            FrameLayout.LayoutParams creditParams = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-            creditParams.leftMargin = dp(52);
-            creditParams.rightMargin = dp(52);
-            footer.addView(lyricsProviderAttributionView.container, creditParams);
+        // Attribution in the middle, the pronunciation-first toggle on the left and an optional
+        // host control (the Spotify module's vocal control) on the right.
+        FrameLayout footer = new FrameLayout(this);
+        LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        footerParams.topMargin = attributionParams.topMargin;
+        content.addView(footer, footerParams);
+        FrameLayout.LayoutParams creditParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        creditParams.leftMargin = dp(52);
+        creditParams.rightMargin = dp(52);
+        footer.addView(lyricsProviderAttributionView.container, creditParams);
+        pronunciationFirstButton = new PronunciationFirstButton(this);
+        pronunciationFirstButton.setListener(this::togglePronunciationFirst);
+        footer.addView(pronunciationFirstButton, new FrameLayout.LayoutParams(
+                dp(44), dp(44), Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        if (footerAccessory != null) {
             footer.addView(footerAccessory, new FrameLayout.LayoutParams(
                     dp(44), dp(44), Gravity.RIGHT | Gravity.CENTER_VERTICAL));
         }
         updateLyricsProviderAttribution(currentLyricsResult);
+        updatePronunciationFirstButton(currentLyricsResult);
 
         attachPageSwipe(header, false, false);
         return page;
@@ -15066,6 +15230,12 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsWordSyncLoading) {
             return ui("loading.word_sync");
         }
+        if (pronunciationSyncLoading) {
+            return ui("loading.pronunciation_sync");
+        }
+        if (pronunciationSyncFailed) {
+            return ui("status.pronunciation_sync_failed");
+        }
         if (lyricsWordSyncFailed) {
             return ui("status.word_sync_failed");
         }
@@ -15074,8 +15244,9 @@ public class BaseLyricsActivity extends Activity implements
 
     /** The indicator reports a word timing failure only when nothing else is loading. */
     private boolean showingWordSyncFailure() {
-        return lyricsWordSyncFailed
+        return (lyricsWordSyncFailed || pronunciationSyncFailed)
                 && !lyricsWordSyncLoading
+                && !pronunciationSyncLoading
                 && !lyricsCulturalAnnotationsLoading
                 && !metadataTranslationLoading
                 && !lyricsSupplementTranslationLoading
@@ -15111,7 +15282,8 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void updateLyricsSupplementLoadingIndicator(boolean visible) {
-        visible = visible || lyricsWordSyncLoading || lyricsWordSyncFailed;
+        visible = visible || lyricsWordSyncLoading || lyricsWordSyncFailed
+                || pronunciationSyncLoading || pronunciationSyncFailed;
         updateLyricsRegenerateActions();
         setLoadingIndicatorVisible(lyricsSupplementLoadingIndicator, visible, true);
         setLoadingIndicatorVisible(landscapeLyricsSupplementLoadingIndicator, visible, true);
@@ -15167,25 +15339,29 @@ public class BaseLyricsActivity extends Activity implements
         if (IvLyricsBridge.isEmbedded(this)) {
             IvLyricsBridge.publishLyrics(currentTrack, result, effectiveSelectedSourceLang());
         }
+        // Pronunciation-first swaps only what these views show.
+        LyricsResult display = pronunciationFirstDisplay(result);
+        updatePronunciationFirstButton(result);
+        schedulePronunciationTiming();
         if (lyricsView != null) {
             configureLyricsViewUiText(lyricsView);
             lyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             lyricsView.setLoadingState(lyricsLookupInFlight);
-            lyricsView.setResult(result);
+            lyricsView.setResult(display);
             applyCulturalAnnotationsToView(lyricsView);
         }
         if (landscapeLyricsView != null) {
             configureLyricsViewUiText(landscapeLyricsView);
             landscapeLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             landscapeLyricsView.setLoadingState(lyricsLookupInFlight);
-            landscapeLyricsView.setResult(result);
+            landscapeLyricsView.setResult(display);
             applyCulturalAnnotationsToView(landscapeLyricsView);
         }
         if (pictureInPictureLyricsView != null) {
             configureLyricsViewUiText(pictureInPictureLyricsView);
             pictureInPictureLyricsView.setLyricsSegmentationLocale(effectiveSelectedSourceLang());
             pictureInPictureLyricsView.setLoadingState(lyricsLookupInFlight);
-            pictureInPictureLyricsView.setResult(result);
+            pictureInPictureLyricsView.setResult(display);
         }
         updateLyricsProviderAttribution(result);
         updateLyricsContributorCredit(result);

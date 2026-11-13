@@ -192,6 +192,13 @@ final class LyricsResult {
                 pronunciationProviderLabel, translationProviderLabel);
     }
 
+    /** The same result with display lines replaced, for presentation-only transforms. */
+    LyricsResult withLines(List<LyricsLine> nextLines) {
+        return new LyricsResult(nextLines, providerLabel, detail, karaoke, isrc, spotifyTrackId,
+                contributors, providerId, selectionPolicyKey, syncType, syncPoints,
+                pronunciationProviderLabel, translationProviderLabel, loading);
+    }
+
     boolean hasSupplement(boolean pronunciation) {
         for (LyricsLine line : lines) {
             if (!(pronunciation ? line.pronunciationText : line.translationText).trim().isEmpty()) return true;
