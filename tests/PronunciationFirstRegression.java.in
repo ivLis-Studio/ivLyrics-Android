@@ -166,6 +166,51 @@ public final class PronunciationFirstRegression {
                 && lateFill.lines.get(upgraded.lines.get(0)).get(3).startTimeMs == 1800,
                 "late lrc.red word timing gives the pronunciation row units");
 
+        // Pronunciation by sung unit (the same split as the desktop app's PronunciationSlots.js).
+        check(unitTexts("5000マイル走って 息を").equals(List.of("5000", "マ", "イ", "ル", "走", "っ", "て", "_息", "を")),
+                "CJK characters and digit words: " + unitTexts("5000マイル走って 息を"));
+        check(unitTexts("Let's go 開けて？").equals(List.of("Let's", "_go", "_開", "け", "て？")), "words, apostrophes, punctuation");
+        check(unitTexts("사랑해 너를").equals(List.of("사", "랑", "해", "_너", "를")), "Hangul syllables keep word gaps");
+        check(unitTexts("「惑星」").equals(List.of("「惑", "星」")) && unitTexts("a ! b").equals(List.of("a", "_!", "_b")),
+                "punctuation joins or stands alone");
+        check(unitTexts("　夢　").equals(List.of("夢")), "ideographic spaces are spaces");
+        check(PronunciationSlots.join(PronunciationSlots.splitUnits("夢ならば どれほど"),
+                List.of("yume ", "na", "ra", "ba", "do", "re", "ho", "do")).equals("yume naraba dorehodo"), "joined slots");
+        check(PronunciationSlots.join(PronunciationSlots.splitUnits("사랑해 너를"), List.of("sa", "rang", "hae", "neo", "reul"))
+                .equals("saranghae neoreul"), "original spaces return");
+        List<String> derivedParts = PronunciationSlots.deriveSyllableParts(List.of("夢", "なら", "ば ", "どれ", "ほど"),
+                List.of("yume ", "na", "ra", "ba", "do", "re", "ho", "do"));
+        check(List.of("yume ", "nara", "ba ", "dore", "hodo").equals(derivedParts), "syllables take their units' slots: " + derivedParts);
+        check(List.of("헬", "로 ", "월드").equals(PronunciationSlots.deriveSyllableParts(List.of("hel", "lo ", "world"), List.of("헬로", "월드"))),
+                "a word sung over two syllables is spread over them");
+        check(PronunciationSlots.deriveSyllableParts(List.of("other"), List.of("a", "b")) == null, "other text has other units");
+        List<PronunciationSlots.Item> slotItems = PronunciationSlots.items(List.of("夢ならば", "♪", "今日も"));
+        check(slotItems.size() == 2 && slotItems.get(1).index == 2 && slotItems.get(1).units.equals(List.of("今", "日", "も")),
+                "lines with sound are sent");
+        String slotPrompt = PronunciationSlots.prompt(slotItems, "ko", "ja", "translation",
+                "Use Korean Hangul syllables only.", "Korean Hangul", "Korean speakers");
+        check(slotPrompt.contains("{\"i\":2,\"n\":3,\"u\":[\"今\",\"日\",\"も\"]}") && slotPrompt.contains("p must contain exactly n strings")
+                && slotPrompt.contains("유메"), "slot prompt");
+        Map<Integer, List<String>> slotParsed = PronunciationSlots.parse(
+                "{\"l\":[{\"i\":0,\"p\":[\"yume\",\"na\",\"ra\",\"ba\"]},{\"i\":2,\"p\":[\"kyou\"]},{\"i\":7,\"p\":[\"x\"]}]}",
+                slotItems, "latin");
+        check(slotParsed.keySet().equals(Set.of(0)) && slotParsed.get(0).equals(List.of("yume", "na", "ra", "ba")), "exact slots only");
+        check(PronunciationSlots.parse("{\"l\":[{\"i\":0,\"p\":[\"유메\",\"나\",\"라\",\"바\"]}]}", slotItems, "latin").isEmpty(),
+                "wrong writing system for Latin notation");
+        check(!PronunciationSlots.parse("{\"l\":[{\"i\":0,\"p\":[\"유메\",\"나\",\"라\",\"바\"]}]}", slotItems, "translation").isEmpty(),
+                "target-language notation is not script-checked");
+        Map<String, List<String>> stored = PronunciationSlots.stored(List.of("夢ならば", "♪", " 今日も "),
+                Map.of(0, List.of("yume", "na", "ra", "ba"), 2, List.of("kyou ", "", "mo")));
+        check(stored.size() == 2 && stored.get("今日も").equals(List.of("kyou ", "", "mo")), "stored by line text");
+        check(stored.equals(PronunciationSlots.fromJson(PronunciationSlots.toJson(stored))), "stored slots round-trip");
+        check(PronunciationSlots.fromJson("{\"v\":99,\"lines\":{}}") == null, "another version is not read");
+
         System.out.println("PronunciationFirstRegression passed " + checks + " checks");
+    }
+
+    static List<String> unitTexts(String text) {
+        List<String> texts = new ArrayList<>();
+        for (PronunciationSlots.Unit unit : PronunciationSlots.splitUnits(text)) texts.add((unit.gapBefore ? "_" : "") + unit.text);
+        return texts;
     }
 }

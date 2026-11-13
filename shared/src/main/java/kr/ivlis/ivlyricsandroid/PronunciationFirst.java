@@ -17,9 +17,10 @@ import java.util.Map;
  * Pronunciation-first display mode.
  *
  * <p>The lyric rows keep their appearance and only swap values: the pronunciation is shown in the
- * original row and the original in the pronunciation row. Karaoke units keep their timing; the
- * pronunciation is split across them by AI (the same request as the desktop app) or, until that
- * arrives, in proportion to each unit's length.</p>
+ * original row and the original in the pronunciation row. Karaoke units keep their timing. Karaoke
+ * songs get their pronunciation made per sung unit ({@link PronunciationSlots}), so the part sung
+ * during each unit is derived locally; lines without those slots are split by AI (the same request
+ * as the desktop app) or, until that arrives, in proportion to each unit's length.</p>
  */
 final class PronunciationFirst {
     static final String PROMPT_VERSION = "timed-pronunciation-v1";

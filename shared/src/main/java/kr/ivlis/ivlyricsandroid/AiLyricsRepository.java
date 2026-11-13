@@ -71,12 +71,16 @@ final class AiLyricsRepository {
     private static final int OPENAI_MAX_COMPLETION_TOKENS = 1 << 1;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
+    /** Parallel chunks of the pronunciation-by-unit request; never waits on {@link #executor}. */
+    private final ExecutorService slotExecutor = Executors.newFixedThreadPool(3);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, LyricsResult> cache = newBoundedCache(MAX_LYRICS_MEMORY_ENTRIES);
     private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
     private final Map<String, TmiInfo> tmiCache = newBoundedCache(MAX_TMI_CACHE_ENTRIES);
     private final Map<String, List<CulturalAnnotation>> culturalAnnotationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
     private final Map<String, Map<String, List<String>>> timedPronunciationCache = newBoundedCache(MAX_CULTURAL_CACHE_ENTRIES);
+    /** Unit pronunciation of karaoke songs by track key, then line text (PronunciationSlots). */
+    private final Map<String, Map<String, List<String>>> pronunciationSlotsByTrack = newBoundedCache(24);
     private final Map<String, Integer> researchModelLimitCache = newBoundedCache(MAX_RESEARCH_MODEL_LIMIT_ENTRIES);
     private final Map<String, Integer> openAiParameterAdjustmentCache = newBoundedCache(MAX_OPENAI_PARAMETER_ADJUSTMENT_ENTRIES);
     private final LyricsDiskCache diskCache;
@@ -84,6 +88,8 @@ final class AiLyricsRepository {
     private final SharedPreferences tmiPrefs;
     private final SharedPreferences culturalAnnotationPrefs;
     private final SharedPreferences timedPronunciationPrefs;
+    /** The same slots on disk, stored under their pronunciation task cache key. */
+    private final SharedPreferences pronunciationSlotsPrefs;
     private final Context localAiContext;
 
     AiLyricsRepository() {
@@ -92,6 +98,7 @@ final class AiLyricsRepository {
         tmiPrefs = null;
         culturalAnnotationPrefs = null;
         timedPronunciationPrefs = null;
+        pronunciationSlotsPrefs = null;
         localAiContext = null;
     }
 
@@ -111,6 +118,9 @@ final class AiLyricsRepository {
         timedPronunciationPrefs = context == null
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_timed_pronunciation", Context.MODE_PRIVATE);
+        pronunciationSlotsPrefs = context == null
+                ? null
+                : context.getApplicationContext().getSharedPreferences("ai_pronunciation_slots", Context.MODE_PRIVATE);
         localAiContext = context == null ? null : context.getApplicationContext();
     }
 
@@ -926,6 +936,19 @@ final class AiLyricsRepository {
                 + "|prompt=" + SUPPLEMENT_PROMPT_VERSION
                 + "|" + settings.cacheKey()
                 + "|text=" + sha256(textPayload);
+        String pronunciationCacheKey = supplementTaskCacheKey(
+                trackKey,
+                detectedSourceLang,
+                sourceLang,
+                settings,
+                textPayload,
+                SUPPLEMENT_TASK_PRONUNCIATION,
+                pronunciationLang
+        );
+        // Karaoke pronunciation made per sung unit comes back with its cached lines.
+        if (baseResult.karaoke && rule.pronunciationEnabled) {
+            restorePronunciationSlots(trackKey, pronunciationCacheKey);
+        }
         if (!bypassCache) {
             LyricsResult cached = cache.get(cacheKey);
             if (cached != null) {
@@ -977,15 +1000,6 @@ final class AiLyricsRepository {
             emitLog(trackKey, callback, "ai translation skipped: source language matches target (" + sourceLang + " -> " + targetLang + ")");
         }
         SupplementSession session = new SupplementSession(baseResult, requests, needsPronunciation, needsTranslation);
-        String pronunciationCacheKey = supplementTaskCacheKey(
-                trackKey,
-                detectedSourceLang,
-                sourceLang,
-                settings,
-                textPayload,
-                SUPPLEMENT_TASK_PRONUNCIATION,
-                pronunciationLang
-        );
         String translationCacheKey = supplementTaskCacheKey(
                 trackKey,
                 detectedSourceLang,
@@ -1668,11 +1682,21 @@ final class AiLyricsRepository {
         if (track == null || result == null || settings == null || callback == null) {
             return "";
         }
-        List<PronunciationFirst.Item> items = PronunciationFirst.timingItems(result);
-        if (items.isEmpty()) {
-            return "";
-        }
         String trackKey = track.stableKey();
+        // Lines whose pronunciation was made per sung unit need no AI timing.
+        Map<String, List<String>> derived = slotDerivedPronunciation(trackKey, result);
+        List<PronunciationFirst.Item> items = new ArrayList<>();
+        for (PronunciationFirst.Item item : PronunciationFirst.timingItems(result)) {
+            if (!derived.containsKey(item.key)) items.add(item);
+        }
+        if (items.isEmpty()) {
+            if (derived.isEmpty()) return "";
+            String requestKey = "pronunciation-slots|" + trackKey + "|" + sha256(new java.util.TreeMap<>(derived).toString());
+            Map<String, List<String>> immutable = Collections.unmodifiableMap(derived);
+            emitLog(trackKey, callback, "pronunciation timing from units: items=" + immutable.size());
+            mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, requestKey, immutable));
+            return requestKey;
+        }
         String source = sourceLang == null || sourceLang.trim().isEmpty() ? "auto" : sourceLang.trim();
         String targetLang = settings.resolveTargetLanguage(source);
         String cacheKey = "timed-pronunciation|" + trackKey + "|"
@@ -1683,12 +1707,17 @@ final class AiLyricsRepository {
         }
         if (cached != null) {
             timedPronunciationCache.put(cacheKey, cached);
-            Map<String, List<String>> hit = cached;
+            Map<String, List<String>> hit = withDerived(derived, cached);
             emitLog(trackKey, callback, "pronunciation timing cache hit: items=" + hit.size());
             mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, hit));
             return cacheKey;
         }
         if (!settings.hasApiKey() || !settings.hasModel()) {
+            if (!derived.isEmpty()) {
+                Map<String, List<String>> partial = withDerived(derived, Collections.emptyMap());
+                mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, partial));
+                return cacheKey;
+            }
             mainHandler.post(() -> callback.onTimedPronunciationError(
                     trackKey,
                     cacheKey,
@@ -1732,14 +1761,183 @@ final class AiLyricsRepository {
                 timedPronunciationCache.put(cacheKey, immutable);
                 putTimedPronunciationToPrefs(cacheKey, immutable);
                 emitLog(trackKey, callback, "pronunciation timing response: " + immutable.size() + "/" + items.size());
-                mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, immutable));
+                Map<String, List<String>> loaded = withDerived(derived, immutable);
+                mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, loaded));
             } catch (Exception error) {
                 String message = errorMessage(error);
                 emitLog(trackKey, callback, "pronunciation timing error: " + message);
+                if (!derived.isEmpty()) {
+                    // The lines made per unit keep their exact timing.
+                    Map<String, List<String>> partial = withDerived(derived, Collections.emptyMap());
+                    mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, partial));
+                    return;
+                }
                 mainHandler.post(() -> callback.onTimedPronunciationError(trackKey, cacheKey, message));
             }
         });
         return cacheKey;
+    }
+
+    private static Map<String, List<String>> withDerived(Map<String, List<String>> derived, Map<String, List<String>> aligned) {
+        if (derived.isEmpty()) return aligned;
+        Map<String, List<String>> merged = new HashMap<>(aligned);
+        merged.putAll(derived);
+        return Collections.unmodifiableMap(merged);
+    }
+
+    /**
+     * Unit pronunciation of the karaoke groups whose line has slots, when they still spell the
+     * pronunciation shown.
+     */
+    private Map<String, List<String>> slotDerivedPronunciation(String trackKey, LyricsResult result) {
+        Map<String, List<String>> known = result != null && result.karaoke ? pronunciationSlotsByTrack.get(trackKey) : null;
+        if (known == null || known.isEmpty()) return Collections.emptyMap();
+        Map<String, List<String>> derived = new HashMap<>();
+        for (int lineIndex = 0; lineIndex < result.lines.size(); lineIndex++) {
+            for (PronunciationFirst.Group group : PronunciationFirst.unitGroups(result.lines.get(lineIndex))) {
+                if (group.pronunciation.isEmpty()) continue;
+                List<String> texts = new ArrayList<>(group.syllables.size());
+                StringBuilder joined = new StringBuilder();
+                for (LyricsLine.Syllable syllable : group.syllables) {
+                    texts.add(syllable.text);
+                    joined.append(syllable.text);
+                }
+                List<String> parts = known.get(PronunciationSlots.normalizeLine(joined.toString()));
+                if (parts == null) continue;
+                List<String> split = PronunciationSlots.deriveSyllableParts(texts, parts);
+                if (split == null || PronunciationFirst.alignParts(split, group.pronunciation) == null) continue;
+                derived.put(lineIndex + ":" + group.key, Collections.unmodifiableList(split));
+            }
+        }
+        return derived;
+    }
+
+    /**
+     * Asks for the pronunciation of every request split over its sung units (the same request as
+     * the desktop app). Chunks run in parallel, with one smaller repair pass for lines whose slots
+     * did not match. Empty when no provider answered with exact slots.
+     */
+    private Map<Integer, List<String>> loadPronunciationSlots(
+            String trackKey,
+            AiLyricsSettings.Snapshot settings,
+            SupplementSession session,
+            List<SupplementRequest> requests,
+            String pronunciationLang,
+            String sourceLang,
+            SupplementPartialDispatcher partialDispatcher,
+            LogSink log,
+            Callback callback
+    ) throws InterruptedException {
+        List<String> texts = new ArrayList<>(requests.size());
+        for (SupplementRequest request : requests) texts.add(request.text);
+        List<PronunciationSlots.Item> items = PronunciationSlots.items(texts);
+        if (items.isEmpty()) return Collections.emptyMap();
+        AiLyricsSettings.Language langInfo = AiLyricsSettings.languageInfo(pronunciationLang);
+        String normalizedLang = AiLyricsSettings.normalizeLanguageCode(pronunciationLang);
+        String notation = AiLyricsSettings.normalizePronunciationNotation(settings.pronunciationNotation);
+        String scriptInstruction = phoneticScriptInstruction(normalizedLang, langInfo, notation, sourceLang);
+        String outputScript = pronunciationOutputScript(normalizedLang, langInfo, notation);
+        String audience = AiLyricsSettings.PRONUNCIATION_NOTATION_IPA.equals(notation)
+                ? "the original sung language"
+                : langInfo.name + " speakers";
+        for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            session.setProvider(true, providerSettings.provider.label);
+            reportSupplementProvider(trackKey, callback, true, providerSettings.provider.label);
+            log.write("ai pronunciation by unit: provider=" + providerSettings.provider.label + " / lines=" + items.size());
+            Map<Integer, List<String>> slots = new java.util.concurrent.ConcurrentHashMap<>();
+            Exception[] firstError = {null};
+            java.util.function.BiConsumer<List<List<PronunciationSlots.Item>>, Boolean> run = (chunks, repair) -> {
+                List<java.util.concurrent.Callable<Void>> calls = new ArrayList<>();
+                for (List<PronunciationSlots.Item> chunk : chunks) {
+                    calls.add(() -> {
+                        try {
+                            String base = PronunciationSlots.prompt(chunk, normalizedLang, sourceLang, notation,
+                                    scriptInstruction, outputScript, audience);
+                            String prompt = repair ? base + "\n\n" + PronunciationSlots.REPAIR_NOTE : base;
+                            String raw = withOpenAIConnections(providerSettings, null, connection -> callProviderRaw(prompt, connection));
+                            for (Map.Entry<Integer, List<String>> entry : PronunciationSlots.parse(raw, chunk, notation).entrySet()) {
+                                int index = entry.getKey();
+                                slots.put(index, entry.getValue());
+                                session.setPronunciationValue(index, PronunciationSlots.join(
+                                        PronunciationSlots.splitUnits(PronunciationSlots.normalizeLine(requests.get(index).text)),
+                                        entry.getValue()));
+                                partialDispatcher.request();
+                            }
+                        } catch (Exception error) {
+                            synchronized (firstError) {
+                                if (firstError[0] == null) firstError[0] = error;
+                            }
+                        }
+                        return null;
+                    });
+                }
+                try {
+                    slotExecutor.invokeAll(calls);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            };
+            run.accept(PronunciationSlots.chunks(items), false);
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            List<PronunciationSlots.Item> missing = new ArrayList<>();
+            for (PronunciationSlots.Item item : items) {
+                if (!slots.containsKey(item.index)) missing.add(item);
+            }
+            if (!missing.isEmpty() && !slots.isEmpty()) {
+                run.accept(PronunciationSlots.chunks(missing, 160, 8), true);
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            }
+            if (!slots.isEmpty()) {
+                log.write("ai pronunciation by unit response: " + slots.size() + "/" + items.size());
+                return new HashMap<>(slots);
+            }
+            log.write("ai pronunciation by unit failed: provider=" + providerSettings.provider.label
+                    + " / error=" + (firstError[0] == null ? "no usable lines" : errorMessage(firstError[0])));
+        }
+        return Collections.emptyMap();
+    }
+
+    private void storePronunciationSlots(String trackKey, String cacheKey, Map<String, List<String>> lines) {
+        if (lines == null || lines.isEmpty()) return;
+        rememberPronunciationSlots(trackKey, lines);
+        if (pronunciationSlotsPrefs == null) return;
+        try {
+            JSONObject object = new JSONObject();
+            object.put("cacheKey", cacheKey);
+            object.put("slots", new JSONObject(PronunciationSlots.toJson(lines)));
+            object.put("savedAtMs", System.currentTimeMillis());
+            putBoundedPreference(pronunciationSlotsPrefs, sha256(cacheKey), object.toString(), MAX_CULTURAL_CACHE_ENTRIES);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void restorePronunciationSlots(String trackKey, String cacheKey) {
+        if (pronunciationSlotsPrefs == null) return;
+        try {
+            String raw = cachedPreferenceValue(pronunciationSlotsPrefs, sha256(cacheKey));
+            if (raw.isEmpty()) return;
+            JSONObject object = new JSONObject(raw);
+            if (!cacheKey.equals(object.optString("cacheKey"))) return;
+            Map<String, List<String>> lines = PronunciationSlots.fromJson(object.getJSONObject("slots").toString());
+            if (lines == null) {
+                pronunciationSlotsPrefs.edit().remove(sha256(cacheKey)).apply();
+                return;
+            }
+            rememberPronunciationSlots(trackKey, lines);
+        } catch (Exception ignored) {
+            pronunciationSlotsPrefs.edit().remove(sha256(cacheKey)).apply();
+        }
+    }
+
+    private void rememberPronunciationSlots(String trackKey, Map<String, List<String>> lines) {
+        if (trackKey == null || lines == null || lines.isEmpty()) return;
+        synchronized (pronunciationSlotsByTrack) {
+            Map<String, List<String>> known = pronunciationSlotsByTrack.get(trackKey);
+            Map<String, List<String>> merged = known == null ? new HashMap<>() : new HashMap<>(known);
+            merged.putAll(lines);
+            pronunciationSlotsByTrack.put(trackKey, Collections.unmodifiableMap(merged));
+        }
     }
 
     private Map<String, List<String>> requestTimedPronunciation(
@@ -1858,6 +2056,10 @@ final class AiLyricsRepository {
         if (culturalAnnotationPrefs != null) {
             culturalAnnotationPrefs.edit().clear().apply();
         }
+        pronunciationSlotsByTrack.clear();
+        if (pronunciationSlotsPrefs != null) {
+            pronunciationSlotsPrefs.edit().clear().apply();
+        }
     }
 
     void clearTrackCache(String trackKey) {
@@ -1875,6 +2077,27 @@ final class AiLyricsRepository {
         clearMetadataPrefsForTrack(key);
         clearTmiPrefsForTrack(key);
         clearCulturalAnnotationPrefsForTrack(key);
+        pronunciationSlotsByTrack.remove(key);
+        clearPronunciationSlotPrefsForTrack(key);
+    }
+
+    private void clearPronunciationSlotPrefsForTrack(String trackKey) {
+        if (pronunciationSlotsPrefs == null) return;
+        String prefix = trackKey + "|";
+        SharedPreferences.Editor editor = null;
+        for (Map.Entry<String, ?> entry : pronunciationSlotsPrefs.getAll().entrySet()) {
+            if (!(entry.getValue() instanceof String)) continue;
+            try {
+                if (new JSONObject((String) entry.getValue()).optString("cacheKey", "").startsWith(prefix)) {
+                    if (editor == null) editor = pronunciationSlotsPrefs.edit();
+                    editor.remove(entry.getKey());
+                }
+            } catch (Exception ignored) {
+                if (editor == null) editor = pronunciationSlotsPrefs.edit();
+                editor.remove(entry.getKey());
+            }
+        }
+        if (editor != null) editor.apply();
     }
 
     void clearMemoryCache() {
@@ -1882,10 +2105,12 @@ final class AiLyricsRepository {
         metadataCache.clear();
         tmiCache.clear();
         culturalAnnotationCache.clear();
+        pronunciationSlotsByTrack.clear();
     }
 
     void shutdown() {
         executor.shutdownNow();
+        slotExecutor.shutdownNow();
     }
 
     private void loadSupplementTask(
@@ -1910,7 +2135,60 @@ final class AiLyricsRepository {
             boolean pronunciation = SUPPLEMENT_TASK_PRONUNCIATION.equals(task);
             List<String> values;
             String prompt;
-            if (pronunciation) {
+            // Karaoke songs: pronunciation split over the sung units of every line.
+            Map<Integer, List<String>> slots = pronunciation && session.baseResult.karaoke
+                    ? loadPronunciationSlots(trackKey, settings, session, requests, pronunciationLang, sourceLang,
+                            partialDispatcher, log, callback)
+                    : Collections.emptyMap();
+            if (pronunciation && !slots.isEmpty()) {
+                List<String> combined = new ArrayList<>(requests.size());
+                for (SupplementRequest request : requests) {
+                    combined.add(PronunciationSlots.hasSound(request.text) ? "" : PronunciationSlots.trimSpaces(request.text));
+                }
+                for (Map.Entry<Integer, List<String>> entry : slots.entrySet()) {
+                    String text = requests.get(entry.getKey()).text;
+                    combined.set(entry.getKey(), PronunciationSlots.join(
+                            PronunciationSlots.splitUnits(PronunciationSlots.normalizeLine(text)), entry.getValue()));
+                }
+                List<Integer> missing = new ArrayList<>();
+                for (int index = 0; index < requests.size(); index++) {
+                    if (!requests.get(index).text.trim().isEmpty() && combined.get(index).trim().isEmpty()) missing.add(index);
+                }
+                if (!missing.isEmpty()) {
+                    log.write("ai pronunciation by unit missing " + missing.size() + " lines; requesting them as lines");
+                    List<SupplementRequest> subset = new ArrayList<>(missing.size());
+                    for (int index : missing) subset.add(requests.get(index));
+                    String subsetPrompt = buildPhoneticPrompt(subset, pronunciationLang, sourceLang, settings.pronunciationNotation);
+                    List<String> lines = null;
+                    Exception lastError = null;
+                    for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
+                        try {
+                            String raw = withOpenAIConnections(providerSettings, null,
+                                    connection -> callProviderRaw(subsetPrompt, connection));
+                            lines = parseTaggedTextLines(raw, subset, SUPPLEMENT_TASK_PRONUNCIATION, log);
+                            break;
+                        } catch (Exception providerError) {
+                            lastError = providerError;
+                            log.write("ai pronunciation fallback: provider=" + providerSettings.provider.label
+                                    + " / error=" + errorMessage(providerError));
+                        }
+                    }
+                    if (lines == null) {
+                        throw lastError == null
+                                ? new IOException(AppI18n.t(settings.uiLang, "error.translation_providers_failed"))
+                                : lastError;
+                    }
+                    for (int position = 0; position < missing.size() && position < lines.size(); position++) {
+                        combined.set(missing.get(position), lines.get(position));
+                    }
+                }
+                values = combined;
+                List<String> texts = new ArrayList<>(requests.size());
+                for (SupplementRequest request : requests) texts.add(request.text);
+                storePronunciationSlots(trackKey, taskCacheKey, PronunciationSlots.stored(texts, slots));
+                log.write("ai pronunciation response: lines=" + values.size() + " / by unit=" + slots.size());
+                session.setPronunciation(values);
+            } else if (pronunciation) {
                 prompt = buildPhoneticPrompt(
                         requests,
                         pronunciationLang,
