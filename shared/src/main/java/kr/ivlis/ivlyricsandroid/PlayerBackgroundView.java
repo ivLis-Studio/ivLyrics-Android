@@ -167,8 +167,16 @@ public final class PlayerBackgroundView extends View {
 
         if (shouldAnimate(mode)) {
             removeCallbacks(animationTick);
-            postDelayed(animationTick, 33L);
+            postDelayed(animationTick, animationIntervalMs(mode));
         }
+    }
+
+    private long animationIntervalMs(String mode) {
+        // Only the slow, softened cover drift needs fewer samples. Keep the existing cadence
+        // for sharp artwork and for the moving gradient blobs (including the no-art fallback).
+        return AiLyricsSettings.BACKGROUND_MODE_GRADIENT.equals(mode)
+                && backgroundSettings.blur > 0 && blurredArtwork != null && !blurredArtwork.isRecycled()
+                ? 83L : 33L;
     }
 
     private void drawAlbumGradient(Canvas canvas, int width, int height, double seconds) {
@@ -205,7 +213,8 @@ public final class PlayerBackgroundView extends View {
                         + 0.05f * sin(seconds * 0.008 + phaseZ));
 
         long now = SystemClock.uptimeMillis();
-        long deltaMs = lastFrameMs == 0L ? 16L : Math.max(1L, Math.min(50L, now - lastFrameMs));
+        long maxDeltaMs = Math.max(50L, animationIntervalMs(backgroundSettings.mode) + 17L);
+        long deltaMs = lastFrameMs == 0L ? 16L : Math.max(1L, Math.min(maxDeltaMs, now - lastFrameMs));
         lastFrameMs = now;
         float follow = 1f - (float) Math.exp(-deltaMs / 840f);
         if (!motionInitialized) {
