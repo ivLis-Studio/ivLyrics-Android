@@ -622,15 +622,25 @@ final class VinylPlayerModeView extends FrameLayout {
             invalidate();
         }
 
+        /**
+         * Called on every frame of the host's playback clock, visible or not. Only the tonearm
+         * reads the position here; the spin, entrance, track and play sequences schedule their
+         * own frames. A paused, settled record therefore repaints only when the position, the
+         * duration or the playing state changes.
+         */
         void setPlayback(long positionMs, long durationMs, boolean playing) {
             updateSpin();
-            this.positionMs = Math.max(0L, positionMs);
-            this.durationMs = Math.max(0L, durationMs);
+            long nextPositionMs = Math.max(0L, positionMs);
+            long nextDurationMs = Math.max(0L, durationMs);
+            boolean changed = this.positionMs != nextPositionMs || this.durationMs != nextDurationMs;
+            this.positionMs = nextPositionMs;
+            this.durationMs = nextDurationMs;
             if (this.playing != playing) {
                 this.playing = playing;
                 animatePlaybackState(playing);
+                changed = true;
             }
-            invalidate();
+            if (changed) invalidate();
         }
 
         void release() {
