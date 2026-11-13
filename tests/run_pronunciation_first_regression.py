@@ -31,6 +31,6 @@ assert "if (!requests.get(index).text.trim().isEmpty() && combined.get(index).tr
     "lines without exact slots fall back to the line request"
 assert "restorePronunciationSlots(trackKey, pronunciationCacheKey);" in repository, "cached pronunciation brings its slots back"
 assert "if (!derived.containsKey(item.key)) items.add(item);" in repository, "only lines without slots ask AI for unit timing"
-assert "run.accept(PronunciationSlots.chunks(missing, 160, 8), true);" in repository, "one smaller repair pass"
+assert "run.accept(PronunciationSlots.chunks(missing), true);" in repository, "one repair pass"
 
 raise SystemExit(result.returncode)

@@ -199,6 +199,9 @@ public final class PronunciationFirstRegression {
                 "wrong writing system for Latin notation");
         check(!PronunciationSlots.parse("{\"l\":[{\"i\":0,\"p\":[\"유메\",\"나\",\"라\",\"바\"]}]}", slotItems, "translation").isEmpty(),
                 "target-language notation is not script-checked");
+        check(PronunciationSlots.parse("{\"l\":[{\"i\":0,\"p\":[\"유메\",\"나\",\"라\",\"ㄴ\"]}]}", slotItems, "translation").isEmpty(),
+                "a lone Hangul letter is asked again");
+        check(PronunciationSlots.chunks(Collections.nCopies(17, slotItems.get(0))).size() == 3, "small chunks of eight lines");
         Map<String, List<String>> stored = PronunciationSlots.stored(List.of("夢ならば", "♪", " 今日も "),
                 Map.of(0, List.of("yume", "na", "ra", "ba"), 2, List.of("kyou ", "", "mo")));
         check(stored.size() == 2 && stored.get("今日も").equals(List.of("kyou ", "", "mo")), "stored by line text");

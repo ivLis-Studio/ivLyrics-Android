@@ -27,8 +27,13 @@ import java.util.Map;
 final class PronunciationSlots {
     /** Bump when the unit split or the stored shape changes. */
     static final int VERSION = 1;
-    static final int MAX_CHUNK_UNITS = 360;
-    static final int MAX_CHUNK_ITEMS = 28;
+    /*
+     * Reasoning models think long before writing unit slots and that time grows with the request,
+     * so songs go out in small chunks that run in parallel.
+     */
+    static final int MAX_CHUNK_UNITS = 110;
+    static final int MAX_CHUNK_ITEMS = 8;
+    static final int PARALLEL_REQUESTS = 5;
     static final String REPAIR_NOTE = "Your previous answer for these lines had the wrong number of p strings or the wrong writing system. Count u again for every line: p must have exactly n strings.";
 
     private static final int SPACE = 0;
@@ -387,15 +392,18 @@ final class PronunciationSlots {
                     + "- hold me tight: u=[\"hold\",\"me\",\"tight\"] → p=[\"hoʊld\",\"mi\",\"taɪt\"]";
         }
         if (AiLyricsSettings.PRONUNCIATION_NOTATION_LATIN.equals(notation) || language.equals("en") || language.startsWith("en-")) {
-            return "- 夢ならば: u=[\"夢\",\"な\",\"ら\",\"ば\"] → p=[\"yume \",\"na\",\"ra\",\"ba\"] (reads \"yume naraba\")\n"
+            return "- 夢ならばどれほど: u=[\"夢\",\"な\",\"ら\",\"ば\",\"ど\",\"れ\",\"ほ\",\"ど\"] → p=[\"yume \",\"na\",\"ra\",\"ba \",\"do\",\"re\",\"ho\",\"do\"] (reads \"yume naraba dorehodo\")\n"
                     + "- 今日も: u=[\"今\",\"日\",\"も\"] → p=[\"kyou\",\"\",\"mo\"]\n"
                     + "- 走って: u=[\"走\",\"っ\",\"て\"] → p=[\"hashi\",\"t\",\"te\"]\n"
+                    + "- 君を見てる: u=[\"君\",\"を\",\"見\",\"て\",\"る\"] → p=[\"kimi \",\"o \",\"mi\",\"te\",\"ru\"], never [\"ki\",\"mi\",\"o\",\"mi\",\"teru\"]\n"
                     + "- 사랑해 너를: u=[\"사\",\"랑\",\"해\",\"너\",\"를\"] → p=[\"sa\",\"rang\",\"hae\",\"neo\",\"reul\"] (reads \"saranghae neoreul\")";
         }
         if (language.equals("ko") || language.startsWith("ko-")) {
-            return "- 夢ならば: u=[\"夢\",\"な\",\"ら\",\"ば\"] → p=[\"유메\",\"나\",\"라\",\"바\"]\n"
+            return "- 夢ならばどれほど: u=[\"夢\",\"な\",\"ら\",\"ば\",\"ど\",\"れ\",\"ほ\",\"ど\"] → p=[\"유메\",\"나\",\"라\",\"바 \",\"도\",\"레\",\"호\",\"도\"] (reads \"유메나라바 도레호도\")\n"
                     + "- 今日も: u=[\"今\",\"日\",\"も\"] → p=[\"쿄오\",\"\",\"모\"]\n"
                     + "- 走って: u=[\"走\",\"っ\",\"て\"] → p=[\"하싯\",\"\",\"테\"]\n"
+                    + "- がらんどう: u=[\"が\",\"ら\",\"ん\",\"ど\",\"う\"] → p=[\"가\",\"란\",\"\",\"도\",\"오\"], never a lone letter such as \"ㄴ\"\n"
+                    + "- 君を見てる: u=[\"君\",\"を\",\"見\",\"て\",\"る\"] → p=[\"키미\",\"오 \",\"미\",\"테\",\"루\"], never [\"키\",\"미\",\"오\",\"미\",\"테루\"]\n"
                     + "- hold me tight: u=[\"hold\",\"me\",\"tight\"] → p=[\"홀드\",\"미\",\"타잇\"]";
         }
         return "- 夢ならば: u=[\"夢\",\"な\",\"ら\",\"ば\"] → 4 strings: the reading of 夢, then of な, ら and ば, all in " + outputScript + ".\n"
@@ -429,7 +437,9 @@ final class PronunciationSlots {
                 + "- When a reading cannot be divided between characters (for example 今日 or 大人), put the whole reading on the first character of that word and \"\" on the rest of it.\n"
                 + "- Particles は, へ, を use their particle pronunciation when used as particles.\n"
                 + "- Use \"\" for units without sound (punctuation and symbols).\n"
-                + "- Spaces of the original line are restored automatically between units. Where the natural pronunciation has a word break inside unspaced text (Japanese, Chinese), end that unit's string with one space so the joined line reads naturally.\n"
+                + "- Never move part of one character's reading onto a neighbouring unit to fill slots: each reading stays on the character that produces it, even when that leaves \"\" elsewhere.\n"
+                + "- Never write a lone Hangul letter (jamo such as ㄴ, ㅅ, ㅇ). A sound that is only a final consonant (ん, っ) joins the previous syllable block as its final consonant, and its own unit gets \"\".\n"
+                + "- Spaces of the original line are restored automatically between units. Inside unspaced text (Japanese, Chinese) mark every word break yourself: end the last unit of each word or particle phrase with one space (usually after particles such as は, が, を, に, で, と, も, and between separate words), exactly where a natural pronunciation line would have a space. A long line must not come out as one unbroken run.\n"
                 + "- Joining the p of a line must give one natural pronunciation of the whole line. This is pronunciation, not translation: never translate the meaning.\n\n"
                 + "SLOT EXAMPLES:\n"
                 + examples(notation, lang, outputScript) + "\n\n"
@@ -461,9 +471,23 @@ final class PronunciationSlots {
         return true;
     }
 
+    /** Lone Hangul letters are never a readable pronunciation (ん written as ㄴ). */
+    static boolean hasLoneJamo(String text) {
+        if (text == null) return false;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if ((codePoint >= 0x1100 && codePoint <= 0x11FF) || (codePoint >= 0x3131 && codePoint <= 0x318E)
+                    || (codePoint >= 0xA960 && codePoint <= 0xA97F) || (codePoint >= 0xD7B0 && codePoint <= 0xD7FF)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Unit pronunciations by request index; lines with a wrong slot count, no sound or the wrong
-     * writing system are left out (and repaired by a smaller request).
+     * Unit pronunciations by request index; lines with a wrong slot count, no sound, the wrong
+     * writing system or a lone Hangul letter are left out (and asked again).
      */
     static Map<Integer, List<String>> parse(String raw, List<Item> items, String notation) {
         Map<Integer, List<String>> parsed = new LinkedHashMap<>();
@@ -487,6 +511,7 @@ final class PronunciationSlots {
                 if (item == null || values == null || values.length() != item.units.size()) continue;
                 List<String> parts = new ArrayList<>(values.length());
                 boolean any = false;
+                boolean loneJamo = false;
                 StringBuilder joined = new StringBuilder();
                 for (int position = 0; position < values.length(); position++) {
                     Object value = values.opt(position);
@@ -494,8 +519,9 @@ final class PronunciationSlots {
                     parts.add(part);
                     joined.append(part);
                     if (!part.trim().isEmpty()) any = true;
+                    if (hasLoneJamo(part)) loneJamo = true;
                 }
-                if (!any || !isInNotationScript(joined.toString(), notation)) continue;
+                if (!any || loneJamo || !isInNotationScript(joined.toString(), notation)) continue;
                 parsed.put(index, Collections.unmodifiableList(parts));
             }
         } catch (JSONException ignored) {

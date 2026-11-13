@@ -72,7 +72,7 @@ final class AiLyricsRepository {
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     /** Parallel chunks of the pronunciation-by-unit request; never waits on {@link #executor}. */
-    private final ExecutorService slotExecutor = Executors.newFixedThreadPool(3);
+    private final ExecutorService slotExecutor = Executors.newFixedThreadPool(PronunciationSlots.PARALLEL_REQUESTS);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, LyricsResult> cache = newBoundedCache(MAX_LYRICS_MEMORY_ENTRIES);
     private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
@@ -1885,7 +1885,7 @@ final class AiLyricsRepository {
                 if (!slots.containsKey(item.index)) missing.add(item);
             }
             if (!missing.isEmpty() && !slots.isEmpty()) {
-                run.accept(PronunciationSlots.chunks(missing, 160, 8), true);
+                run.accept(PronunciationSlots.chunks(missing), true);
                 if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             }
             if (!slots.isEmpty()) {
