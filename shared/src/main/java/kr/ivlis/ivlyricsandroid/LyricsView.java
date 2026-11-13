@@ -149,6 +149,7 @@ public final class LyricsView extends View {
     private long positionMs;
     /** Playback position at the frame's vsync, without rounding; continuous fill and bounce only. */
     private double framePositionMs;
+    private final PlaybackRenderWindow playbackRenderWindow = new PlaybackRenderWindow();
     /** Choreographer frame time supplied with {@link #framePositionMs}; System.nanoTime() clock. */
     private long hostFrameTimeNanos;
     /** Set by the host for the frame in progress; consumed by that frame's draw. */
@@ -661,6 +662,7 @@ public final class LyricsView extends View {
      * current position, as a seek does, instead of starting them late.
      */
     void resumeAfterCover() {
+        playbackRenderWindow.invalidate();
         clearRowReflow();
         clearRowTravel();
         centerInitialized = false;
@@ -722,7 +724,19 @@ public final class LyricsView extends View {
         }
         this.positionMs = nextPositionMs;
         framePositionMs = nextFramePositionMs;
-        postInvalidateOnAnimation();
+        if (smoothSeekCenter || !canReusePlaybackFrame(nextFramePositionMs)) postInvalidateOnAnimation();
+    }
+
+    private boolean canReusePlaybackFrame(double nextPositionMs) {
+        return !manualScrollActive && !draggingLyrics && !smoothNextSeekCenter
+                && playbackRenderWindow.contains(nextPositionMs);
+    }
+
+    void refreshMotionPreferences() {
+        if (frameAnimationsEnabled != MotionPreferences.animationsEnabled(getContext())) {
+            playbackRenderWindow.invalidate();
+            postInvalidateOnAnimation();
+        }
     }
 
     void setOnSeekListener(OnSeekListener seekListener) {
@@ -905,6 +919,7 @@ public final class LyricsView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        playbackRenderWindow.invalidate();
         long frameProbeStartNs = frameProbeEnabled ? System.nanoTime() : 0L;
         // Every glyph and its fill pass share one monotonic clock and preference
         // snapshot. Settings.Global must not be queried several times per glyph.
@@ -1033,6 +1048,7 @@ public final class LyricsView extends View {
                 && activeIndex < displayLines.size()
                 && displayLines.get(activeIndex).isInterlude();
         boolean vocalAnchorMoving = Math.abs(targetVocalAnchorOffset - animatedVocalAnchorOffsetPx) > 0.5f;
+        rememberPlaybackFrame(displayLines, layouts, visualCenterIndex, vocalAnchorMoving);
         // Playback-driven fill/motion is invalidated by the host's frame clock.
         // Continue locally only for wall-clock effects, interludes and layout settling.
         if (frameAnimationsEnabled
@@ -1041,6 +1057,81 @@ public final class LyricsView extends View {
             postInvalidateOnAnimation();
         } else if (vocalAnchorMoving || rowReflowActive || !rowShifts.isEmpty()) {
             postInvalidateOnAnimation();
+        }
+    }
+
+    /** Capture every position-dependent input of the frame just drawn. */
+    private void rememberPlaybackFrame(List<DisplayLine> displayed, FrameLineLayouts layouts,
+            int centerIndex, boolean vocalAnchorMoving) {
+        PlaybackRenderWindow window = playbackRenderWindow;
+        window.begin(framePositionMs);
+        window.boundary(displayLineCacheStartMs);
+        window.boundary(displayLineCacheEndMs);
+        window.boundary(activeDisplayIndexCacheStartMs);
+        window.boundary(activeDisplayIndexCacheEndMs);
+        if (karaoke && syncedLyricsKaraokeAnimationEnabled && frameAnimationsEnabled) {
+            window.boundary(visualCenterIndexCacheStartMs - (double) LYRICS_CENTERING_LEAD_MS);
+            window.boundary(visualCenterIndexCacheEndMs - (double) LYRICS_CENTERING_LEAD_MS);
+        }
+        if (manualScrollActive || draggingLyrics || smoothSeekCenterActive || rowReflowActive
+                || rowReflowPending || !rowShifts.isEmpty() || vocalAnchorMoving
+                || frameHasLiveEffects || exitingInterlude != null
+                || Math.abs(centerIndex - animatedCenterIndex) > 0.002f) {
+            window.invalidate();
+            return;
+        }
+        for (LineLayout layout : layouts) {
+            DisplayLine row = layout.displayLine;
+            if (row.isTimed()) {
+                long start = row.startTimeMs();
+                long contentEnd = displayLineContentEndTime(row);
+                long holdEnd = contentEnd;
+                for (int i = layout.index + 1; i < displayed.size(); i++) {
+                    DisplayLine next = displayed.get(i);
+                    if (next.isTimed() && next.startTimeMs() > start) {
+                        holdEnd = Math.max(contentEnd, next.startTimeMs());
+                        break;
+                    }
+                }
+                window.boundary(start);
+                window.boundary(contentEnd + KARAOKE_RELEASE_WINDOW_MS);
+                window.motion(holdEnd, holdEnd + KARAOKE_COMPLETED_COLOR_FADE_MS);
+                if (!window.contains(framePositionMs)) return;
+            }
+            if (row.line != null) {
+                for (LyricsLine.VocalPart part : row.line.vocalParts) {
+                    window.boundary(part.startTimeMs);
+                    window.boundary(Math.max(part.startTimeMs, part.endTimeMs) + KARAOKE_RELEASE_WINDOW_MS);
+                    // The stacked-vocal anchor falls back to the parent bounds for untimed
+                    // parts, and includes the effective end millisecond.
+                    long anchorStart = part.startTimeMs > 0L ? part.startTimeMs : row.line.startTimeMs;
+                    long anchorEnd = part.endTimeMs > anchorStart ? part.endTimeMs
+                            : Math.max(anchorStart, row.line.endTimeMs);
+                    window.boundary(anchorStart);
+                    window.boundary(anchorEnd + 1d);
+                }
+            }
+            for (DrawGroup group : layout.groups) {
+                if (group.isInterlude() && frameAnimationsEnabled) {
+                    window.invalidate();
+                    return;
+                }
+                for (TextRow textRow : group.rows) {
+                    for (TextSegment segment : textRow.segments) {
+                        window.boundary(segment.startTimeMs);
+                        if (group.rendersTimedFill()) {
+                            if (isWordDisplayGranularity()) window.boundary(segment.fillStartTimeMs);
+                            else window.motion(segment.fillStartTimeMs, segment.fillEndTimeMs);
+                        }
+                        if (frameAnimationsEnabled && !isLineDisplayGranularity()
+                                && karaokeBounceEffectEnabled && !group.supplement && segment.motionProfile != null) {
+                            window.motion(segment.motionProfile.startTime,
+                                    segment.motionProfile.endTime + segment.motionProfile.releaseDuration);
+                        }
+                        if (!window.contains(framePositionMs)) return;
+                    }
+                }
+            }
         }
     }
 

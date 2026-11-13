@@ -2,6 +2,9 @@ import java.util.*;
 
 /** Test fixtures surround verbatim production declarations extracted by the runner. */
 public final class LyricsCenterRegression extends TestView {
+    // This geometry harness deliberately renders every supplied frame. Canvas gating is
+    // exercised against actual Android bitmaps in PlaybackFrameGatingTest.
+    private boolean canReusePlaybackFrame(double position) { return false; }
     private boolean centerInitialized = true;
     private boolean smoothSeekCenterActive;
     private boolean manualScrollActive;

@@ -17,6 +17,8 @@ public final class PlayerProgressView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private long positionMs;
     private long durationMs;
+    private float drawnEndX = Float.NaN;
+    private long drawnDurationMs = -1L;
     private boolean dragging;
     private OnSeekListener seekListener;
 
@@ -46,7 +48,10 @@ public final class PlayerProgressView extends View {
         }
         this.durationMs = nextDurationMs;
         this.positionMs = nextPositionMs;
-        invalidate();
+        // Keep the exact position for seeks. Repaint only after the edge has moved half a
+        // physical pixel from the last draw, or the duration changed.
+        if (drawnDurationMs != nextDurationMs || !Float.isFinite(drawnEndX)
+                || Math.abs(progressEndX() - drawnEndX) >= 0.5f) invalidate();
     }
 
     void setOnSeekListener(OnSeekListener seekListener) {
@@ -143,8 +148,9 @@ public final class PlayerProgressView extends View {
         float horizontalInset = thumbRadius + Math.max(1f, trackStroke * 0.25f);
         float trackStart = Math.min(horizontalInset, width * 0.5f);
         float trackEnd = Math.max(trackStart, width - horizontalInset);
-        float progress = durationMs <= 0L ? 0f : positionMs / (float) durationMs;
-        float endX = trackStart + ((trackEnd - trackStart) * Math.max(0f, Math.min(1f, progress)));
+        float endX = progressEndX();
+        drawnEndX = endX;
+        drawnDurationMs = durationMs;
 
         paint.setStrokeCap(Paint.Cap.ROUND);
         paint.setStrokeWidth(trackStroke);
@@ -157,6 +163,15 @@ public final class PlayerProgressView extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(THUMB_COLOR);
         canvas.drawCircle(endX, centerY, thumbRadius, paint);
+    }
+
+    private float progressEndX() {
+        float width = getWidth();
+        float inset = dp(5f) + Math.max(1f, dp(3.6f) * 0.25f);
+        float start = Math.min(inset, width * 0.5f);
+        float end = Math.max(start, width - inset);
+        float progress = durationMs <= 0L ? 0f : positionMs / (float) durationMs;
+        return start + (end - start) * Math.max(0f, Math.min(1f, progress));
     }
 
     private void updateFromTouch(float x) {

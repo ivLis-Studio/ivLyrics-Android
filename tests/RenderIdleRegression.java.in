@@ -82,6 +82,8 @@ public final class RenderIdleRegression {
         boolean isAnimatedVisual() { return animated; }
     }
     static class PreviewFields {
+        final RenderWindowStub playbackRenderWindow = new RenderWindowStub();
+        boolean canReusePlaybackFrame(double position) { return false; }
         static final int PREVIEW_LAYOUT_MATCH = 1, PREVIEW_INSTANCES_MATCH = 2, PREVIEW_WIDTH_INPUTS_MATCH = 4;
         static final float[] LOADING_ROW_WIDTH_FACTORS = {.54f, .78f, .42f}, LOADING_SHIMMER_STOPS = {0f, .5f, 1f};
         final int[] loadingShimmerColors = {0x00ffffff, 0x00ffffff, 0x00ffffff};
@@ -106,9 +108,13 @@ public final class RenderIdleRegression {
         float positiveSin(long now, long period) { return (float)((Math.sin(now / (double)period * Math.PI * 2) + 1) / 2); }
         int withAlpha(int color, int alpha) { return color & 0xffffff | alpha << 24; }
     }
+    // These fixtures isolate the older frame-feed/empty-layout contract. The real render
+    // window is checked with Android Canvas in PlaybackFrameGatingTest.
+    static class RenderWindowStub { void invalidate() {} }
     static class AppFonts { static Object regular(Object context) { return null; } }
     static class Scroller { void abortAnimation() {} }
     static class EmptyFields {
+        boolean canReusePlaybackFrame(double position) { return false; }
         boolean emptyNoticeVisible = true;
         final List<Object> lines = new ArrayList<>();
         long positionMs, lastFrameMs;
