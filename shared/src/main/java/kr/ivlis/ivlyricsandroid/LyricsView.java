@@ -173,6 +173,8 @@ public final class LyricsView extends View {
     private boolean emptyNoticeVisible = true;
     private boolean syncedLyricsKaraokeAnimationEnabled = false;
     private boolean karaokeBounceEffectEnabled = true;
+    /** Desktop's expressive karaoke motion, a style of the bounce (Settings > Karaoke). */
+    private boolean karaokeExpressiveMotion;
     // Pronunciation rows that fill along karaoke timing (Settings > Karaoke).
     private PronunciationFirst.Fill pronunciationFill = PronunciationFirst.Fill.NONE;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
@@ -500,6 +502,14 @@ public final class LyricsView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
+        postInvalidateOnAnimation();
+    }
+
+    void setKaraokeExpressiveMotion(boolean enabled) {
+        if (karaokeExpressiveMotion == enabled) {
+            return;
+        }
+        karaokeExpressiveMotion = enabled;
         postInvalidateOnAnimation();
     }
 
@@ -1116,6 +1126,12 @@ public final class LyricsView extends View {
                     window.invalidate();
                     return;
                 }
+                boolean expressive = expressiveMotionActive(group);
+                if (expressive && group.active) {
+                    // The line being sung eases its pending pose in before it starts.
+                    window.motion(group.lineStartTimeMs - KaraokeExpressiveMotion.POSE_EASE_MS, group.lineStartTimeMs);
+                    window.boundary(group.lineEndTimeMs);
+                }
                 for (TextRow textRow : group.rows) {
                     for (TextSegment segment : textRow.segments) {
                         window.boundary(segment.startTimeMs);
@@ -1123,7 +1139,12 @@ public final class LyricsView extends View {
                             if (isWordDisplayGranularity()) window.boundary(segment.fillStartTimeMs);
                             else window.motion(segment.fillStartTimeMs, segment.fillEndTimeMs);
                         }
-                        if (frameAnimationsEnabled && !isLineDisplayGranularity()
+                        if (expressive) {
+                            KaraokeExpressiveMotion.Unit unit = segment.expressiveUnit;
+                            if (unit != null) {
+                                window.motion(unit.start, Math.max(unit.start, unit.end) + KaraokeExpressiveMotion.SETTLE_MS);
+                            }
+                        } else if (frameAnimationsEnabled && !isLineDisplayGranularity()
                                 && karaokeBounceEffectEnabled && !group.supplement && segment.motionProfile != null) {
                             window.motion(segment.motionProfile.startTime,
                                     segment.motionProfile.endTime + segment.motionProfile.releaseDuration);
@@ -1148,7 +1169,7 @@ public final class LyricsView extends View {
                 for (TextRow row : group.rows) {
                     for (TextSegment segment : row.segments) {
                         fillPx += segment.textWidth * segmentFillFraction(segment);
-                        KaraokeMotion.Values bounce = karaokeBounce(segment, group);
+                        KaraokeMotion.Values bounce = karaokeMotion(segment, group);
                         if (bounce.active && bounce.offsetY < lift) {
                             lift = bounce.offsetY;
                             liftScale = bounce.scale;
@@ -2521,7 +2542,7 @@ public final class LyricsView extends View {
         for (int index = 0; index < missingRows; index++) {
             rows.add(emptyTextRow());
         }
-        return new DrawGroup(
+        DrawGroup reserved = new DrawGroup(
                 rows,
                 group.textSize,
                 group.inactiveColor,
@@ -2535,6 +2556,9 @@ public final class LyricsView extends View {
                 group.typeface,
                 group.supplement
         );
+        reserved.lineStartTimeMs = group.lineStartTimeMs;
+        reserved.lineEndTimeMs = group.lineEndTimeMs;
+        return reserved;
     }
 
     private TextRow emptyTextRow() {
@@ -2563,7 +2587,7 @@ public final class LyricsView extends View {
         String slotId = AiLyricsSettings.typographySlotById(typographySlotId).id;
         float textSize = sp(typographyTextSizeSp(slotId, textSizeSp));
         List<TextRow> rows = cachedRows(rowCacheKey + typographyCacheKey(slotId), text, rubyText, syllables, startTimeMs, endTimeMs, textSize);
-        return new DrawGroup(
+        DrawGroup group = new DrawGroup(
                 rows,
                 textSize,
                 inactiveColor,
@@ -2577,6 +2601,9 @@ public final class LyricsView extends View {
                 typographyTypeface(slotId),
                 isSupplementTypographySlot(slotId)
         );
+        group.lineStartTimeMs = startTimeMs;
+        group.lineEndTimeMs = endTimeMs;
+        return group;
     }
 
     private float typographyTextSizeSp(String slotId, float baseSizeSp) {
@@ -3022,7 +3049,7 @@ public final class LyricsView extends View {
             float offsetY = group.active && "wave".equals(segmentKind)
                     ? baseWaveOffset(segmentKind, group.rowSeed + rowIndex, index, group.textSize)
                     : 0f;
-            KaraokeMotion.Values bounce = karaokeBounce(segment, group);
+            KaraokeMotion.Values bounce = karaokeMotion(segment, group);
             // Only a glyph that moves needs its own canvas state; idle glyphs draw in the row's.
             boolean transformed = bounce.active || (segment.inlineStyle && group.active && frameAnimationsEnabled);
             int segmentSave = transformed ? canvas.save() : -1;
@@ -3052,6 +3079,11 @@ public final class LyricsView extends View {
 
             float textLeft = cursor + segment.textInset;
             configurePaint(scaleAlpha(segmentInactiveColor, fadeAlpha), segmentKind, group.active, group.textSize, false, group.typeface);
+            if (bounce.glow > 0.005f) {
+                // Expressive motion glows in the active color while a unit swells (desktop 0.24em shadow).
+                textPaint.setShadowLayer(group.textSize * 0.14f, 0f, 0f, withAlpha(segmentActiveColor,
+                        Math.round(255f * Math.min(1f, bounce.glow) * Math.max(0f, Math.min(1f, fadeAlpha)))));
+            }
             canvas.drawText(segment.text, textLeft, baseline + offsetY, textPaint);
 
             if (fill > 0f) {
@@ -3351,6 +3383,7 @@ public final class LyricsView extends View {
         }
 
         KaraokeMotion.Plan motionPlan = isLineDisplayGranularity() ? null : prepareMotionPlan(segments, syllables);
+        KaraokeExpressiveMotion.Unit[] expressiveUnits = isLineDisplayGranularity() ? null : prepareExpressiveUnits(segments);
         float maxWidth = contentWidth();
         List<TextRow> rows = shouldWrapByWords(segments)
                 ? wrapWordUnits(buildWordWrapUnits(segments), maxWidth)
@@ -3363,6 +3396,11 @@ public final class LyricsView extends View {
                 for (TextSegment segment : row.segments) {
                     segment.motionProfile = motionPlan.profile(segment.sourceIndex, segment.sourceLength,
                             segment.fillStartTimeMs, segment.fillEndTimeMs);
+                }
+            }
+            if (expressiveUnits != null) {
+                for (TextSegment segment : row.segments) {
+                    segment.expressiveUnit = expressiveUnitFor(segment, segments, expressiveUnits);
                 }
             }
             if (row.continuousShaping) {
@@ -3379,6 +3417,33 @@ public final class LyricsView extends View {
             synthetic.add(new LyricsLine.Syllable(segment.text, segment.startTimeMs, segment.endTimeMs));
         }
         return KaraokeMotion.prepare(synthetic);
+    }
+
+    /** Expressive units of a row's display segments, prepared with its layout. */
+    private KaraokeExpressiveMotion.Unit[] prepareExpressiveUnits(List<TextSegment> segments) {
+        List<String> texts = new ArrayList<>(segments.size());
+        double[] starts = new double[segments.size()], ends = new double[segments.size()];
+        for (int index = 0; index < segments.size(); index++) {
+            TextSegment segment = segments.get(index);
+            texts.add(segment.text);
+            boolean timed = segment.fillEndTimeMs >= segment.fillStartTimeMs
+                    && (segment.fillEndTimeMs > 0L || segment.fillStartTimeMs > 0L);
+            starts[index] = timed ? segment.fillStartTimeMs : Double.NaN;
+            ends[index] = timed ? segment.fillEndTimeMs : Double.NaN;
+        }
+        return KaraokeExpressiveMotion.units(texts, starts, ends, isWordDisplayGranularity());
+    }
+
+    /** Wrapping may split a segment; every piece keeps the unit of the source segment it came from. */
+    private static KaraokeExpressiveMotion.Unit expressiveUnitFor(TextSegment piece, List<TextSegment> segments,
+            KaraokeExpressiveMotion.Unit[] units) {
+        for (int index = 0; index < segments.size(); index++) {
+            TextSegment source = segments.get(index);
+            if (source == piece) return units[index];
+            int end = source.sourceIndex + Math.max(1, source.sourceLength);
+            if (piece.sourceIndex >= source.sourceIndex && piece.sourceIndex < end) return units[index];
+        }
+        return null;
     }
 
     private List<TextRow> wrapIndividualSegments(List<TextSegment> segments, float maxWidth) {
@@ -5193,6 +5258,21 @@ public final class LyricsView extends View {
         return KaraokeMotion.evaluate(segment.motionProfile, framePositionMs, group.textSize, karaokeBounceResult);
     }
 
+    /** Expressive motion is a style of the bounce, with the same gates. */
+    private boolean expressiveMotionActive(DrawGroup group) {
+        return karaokeExpressiveMotion && frameAnimationsEnabled && !isLineDisplayGranularity()
+                && karaokeBounceEffectEnabled && !group.supplement;
+    }
+
+    /** The bounce or, when chosen, the expressive motion of one drawn segment this frame. */
+    private KaraokeMotion.Values karaokeMotion(TextSegment segment, DrawGroup group) {
+        if (!expressiveMotionActive(group)) return karaokeBounce(segment, group);
+        double pose = KaraokeExpressiveMotion.pendingPose(group.active, framePositionMs,
+                group.lineStartTimeMs, group.lineEndTimeMs);
+        return KaraokeExpressiveMotion.evaluate(segment.expressiveUnit, framePositionMs, pose, group.textSize,
+                karaokeBounceResult);
+    }
+
     private int inactiveColor(float distance) {
         int alpha = Math.round(185f - Math.min(2.6f, distance) * 46f);
         return Color.argb(Math.max(54, Math.min(190, alpha)), 174, 181, 195);
@@ -5720,6 +5800,8 @@ public final class LyricsView extends View {
         final InterludeInfo interludeInfo;
         final Typeface typeface;
         final boolean supplement;
+        /** The timed line or vocal part this group draws, for the expressive pending pose. */
+        long lineStartTimeMs, lineEndTimeMs;
 
         DrawGroup(
                 List<TextRow> rows,
@@ -6033,6 +6115,7 @@ public final class LyricsView extends View {
         final String styleSpeakerColor;
         final String styleSpeakerFallback;
         KaraokeMotion.Profile motionProfile;
+        KaraokeExpressiveMotion.Unit expressiveUnit;
         float cachedRubyWidth = Float.NaN;
         String cachedBounceKeyPrefix;
         String cachedBounceKey;

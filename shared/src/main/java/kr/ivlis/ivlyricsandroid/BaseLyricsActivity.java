@@ -346,6 +346,7 @@ public class BaseLyricsActivity extends Activity implements
     private SettingsKit.Choice pronunciationNotationChoice;
     private SettingsKit.Choice lyricsAlignmentChoice;
     private SettingsKit.Choice karaokeDisplayGranularityChoice;
+    private SettingsKit.Choice karaokeMotionStyleChoice;
     private SettingsKit.Choice pipOrientationChoice;
     private SettingsKit.Choice pipLyricsAlignmentChoice;
     private SettingsKit.Choice backgroundModeChoice;
@@ -2795,6 +2796,7 @@ public class BaseLyricsActivity extends Activity implements
         if (aiLyricsSettings != null) {
             AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
             view.lyricView().setKaraokeBounceEffectEnabled(settings.karaokeBounceEffectEnabled);
+            view.lyricView().setKaraokeExpressiveMotion(aiLyricsSettings.karaokeExpressiveMotionEnabled());
             view.lyricView().setKaraokeDisplayGranularity(settings.karaokeDisplayGranularity);
             view.setCustomization(settings.vinyl, settings.typography);
         }
@@ -3085,6 +3087,7 @@ public class BaseLyricsActivity extends Activity implements
         attachPageSwipe(lyricPreviewContainer, true, true);
         lyricPreviewView = new MainLyricPreviewView(this);
         lyricPreviewView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        lyricPreviewView.setKaraokeExpressiveMotion(aiLyricsSettings.karaokeExpressiveMotionEnabled());
         lyricPreviewView.setKaraokeDisplayGranularity(aiLyricsSettings.snapshot().karaokeDisplayGranularity);
         lyricPreviewView.setTypographySettings(aiLyricsSettings.snapshot().typography);
         lyricPreviewView.setLyricTextAlignment(aiLyricsSettings.snapshot().lyricsTextAlignment);
@@ -3647,6 +3650,7 @@ public class BaseLyricsActivity extends Activity implements
         landscapeLyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         landscapeLyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         landscapeLyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        landscapeLyricsView.setKaraokeExpressiveMotion(aiLyricsSettings.karaokeExpressiveMotionEnabled());
         landscapeLyricsView.setKaraokeDisplayGranularity(aiLyricsSettings.snapshot().karaokeDisplayGranularity);
         landscapeLyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         landscapeLyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
@@ -4165,6 +4169,7 @@ public class BaseLyricsActivity extends Activity implements
         lyricsView.setInterludeLabelsEnabled(aiLyricsSettings.snapshot().interludeLabelsEnabled);
         lyricsView.setSyncedLyricsKaraokeAnimationEnabled(aiLyricsSettings.snapshot().syncedLyricsKaraokeAnimationEnabled);
         lyricsView.setKaraokeBounceEffectEnabled(aiLyricsSettings.snapshot().karaokeBounceEffectEnabled);
+        lyricsView.setKaraokeExpressiveMotion(aiLyricsSettings.karaokeExpressiveMotionEnabled());
         lyricsView.setKaraokeDisplayGranularity(aiLyricsSettings.snapshot().karaokeDisplayGranularity);
         lyricsView.setJapaneseFuriganaEnabled(aiLyricsSettings.snapshot().japaneseFuriganaEnabled);
         lyricsView.setTypographySettings(aiLyricsSettings.snapshot().typography);
@@ -6664,8 +6669,26 @@ public class BaseLyricsActivity extends Activity implements
             }
             aiLyricsSettings.setKaraokeBounceEffectEnabled(isChecked);
             setKaraokeBounceEffectOnViews(isChecked);
+            setKaraokeExpressiveMotionOnViews(aiLyricsSettings.karaokeExpressiveMotionEnabled());
+            refreshSettingsVisibility();
             showSavedToast(ui("toast.settings_saved"));
         });
+        List<SettingsKit.Option> motionStyles = new ArrayList<>();
+        for (String style : new String[]{AiLyricsSettings.KARAOKE_MOTION_CLASSIC, AiLyricsSettings.KARAOKE_MOTION_EXPRESSIVE}) {
+            motionStyles.add(new SettingsKit.Option(style, ui("karaoke.motion." + style)));
+        }
+        karaokeMotionStyleChoice = settingsKit.segmented(motionStyles, AiLyricsSettings.KARAOKE_MOTION_CLASSIC, style -> {
+            if (aiLyricsSettings == null) return;
+            aiLyricsSettings.setKaraokeMotionStyle(style);
+            setKaraokeExpressiveMotionOnViews(aiLyricsSettings.karaokeExpressiveMotionEnabled());
+            showSavedToast(ui("toast.settings_saved"));
+        });
+        focusableItems(karaokeMotionStyleChoice);
+        // Expressive motion is a style of the bounce, so it needs the bounce on.
+        settingsConditional(settingsStackRow(group, ui("setting.karaoke_motion_style"),
+                        ui("setting.karaoke_motion_style_desc"), karaokeMotionStyleChoice.view),
+                () -> aiLyricsSettings == null || aiLyricsSettings.snapshot().karaokeBounceEffectEnabled,
+                ui("setting.karaoke_bounce_effect"));
         pronunciationFillSwitch = settingsToggle(group, ui("setting.pronunciation_karaoke_fill"),
                 ui("setting.pronunciation_karaoke_fill_desc"));
         pronunciationFillSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -11094,6 +11117,7 @@ public class BaseLyricsActivity extends Activity implements
         view.setInterludeLabelsEnabled(snapshot.interludeLabelsEnabled);
         view.setSyncedLyricsKaraokeAnimationEnabled(snapshot.syncedLyricsKaraokeAnimationEnabled);
         view.setKaraokeBounceEffectEnabled(snapshot.karaokeBounceEffectEnabled);
+        view.setKaraokeExpressiveMotion(aiLyricsSettings != null && aiLyricsSettings.karaokeExpressiveMotionEnabled());
         view.setKaraokeDisplayGranularity(snapshot.karaokeDisplayGranularity);
         view.setJapaneseFuriganaEnabled(snapshot.japaneseFuriganaEnabled);
         view.setTypographySettings(snapshot.typography);
@@ -12757,6 +12781,9 @@ public class BaseLyricsActivity extends Activity implements
             suppressSettingsEvents = true;
             karaokeBounceSwitch.setChecked(snapshot.karaokeBounceEffectEnabled);
             suppressSettingsEvents = false;
+        }
+        if (karaokeMotionStyleChoice != null && aiLyricsSettings != null) {
+            karaokeMotionStyleChoice.select(aiLyricsSettings.karaokeMotionStyle());
         }
         if (pronunciationFillSwitch != null && aiLyricsSettings != null) {
             suppressSettingsEvents = true;
@@ -16074,6 +16101,24 @@ public class BaseLyricsActivity extends Activity implements
         }
         if (vinylPlayerModeView != null) {
             vinylPlayerModeView.lyricView().setKaraokeBounceEffectEnabled(enabled);
+        }
+    }
+
+    private void setKaraokeExpressiveMotionOnViews(boolean enabled) {
+        if (lyricsView != null) {
+            lyricsView.setKaraokeExpressiveMotion(enabled);
+        }
+        if (landscapeLyricsView != null) {
+            landscapeLyricsView.setKaraokeExpressiveMotion(enabled);
+        }
+        if (pictureInPictureLyricsView != null) {
+            pictureInPictureLyricsView.setKaraokeExpressiveMotion(enabled);
+        }
+        if (lyricPreviewView != null) {
+            lyricPreviewView.setKaraokeExpressiveMotion(enabled);
+        }
+        if (vinylPlayerModeView != null) {
+            vinylPlayerModeView.lyricView().setKaraokeExpressiveMotion(enabled);
         }
     }
 

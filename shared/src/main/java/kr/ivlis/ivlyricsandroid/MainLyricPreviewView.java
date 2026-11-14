@@ -109,6 +109,8 @@ final class MainLyricPreviewView extends View {
     private final StringBuilder frameProbeLine = new StringBuilder(160);
     private String lyricTextAlignment = AiLyricsSettings.LYRICS_ALIGN_CENTER;
     private boolean karaokeBounceEffectEnabled = true;
+    /** Desktop's expressive karaoke motion, a style of the bounce (Settings > Karaoke). */
+    private boolean karaokeExpressiveMotion;
     private String karaokeDisplayGranularity = AiLyricsSettings.KARAOKE_DISPLAY_CHARACTER;
     private String lyricsSegmentationLocale = "auto";
     private float textScale = 1f;
@@ -258,6 +260,14 @@ final class MainLyricPreviewView extends View {
             return;
         }
         karaokeBounceEffectEnabled = enabled;
+        postInvalidateOnAnimation();
+    }
+
+    void setKaraokeExpressiveMotion(boolean enabled) {
+        if (karaokeExpressiveMotion == enabled) {
+            return;
+        }
+        karaokeExpressiveMotion = enabled;
         postInvalidateOnAnimation();
     }
 
@@ -413,7 +423,9 @@ final class MainLyricPreviewView extends View {
             logFrameProbe(frameProbeStartNs, position, frameProbeHostTime, frameNanos);
         }
 
-        if (!externallyDriven && frameAnimationsEnabled && ((playing && lineEndMs > lineStartMs && position < lineEndMs + 700L && (overflow || hasKaraokeLine()))
+        // Expressive units settle for 820 ms after they end; the classic release ends sooner.
+        long motionTailMs = karaokeExpressiveMotion ? 900L : 700L;
+        if (!externallyDriven && frameAnimationsEnabled && ((playing && lineEndMs > lineStartMs && position < lineEndMs + motionTailMs && (overflow || hasKaraokeLine()))
                 || hasAnimatedLine())) {
             postInvalidateOnAnimation();
         }
@@ -428,7 +440,7 @@ final class MainLyricPreviewView extends View {
             float textSize = sp(textSizeSp(line));
             for (TextSegment segment : textSegments(line)) {
                 fillPx += segment.textWidth * segmentFillFraction(segment, position);
-                KaraokeMotion.Values bounce = karaokeBounce(segment, position, textSize);
+                KaraokeMotion.Values bounce = karaokeMotion(segment, line, position, textSize);
                 if (bounce.active && bounce.offsetY < lift) lift = bounce.offsetY;
             }
             break;
@@ -984,7 +996,7 @@ final class MainLyricPreviewView extends View {
                     ? baseWaveOffset(line.kind, line.rowSeed(), index, textSize)
                     : 0f;
             float fill = segmentFillFraction(segment, positionMs);
-            KaraokeMotion.Values bounce = karaokeBounce(segment, positionMs, textSize);
+            KaraokeMotion.Values bounce = karaokeMotion(segment, line, positionMs, textSize);
 
             // Only a bouncing glyph needs its own canvas state; idle glyphs draw in the row's.
             int segmentSave = bounce.active ? canvas.save() : -1;
@@ -999,6 +1011,11 @@ final class MainLyricPreviewView extends View {
             drawRubyText(canvas, segment, cursor, baseline + offsetY, line.kind, textSize, fill, line.primary);
             float textLeft = cursor + segment.textInset;
             configureTextPaint(inactiveColor, line.kind, textSize, false);
+            if (bounce.glow > 0.005f) {
+                // Expressive motion glows in the active color while a unit swells (desktop 0.24em shadow).
+                textPaint.setShadowLayer(textSize * 0.14f, 0f, 0f,
+                        withAlpha(activeColor, Math.round(255f * Math.min(1f, bounce.glow))));
+            }
             canvas.drawText(segment.text, textLeft, baseline + offsetY, textPaint);
             if (fill > 0f) {
                 drawActiveFill(canvas, segment, cursor, baseline, offsetY, line.kind, textSize, activeColor, fill);
@@ -1292,6 +1309,19 @@ final class MainLyricPreviewView extends View {
             segments.add(segment);
             charOffset += charLength;
         }
+        // Expressive units are prepared with the row; the setting only decides whether they are read.
+        List<String> texts = new ArrayList<>(segments.size());
+        double[] starts = new double[segments.size()], ends = new double[segments.size()];
+        for (int index = 0; index < segments.size(); index++) {
+            TextSegment segment = segments.get(index);
+            texts.add(segment.text);
+            starts[index] = segment.startTimeMs;
+            ends[index] = segment.endTimeMs;
+        }
+        KaraokeExpressiveMotion.Unit[] units = KaraokeExpressiveMotion.units(texts, starts, ends, isWordDisplayGranularity());
+        for (int index = 0; index < segments.size(); index++) {
+            segments.get(index).expressiveUnit = units[index];
+        }
         return segments;
     }
 
@@ -1422,6 +1452,17 @@ final class MainLyricPreviewView extends View {
             return karaokeBounceResult.idle();
         }
         return KaraokeMotion.evaluate(segment.motionProfile, positionMs, textSize, karaokeBounceResult);
+    }
+
+    /** The bounce or, when chosen, the expressive motion of one drawn segment this frame. */
+    private KaraokeMotion.Values karaokeMotion(TextSegment segment, PreviewLine line, double positionMs, float textSize) {
+        if (!karaokeExpressiveMotion || !frameAnimationsEnabled || !karaokeBounceEffectEnabled || isLineDisplayGranularity()) {
+            return karaokeBounce(segment, positionMs, textSize);
+        }
+        // The primary row is the line being sung; its pending units rest in the expressive pose.
+        double pose = line.primary
+                ? KaraokeExpressiveMotion.pendingPose(true, positionMs, lineStartMs, lineEndMs) : 0d;
+        return KaraokeExpressiveMotion.evaluate(segment.expressiveUnit, positionMs, pose, textSize, karaokeBounceResult);
     }
 
     private float baseWaveOffset(String kind, int rowIndex, int segmentIndex, float textSize) {
@@ -1799,6 +1840,7 @@ final class MainLyricPreviewView extends View {
 
     private static final class TextSegment {
         KaraokeMotion.Profile motionProfile;
+        KaraokeExpressiveMotion.Unit expressiveUnit;
         final String text;
         final float textWidth;
         final float width;

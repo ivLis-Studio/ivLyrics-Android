@@ -46,9 +46,11 @@ final class KaraokeMotion {
     static final class Values {
         float offsetY;
         float scale = 1f;
+        /** Expressive motion's glow strength (0..0.8); classic motion does not glow. */
+        float glow;
         boolean active;
 
-        Values idle() { offsetY = 0f; scale = 1f; active = false; return this; }
+        Values idle() { offsetY = 0f; scale = 1f; glow = 0f; active = false; return this; }
     }
 
     /**
@@ -66,6 +68,7 @@ final class KaraokeMotion {
                 : 1 - smooth((positionMs - profile.endTime) / profile.releaseDuration);
         result.offsetY = (float) (-profile.amplitude * strength * textSizePx / DESKTOP_TEXT_SIZE);
         result.scale = (float) (1 + profile.scaleAmount * strength);
+        result.glow = 0f;
         result.active = result.offsetY != 0f || result.scale != 1f;
         return result;
     }

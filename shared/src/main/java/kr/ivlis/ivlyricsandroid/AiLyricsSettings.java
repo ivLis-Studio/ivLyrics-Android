@@ -53,6 +53,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_INTERLUDE_LABELS_ENABLED = "interlude_labels_enabled";
     static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_KARAOKE_BOUNCE_EFFECT = "karaoke_bounce_effect";
+    static final String KEY_KARAOKE_MOTION_STYLE = "karaoke_motion_style";
     static final String KEY_KARAOKE_DATA_AS_LINE_SYNCED = "karaoke_data_as_line_synced";
     static final String KEY_KARAOKE_DISPLAY_GRANULARITY = "karaoke_display_granularity_v1";
     static final String KEY_BACKGROUND_MODE = "background_mode";
@@ -149,6 +150,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String PIP_ORIENTATION_PORTRAIT = "portrait";
     static final String PIP_ORIENTATION_SQUARE = "square";
     static final String KARAOKE_DISPLAY_CHARACTER = "character";
+    static final String KARAOKE_MOTION_CLASSIC = "classic";
+    static final String KARAOKE_MOTION_EXPRESSIVE = "expressive";
     static final String KARAOKE_DISPLAY_WORD = "word";
     static final String KARAOKE_DISPLAY_LINE = "line";
     static final String CULTURAL_FONT_PRETENDARD = "pretendard";
@@ -171,7 +174,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_LANGUAGE_RULES, KEY_MODEL, KEY_MAX_TOKENS,
             KEY_TEMPERATURE, KEY_PREVIEW_MODE, KEY_PREVIEW_ITEMS, KEY_AUTO_INSTRUMENTAL_BREAK,
             KEY_INTERLUDE_LABELS_ENABLED, KEY_SYNCED_LYRICS_KARAOKE_ANIMATION, KEY_KARAOKE_BOUNCE_EFFECT,
-            KEY_KARAOKE_DATA_AS_LINE_SYNCED, KEY_KARAOKE_DISPLAY_GRANULARITY,
+            KEY_KARAOKE_MOTION_STYLE, KEY_KARAOKE_DATA_AS_LINE_SYNCED, KEY_KARAOKE_DISPLAY_GRANULARITY,
             KEY_BACKGROUND_MODE, KEY_BACKGROUND_BRIGHTNESS, KEY_PLAYER_CARD_BACKGROUND_ENABLED,
             KEY_BACKGROUND_BLUR, KEY_BACKGROUND_NOISE, KEY_BACKGROUND_REDUCE_MOTION,
             KEY_BACKGROUND_SOLID_COLOR, KEY_BACKGROUND_VIDEO_SCALE, KEY_LANDSCAPE_AUTO_HIDE_CONTROLS,
@@ -928,6 +931,24 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setKaraokeBounceEffectEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_KARAOKE_BOUNCE_EFFECT, enabled).apply();
+    }
+
+    static String normalizeKaraokeMotionStyle(String style) {
+        return KARAOKE_MOTION_EXPRESSIVE.equals(style == null ? "" : style.trim().toLowerCase(Locale.ROOT))
+                ? KARAOKE_MOTION_EXPRESSIVE : KARAOKE_MOTION_CLASSIC;
+    }
+
+    /** Desktop's karaoke motion style. Expressive is a style of the bounce, so it needs the bounce on. */
+    String karaokeMotionStyle() {
+        return normalizeKaraokeMotionStyle(prefs.getString(KEY_KARAOKE_MOTION_STYLE, KARAOKE_MOTION_CLASSIC));
+    }
+
+    void setKaraokeMotionStyle(String style) {
+        prefs.edit().putString(KEY_KARAOKE_MOTION_STYLE, normalizeKaraokeMotionStyle(style)).apply();
+    }
+
+    boolean karaokeExpressiveMotionEnabled() {
+        return prefs.getBoolean(KEY_KARAOKE_BOUNCE_EFFECT, true) && KARAOKE_MOTION_EXPRESSIVE.equals(karaokeMotionStyle());
     }
 
     void setKaraokeDisplayGranularity(String granularity) {

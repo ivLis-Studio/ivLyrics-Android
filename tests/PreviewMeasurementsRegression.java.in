@@ -8,6 +8,7 @@ public final class PreviewMeasurementsRegression {
         static int argb(int a, int r, int g, int b) { return a << 24 | r << 16 | g << 8 | b; }
     }
     static class KaraokeMotion { static class Profile {} }
+    static class KaraokeExpressiveMotion { static class Unit {} }
     static class Paint {
         float size; Typeface typeface; int color, measures;
         void setTypeface(Typeface value) { typeface = value; }

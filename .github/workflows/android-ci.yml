@@ -65,6 +65,7 @@ jobs:
           python3 tests/run_first_use_regression.py
           python3 tests/run_lyrics_center_regression.py
           python3 tests/run_karaoke_motion_regression.py
+          python3 tests/run_karaoke_expressive_regression.py
           python3 tests/run_metadata_regression.py
           python3 tests/run_module_metadata_fanout_regression.py
           python3 tests/run_module_hook_cache_regression.py
