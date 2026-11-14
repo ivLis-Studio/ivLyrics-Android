@@ -29,11 +29,10 @@ final class PronunciationSlots {
     static final int VERSION = 1;
     /*
      * Reasoning models think long before writing unit slots and that time grows with the request,
-     * so songs go out in small chunks that run in parallel.
+     * so songs go out in small chunks that run in parallel (PronunciationRequests).
      */
-    static final int MAX_CHUNK_UNITS = 110;
-    static final int MAX_CHUNK_ITEMS = 8;
-    static final int PARALLEL_REQUESTS = 5;
+    static final int MAX_CHUNK_UNITS = PronunciationRequests.BATCH_UNITS;
+    static final int MAX_CHUNK_ITEMS = PronunciationRequests.BATCH_LINES;
     static final String REPAIR_NOTE = "Your previous answer for these lines had the wrong number of p strings or the wrong writing system. Count u again for every line: p must have exactly n strings.";
 
     private static final int SPACE = 0;

@@ -71,8 +71,8 @@ final class AiLyricsRepository {
     private static final int OPENAI_MAX_COMPLETION_TOKENS = 1 << 1;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
-    /** Parallel chunks of the pronunciation-by-unit request; never waits on {@link #executor}. */
-    private final ExecutorService slotExecutor = Executors.newFixedThreadPool(PronunciationSlots.PARALLEL_REQUESTS);
+    /** Parallel requests of the unit pronunciation and its timing; never waits on {@link #executor}. */
+    private final ExecutorService slotExecutor = Executors.newFixedThreadPool(PronunciationRequests.PARALLEL_REQUESTS);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, LyricsResult> cache = newBoundedCache(MAX_LYRICS_MEMORY_ENTRIES);
     private final Map<String, MetadataTranslation> metadataCache = newBoundedCache(MAX_METADATA_CACHE_ENTRIES);
@@ -1731,29 +1731,40 @@ final class AiLyricsRepository {
             try {
                 String context = PronunciationFirst.lyricsText(result);
                 Map<String, List<String>> aligned = new HashMap<>();
-                Exception firstError = null;
-                for (List<PronunciationFirst.Item> chunk : PronunciationFirst.chunks(items)) {
-                    try {
-                        aligned.putAll(requestTimedPronunciation(chunk, context, source, settings));
-                    } catch (Exception error) {
-                        if (error instanceof InterruptedException) throw error;
-                        if (firstError == null) firstError = error;
+                // Small requests side by side; the items a request did not split exactly are asked
+                // again as soon as it returns (PronunciationRequests).
+                java.util.function.Function<List<PronunciationFirst.Item>, List<List<PronunciationFirst.Item>>> chunks =
+                        list -> PronunciationFirst.chunks(list, PronunciationRequests.BATCH_UNITS, PronunciationRequests.BATCH_LINES);
+                PronunciationRequests.Perform<TimedJob, Map<String, List<String>>> perform =
+                        job -> requestTimedPronunciation(job.items, context, source, settings);
+                List<PronunciationFirst.Item> deferred = new ArrayList<>();
+                List<TimedJob> first = new ArrayList<>();
+                for (List<PronunciationFirst.Item> chunk : PronunciationRequests.batches(items, chunks)) first.add(new TimedJob(chunk, false));
+                List<Exception> errors = PronunciationRequests.run(first, slotExecutor, perform, (job, answer) -> {
+                    aligned.putAll(answer);
+                    if (job.repair) return Collections.emptyList();
+                    List<PronunciationFirst.Item> missing = new ArrayList<>();
+                    for (PronunciationFirst.Item item : job.items) {
+                        if (!aligned.containsKey(item.key)) missing.add(item);
                     }
-                }
-                // One repair pass, in smaller requests, for items whose slots did not match.
-                List<PronunciationFirst.Item> missing = new ArrayList<>();
-                for (PronunciationFirst.Item item : items) {
-                    if (!aligned.containsKey(item.key)) missing.add(item);
-                }
-                if (!missing.isEmpty() && !aligned.isEmpty()) {
-                    for (List<PronunciationFirst.Item> chunk : PronunciationFirst.chunks(missing, 200, 8)) {
-                        try {
-                            aligned.putAll(requestTimedPronunciation(chunk, context, source, settings));
-                        } catch (Exception error) {
-                            if (error instanceof InterruptedException) throw error;
-                        }
+                    if (missing.isEmpty()) return Collections.emptyList();
+                    if (aligned.isEmpty()) {
+                        deferred.addAll(missing);
+                        return Collections.emptyList();
                     }
+                    List<TimedJob> repairs = new ArrayList<>();
+                    for (List<PronunciationFirst.Item> chunk : chunks.apply(missing)) repairs.add(new TimedJob(chunk, true));
+                    return repairs;
+                });
+                if (!deferred.isEmpty() && !aligned.isEmpty()) {
+                    List<TimedJob> repairs = new ArrayList<>();
+                    for (List<PronunciationFirst.Item> chunk : chunks.apply(deferred)) repairs.add(new TimedJob(chunk, true));
+                    errors.addAll(PronunciationRequests.run(repairs, slotExecutor, perform, (job, answer) -> {
+                        aligned.putAll(answer);
+                        return Collections.emptyList();
+                    }));
                 }
+                Exception firstError = errors.isEmpty() ? null : errors.get(0);
                 if (aligned.isEmpty()) {
                     throw firstError != null ? firstError : new IOException("AI returned no usable pronunciation timing");
                 }
@@ -1814,8 +1825,10 @@ final class AiLyricsRepository {
 
     /**
      * Asks for the pronunciation of every request split over its sung units (the same request as
-     * the desktop app). Chunks run in parallel, with one smaller repair pass for lines whose slots
-     * did not match. Empty when no provider answered with exact slots.
+     * the desktop app). Small requests run side by side (PronunciationRequests), and the lines a
+     * request answered with the wrong slots are asked again as soon as it returns; until any line
+     * has worked for a provider they wait, so a failing provider is not asked twice. Empty when no
+     * provider answered with exact slots.
      */
     private Map<Integer, List<String>> loadPronunciationSlots(
             String trackKey,
@@ -1845,57 +1858,81 @@ final class AiLyricsRepository {
             session.setProvider(true, providerSettings.provider.label);
             reportSupplementProvider(trackKey, callback, true, providerSettings.provider.label);
             log.write("ai pronunciation by unit: provider=" + providerSettings.provider.label + " / lines=" + items.size());
-            Map<Integer, List<String>> slots = new java.util.concurrent.ConcurrentHashMap<>();
-            Exception[] firstError = {null};
-            java.util.function.BiConsumer<List<List<PronunciationSlots.Item>>, Boolean> run = (chunks, repair) -> {
-                List<java.util.concurrent.Callable<Void>> calls = new ArrayList<>();
-                for (List<PronunciationSlots.Item> chunk : chunks) {
-                    calls.add(() -> {
-                        try {
-                            String base = PronunciationSlots.prompt(chunk, normalizedLang, sourceLang, notation,
-                                    scriptInstruction, outputScript, audience);
-                            String prompt = repair ? base + "\n\n" + PronunciationSlots.REPAIR_NOTE : base;
-                            String raw = withOpenAIConnections(providerSettings, null, connection -> callProviderRaw(prompt, connection));
-                            for (Map.Entry<Integer, List<String>> entry : PronunciationSlots.parse(raw, chunk, notation).entrySet()) {
-                                int index = entry.getKey();
-                                slots.put(index, entry.getValue());
-                                session.setPronunciationValue(index, PronunciationSlots.join(
-                                        PronunciationSlots.splitUnits(PronunciationSlots.normalizeLine(requests.get(index).text)),
-                                        entry.getValue()));
-                                partialDispatcher.request();
-                            }
-                        } catch (Exception error) {
-                            synchronized (firstError) {
-                                if (firstError[0] == null) firstError[0] = error;
-                            }
-                        }
-                        return null;
-                    });
-                }
-                try {
-                    slotExecutor.invokeAll(calls);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
+            Map<Integer, List<String>> slots = new HashMap<>();
+            List<PronunciationSlots.Item> deferred = new ArrayList<>();
+            PronunciationRequests.Perform<SlotJob, String> perform = job -> {
+                String base = PronunciationSlots.prompt(job.items, normalizedLang, sourceLang, notation,
+                        scriptInstruction, outputScript, audience);
+                String prompt = job.repair ? base + "\n\n" + PronunciationSlots.REPAIR_NOTE : base;
+                return withOpenAIConnections(providerSettings, null, connection -> callProviderRaw(prompt, connection));
+            };
+            java.util.function.BiConsumer<SlotJob, String> apply = (job, raw) -> {
+                for (Map.Entry<Integer, List<String>> entry : PronunciationSlots.parse(raw, job.items, notation).entrySet()) {
+                    int index = entry.getKey();
+                    slots.put(index, entry.getValue());
+                    session.setPronunciationValue(index, PronunciationSlots.join(
+                            PronunciationSlots.splitUnits(PronunciationSlots.normalizeLine(requests.get(index).text)),
+                            entry.getValue()));
+                    partialDispatcher.request();
                 }
             };
-            run.accept(PronunciationSlots.chunks(items), false);
+            List<SlotJob> first = new ArrayList<>();
+            for (List<PronunciationSlots.Item> chunk : PronunciationRequests.batches(items, PronunciationSlots::chunks)) {
+                first.add(new SlotJob(chunk, false));
+            }
+            List<Exception> errors = PronunciationRequests.run(first, slotExecutor, perform, (job, raw) -> {
+                apply.accept(job, raw);
+                if (job.repair) return Collections.emptyList();
+                List<PronunciationSlots.Item> missing = new ArrayList<>();
+                for (PronunciationSlots.Item item : job.items) {
+                    if (!slots.containsKey(item.index)) missing.add(item);
+                }
+                if (missing.isEmpty()) return Collections.emptyList();
+                if (slots.isEmpty()) {
+                    deferred.addAll(missing);
+                    return Collections.emptyList();
+                }
+                List<SlotJob> repairs = new ArrayList<>();
+                for (List<PronunciationSlots.Item> chunk : PronunciationSlots.chunks(missing)) repairs.add(new SlotJob(chunk, true));
+                return repairs;
+            });
+            if (!deferred.isEmpty() && !slots.isEmpty()) {
+                List<SlotJob> repairs = new ArrayList<>();
+                for (List<PronunciationSlots.Item> chunk : PronunciationSlots.chunks(deferred)) repairs.add(new SlotJob(chunk, true));
+                errors.addAll(PronunciationRequests.run(repairs, slotExecutor, perform, (job, raw) -> {
+                    apply.accept(job, raw);
+                    return Collections.emptyList();
+                }));
+            }
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
-            List<PronunciationSlots.Item> missing = new ArrayList<>();
-            for (PronunciationSlots.Item item : items) {
-                if (!slots.containsKey(item.index)) missing.add(item);
-            }
-            if (!missing.isEmpty() && !slots.isEmpty()) {
-                run.accept(PronunciationSlots.chunks(missing), true);
-                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
-            }
             if (!slots.isEmpty()) {
                 log.write("ai pronunciation by unit response: " + slots.size() + "/" + items.size());
                 return new HashMap<>(slots);
             }
             log.write("ai pronunciation by unit failed: provider=" + providerSettings.provider.label
-                    + " / error=" + (firstError[0] == null ? "no usable lines" : errorMessage(firstError[0])));
+                    + " / error=" + (errors.isEmpty() ? "no usable lines" : errorMessage(errors.get(0))));
         }
         return Collections.emptyMap();
+    }
+
+    private static final class SlotJob {
+        final List<PronunciationSlots.Item> items;
+        final boolean repair;
+
+        SlotJob(List<PronunciationSlots.Item> items, boolean repair) {
+            this.items = items;
+            this.repair = repair;
+        }
+    }
+
+    private static final class TimedJob {
+        final List<PronunciationFirst.Item> items;
+        final boolean repair;
+
+        TimedJob(List<PronunciationFirst.Item> items, boolean repair) {
+            this.items = items;
+            this.repair = repair;
+        }
     }
 
     private void storePronunciationSlots(String trackKey, String cacheKey, Map<String, List<String>> lines) {
@@ -2135,8 +2172,9 @@ final class AiLyricsRepository {
             boolean pronunciation = SUPPLEMENT_TASK_PRONUNCIATION.equals(task);
             List<String> values;
             String prompt;
-            // Karaoke songs: pronunciation split over the sung units of every line.
-            Map<Integer, List<String>> slots = pronunciation && session.baseResult.karaoke
+            // With synced pronunciation on, karaoke songs get their pronunciation split over the sung
+            // units of every line. Otherwise it is plain line text.
+            Map<Integer, List<String>> slots = pronunciation && session.baseResult.karaoke && settings.syncedPronunciationEnabled
                     ? loadPronunciationSlots(trackKey, settings, session, requests, pronunciationLang, sourceLang,
                             partialDispatcher, log, callback)
                     : Collections.emptyMap();

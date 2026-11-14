@@ -50,6 +50,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     static final String KEY_AUTO_INSTRUMENTAL_BREAK = "auto_instrumental_break";
     static final String KEY_PRONUNCIATION_FIRST = "pronunciation_first_enabled";
     static final String KEY_PRONUNCIATION_KARAOKE_FILL = "pronunciation_karaoke_fill_enabled";
+    static final String KEY_SYNCED_PRONUNCIATION = "synced_pronunciation_enabled";
     static final String KEY_INTERLUDE_LABELS_ENABLED = "interlude_labels_enabled";
     static final String KEY_SYNCED_LYRICS_KARAOKE_ANIMATION = "synced_lyrics_karaoke_animation";
     static final String KEY_KARAOKE_BOUNCE_EFFECT = "karaoke_bounce_effect";
@@ -484,7 +485,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 prefs.getString(KEY_SPOTIFY_CLIENT_ID, ""),
                 secureStore.getString(KEY_SPOTIFY_CLIENT_SECRET, ""),
                 localAiTier(),
-                localAiIdleMinutes()
+                localAiIdleMinutes(),
+                syncedPronunciationEnabled()
         );
         cachedSnapshot = snapshot;
         return snapshot;
@@ -919,6 +921,18 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setPronunciationKaraokeFillEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_PRONUNCIATION_KARAOKE_FILL, enabled).apply();
+    }
+
+    /**
+     * Synced pronunciation: karaoke pronunciation is requested split over the sung units, and
+     * pronunciation-first and the fill become available. Off (the default), it is plain line text.
+     */
+    boolean syncedPronunciationEnabled() {
+        return prefs.getBoolean(KEY_SYNCED_PRONUNCIATION, false);
+    }
+
+    void setSyncedPronunciationEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_SYNCED_PRONUNCIATION, enabled).apply();
     }
 
     void setInterludeLabelsEnabled(boolean enabled) {
@@ -2468,6 +2482,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final String spotifyClientSecret;
         final String localAiTier;
         final int localAiIdleMinutes;
+        /** Karaoke pronunciation is requested by sung unit (AiLyricsSettings.syncedPronunciationEnabled). */
+        final boolean syncedPronunciationEnabled;
 
         Snapshot(
                 String uiLang,
@@ -2521,7 +2537,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 String spotifyClientId,
                 String spotifyClientSecret,
                 String localAiTier,
-                int localAiIdleMinutes
+                int localAiIdleMinutes,
+                boolean syncedPronunciationEnabled
         ) {
             this.uiLang = normalizedUiLanguage(uiLang);
             this.outputLang = normalizeOutputLanguage(outputLang);
@@ -2581,6 +2598,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.spotifyClientSecret = spotifyClientSecret == null ? "" : spotifyClientSecret.trim();
             this.localAiTier = LocalAiModels.tier(localAiTier).id;
             this.localAiIdleMinutes = LocalAiModels.idleUnloadMinutes(localAiIdleMinutes);
+            this.syncedPronunciationEnabled = syncedPronunciationEnabled;
         }
 
         boolean enabled() {
@@ -2734,7 +2752,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     spotifyClientId,
                     spotifyClientSecret,
                     localAiTier,
-                    localAiIdleMinutes
+                    localAiIdleMinutes,
+                    syncedPronunciationEnabled
             );
         }
 

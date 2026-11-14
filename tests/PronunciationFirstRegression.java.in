@@ -201,14 +201,75 @@ public final class PronunciationFirstRegression {
                 "target-language notation is not script-checked");
         check(PronunciationSlots.parse("{\"l\":[{\"i\":0,\"p\":[\"유메\",\"나\",\"라\",\"ㄴ\"]}]}", slotItems, "translation").isEmpty(),
                 "a lone Hangul letter is asked again");
-        check(PronunciationSlots.chunks(Collections.nCopies(17, slotItems.get(0))).size() == 3, "small chunks of eight lines");
+        check(PronunciationSlots.chunks(Collections.nCopies(17, slotItems.get(0))).size() == 9, "small chunks of two lines");
+        List<Integer> ramped = new ArrayList<>();
+        for (List<PronunciationSlots.Item> batch : PronunciationRequests.batches(Collections.nCopies(7, slotItems.get(0)), PronunciationSlots::chunks)) {
+            ramped.add(batch.size());
+        }
+        check(ramped.equals(List.of(1, 2, 2, 2)), "the opening line goes out alone: " + ramped);
         Map<String, List<String>> stored = PronunciationSlots.stored(List.of("夢ならば", "♪", " 今日も "),
                 Map.of(0, List.of("yume", "na", "ra", "ba"), 2, List.of("kyou ", "", "mo")));
         check(stored.size() == 2 && stored.get("今日も").equals(List.of("kyou ", "", "mo")), "stored by line text");
         check(stored.equals(PronunciationSlots.fromJson(PronunciationSlots.toJson(stored))), "stored slots round-trip");
         check(PronunciationSlots.fromJson("{\"v\":99,\"lines\":{}}") == null, "another version is not read");
 
+        checkRequests();
         System.out.println("PronunciationFirstRegression passed " + checks + " checks");
+    }
+
+    /** PronunciationRequests: twelve at a time, follow-ups at once, rate limits halve and retry. */
+    static void checkRequests() throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(PronunciationRequests.PARALLEL_REQUESTS);
+        try {
+            java.util.concurrent.atomic.AtomicInteger active = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger peak = new java.util.concurrent.atomic.AtomicInteger();
+            List<Integer> handled = new ArrayList<>();
+            List<Integer> jobs = new ArrayList<>();
+            for (int index = 0; index < 30; index++) jobs.add(index);
+            List<Exception> errors = PronunciationRequests.run(jobs, pool, 12, 3, attempt -> { }, job -> {
+                peak.accumulateAndGet(active.incrementAndGet(), Math::max);
+                Thread.sleep(5);
+                active.decrementAndGet();
+                return job;
+            }, (job, answer) -> {
+                handled.add(answer);
+                return job == 3 ? List.of(100) : Collections.emptyList();
+            });
+            check(errors.isEmpty() && peak.get() == 12, "twelve requests at a time: " + peak.get());
+            check(new HashSet<>(handled).size() == 31 && handled.contains(100), "every job and its follow-up are handled");
+            check(handled.indexOf(100) < handled.size() - 3, "the follow-up goes out before the queue is done: " + handled.indexOf(100));
+
+            Map<Integer, Integer> attempts = new java.util.concurrent.ConcurrentHashMap<>();
+            java.util.concurrent.atomic.AtomicBoolean limited = new java.util.concurrent.atomic.AtomicBoolean();
+            java.util.concurrent.atomic.AtomicInteger after = new java.util.concurrent.atomic.AtomicInteger();
+            active.set(0);
+            List<Integer> twelve = new ArrayList<>(jobs.subList(0, 12));
+            errors = PronunciationRequests.run(twelve, pool, 12, 3, attempt -> { }, job -> {
+                int now = active.incrementAndGet();
+                if (limited.get()) after.accumulateAndGet(now, Math::max);
+                int attempt = attempts.merge(job, 1, Integer::sum);
+                Thread.sleep(5);
+                active.decrementAndGet();
+                if (job < 4 && attempt == 1) {
+                    limited.set(true);
+                    throw new java.io.IOException("ChatGPT HTTP 429 - rate limited");
+                }
+                return job;
+            }, (job, answer) -> Collections.emptyList());
+            int total = 0;
+            for (int value : attempts.values()) total += value;
+            check(errors.isEmpty() && total == 16, "rate-limited jobs are sent again: " + attempts);
+            check(after.get() <= 6, "half the requests after a rate limit: " + after.get());
+
+            java.util.concurrent.atomic.AtomicInteger tries = new java.util.concurrent.atomic.AtomicInteger();
+            errors = PronunciationRequests.run(List.of(0), pool, 12, 3, attempt -> { }, job -> {
+                tries.incrementAndGet();
+                throw new java.io.IOException("Too Many Requests");
+            }, (job, answer) -> Collections.emptyList());
+            check(errors.size() == 1 && tries.get() == 4, "a job that stays rate limited fails after three retries: " + tries.get());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     static List<String> unitTexts(String text) {
