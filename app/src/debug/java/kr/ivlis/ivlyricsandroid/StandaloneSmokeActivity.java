@@ -254,7 +254,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
         });
     }
 
-    /** The mode's own entry is a settings action; the fixture opens it directly. */
+    /** The mode's own entry is a tile in the track panel; the fixture opens it directly. */
     private void showMotionLyrics() {
         try {
             java.lang.reflect.Method show = BaseLyricsActivity.class.getDeclaredMethod("showMotionLyricsMode", boolean.class);

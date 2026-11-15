@@ -161,8 +161,16 @@ public final class AlbumArtLpRegression {
         LinearLayout page;
         TextView currentTrackSettingsSummary;
         boolean embedded, settingsVisible = true;
-        int motionEntries;
+        LinearLayout settingsTrackPanel;
+        int motionEntries, panelAttachments, menusDismissed;
+        /** What the production guard would say for a song without word timing; null when it can play. */
+        String motionUnavailable;
         void showMotionLyricsMode(boolean show) { if (show) motionEntries++; }
+        String motionLyricsUnavailableMessage() { return motionUnavailable; }
+        void attachTrackPanelToSettings() { panelAttachments++; }
+        void dismissLyricsMetaTip() {}
+        void dismissLyricsMetaMenuPopup() { menusDismissed++; }
+        boolean isSettingsPanelVisible() { return settingsVisible; }
         LinearLayout settingsMenuPage(LinearLayout content, String menuId) {
             settingsMenuSections.put(menuId, new ArrayList<>());
             page = new LinearLayout();
@@ -191,14 +199,7 @@ public final class AlbumArtLpRegression {
         // PRODUCTION_MENU
     }
 
-    static List<Button> buttons(LinearLayout parent) {
-        List<Button> result = new ArrayList<>();
-        for (View child : parent.children) {
-            if (child instanceof Button) result.add((Button) child);
-            if (child instanceof LinearLayout) result.addAll(buttons((LinearLayout) child));
-        }
-        return result;
-    }
+    /** The LP tile heading the track panel (the title's long-press menu and the current-track settings) calls openPlayerMode(false). */
     static void explicitMenuRoute() {
         for (boolean embedded : new boolean[]{false, true}) {
             for (boolean enabled : new boolean[]{false, true}) {
@@ -206,52 +207,56 @@ public final class AlbumArtLpRegression {
                 player.embedded = embedded;
                 player.aiLyricsSettings.setAlbumArtOpenLp(enabled);
                 player.buildCurrentTrackSettingsMenu(new LinearLayout());
-                List<Button> actions = buttons(player.page);
-                check(actions.size() == (embedded ? 0 : 2), "LP and motion lyrics exist only for standalone with either preference");
+                check(player.page.children.size() == 1 && player.panelAttachments == 1,
+                        "the menu is its summary and the track panel, whose first row holds the modes");
                 check(player.settingsMenuSections.get("current_track").contains("vinyl.mode") != embedded,
                         "home menu advertises LP only where supported");
+                check(player.registeredSettings.get(player.currentTrackSettingsSummary).equals("tab.current_track"),
+                        "the menu participates in settings search under the names of its modes");
                 if (embedded) continue;
-                Button action = actions.get(0);
-                check(action.label.equals("vinyl.mode"), "explicit menu reuses the localized LP label");
-                check(player.registeredSettings.get(action).equals("vinyl.mode"), "LP action participates in settings search");
-                check(action.focusable, "menu action supports remote focus");
-                action.performClick();
-                check(player.entries == 1 && !player.settingsVisible, "actual menu callback closes settings and enters LP regardless of artwork setting");
+                player.openPlayerMode(false);
+                check(player.entries == 1 && !player.settingsVisible && player.menusDismissed == 1,
+                        "the tile's callback closes the menu and settings and enters LP regardless of artwork setting");
                 check(player.vinylModeVisible, "menu invokes the production LP entry function");
                 check(player.aiLyricsSettings.albumArtOpenLp() == enabled, "manual entry preserves the artwork preference");
                 player.showVinylMode(false);
                 check(!player.vinylModeVisible, "LP exit remains available with either artwork preference");
                 player.currentTrack = null;
-                action.performClick();
-                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 1,
+                player.settingsVisible = true;
+                player.openPlayerMode(false);
+                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 1 && player.settingsVisible,
                         "menu retains normal missing-track guard and feedback");
                 player.currentTrack = new TrackSnapshot();
                 player.currentTrack.usable = false;
-                action.performClick();
-                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 2,
+                player.openPlayerMode(false);
+                check(player.entries == 1 && !player.vinylModeVisible && player.waitingToasts == 2 && player.menusDismissed == 1,
                         "menu retains normal unusable-metadata guard and feedback");
             }
         }
     }
 
-    /** Motion lyrics sits with LP mode in the current-track menu, and is left out when system animations are off. */
+    /** Motion lyrics sits with LP mode at the head of the track panel, in the Spotify module too, and is left out when system animations are off. */
     static void motionMenuRoute() {
-        for (boolean animations : new boolean[]{true, false}) {
-            MotionPreferences.enabled = animations;
-            MenuPlayer player = new MenuPlayer();
-            player.buildCurrentTrackSettingsMenu(new LinearLayout());
-            List<Button> actions = buttons(player.page);
-            check(actions.size() == (animations ? 2 : 1) && actions.get(0).label.equals("vinyl.mode"),
-                    "LP stays first; motion lyrics needs system animations");
-            check(player.settingsMenuSections.get("current_track").contains("motion.mode") == animations,
-                    "home menu advertises motion lyrics only where it can open");
-            if (!animations) continue;
-            Button action = actions.get(1);
-            check(action.label.equals("motion.mode") && player.registeredSettings.get(action).equals("motion.mode") && action.focusable,
-                    "motion lyrics action is labelled, searchable and remote-focusable");
-            action.performClick();
-            check(player.motionEntries == 1 && player.entries == 0 && !player.settingsVisible,
-                    "menu callback closes settings and enters motion lyrics, not LP");
+        for (boolean embedded : new boolean[]{false, true}) {
+            for (boolean animations : new boolean[]{true, false}) {
+                MotionPreferences.enabled = animations;
+                MenuPlayer player = new MenuPlayer();
+                player.embedded = embedded;
+                player.buildCurrentTrackSettingsMenu(new LinearLayout());
+                List<String> sections = player.settingsMenuSections.get("current_track");
+                check(sections.contains("motion.mode") == animations,
+                        "home menu advertises motion lyrics only where it can open, in both products");
+                check(!sections.contains("vinyl.mode") || sections.indexOf("vinyl.mode") < sections.indexOf("motion.mode")
+                        || !animations, "LP stays ahead of motion lyrics");
+                player.motionUnavailable = "motion.unavailable";
+                player.openPlayerMode(true);
+                check(player.motionEntries == 0 && player.waitingToasts == 1 && player.settingsVisible && player.menusDismissed == 0,
+                        "a song that cannot play says why and leaves the menu open");
+                player.motionUnavailable = null;
+                player.openPlayerMode(true);
+                check(player.motionEntries == 1 && player.entries == 0 && !player.settingsVisible && player.menusDismissed == 1,
+                        "the tile's callback closes the menu and settings and enters motion lyrics, not LP");
+            }
         }
         MotionPreferences.enabled = true;
     }

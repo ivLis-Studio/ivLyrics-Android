@@ -33,11 +33,13 @@ assert "updateArtworkTapHint(artworkView)" in populate
 assert "suppressSettingsEvents = previousSuppression;" in populate
 assert "attachArtworkSwipe(artworkView)" in declaration(source, "private FrameLayout buildMainPage()")
 assert "attachArtworkSwipe(artworkView)" in declaration(source, "private FrameLayout buildLandscapeMainPage()")
-# Only the artwork callback owns the gate; the explicit menu enters the normal guarded mode function.
+# Only the artwork callback owns the gate; the explicit entry (the LP tile heading the track panel)
+# enters the normal guarded mode function.
 current_track_menu = declaration(source, "private void buildCurrentTrackSettingsMenu(")
-assert 'settingsAction(modes, ui("vinyl.mode")' in current_track_menu
-assert "showVinylMode(true)" in current_track_menu
 assert "albumArtOpenLp" not in current_track_menu
+assert "openPlayerMode(false)" in declaration(source, "private LinearLayout buildPlayerModeRow()")
+entry = declaration(source, "private void openPlayerMode(boolean motion)")
+assert "showVinylMode(true)" in entry and "albumArtOpenLp" not in entry
 mode = declaration(source, "private void showVinylMode(")
 assert "albumArtOpenLp" not in mode
 assert "currentTrack == null || !currentTrack.hasUsableMetadata()" in mode
@@ -63,7 +65,7 @@ fixture = fixture.replace("// PRODUCTION_SETTINGS", "\n".join(declaration(settin
     "boolean albumArtOpenLp()", "void setAlbumArtOpenLp(",
 )))
 fixture = fixture.replace("// PRODUCTION_MENU", "\n".join(declaration(source, signature) for signature in (
-    "private void buildCurrentTrackSettingsMenu(", "private Button settingsAction(", "private void showVinylMode(",
+    "private void buildCurrentTrackSettingsMenu(", "private void openPlayerMode(boolean motion)", "private void showVinylMode(",
 )))
 target = work / "AlbumArtLpRegression.java"
 target.write_text(fixture)

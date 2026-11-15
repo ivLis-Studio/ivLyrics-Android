@@ -41,6 +41,15 @@ The in-app browser sheet follows the same rule, using its handle's and page's ow
 thresholds. A touch on a sliding sheet never reaches the web page. A close that ended a
 Discord login always finishes, since that login cannot resume.
 
+Motion lyrics (`MotionLyricsModeView`, the desktop presentation in a web view) opens from
+the row of mode tiles heading the track panel, which the title's long-press menu and the
+current-track settings both show. It is composed for a wide screen. The standalone app
+turns a phone's window to landscape. Spotify recreates the sheet's Activity whenever its
+window turns (the host component handles no configuration change), so there the stage,
+the artwork background and the video are laid out as a wide screen a quarter turn round
+inside the upright window, the window is held as it is, and the side the phone lies on
+picks the direction of the turn.
+
 Standalone system components are registered only in the app manifest. The shared
 manifest is empty. Some standalone feature implementation classes remain in the
 library because the common settings/activity currently call them; Spotify's

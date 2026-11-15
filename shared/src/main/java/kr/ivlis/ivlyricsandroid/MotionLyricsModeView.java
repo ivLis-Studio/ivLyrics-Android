@@ -95,6 +95,8 @@ final class MotionLyricsModeView extends FrameLayout {
     private int insetTop;
     private int insetRight;
     private int insetBottom;
+    /** A quarter turn of the stage inside an upright window: 90 (clockwise), -90, or 0 for none. */
+    private int quarterTurn;
     private boolean shown;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -191,6 +193,31 @@ final class MotionLyricsModeView extends FrameLayout {
         flush();
     }
 
+    /**
+     * Lays the stage out as a wide screen inside a window that stays upright, for a host that
+     * cannot turn its window: at 90 the top of the stage lies along the window's right edge, at
+     * -90 along its left edge, and 0 fills the window as it is. The stage must be a child of a
+     * FrameLayout the size of the window.
+     */
+    void setQuarterTurn(int degrees, int windowWidth, int windowHeight) {
+        quarterTurn = degrees;
+        ViewGroup.LayoutParams current = getLayoutParams();
+        if (current instanceof LayoutParams) {
+            LayoutParams params = (LayoutParams) current;
+            int width = degrees == 0 ? ViewGroup.LayoutParams.MATCH_PARENT : windowHeight;
+            int height = degrees == 0 ? ViewGroup.LayoutParams.MATCH_PARENT : windowWidth;
+            if (params.width != width || params.height != height || params.gravity != Gravity.CENTER) {
+                params.width = width;
+                params.height = height;
+                params.gravity = Gravity.CENTER;
+                setLayoutParams(params);
+            }
+        }
+        setRotation(degrees);
+        placeCloseButton();
+        flush();
+    }
+
     void show(boolean animate) {
         animate().cancel();
         shown = true;
@@ -264,11 +291,29 @@ final class MotionLyricsModeView extends FrameLayout {
         return super.onApplyWindowInsets(insets);
     }
 
+    /** The window's insets as the stage sees them: a turned stage has the window's top at one side. */
+    private int stageInsetLeft() {
+        return quarterTurn > 0 ? insetTop : quarterTurn < 0 ? insetBottom : insetLeft;
+    }
+
+    private int stageInsetTop() {
+        return quarterTurn > 0 ? insetRight : quarterTurn < 0 ? insetLeft : insetTop;
+    }
+
+    private int stageInsetRight() {
+        return quarterTurn > 0 ? insetBottom : quarterTurn < 0 ? insetTop : insetRight;
+    }
+
+    private int stageInsetBottom() {
+        return quarterTurn > 0 ? insetLeft : quarterTurn < 0 ? insetRight : insetBottom;
+    }
+
     private void placeCloseButton() {
         LayoutParams params = (LayoutParams) closeButton.getLayoutParams();
         boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
         params.setMargins(
-                (rtl ? insetLeft : 0) + dp(16), insetTop + dp(14), (rtl ? 0 : insetRight) + dp(16), 0);
+                (rtl ? stageInsetLeft() : 0) + dp(16), stageInsetTop() + dp(14),
+                (rtl ? 0 : stageInsetRight()) + dp(16), 0);
         closeButton.setLayoutParams(params);
     }
 
@@ -325,10 +370,10 @@ final class MotionLyricsModeView extends FrameLayout {
         MotionLyricsSong.string(out, failedText);
         out.append("},\"ai\":").append(aiAvailable).append(",\"background\":true,\"insets\":{");
         out.append(String.format(Locale.US, "\"top\":%.1f,\"right\":%.1f,\"bottom\":%.1f,\"left\":%.1f",
-                insetTop / density,
-                insetRight / density + (rtl ? 0f : reserve),
-                insetBottom / density,
-                insetLeft / density + (rtl ? reserve : 0f)));
+                stageInsetTop() / density,
+                stageInsetRight() / density + (rtl ? 0f : reserve),
+                stageInsetBottom() / density,
+                stageInsetLeft() / density + (rtl ? reserve : 0f)));
         return out.append("}}").toString();
     }
 
