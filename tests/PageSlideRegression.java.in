@@ -296,7 +296,7 @@ public final class PageSlideRegression {
         LyricsView pictureInPictureLyricsView, landscapeLyricsView;
         LyricsActivityHost lyricsActivityHost;
         boolean lyricsPageVisible, pageDragging, hostLyricsDragging, hostDragHandlePressed;
-        boolean vinylModeVisible, lyricsMetaLongPressTriggered;
+        boolean vinylModeVisible, motionModeVisible, lyricsMetaLongPressTriggered;
         boolean lyricsPageSliding, pageSlideTouch, pageSlideCarried;
         int lyricsPageSlide;
         boolean inAppBrowserVisible, creatorPrivacyLoginInProgress;

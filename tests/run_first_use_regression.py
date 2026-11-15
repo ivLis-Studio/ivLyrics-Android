@@ -58,6 +58,7 @@ public final class FirstUseRegression {
     }
     static class TouchFlow extends NativeDispatch {
         boolean vinylModeVisible;
+        boolean motionModeVisible;
         View spotifySetupPanel;
         PronunciationFirstButton pronunciationFirstButton;
         int playerGestures;

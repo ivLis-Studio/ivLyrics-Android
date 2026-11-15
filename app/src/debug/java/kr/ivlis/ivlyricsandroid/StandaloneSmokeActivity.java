@@ -62,6 +62,8 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private static final String EXTRA_TRACK = "track";
     private static final String EXTRA_PLAY = "play";
     private static final String EXTRA_POSITION = "position";
+    /** Opens motion lyrics once the first track's rows are in. */
+    private static final String EXTRA_MOTION = "motion";
     private static MediaSession session;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -79,6 +81,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private int deliveryGeneration;
     private boolean probeEnabled;
     private boolean probeClockRunning;
+    private boolean openMotionWhenReady;
     private long probeFrameNanos;
     private boolean receiversRegistered;
     private boolean destroyed;
@@ -137,6 +140,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
         Intent launch = getIntent();
         launch.removeExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE);
         probeEnabled = LyricsFrameProbe.enabled(this);
+        openMotionWhenReady = launch.getBooleanExtra(EXTRA_MOTION, false);
         prepareSettings(launch.getBooleanExtra(EXTRA_REDUCE_MOTION, false));
         super.onCreate(state);
         try {
@@ -237,6 +241,10 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
                         && current.stableKey().equals(key)) {
                     onLyricsLoaded(key, EmbeddedSmokeActivity.fixtureLyrics(current, track));
                     Log.i(TAG, "STANDALONE_READY " + track + " " + position);
+                    if (openMotionWhenReady) {
+                        openMotionWhenReady = false;
+                        showMotionLyrics();
+                    }
                 } else if (SystemClock.uptimeMillis() > deadline) {
                     Log.e(TAG, "CHECK_FAILED standalone lyrics delivery timed out: " + track);
                 } else {
@@ -244,6 +252,18 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
                 }
             }
         });
+    }
+
+    /** The mode's own entry is a settings action; the fixture opens it directly. */
+    private void showMotionLyrics() {
+        try {
+            java.lang.reflect.Method show = BaseLyricsActivity.class.getDeclaredMethod("showMotionLyricsMode", boolean.class);
+            show.setAccessible(true);
+            show.invoke(this, true);
+            Log.i(TAG, "STANDALONE_MOTION shown");
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
     }
 
     private static void setState(boolean play, long position) {

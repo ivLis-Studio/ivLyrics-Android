@@ -1840,6 +1840,11 @@ final class VinylPlayerModeView extends FrameLayout {
         }
     }
 
+    /** The accent the record label takes from the artwork; motion lyrics colours its type with it too. */
+    static int artworkAccent(Bitmap artwork, String fallbackKey) {
+        return VinylSurface.VisualTrack.accentColor(artwork, fallbackKey);
+    }
+
     private static final class SimpleAnimatorEndListener implements android.animation.Animator.AnimatorListener {
         private final Runnable endAction;
         private boolean cancelled;

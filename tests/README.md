@@ -8,6 +8,7 @@ python3 tests/run_lyrics_center_regression.py
 python3 tests/run_appearance_regression.py
 python3 tests/run_first_use_regression.py
 python3 tests/run_vinyl_regression.py
+python3 tests/run_motion_lyrics_regression.py
 python3 tests/run_interlude_handoff_regression.py
 python3 tests/run_lyrics_metadata_cache_regression.py
 python3 tests/run_metadata_regression.py

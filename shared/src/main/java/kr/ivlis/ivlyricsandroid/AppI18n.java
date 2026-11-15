@@ -147,6 +147,7 @@ final class AppI18n {
         addAppearanceStrings(languages);
         addVinylControlStrings(languages);
         addAlbumArtLpStrings(languages);
+        addMotionLyricsStrings(languages);
         addLyricsRegenerateStrings(languages);
         addSingAlongStrings(languages);
         addErrorMessageStrings(languages);
@@ -620,6 +621,36 @@ final class AppI18n {
                     "setting.album_art_open_lp", row[1], "setting.album_art_open_lp_desc", row[2]
             });
         }
+    }
+
+    /** Motion lyrics (MotionLyricsModeView): the menu entry and what the page shows while it loads a direction. */
+    private static void addMotionLyricsStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {"motion.mode", "motion.unavailable", "motion.directing", "motion.direct_failed"};
+        String[][] rows = {
+                {"ko", "모션 가사", "모션 가사는 단어·글자 싱크가 있는 곡에서 재생돼요.", "AI가 모션 연출을 만드는 중…", "AI 연출을 만들지 못해 기본 연출로 보여드려요."},
+                {"en", "Motion lyrics", "Motion lyrics play on songs with word or character timing.", "AI is directing the motion…", "AI direction failed. Using the built-in direction."},
+                {"zh-CN", "动效歌词", "动效歌词仅适用于带有逐词或逐字同步的歌曲。", "AI 正在编排动态演出…", "AI 演出生成失败，已改用内置演出。"},
+                {"zh-TW", "動態歌詞", "動態歌詞僅適用於有逐詞或逐字同步的歌曲。", "AI 正在編排動態演出…", "AI 演出生成失敗，已改用內建演出。"},
+                {"ja", "モーション歌詞", "モーション歌詞は単語・文字単位の同期がある曲で再生されます。", "AIがモーション演出を作成中…", "AI演出を作成できなかったため、標準の演出で表示します。"},
+                {"hi", "मोशन बोल", "मोशन बोल केवल शब्द या अक्षर टाइमिंग वाले गानों में चलते हैं।", "AI मोशन निर्देशन बना रहा है…", "AI निर्देशन विफल रहा। अंतर्निहित निर्देशन का उपयोग किया जा रहा है।"},
+                {"es", "Letras en movimiento", "Las letras en movimiento funcionan con canciones sincronizadas por palabra o carácter.", "La IA está dirigiendo la animación…", "La dirección con IA falló. Se usa la dirección integrada."},
+                {"fr", "Paroles en mouvement", "Les paroles en mouvement fonctionnent avec les chansons synchronisées au mot ou au caractère.", "L’IA réalise l’animation…", "La réalisation par IA a échoué. La réalisation intégrée est utilisée."},
+                {"ar", "كلمات الحركة", "تعمل كلمات الحركة مع الأغاني المزامنة على مستوى الكلمة أو الحرف.", "يقوم الذكاء الاصطناعي بإخراج الحركة…", "تعذّر إخراج الحركة بالذكاء الاصطناعي، لذا يُستخدم الإخراج المدمج."},
+                {"fa", "متن متحرک", "متن متحرک برای آهنگ‌هایی با همگام‌سازی واژه‌ای یا حرفی پخش می‌شود.", "هوش مصنوعی در حال کارگردانی حرکت است…", "کارگردانی هوش مصنوعی ناموفق بود؛ از کارگردانی داخلی استفاده می‌شود."},
+                {"de", "Bewegte Songtexte", "Bewegte Songtexte funktionieren bei Songs mit Wort- oder Zeichen-Timing.", "Die KI inszeniert die Animation …", "KI-Regie fehlgeschlagen. Die integrierte Regie wird verwendet."},
+                {"ru", "Анимированный текст", "Анимированный текст работает с песнями с синхронизацией по словам или символам.", "ИИ ставит анимацию…", "ИИ не смог поставить анимацию. Используется встроенная постановка."},
+                {"sv", "Rörliga låttexter", "Rörliga låttexter fungerar med låtar som har ord- eller teckensynk.", "AI regisserar animationen …", "AI-regin misslyckades. Den inbyggda regin används."},
+                {"pt", "Letras em movimento", "As letras em movimento funcionam com músicas sincronizadas por palavra ou caractere.", "A IA está dirigindo a animação…", "A direção por IA falhou. Usando a direção integrada."},
+                {"bn", "মোশন লিরিক", "মোশন লিরিক শুধু শব্দ বা অক্ষর টাইমিং থাকা গানে চলে।", "এআই মোশন নির্দেশনা তৈরি করছে…", "এআই নির্দেশনা ব্যর্থ হয়েছে। অন্তর্নির্মিত নির্দেশনা ব্যবহার করা হচ্ছে।"},
+                {"cs", "Pohyblivé texty", "Pohyblivé texty fungují u skladeb se synchronizací po slovech nebo znacích.", "AI připravuje režii animace…", "Režie AI selhala. Používá se vestavěná režie."},
+                {"it", "Testi in movimento", "I testi in movimento funzionano con brani sincronizzati per parola o carattere.", "L’IA sta curando la regia dell’animazione…", "La regia IA non è riuscita. Viene usata la regia integrata."},
+                {"th", "เนื้อเพลงแบบโมชัน", "เนื้อเพลงแบบโมชันใช้ได้กับเพลงที่มีการซิงก์ระดับคำหรือตัวอักษร", "AI กำลังกำกับโมชัน…", "AI กำกับไม่สำเร็จ จึงใช้การกำกับในตัวแทน"},
+                {"vi", "Lời chuyển động", "Lời chuyển động hoạt động với bài hát có đồng bộ theo từ hoặc ký tự.", "AI đang dàn dựng chuyển động…", "AI dàn dựng thất bại. Đang dùng phần dàn dựng tích hợp."},
+                {"id", "Lirik gerak", "Lirik gerak berfungsi untuk lagu dengan sinkronisasi per kata atau karakter.", "AI sedang mengarahkan animasi…", "Arahan AI gagal. Menggunakan arahan bawaan."},
+                {"ms", "Lirik gerakan", "Lirik gerakan berfungsi untuk lagu dengan penyegerakan perkataan atau aksara.", "AI sedang mengarahkan animasi…", "Arahan AI gagal. Menggunakan arahan terbina dalam."},
+                {"tr", "Hareketli sözler", "Hareketli sözler, kelime veya karakter senkronu olan şarkılarda çalışır.", "Yapay zekâ hareketi yönetiyor…", "Yapay zekâ yönetimi başarısız oldu. Yerleşik yönetim kullanılıyor."}
+        };
+        addRows(languages, keys, rows);
     }
 
     private static void addAppearanceStrings(Map<String, Map<String, String>> languages) {

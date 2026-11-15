@@ -15,6 +15,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
+import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.database.ContentObserver;
@@ -226,6 +227,8 @@ public class BaseLyricsActivity extends Activity implements
     private FrameLayout settingsPanel;
     private FrameLayout pictureInPicturePage;
     private VinylPlayerModeView vinylPlayerModeView;
+    /** Kept across content rebuilds: the page it holds takes a moment to load. */
+    private MotionLyricsModeView motionLyricsModeView;
     private ScaledPictureInPictureFrameLayout pictureInPictureStage;
     private FrameLayout spotifySetupPanel;
     private ScrollView spotifySetupScrollView;
@@ -683,6 +686,23 @@ public class BaseLyricsActivity extends Activity implements
     private boolean pictureInPicturePinchTracking;
     private boolean pictureInPicturePinchTriggered;
     private boolean vinylModeVisible;
+    private boolean motionModeVisible;
+    /** What the activity asked for before motion lyrics held a phone in landscape. */
+    private int orientationBeforeMotionMode = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    /** The lyrics and track last sent to the motion lyrics page. */
+    private LyricsResult motionSongLyrics;
+    private String motionSongKey = "";
+    /** The page runs its own clock between these reports. */
+    private static final long MOTION_LYRICS_SYNC_MS = 250L;
+    private final Runnable motionLyricsTick = new Runnable() {
+        @Override
+        public void run() {
+            syncMotionLyricsMode();
+            if (motionModeVisible) {
+                handler.postDelayed(this, MOTION_LYRICS_SYNC_MS);
+            }
+        }
+    };
     private float pictureInPicturePinchStartDistance;
     private int onboardingStep = -1;
     // Unsaved credentials belong to the flow, not to the views rebuilt on back/theme/rotation.
@@ -916,6 +936,10 @@ public class BaseLyricsActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        if (motionModeVisible) {
+            handler.removeCallbacks(motionLyricsTick);
+            handler.post(motionLyricsTick);
+        }
         onboardingResumed = true;
         updateOnboardingGreetingActivity();
         if (!usesLivePlayback()) return;
@@ -1145,6 +1169,9 @@ public class BaseLyricsActivity extends Activity implements
         if (vinylModeVisible || (spotifySetupPanel != null && spotifySetupPanel.getVisibility() == View.VISIBLE)) {
             return super.dispatchTouchEvent(event);
         }
+        if (motionModeVisible) {
+            return super.dispatchTouchEvent(event);
+        }
         if (handlePictureInPicturePinch(event)) {
             return true;
         }
@@ -1232,6 +1259,7 @@ public class BaseLyricsActivity extends Activity implements
 
     @Override
     protected void onPause() {
+        handler.removeCallbacks(motionLyricsTick);
         if (pendingLrclibEndpointSave != null) {
             handler.removeCallbacks(pendingLrclibEndpointSave);
             pendingLrclibEndpointSave.run();
@@ -1294,6 +1322,11 @@ public class BaseLyricsActivity extends Activity implements
             onboardingAccessibilityManager.removeTouchExplorationStateChangeListener(onboardingTouchExplorationListener);
         }
         stopPlaybackClock();
+        handler.removeCallbacks(motionLyricsTick);
+        if (motionLyricsModeView != null) {
+            motionLyricsModeView.release();
+            motionLyricsModeView = null;
+        }
         if (firstLanguagePromptDialog != null) {
             firstLanguagePromptDialog.setOnDismissListener(null);
             firstLanguagePromptDialog.dismiss();
@@ -1366,6 +1399,11 @@ public class BaseLyricsActivity extends Activity implements
         if (tmiDialog != null && tmiDialog.isShowing()) {
             lastBackPressElapsedMs = 0L;
             dismissTmiDialog();
+            return;
+        }
+        if (motionModeVisible) {
+            lastBackPressElapsedMs = 0L;
+            showMotionLyricsMode(false);
             return;
         }
         if (vinylModeVisible) {
@@ -1655,6 +1693,9 @@ public class BaseLyricsActivity extends Activity implements
             }
             if (vinylModeVisible) {
                 showVinylMode(false);
+            }
+            if (motionModeVisible) {
+                showMotionLyricsMode(false);
             }
             if (titleView != null) titleView.setText("ivLyrics");
             if (artistView != null) artistView.setText(ui("status.waiting_spotify"));
@@ -2729,6 +2770,20 @@ public class BaseLyricsActivity extends Activity implements
                 if (lyricsPage != null) lyricsPage.setVisibility(View.INVISIBLE);
                 vinylPlayerModeView.show(false);
             }
+            if (motionLyricsModeView == null) {
+                motionLyricsModeView = buildMotionLyricsModeView();
+            }
+            detachFromParent(motionLyricsModeView);
+            applyMotionLyricsUiText();
+            root.addView(motionLyricsModeView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            if (motionModeVisible) {
+                if (mainPage != null) mainPage.setVisibility(View.INVISIBLE);
+                if (lyricsPage != null) lyricsPage.setVisibility(View.INVISIBLE);
+                motionLyricsModeView.show(false);
+            }
         }
 
         debugPanel = buildDebugPanel();
@@ -2901,6 +2956,157 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsPage != null && vinylModeVisible) {
             lyricsPage.setVisibility(View.INVISIBLE);
         }
+    }
+
+    private MotionLyricsModeView buildMotionLyricsModeView() {
+        return new MotionLyricsModeView(this, new MotionLyricsModeView.Listener() {
+            @Override
+            public void onClose() {
+                showMotionLyricsMode(false);
+            }
+
+            @Override
+            public void onDirectionRequested(String prompt, MotionLyricsModeView.DirectionCallback callback) {
+                AiLyricsSettings.Snapshot settings = aiLyricsSettings.snapshot();
+                appendLog("motion lyrics: asking " + settings.provider.label + " for a direction");
+                aiLyricsRepository.requestMotionDirection(prompt, settings, (answer, error) -> {
+                    if (error != null) {
+                        appendLog("motion lyrics: direction failed: " + error);
+                    }
+                    callback.onAnswer(answer, error);
+                });
+            }
+
+            @Override
+            public String onCacheRead(String key) {
+                return aiLyricsRepository.cachedMotionDirection(key);
+            }
+
+            @Override
+            public void onCacheWrite(String key, String value) {
+                aiLyricsRepository.storeMotionDirection(key, value);
+            }
+
+            @Override
+            public void onBackgroundFrame(float rotate, float scale, float x, float y) {
+                float density = getResources().getDisplayMetrics().density;
+                turnWithMotionCamera(backgroundView, rotate, scale, x * density, y * density);
+                turnWithMotionCamera(youtubeBackgroundView, rotate, scale, x * density, y * density);
+            }
+
+            @Override
+            public void onLog(String message) {
+                appendLog(message);
+            }
+        });
+    }
+
+    /** The page scales, then rotates, then moves its background about the centre; so does a view. */
+    private static void turnWithMotionCamera(View view, float rotate, float scale, float x, float y) {
+        if (view == null) {
+            return;
+        }
+        view.setScaleX(scale);
+        view.setScaleY(scale);
+        view.setRotation(rotate);
+        view.setTranslationX(x);
+        view.setTranslationY(y);
+    }
+
+    private void applyMotionLyricsUiText() {
+        if (motionLyricsModeView != null) {
+            motionLyricsModeView.setUiText(
+                    ui("button.close"), ui("motion.unavailable"), ui("motion.directing"), ui("motion.direct_failed"));
+        }
+    }
+
+    /**
+     * Motion lyrics (standalone app): the desktop kinetic-typography presentation over the player
+     * background. It is composed for a wide screen, so a phone is held in landscape while it shows.
+     */
+    private void showMotionLyricsMode(boolean show) {
+        if (IvLyricsBridge.isEmbedded(this) || motionLyricsModeView == null || show == motionModeVisible) {
+            return;
+        }
+        if (show) {
+            if (currentTrack == null || !currentTrack.hasUsableMetadata()) {
+                Toast.makeText(this, ui("status.waiting_current_track"), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (!MotionLyricsSong.canPlay(currentLyricsResult)) {
+                Toast.makeText(this, ui("motion.unavailable"), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (vinylModeVisible) {
+                showVinylMode(false);
+            }
+            showLyricsPage(false);
+            lastBackPressElapsedMs = 0L;
+            motionModeVisible = true;
+            motionSongLyrics = null;
+            holdLandscapeForMotionLyrics(true);
+            applyKeepScreenOnSetting(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
+            syncMotionLyricsMode();
+            motionLyricsModeView.show(true);
+            if (mainPage != null) mainPage.setVisibility(View.INVISIBLE);
+            if (lyricsPage != null) lyricsPage.setVisibility(View.INVISIBLE);
+            handler.removeCallbacks(motionLyricsTick);
+            handler.postDelayed(motionLyricsTick, MOTION_LYRICS_SYNC_MS);
+            return;
+        }
+        motionModeVisible = false;
+        handler.removeCallbacks(motionLyricsTick);
+        holdLandscapeForMotionLyrics(false);
+        applyKeepScreenOnSetting(aiLyricsSettings == null ? null : aiLyricsSettings.snapshot());
+        if (mainPage != null) {
+            mainPage.setVisibility(View.VISIBLE);
+            refreshMainPagePlayback();
+        }
+        motionLyricsModeView.hide(true, () -> requestDefaultRemoteFocus(false));
+    }
+
+    /** Tablets and TVs are wide enough either way; only a phone is turned. */
+    private void holdLandscapeForMotionLyrics(boolean hold) {
+        if (getResources().getConfiguration().smallestScreenWidthDp >= 600) {
+            return;
+        }
+        if (hold) {
+            orientationBeforeMotionMode = getRequestedOrientation();
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else {
+            setRequestedOrientation(orientationBeforeMotionMode);
+        }
+    }
+
+    /** Sends the page the song when it changed, and the lyric position. */
+    private void syncMotionLyricsMode() {
+        if (motionLyricsModeView == null || !motionModeVisible) {
+            return;
+        }
+        TrackSnapshot track = currentTrack;
+        if (track == null || !track.hasUsableMetadata()) {
+            motionSongLyrics = null;
+            motionSongKey = "";
+            motionLyricsModeView.setSong("", "", false);
+            return;
+        }
+        AiLyricsSettings.Snapshot settings = aiLyricsSettings == null ? null : aiLyricsSettings.snapshot();
+        motionLyricsModeView.setAiAvailable(settings != null
+                && !settings.provider.translationOnly() && settings.hasApiKey() && settings.hasModel());
+        int accent = VinylPlayerModeView.artworkAccent(currentArtworkBitmap, track.stableKey());
+        String key = track.stableKey() + "|" + accent;
+        if (currentLyricsResult != motionSongLyrics || !key.equals(motionSongKey)) {
+            motionSongLyrics = currentLyricsResult;
+            motionSongKey = key;
+            String uri = MotionLyricsSong.uri(track.trackId, track.stableKey());
+            motionLyricsModeView.setSong(
+                    uri,
+                    MotionLyricsSong.json(uri, track.title, track.artist,
+                            String.format(Locale.US, "#%06x", accent & 0xffffff),
+                            effectiveSelectedSourceLang(), currentLyricsResult),
+                    !currentLyricsResult.loading && !currentLyricsResult.lines.isEmpty());
+        }
+        motionLyricsModeView.setPlayback(currentLyricsPlaybackPosition(track), track.playing, track.playbackSpeed);
     }
 
     private void requestDefaultRemoteFocusAfterVinylClose() {
@@ -5751,10 +5957,19 @@ public class BaseLyricsActivity extends Activity implements
                 ui("lyrics.tab.video"), ui("lyrics.tab.background"), ui("section.lyrics_providers"));
         if (!IvLyricsBridge.isEmbedded(this)) {
             sections.add(ui("vinyl.mode"));
-            settingsAction(settingsGroup(page), ui("vinyl.mode"), null, SettingsKit.ACTION_NORMAL, view -> {
+            LinearLayout modes = settingsGroup(page);
+            settingsAction(modes, ui("vinyl.mode"), null, SettingsKit.ACTION_NORMAL, view -> {
                 showSettingsPanel(false);
                 showVinylMode(true);
             });
+            // With animations turned off in the system, motion lyrics is left out.
+            if (MotionPreferences.animationsEnabled(this)) {
+                sections.add(ui("motion.mode"));
+                settingsAction(modes, ui("motion.mode"), null, SettingsKit.ACTION_NORMAL, view -> {
+                    showSettingsPanel(false);
+                    showMotionLyricsMode(true);
+                });
+            }
         }
         registerSetting(currentTrackSettingsSummary, ui("tab.current_track"), TextUtils.join(" · ", sections), null);
         // Keep one set of controls and callbacks: the long-press popup temporarily borrows this panel.
@@ -7837,6 +8052,11 @@ public class BaseLyricsActivity extends Activity implements
             if (vinylPlayerModeView != null) {
                 vinylPlayerModeView.bringToFront();
             }
+        }
+        // Motion lyrics turns a phone to landscape as it opens, which rebuilds these pages under it.
+        if (motionModeVisible) {
+            mainPage.setVisibility(View.INVISIBLE);
+            lyricsPage.setVisibility(View.INVISIBLE);
         }
     }
 
@@ -11193,7 +11413,8 @@ public class BaseLyricsActivity extends Activity implements
         if (window == null) {
             return;
         }
-        if (snapshot != null && snapshot.keepScreenOn) {
+        // Motion lyrics keeps the screen on while it shows: nobody touches it while a song plays.
+        if ((snapshot != null && snapshot.keepScreenOn) || motionModeVisible) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -18732,7 +18953,7 @@ public class BaseLyricsActivity extends Activity implements
         if (covered != mainPage) {
             return;
         }
-        if (mainPage.getVisibility() == View.INVISIBLE && !vinylModeVisible) {
+        if (mainPage.getVisibility() == View.INVISIBLE && !vinylModeVisible && !motionModeVisible) {
             mainPage.setVisibility(View.VISIBLE);
         }
         refreshMainPagePlayback();

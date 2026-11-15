@@ -91,6 +91,8 @@ final class AiLyricsRepository {
     /** The same slots on disk, stored under their pronunciation task cache key. */
     private final SharedPreferences pronunciationSlotsPrefs;
     private final Context localAiContext;
+    /** Motion lyrics directions the page accepted, by the page's own key. */
+    private final RawResponseDiskCache motionDirectionDiskCache;
 
     AiLyricsRepository() {
         diskCache = null;
@@ -100,6 +102,7 @@ final class AiLyricsRepository {
         timedPronunciationPrefs = null;
         pronunciationSlotsPrefs = null;
         localAiContext = null;
+        motionDirectionDiskCache = null;
     }
 
     AiLyricsRepository(Context context) {
@@ -122,6 +125,37 @@ final class AiLyricsRepository {
                 ? null
                 : context.getApplicationContext().getSharedPreferences("ai_pronunciation_slots", Context.MODE_PRIVATE);
         localAiContext = context == null ? null : context.getApplicationContext();
+        motionDirectionDiskCache = context == null
+                ? null
+                : new RawResponseDiskCache(context.getApplicationContext(), "motion_direction", 500);
+    }
+
+    /**
+     * The motion lyrics page writes the prompt and checks the answer ({@link MotionLyricsModeView});
+     * this carries the prompt to the provider. The raw answer, or an error, arrives on the main thread.
+     */
+    void requestMotionDirection(
+            String prompt, AiLyricsSettings.Snapshot settings, java.util.function.BiConsumer<String, String> callback
+    ) {
+        executor.execute(() -> {
+            try {
+                String answer = withOpenAIConnections(settings, null, connection -> callProviderRaw(prompt, connection));
+                mainHandler.post(() -> callback.accept(answer, null));
+            } catch (Exception error) {
+                String message = errorMessage(error);
+                mainHandler.post(() -> callback.accept(null, message));
+            }
+        });
+    }
+
+    String cachedMotionDirection(String key) {
+        return motionDirectionDiskCache == null ? "" : motionDirectionDiskCache.get(key);
+    }
+
+    void storeMotionDirection(String key, String body) {
+        if (motionDirectionDiskCache != null) {
+            motionDirectionDiskCache.put(key, body);
+        }
     }
 
     void testConnection(AiLyricsSettings.Snapshot settings, java.util.function.Consumer<String> callback) {
@@ -2096,6 +2130,9 @@ final class AiLyricsRepository {
         pronunciationSlotsByTrack.clear();
         if (pronunciationSlotsPrefs != null) {
             pronunciationSlotsPrefs.edit().clear().apply();
+        }
+        if (motionDirectionDiskCache != null) {
+            motionDirectionDiskCache.clear();
         }
     }
 

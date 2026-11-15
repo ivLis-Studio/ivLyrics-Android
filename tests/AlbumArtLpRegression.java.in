@@ -20,6 +20,11 @@ public final class AlbumArtLpRegression {
         final Preferences prefs = new Preferences();
         // PRODUCTION_SETTINGS
     }
+    /** The system's animation switch (animator duration scale). */
+    static class MotionPreferences {
+        static boolean enabled = true;
+        static boolean animationsEnabled(Object context) { return enabled; }
+    }
 
     static class Parent {
         boolean interceptDisallowed;
@@ -156,6 +161,8 @@ public final class AlbumArtLpRegression {
         LinearLayout page;
         TextView currentTrackSettingsSummary;
         boolean embedded, settingsVisible = true;
+        int motionEntries;
+        void showMotionLyricsMode(boolean show) { if (show) motionEntries++; }
         LinearLayout settingsMenuPage(LinearLayout content, String menuId) {
             settingsMenuSections.put(menuId, new ArrayList<>());
             page = new LinearLayout();
@@ -200,7 +207,7 @@ public final class AlbumArtLpRegression {
                 player.aiLyricsSettings.setAlbumArtOpenLp(enabled);
                 player.buildCurrentTrackSettingsMenu(new LinearLayout());
                 List<Button> actions = buttons(player.page);
-                check(actions.size() == (embedded ? 0 : 1), "LP menu exists only for standalone with either preference");
+                check(actions.size() == (embedded ? 0 : 2), "LP and motion lyrics exist only for standalone with either preference");
                 check(player.settingsMenuSections.get("current_track").contains("vinyl.mode") != embedded,
                         "home menu advertises LP only where supported");
                 if (embedded) continue;
@@ -227,6 +234,28 @@ public final class AlbumArtLpRegression {
         }
     }
 
+    /** Motion lyrics sits with LP mode in the current-track menu, and is left out when system animations are off. */
+    static void motionMenuRoute() {
+        for (boolean animations : new boolean[]{true, false}) {
+            MotionPreferences.enabled = animations;
+            MenuPlayer player = new MenuPlayer();
+            player.buildCurrentTrackSettingsMenu(new LinearLayout());
+            List<Button> actions = buttons(player.page);
+            check(actions.size() == (animations ? 2 : 1) && actions.get(0).label.equals("vinyl.mode"),
+                    "LP stays first; motion lyrics needs system animations");
+            check(player.settingsMenuSections.get("current_track").contains("motion.mode") == animations,
+                    "home menu advertises motion lyrics only where it can open");
+            if (!animations) continue;
+            Button action = actions.get(1);
+            check(action.label.equals("motion.mode") && player.registeredSettings.get(action).equals("motion.mode") && action.focusable,
+                    "motion lyrics action is labelled, searchable and remote-focusable");
+            action.performClick();
+            check(player.motionEntries == 1 && player.entries == 0 && !player.settingsVisible,
+                    "menu callback closes settings and enters motion lyrics, not LP");
+        }
+        MotionPreferences.enabled = true;
+    }
+
     static void touch(View view, int action, float x, float y) {
         check(view.touch.onTouch(view, new MotionEvent(action, x, y)), "gesture consumed");
     }
@@ -241,6 +270,7 @@ public final class AlbumArtLpRegression {
     }
     public static void main(String[] args) {
         explicitMenuRoute();
+        motionMenuRoute();
         for (boolean enabled : new boolean[]{true, false}) {
             Player player = new Player();
             player.aiLyricsSettings.setAlbumArtOpenLp(enabled);

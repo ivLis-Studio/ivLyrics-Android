@@ -35,7 +35,7 @@ assert "attachArtworkSwipe(artworkView)" in declaration(source, "private FrameLa
 assert "attachArtworkSwipe(artworkView)" in declaration(source, "private FrameLayout buildLandscapeMainPage()")
 # Only the artwork callback owns the gate; the explicit menu enters the normal guarded mode function.
 current_track_menu = declaration(source, "private void buildCurrentTrackSettingsMenu(")
-assert 'settingsAction(settingsGroup(page), ui("vinyl.mode")' in current_track_menu
+assert 'settingsAction(modes, ui("vinyl.mode")' in current_track_menu
 assert "showVinylMode(true)" in current_track_menu
 assert "albumArtOpenLp" not in current_track_menu
 mode = declaration(source, "private void showVinylMode(")
