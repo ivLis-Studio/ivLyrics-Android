@@ -112,7 +112,11 @@ adb -s DEVICE_SERIAL shell am start -n kr.ivlis.ivlyricsandroid.qa/kr.ivlis.ivly
 `STANDALONE_READY <track> <position>` follows each delivered track. Launch extras choose
 the first track (`--es track three|one`), its state (`--ez play`, `--el position`) and a
 static background (`--ez reduceMotion true`) for pixel comparisons; `--ez motion true` opens
-motion lyrics once the rows are in (`STANDALONE_MOTION shown`; Back closes it). The broadcast
+motion lyrics once the rows are in (`STANDALONE_MOTION shown`; Back closes it).
+`--es video <YouTube ID>` plays that video as the track's video background
+(`STANDALONE_VIDEO <id>`), with `--es aspect fit|fill|stretch` and `--ez edges true|false`
+for the two video settings. The page gets the video from the fixture, never from the video
+service, but the player itself needs the network, so leave airplane mode off for this run. The broadcast
 `kr.ivlis.ivlyricsandroid.debug.STANDALONE_PLAYBACK` takes the same extras, and
 `kr.ivlis.ivlyricsandroid.debug.STANDALONE_TOUCH` plays the synthetic touch described above
 on this page (`--ef y 156` is the lyrics page's drag strip). With the frame probe enabled,

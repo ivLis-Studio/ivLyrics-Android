@@ -980,7 +980,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     String videoFallback() { return AppearanceOptions.fallback(prefs.getString(AppearanceOptions.FALLBACK, "")); }
     String titleTapAction() { return AppearanceOptions.titleAction(prefs.getString(AppearanceOptions.TITLE_ACTION, "")); }
     String videoAspect() { return AppearanceOptions.aspect(prefs.getString(AppearanceOptions.VIDEO_ASPECT, "")); }
-    boolean videoEdgeToEdge() { return prefs.getBoolean(AppearanceOptions.VIDEO_EDGES, false); }
+    boolean videoEdgeToEdge() { return prefs.getBoolean(AppearanceOptions.VIDEO_EDGES, true); }
     boolean landscapeShowOriginal() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ORIGINAL, true); }
     boolean landscapeShowArtwork() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ARTWORK, true); }
     boolean showLyricsNotFound() { return prefs.getBoolean(AppearanceOptions.EMPTY_NOTICE, true); }

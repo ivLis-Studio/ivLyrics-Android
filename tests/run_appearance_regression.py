@@ -75,13 +75,13 @@ public final class AppearanceRegression {
         check(settings.videoFallback().equals("gradient-background"));
         check(settings.videoAspect().equals("fill"));
         check(settings.titleTapAction().equals("player"));
-        check(!settings.videoEdgeToEdge());
+        check(settings.videoEdgeToEdge()); // A landscape video runs to the screen's edges unless turned off.
         check(settings.landscapeShowOriginal() && settings.landscapeShowArtwork() && settings.showLyricsNotFound());
         settings.prefs.edit().putString(Settings.KEY_BACKGROUND_MODE,"video-background").putInt(Settings.KEY_BACKGROUND_BRIGHTNESS,30).apply();
         settings.setAppearanceChoice(AppearanceOptions.FALLBACK,"solid-background");
         settings.setAppearanceChoice(AppearanceOptions.TITLE_ACTION,"context");
         settings.setAppearanceChoice(AppearanceOptions.VIDEO_ASPECT,"fit");
-        settings.setAppearanceToggle(AppearanceOptions.VIDEO_EDGES,true);
+        settings.setAppearanceToggle(AppearanceOptions.VIDEO_EDGES,false);
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ORIGINAL,false);
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ARTWORK,false);
         settings.setAppearanceToggle(AppearanceOptions.EMPTY_NOTICE,false);
@@ -108,7 +108,7 @@ public final class AppearanceRegression {
         check(restored.videoFallback().equals("solid-background"));
         check(restored.titleTapAction().equals("context"));
         check(restored.videoAspect().equals("fit"));
-        check(restored.videoEdgeToEdge());
+        check(!restored.videoEdgeToEdge());
         check(!restored.landscapeShowOriginal() && !restored.landscapeShowArtwork() && !restored.showLyricsNotFound());
         check(restored.prefs.getString(Settings.KEY_BACKGROUND_MODE,"").equals("video-background"));
         check(restored.prefs.data.get(Settings.KEY_BACKGROUND_BRIGHTNESS).equals(30));
@@ -155,4 +155,24 @@ html = subprocess.check_output([java_tool("java"), "-cp", str(work), "VideoHtml"
 inline_script = re.search(r"<script>(.*?)</script>", html, re.S).group(1)
 (work / "video.js").write_text(inline_script)
 subprocess.run(["node", str(__import__("pathlib").Path(__file__).with_name("video_appearance_regression.cjs")), str(work / "video.js")], check=True)
+
+# What the video leaves uncovered (the bands of a fitted video, the bars and cutout a landscape
+# video stays clear of) is black while the video shows. The view fills the screen and insets the
+# video inside itself; margins would show the artwork behind it there.
+activity = (SHARED / "BaseLyricsActivity.java").read_text()
+matte = declaration(video, "private void updateMatte()")
+assert '"fit".equals(videoAspect)' in matte and "getPaddingTop() > 0" in matte and "getPaddingBottom() > 0" in matte
+assert "setBackgroundColor(uncovered ? Color.BLACK : Color.TRANSPARENT)" in matte
+assert "updateMatte();" in declaration(video, "void setVideoAspect(String aspect)")
+insets = declaration(video, "void setVideoInsets(int left, int top, int right, int bottom)")
+assert "setPadding(left, top, right, bottom)" in insets and "updateMatte();" in insets
+applied = declaration(activity, "private void applyAppearanceInsets(WindowInsets insets)")
+assert "setMargins(" not in applied
+# Upright, the video fills the screen again whatever landscape kept clear.
+assert applied.index("insetVideoBackground(0, 0, 0, 0)") < applied.index("insetVideoBackground(edges ? 0 : left")
+assert "youtubeBackgroundView.setVideoInsets(left, top, right, bottom)" in declaration(
+    activity, "private void insetVideoBackground(int left, int top, int right, int bottom)")
+assert "youtubeBackgroundView.setVideoInsets(0, 0, 0, 0)" in declaration(
+    activity, "private void attachYouTubeBackgroundToPictureInPicture()")
+print("Video matte and inset wiring passed")
 

@@ -89,6 +89,8 @@ public final class YouTubeBackgroundView extends FrameLayout {
     private long suppressHardSyncUntilElapsedMs;
     private int videoScalePercent = 100;
     private String videoAspect = "fill";
+    /** The video leaves part of this view uncovered, which is then black rather than the artwork behind. */
+    private boolean matte;
 
     public YouTubeBackgroundView(Context context) {
         super(context);
@@ -196,6 +198,32 @@ public final class YouTubeBackgroundView extends FrameLayout {
     void setVideoAspect(String aspect) {
         videoAspect = AppearanceOptions.aspect(aspect);
         applyVideoScaleToWebView();
+        updateMatte();
+    }
+
+    /**
+     * Keeps the video this many pixels clear of each edge (the system bars and the cutout when
+     * it does not run to the screen's edges). The view itself still fills the screen.
+     */
+    void setVideoInsets(int left, int top, int right, int bottom) {
+        if (getPaddingLeft() != left || getPaddingTop() != top
+                || getPaddingRight() != right || getPaddingBottom() != bottom) {
+            setPadding(left, top, right, bottom);
+        }
+        updateMatte();
+    }
+
+    /**
+     * A fitted video leaves bands, and insets leave the screen's edges: both are black while
+     * the video shows. A video that covers the view keeps the view transparent, as before.
+     */
+    private void updateMatte() {
+        boolean uncovered = "fit".equals(videoAspect) || getPaddingLeft() > 0 || getPaddingTop() > 0
+                || getPaddingRight() > 0 || getPaddingBottom() > 0;
+        if (uncovered != matte) {
+            matte = uncovered;
+            setBackgroundColor(uncovered ? Color.BLACK : Color.TRANSPARENT);
+        }
     }
 
     void setVideoBackgroundEnabled(boolean enabled) {

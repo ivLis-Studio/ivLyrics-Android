@@ -11348,8 +11348,12 @@ public class BaseLyricsActivity extends Activity implements
 
     @SuppressWarnings("deprecation")
     private void applyAppearanceInsets(WindowInsets insets) {
-        if (aiLyricsSettings == null || getResources().getConfiguration().orientation != Configuration.ORIENTATION_LANDSCAPE
-                || isPictureInPictureUiActive()) return;
+        if (aiLyricsSettings == null || isPictureInPictureUiActive()) return;
+        if (getResources().getConfiguration().orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            // Upright, the video fills the screen whatever the landscape setting kept clear.
+            insetVideoBackground(0, 0, 0, 0);
+            return;
+        }
         int left, right, top, bottom;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             android.graphics.Insets safe = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
@@ -11366,11 +11370,18 @@ public class BaseLyricsActivity extends Activity implements
         if (lyricsPage != null) lyricsPage.setPadding(left, 0, right, bottom);
         // The settings shell owns its system/cutout/IME insets. Padding its outer
         // panel too subtracts the cutout twice and can collapse narrow form fields.
+        boolean edges = aiLyricsSettings.videoEdgeToEdge();
+        insetVideoBackground(edges ? 0 : left, edges ? 0 : top, edges ? 0 : right, edges ? 0 : bottom);
+    }
+
+    /**
+     * Without edge-to-edge a landscape video stays clear of the bars and the cutout. The view
+     * keeps filling the screen and insets the video inside itself, so what the video leaves
+     * uncovered is the view's black, not the artwork behind it.
+     */
+    private void insetVideoBackground(int left, int top, int right, int bottom) {
         if (youtubeBackgroundView != null && !youtubeBackgroundAttachedToPictureInPicture) {
-            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) youtubeBackgroundView.getLayoutParams();
-            boolean edges = aiLyricsSettings.videoEdgeToEdge();
-            params.setMargins(edges ? 0 : left, edges ? 0 : top, edges ? 0 : right, edges ? 0 : bottom);
-            youtubeBackgroundView.setLayoutParams(params);
+            youtubeBackgroundView.setVideoInsets(left, top, right, bottom);
         }
     }
 
@@ -11422,6 +11433,7 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         detachFromParent(youtubeBackgroundView);
+        youtubeBackgroundView.setVideoInsets(0, 0, 0, 0);
         pictureInPictureStage.addView(youtubeBackgroundView, Math.min(1, pictureInPictureStage.getChildCount()), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -11449,6 +11461,8 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         youtubeBackgroundAttachedToPictureInPicture = false;
+        // Back from picture-in-picture, the video takes the window's insets again.
+        rootView.requestApplyInsets();
     }
 
     protected void showVideoSelectionDialog() {

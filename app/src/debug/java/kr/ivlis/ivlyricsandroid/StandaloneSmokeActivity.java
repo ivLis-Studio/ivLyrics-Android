@@ -64,6 +64,17 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private static final String EXTRA_POSITION = "position";
     /** Opens motion lyrics once the first track's rows are in. */
     private static final String EXTRA_MOTION = "motion";
+    /**
+     * A YouTube video ID to play as the video background of the synthetic track ({@code --es video
+     * <id>}, with {@code --es aspect fit|fill|stretch} and {@code --ez edges true|false}). The
+     * page gets the video from this fixture, never from the video service; the player itself
+     * needs the network.
+     */
+    private static final String EXTRA_VIDEO = "video";
+    private static final String EXTRA_VIDEO_ASPECT = "aspect";
+    private static final String EXTRA_VIDEO_EDGES = "edges";
+    private static final String FIXTURE_PREFS = "fixture";
+    private static final String FIXTURE_VIDEO_USED = "video_used";
     private static MediaSession session;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -82,6 +93,7 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     private boolean probeEnabled;
     private boolean probeClockRunning;
     private boolean openMotionWhenReady;
+    private String fixtureVideo = "";
     private long probeFrameNanos;
     private boolean receiversRegistered;
     private boolean destroyed;
@@ -141,11 +153,15 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
         launch.removeExtra(IvLyricsBridge.EXTRA_EMBEDDED_MODE);
         probeEnabled = LyricsFrameProbe.enabled(this);
         openMotionWhenReady = launch.getBooleanExtra(EXTRA_MOTION, false);
-        prepareSettings(launch.getBooleanExtra(EXTRA_REDUCE_MOTION, false));
+        String video = launch.getStringExtra(EXTRA_VIDEO);
+        fixtureVideo = video == null ? "" : video.trim();
+        prepareSettings(launch.getBooleanExtra(EXTRA_REDUCE_MOTION, false), launch);
         super.onCreate(state);
         try {
             // No provider lookups for synthetic tracks: rows are delivered by this fixture.
             declaredField(BaseLyricsActivity.class, "lyricsRepository").set(this, null);
+            // Nor a video lookup: the fixture hands the page its video.
+            declaredField(BaseLyricsActivity.class, "youtubeBackgroundRepository").set(this, null);
         } catch (IllegalAccessException error) {
             throw new AssertionError(error);
         }
@@ -208,11 +224,25 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
     }
 
     /** This fixture's own settings namespace; nothing of the application's settings is read. */
-    private void prepareSettings(boolean reduceMotion) {
+    private void prepareSettings(boolean reduceMotion, Intent launch) {
         AiLyricsSettings settings = new AiLyricsSettings(this);
         settings.setSpotifyApiCredentials("standalone-fixture", "standalone-fixture");
         settings.markFirstLanguagePrompted("en");
         settings.setBackgroundReduceMotion(reduceMotion);
+        // A run with a video leaves the namespace in video mode; the next run without one undoes it.
+        SharedPreferences fixture = getSharedPreferences(FIXTURE_PREFS, MODE_PRIVATE);
+        if (!fixtureVideo.isEmpty()) {
+            settings.setBackgroundMode(AiLyricsSettings.BACKGROUND_MODE_VIDEO);
+            String aspect = launch.getStringExtra(EXTRA_VIDEO_ASPECT);
+            settings.setAppearanceChoice(AppearanceOptions.VIDEO_ASPECT, aspect == null ? "fill" : aspect);
+            settings.setAppearanceToggle(AppearanceOptions.VIDEO_EDGES, launch.getBooleanExtra(EXTRA_VIDEO_EDGES, true));
+            fixture.edit().putBoolean(FIXTURE_VIDEO_USED, true).commit();
+        } else if (fixture.getBoolean(FIXTURE_VIDEO_USED, false)) {
+            settings.setBackgroundMode(AiLyricsSettings.BACKGROUND_MODE_GRADIENT);
+            settings.setAppearanceChoice(AppearanceOptions.VIDEO_ASPECT, "fill");
+            settings.setAppearanceToggle(AppearanceOptions.VIDEO_EDGES, true);
+            fixture.edit().remove(FIXTURE_VIDEO_USED).commit();
+        }
         settings.shutdown();
         // One-time hints and the automatic update check would add their own UI and requests.
         getSharedPreferences("ui_hints", MODE_PRIVATE).edit()
@@ -241,6 +271,9 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
                         && current.stableKey().equals(key)) {
                     onLyricsLoaded(key, EmbeddedSmokeActivity.fixtureLyrics(current, track));
                     Log.i(TAG, "STANDALONE_READY " + track + " " + position);
+                    if (!fixtureVideo.isEmpty()) {
+                        showFixtureVideo();
+                    }
                     if (openMotionWhenReady) {
                         openMotionWhenReady = false;
                         showMotionLyrics();
@@ -252,6 +285,20 @@ public final class StandaloneSmokeActivity extends BaseLyricsActivity {
                 }
             }
         });
+    }
+
+    /** Hands the page a video for the current track, as a finished lookup would, and lets it load. */
+    private void showFixtureVideo() {
+        try {
+            declaredField(BaseLyricsActivity.class, "currentYouTubeBackgroundInfo").set(this,
+                    new YouTubeBackgroundRepository.VideoInfo("", "", fixtureVideo, "Fixture video", false, 0d, false, ""));
+            java.lang.reflect.Method sync = BaseLyricsActivity.class.getDeclaredMethod("syncYouTubeBackgroundState");
+            sync.setAccessible(true);
+            sync.invoke(this);
+            Log.i(TAG, "STANDALONE_VIDEO " + fixtureVideo);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
     }
 
     /** The mode's own entry is a tile in the track panel; the fixture opens it directly. */
