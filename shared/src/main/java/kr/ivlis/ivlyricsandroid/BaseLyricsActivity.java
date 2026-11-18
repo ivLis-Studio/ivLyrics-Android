@@ -145,6 +145,8 @@ public class BaseLyricsActivity extends Activity implements
     private static final String SETTINGS_ROUTE_HOME = "home";
     private static final String SETTINGS_UI_PREFS = "settings_ui";
     private static final String KEY_SETTINGS_THEME = "theme";
+    /** Setup left for lyrics search: Spotify is optional in the standalone app. */
+    private static final String KEY_SPOTIFY_SETUP_SKIPPED = "spotify_setup_skipped";
     private static final String KEY_SETTINGS_PREVIEW_PREFIX = "preview_open_";
     /** Typography follows its main-screen / lyrics-page switch in the preview. */
     private static final int SETTINGS_PREVIEW_TYPOGRAPHY = 100;
@@ -543,6 +545,9 @@ public class BaseLyricsActivity extends Activity implements
     private boolean currentYouTubeBackgroundLoading;
     private String currentFuriganaKey = "";
     private String currentLyricsKey = "";
+    private LinearLayout lyricsSearchEntryCard;
+    private boolean lyricsSearchEntryVisible;
+    private AlertDialog lyricsSearchDialog;
     private boolean embeddedInitialLyricsConsumed;
     // lrc.red word timing generated for the displayed lyrics. The line-timed base it replaced
     // stays the identity of supplement requests started before the timing arrived.
@@ -1705,12 +1710,16 @@ public class BaseLyricsActivity extends Activity implements
         currentTrack = snapshot;
         lastProgressUiUpdateMs = 0L;
         requestPlaybackFrame();
+        updateLyricsSearchEntry(snapshot);
         updateCurrentTrackSettingsMenu();
         onLyricsHostTrackChanged(snapshot == null || snapshot.trackId.isEmpty()
                 ? "" : "spotify:track:" + snapshot.trackId);
         updatePictureInPictureActionsIfNeeded(snapshot != null && snapshot.playing);
         updatePermissionState();
-        if (!isSpotifyApiConfigured()) {
+        // A searched song needs no Spotify API: its title and artist are all lyrics lookup needs.
+        // With setup left for lyrics search, an empty player is simply waiting, not misconfigured.
+        if (!isSpotifyApiConfigured()
+                && (snapshot == null ? !isSpotifySetupSkipped() : !snapshot.isLyricsSearch())) {
             updateSpotifySetupGate(false);
             setSpotifySetupRequiredState(snapshot);
             return;
@@ -2047,6 +2056,7 @@ public class BaseLyricsActivity extends Activity implements
         currentCulturalAnnotations = Collections.emptyList();
         currentCulturalAnnotationRequestKey = "";
         setLyricsResultOnViews(result);
+        startLyricsSearchTimeline(result);
         setLyricsSupplementLoading(false, false);
         updateLyricPreview(currentTrack == null ? 0L : currentLyricsPlaybackPosition(currentTrack));
         sourceView.setText(result.providerLabel);
@@ -3402,6 +3412,13 @@ public class BaseLyricsActivity extends Activity implements
         FrameLayout.LayoutParams menuParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END | Gravity.TOP);
         menuParams.topMargin = dp(8);
         top.addView(menuButton, menuParams);
+        if (!IvLyricsBridge.isEmbedded(this)) {
+            ImageButton searchButton = iconButton(R.drawable.ic_search, 44, 20, Color.WHITE, Color.TRANSPARENT, ui("lyrics_search.title"));
+            searchButton.setOnClickListener(view -> showLyricsSearchDialog());
+            FrameLayout.LayoutParams searchParams = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.START | Gravity.TOP);
+            searchParams.topMargin = dp(8);
+            top.addView(searchButton, searchParams);
+        }
 
         artworkView = new ImageView(this);
         artworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -3540,6 +3557,16 @@ public class BaseLyricsActivity extends Activity implements
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
+        if (!IvLyricsBridge.isEmbedded(this)) {
+            lyricsSearchEntryCard = buildLyricsSearchEntryCard();
+            lyricsSearchEntryCard.setVisibility(lyricsSearchEntryVisible ? View.VISIBLE : View.GONE);
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            cardParams.bottomMargin = dp(12);
+            main.addView(lyricsSearchEntryCard, cardParams);
+        }
         main.addView(lyricPreviewContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -7716,6 +7743,18 @@ public class BaseLyricsActivity extends Activity implements
         makeRemoteFocusable(onboardingBackButton);
         onboardingBackButton.setOnClickListener(view -> showOnboardingStep(onboardingStep - 1));
         actionRow.addView(onboardingBackButton, topMargin(matchWrap(), dp(8)));
+        if (!IvLyricsBridge.isEmbedded(this)) {
+            // Spotify is optional: every step can leave setup for lyrics search.
+            Button withoutSpotify = kit.button(ui("onboarding.without_spotify"), SettingsKit.BUTTON_NORMAL, null);
+            makeRemoteFocusable(withoutSpotify);
+            withoutSpotify.setTag("onboarding-without-spotify");
+            withoutSpotify.setOnClickListener(view -> continueWithoutSpotify());
+            actionRow.addView(withoutSpotify, topMargin(matchWrap(), dp(8)));
+            TextView withoutSpotifyNote = kit.text(ui("onboarding.without_spotify_desc"), 13f, kit.p.text3, kit.regular);
+            withoutSpotifyNote.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            withoutSpotifyNote.setLineSpacing(dp(2), 1f);
+            actionRow.addView(withoutSpotifyNote, topMargin(matchWrap(), dp(6)));
+        }
 
         showOnboardingStep(initialOnboardingStep());
         return panel;
@@ -12580,6 +12619,11 @@ public class BaseLyricsActivity extends Activity implements
 
     private void handleLyricsMetaTap() {
         dismissLyricsMetaTip();
+        if (!IvLyricsBridge.isEmbedded(this)
+                && (currentTrack == null || !currentTrack.hasUsableMetadata() || currentTrack.isLyricsSearch())) {
+            showLyricsSearchDialog();
+            return;
+        }
         String action = aiLyricsSettings.titleTapAction();
         if ("disabled".equals(action)) return;
         if ("player".equals(action)) {
@@ -15166,7 +15210,7 @@ public class BaseLyricsActivity extends Activity implements
         if (spotifySetupPanel == null) {
             return;
         }
-        boolean configured = isInitialSetupComplete();
+        boolean configured = isInitialSetupComplete() || isSpotifySetupSkipped();
         spotifySetupPanel.animate().cancel();
         if (configured) {
             onboardingGreetingRotation.setActive(false);
@@ -15231,6 +15275,226 @@ public class BaseLyricsActivity extends Activity implements
         }
         requestDefaultRemoteFocus(true);
     }
+    // Lyrics search: ivLyrics without Spotify or a player. A song found by title and artist
+    // plays its lyrics on ivLyrics's own timer (NowPlayingService), so every lyrics feature works.
+
+    private boolean isSpotifySetupSkipped() {
+        return !IvLyricsBridge.isEmbedded(this)
+                && getSharedPreferences(SETTINGS_UI_PREFS, MODE_PRIVATE).getBoolean(KEY_SPOTIFY_SETUP_SKIPPED, false);
+    }
+
+    private void continueWithoutSpotify() {
+        if (IvLyricsBridge.isEmbedded(this)) return;
+        rememberSpotifySetupDraft();
+        getSharedPreferences(SETTINGS_UI_PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_SPOTIFY_SETUP_SKIPPED, true).apply();
+        appendLog("setup: continuing without Spotify; lyrics search opens");
+        updateSpotifySetupGate(true);
+        updateLyricsSearchEntry(currentTrack);
+        handler.postDelayed(this::showLyricsSearchDialog, 220L);
+    }
+
+    /** Setup returns at its permission or Spotify step. */
+    private void openSpotifySetupFromSearch() {
+        if (IvLyricsBridge.isEmbedded(this)) return;
+        getSharedPreferences(SETTINGS_UI_PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_SPOTIFY_SETUP_SKIPPED, false).apply();
+        if (isInitialSetupComplete()) {
+            showSettingsPanel(true);
+            return;
+        }
+        onboardingStep = NowPlayingService.isNotificationAccessEnabled(this) ? ONBOARDING_STEP_COUNT - 1 : 1;
+        updateSpotifySetupGate(true);
+    }
+
+    /** While nothing usable is playing, the player page offers lyrics search instead of a preview. */
+    private void updateLyricsSearchEntry(TrackSnapshot snapshot) {
+        boolean visible = !IvLyricsBridge.isEmbedded(this)
+                && (snapshot == null || !snapshot.hasUsableMetadata()
+                || (!isSpotifyApiConfigured() && !snapshot.isLyricsSearch()));
+        lyricsSearchEntryVisible = visible;
+        if (lyricsSearchEntryCard != null) {
+            lyricsSearchEntryCard.setVisibility(visible ? View.VISIBLE : View.GONE);
+            View connect = lyricsSearchEntryCard.findViewWithTag("lyrics-search-connect");
+            if (connect != null) connect.setVisibility(isInitialSetupComplete() ? View.GONE : View.VISIBLE);
+        }
+        if (visible && lyricPreviewContainer != null) lyricPreviewContainer.setVisibility(View.GONE);
+    }
+
+    private LinearLayout buildLyricsSearchEntryCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.argb(66, 0, 0, 0));
+        background.setCornerRadius(dp(16));
+        background.setStroke(Math.max(1, dp(1)), Color.argb(23, 255, 255, 255));
+        card.setBackground(background);
+        TextView title = label(ui("lyrics_search.empty_title"), 17f, Color.WHITE, AppFonts.semiBold(this));
+        if (Build.VERSION.SDK_INT >= 28) title.setAccessibilityHeading(true);
+        card.addView(title, matchWrap());
+        TextView description = label(ui("lyrics_search.empty_desc"), 13f, Color.argb(184, 255, 255, 255), AppFonts.regular(this));
+        description.setSingleLine(false);
+        description.setMaxLines(4);
+        description.setLineSpacing(dp(2), 1f);
+        card.addView(description, topMargin(matchWrap(), dp(5)));
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        TextView search = lyricsSearchPill(ui("lyrics_search.title"), true);
+        search.setTag("lyrics-search-open");
+        search.setOnClickListener(view -> showLyricsSearchDialog());
+        actions.addView(search, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView connect = lyricsSearchPill(ui("lyrics_search.connect_spotify"), false);
+        connect.setTag("lyrics-search-connect");
+        connect.setOnClickListener(view -> openSpotifySetupFromSearch());
+        LinearLayout.LayoutParams connectParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        connectParams.setMarginStart(dp(8));
+        actions.addView(connect, connectParams);
+        card.addView(actions, topMargin(matchWrap(), dp(14)));
+        return card;
+    }
+
+    private TextView lyricsSearchPill(String text, boolean primary) {
+        TextView view = label(text, 15f, primary ? Color.BLACK : Color.WHITE, AppFonts.semiBold(this));
+        makeRemoteFocusable(view);
+        view.setClickable(true);
+        view.setGravity(Gravity.CENTER);
+        view.setSingleLine(false);
+        view.setMaxLines(2);
+        view.setMinHeight(dp(44));
+        view.setPadding(dp(14), dp(8), dp(14), dp(8));
+        view.setBackground(roundDrawable(primary ? Color.WHITE : Color.argb(36, 255, 255, 255), dp(22)));
+        return view;
+    }
+
+    private void showLyricsSearchDialog() {
+        if (IvLyricsBridge.isEmbedded(this) || isFinishing() || isDestroyed()) return;
+        if (lyricsSearchDialog != null && lyricsSearchDialog.isShowing()) return;
+        SettingsKit kit = new SettingsKit(this, settingsPalette());
+        LinearLayout shell = kit.vertical();
+        shell.setPaddingRelative(dp(20), dp(20), dp(20), dp(16));
+        shell.setBackground(kit.rect(kit.p.surface, 12f, kit.p.line2, 1f));
+        LinearLayout header = kit.horizontal();
+        TextView title = kit.text(ui("lyrics_search.title"), 18f, kit.p.text, kit.semi);
+        SettingsKit.heading(title);
+        header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageButton close = kit.iconButton("close", ui("button.close"), 20f);
+        makeRemoteFocusable(close);
+        header.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        shell.addView(header, matchWrap());
+        TextView description = kit.text(ui("lyrics_search.desc"), 14f, kit.p.text2, kit.regular);
+        description.setLineSpacing(dp(3), 1f);
+        shell.addView(description, topMargin(matchWrap(), dp(6)));
+
+        LinearLayout fields = kit.group();
+        EditText titleInput = kit.field(ui("lyrics.lrclib_search.field_title"), false, false);
+        titleInput.setTag("lyrics-search-title");
+        titleInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        titleInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        EditText artistInput = kit.field(ui("lyrics.lrclib_search.field_artist"), false, false);
+        artistInput.setTag("lyrics-search-artist");
+        artistInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        artistInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        fields.addView(kit.stackRow(ui("lyrics.lrclib_search.field_title"), null, titleInput), matchWrap());
+        fields.addView(kit.stackRow(ui("lyrics.lrclib_search.field_artist"), null, artistInput), matchWrap());
+        shell.addView(fields, topMargin(matchWrap(), dp(14)));
+        Button submit = kit.button(ui("lyrics_search.submit"), SettingsKit.BUTTON_PRIMARY, null);
+        submit.setTag("lyrics-search-submit");
+        makeRemoteFocusable(submit);
+        shell.addView(submit, topMargin(matchWrap(), dp(14)));
+        TextView note = kit.text(ui("lyrics_search.timer_note"), 13f, kit.p.text3, kit.regular);
+        note.setLineSpacing(dp(2), 1f);
+        shell.addView(note, topMargin(matchWrap(), dp(10)));
+        Button connect = null;
+        if (!isInitialSetupComplete()) {
+            connect = kit.button(ui("lyrics_search.connect_spotify"), SettingsKit.BUTTON_NORMAL, null);
+            makeRemoteFocusable(connect);
+            shell.addView(connect, topMargin(matchWrap(), dp(10)));
+        }
+        // Searching again starts from the searched song on screen.
+        if (currentTrack != null && currentTrack.isLyricsSearch()) {
+            titleInput.setText(currentTrack.title);
+            artistInput.setText(currentTrack.artist);
+        }
+
+        ScrollView scroll = new ScrollView(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int available = Math.max(dp(48), visibleSettingsWindowBounds().height() - dp(48));
+                if (View.MeasureSpec.getMode(heightSpec) != View.MeasureSpec.UNSPECIFIED) {
+                    available = Math.min(available, View.MeasureSpec.getSize(heightSpec));
+                }
+                super.onMeasure(widthSpec, View.MeasureSpec.makeMeasureSpec(available, View.MeasureSpec.AT_MOST));
+            }
+        };
+        scroll.setBackground(kit.rect(kit.p.surface, 12f));
+        scroll.setClipToOutline(true);
+        scroll.addView(shell, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(scroll).create();
+        Runnable updateSubmit = () -> {
+            boolean ready = !textOf(titleInput).isEmpty() && !textOf(artistInput).isEmpty();
+            submit.setEnabled(ready);
+            submit.setAlpha(ready ? 1f : 0.45f);
+        };
+        TextWatcher watcher = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) { updateSubmit.run(); }
+        };
+        titleInput.addTextChangedListener(watcher);
+        artistInput.addTextChangedListener(watcher);
+        updateSubmit.run();
+        Runnable search = () -> {
+            String songTitle = textOf(titleInput);
+            String songArtist = textOf(artistInput);
+            if (songTitle.isEmpty() || songArtist.isEmpty()) {
+                showSavedToast(ui("lyrics.lrclib_search.empty_title"));
+                return;
+            }
+            dialog.dismiss();
+            appendLog("lyrics search: " + songTitle + " - " + songArtist + " on the app timer");
+            NowPlayingService.startLyricsSearch(songTitle, songArtist);
+        };
+        submit.setOnClickListener(view -> search.run());
+        artistInput.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId != android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) return false;
+            search.run();
+            return true;
+        });
+        close.setOnClickListener(view -> dialog.dismiss());
+        if (connect != null) {
+            connect.setOnClickListener(view -> {
+                dialog.dismiss();
+                openSpotifySetupFromSearch();
+            });
+        }
+        lyricsSearchDialog = dialog;
+        dialog.setOnDismissListener(ignored -> lyricsSearchDialog = null);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.56f);
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                    | (textOf(titleInput).isEmpty() ? WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE : 0));
+            int width = Math.min(visibleSettingsWindowBounds().width() - dp(32), dp(380));
+            window.setLayout(Math.max(1, width), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        if (textOf(titleInput).isEmpty()) titleInput.requestFocus();
+    }
+
+    /** The first timed lyrics of a searched song give it a length and start its timer. */
+    private void startLyricsSearchTimeline(LyricsResult result) {
+        TrackSnapshot track = currentTrack;
+        if (track == null || !track.isLyricsSearch() || track.durationMs > 0L || result == null) return;
+        long lastTimeMs = 0L;
+        for (LyricsLine line : result.lines) {
+            lastTimeMs = Math.max(lastTimeMs, Math.max(line.startTimeMs, line.endTimeMs));
+        }
+        if (lastTimeMs > 0L) NowPlayingService.startLyricsSearchTimeline(track.stableKey(), lastTimeMs + 4_000L);
+    }
+
 
     protected void requestMetadataTranslation(boolean clearCache) {
         long generation = ++aiMetadataGeneration;
@@ -16959,7 +17223,7 @@ public class BaseLyricsActivity extends Activity implements
             return;
         }
         if (lyricPreviewContainer != null) {
-            lyricPreviewContainer.setVisibility(View.VISIBLE);
+            lyricPreviewContainer.setVisibility(lyricsSearchEntryVisible ? View.GONE : View.VISIBLE);
         }
         if (currentLyricsResult == null || currentLyricsResult.lines.isEmpty()) {
             clearPreviewRowsCache();

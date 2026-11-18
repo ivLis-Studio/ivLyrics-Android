@@ -308,6 +308,9 @@ public final class IOSPrPortRegression {
         static TrackSnapshot getLatestSnapshot() { return latestSnapshot; }
         static String firstNonEmpty(String... values) { for (String v:values) if (v!=null&&!v.trim().isEmpty()) return v.trim(); return ""; }
         static String metadataString(MediaMetadata m,String key) { Object v=m.get(key); return v==null?"":v.toString().trim(); }
+        // No searched song is open here; players' seeks are what this regression covers.
+        static final int SEARCH_SEEK = 2;
+        static boolean commandLyricsSearch(int command, long positionMs, String expectedTrackKey) { return false; }
         // CONTEXT
     }
     static void context() {

@@ -16,7 +16,7 @@ production = [SHARED / name for name in (
     "LyricsRepository.java", "LrclibEndpoint.java", "LrclibPlaybackStage.java", "LrclibPlaybackConnection.java", "LyricsProviderSettings.java",
     "LyricsProviderSelectionPlan.java", "LyricsDiskCache.java", "LrcParser.java", "SyncDataApplier.java", "SyncDataV6Codec.java",
     "LyricsResult.java", "LyricsLine.java", "TrackSnapshot.java", "RequestCancellation.java",
-    "LatestLyricsRequest.java", "AppI18n.java", "LocalLyricsStore.java", "LocalLyricsI18n.java",
+    "LatestLyricsRequest.java", "AppI18n.java", "LocalLyricsStore.java", "LocalLyricsI18n.java", "LyricsSearchI18n.java",
     "LrcRedWordSync.java", "ProviderLookupWindow.java",
 )]
 files = production + [ROOT / "tests/android/os/Handler.java", ROOT / "tests/android/os/Looper.java", fixture, wire_fixture]

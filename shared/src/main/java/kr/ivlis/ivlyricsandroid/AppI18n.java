@@ -695,6 +695,7 @@ final class AppI18n {
             Map<String, String> copy = new LinkedHashMap<>(table);
             LocalAiI18n.apply(language.code, copy);
             LocalLyricsI18n.apply(language.code, copy);
+            LyricsSearchI18n.apply(language.code, copy);
             languages.put(language.code, Collections.unmodifiableMap(copy));
         }
     }

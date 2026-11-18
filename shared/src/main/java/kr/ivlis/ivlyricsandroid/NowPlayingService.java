@@ -42,6 +42,15 @@ public final class NowPlayingService extends NotificationListenerService {
 
     private static WeakReference<NowPlayingService> instance = new WeakReference<>(null);
     private static volatile TrackSnapshot latestSnapshot;
+    /** The newest player snapshot, kept while a searched song is shown instead. */
+    private static volatile TrackSnapshot latestPlayerSnapshot;
+    private static volatile TrackSnapshot lyricsSearchSnapshot;
+    private static volatile String lyricsSearchHeldPlayerKey = "";
+    private static final Runnable LYRICS_SEARCH_END = NowPlayingService::endLyricsSearchTimeline;
+    private static final int SEARCH_TOGGLE = 0;
+    private static final int SEARCH_PAUSE = 1;
+    private static final int SEARCH_SEEK = 2;
+    private static final int SEARCH_NEXT = 3;
     private static volatile MediaController activeController;
     private static volatile MediaController.Callback activeCallback;
     private static volatile boolean embeddedPlayback;
@@ -105,6 +114,7 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean togglePlayback() {
+        if (commandLyricsSearch(SEARCH_TOGGLE, 0L, null)) return true;
         MediaController controller = activeController;
         if (controller == null) return false;
         PlaybackState state = controller.getPlaybackState();
@@ -118,6 +128,7 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean pausePlayback() {
+        if (commandLyricsSearch(SEARCH_PAUSE, 0L, null)) return true;
         MediaController controller = activeController;
         if (controller == null) return false;
         // Pause is idempotent. Sending it unconditionally avoids a stale
@@ -127,6 +138,7 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean skipToNext() {
+        if (commandLyricsSearch(SEARCH_NEXT, 0L, null)) return true;
         MediaController controller = activeController;
         if (controller == null) return false;
         controller.getTransportControls().skipToNext();
@@ -134,6 +146,8 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean skipToPrevious() {
+        // Previous on a searched song starts it again.
+        if (commandLyricsSearch(SEARCH_SEEK, 0L, null)) return true;
         MediaController controller = activeController;
         if (controller == null) return false;
         controller.getTransportControls().skipToPrevious();
@@ -146,6 +160,7 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     static boolean seekTo(String expectedTrackKey, long positionMs) {
+        if (commandLyricsSearch(SEARCH_SEEK, positionMs, expectedTrackKey)) return true;
         MediaController controller = activeController;
         TrackSnapshot snapshot = latestSnapshot;
         if (controller == null || snapshot == null || !snapshot.stableKey().equals(expectedTrackKey)) return false;
@@ -164,6 +179,73 @@ public final class NowPlayingService extends NotificationListenerService {
         };
         if (Looper.myLooper() == Looper.getMainLooper()) notify.run();
         else MAIN.post(notify);
+    }
+
+    // Lyrics search: a song found by title and artist plays on ivLyrics's own timer. It stays until
+    // a player starts a song of its own; the song a player was already playing does not replace it.
+
+    static void startLyricsSearch(String title, String artist) {
+        runOnMain(() -> {
+            TrackSnapshot player = latestPlayerSnapshot;
+            lyricsSearchHeldPlayerKey = player != null && player.playing ? player.stableKey() : "";
+            publishLyricsSearch(TrackSnapshot.lyricsSearch(title, artist));
+        });
+    }
+
+    /** The first timed lyrics give a searched song its length and start its timer. */
+    static void startLyricsSearchTimeline(String trackKey, long durationMs) {
+        runOnMain(() -> {
+            TrackSnapshot search = lyricsSearchSnapshot;
+            if (search == null || durationMs <= 0L || search.durationMs > 0L
+                    || !search.stableKey().equals(trackKey)) return;
+            publishLyricsSearch(search.withSearchPlayback(0L, true, durationMs));
+        });
+    }
+
+    private static boolean commandLyricsSearch(int command, long positionMs, String expectedTrackKey) {
+        TrackSnapshot active = lyricsSearchSnapshot;
+        if (active == null) return false;
+        if (expectedTrackKey != null && !active.stableKey().equals(expectedTrackKey)) return false;
+        runOnMain(() -> {
+            TrackSnapshot search = lyricsSearchSnapshot;
+            if (search == null || command == SEARCH_NEXT) return;
+            long position = search.positionNow();
+            boolean playing = search.playing;
+            if (command == SEARCH_TOGGLE) {
+                playing = !playing;
+                // Play at the end of a searched song starts it again.
+                if (playing && search.durationMs > 0L && position >= search.durationMs) position = 0L;
+            } else if (command == SEARCH_PAUSE) {
+                playing = false;
+            } else {
+                position = search.durationMs > 0L
+                        ? Math.max(0L, Math.min(search.durationMs, positionMs)) : Math.max(0L, positionMs);
+                registerExplicitSeek(search, position);
+            }
+            publishLyricsSearch(search.withSearchPlayback(position, playing, search.durationMs));
+        });
+        return true;
+    }
+
+    private static void publishLyricsSearch(TrackSnapshot snapshot) {
+        lyricsSearchSnapshot = snapshot;
+        latestSnapshot = snapshot;
+        MAIN.removeCallbacks(LYRICS_SEARCH_END);
+        if (snapshot.playing && snapshot.durationMs > 0L) {
+            MAIN.postDelayed(LYRICS_SEARCH_END, Math.max(0L, snapshot.durationMs - snapshot.positionNow()) + 50L);
+        }
+        for (Listener listener : LISTENERS) listener.onNowPlayingChanged(snapshot);
+    }
+
+    private static void endLyricsSearchTimeline() {
+        TrackSnapshot search = lyricsSearchSnapshot;
+        if (search == null || !search.playing) return;
+        publishLyricsSearch(search.withSearchPlayback(search.durationMs, false, search.durationMs));
+    }
+
+    private static void runOnMain(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action.run();
+        else MAIN.post(action);
     }
 
     static String navigationDestination(boolean album) {
@@ -510,10 +592,19 @@ public final class NowPlayingService extends NotificationListenerService {
     }
 
     private void publish(TrackSnapshot snapshot) {
-        latestSnapshot = snapshot;
+        latestPlayerSnapshot = snapshot;
+        if (lyricsSearchSnapshot == null) latestSnapshot = snapshot;
         MAIN.post(() -> {
             if (shortcutOverlayController != null) {
                 shortcutOverlayController.update(snapshot);
+            }
+            if (lyricsSearchSnapshot != null) {
+                // A player takes over from a searched song only by starting a song of its own.
+                if (snapshot == null || !snapshot.playing
+                        || snapshot.stableKey().equals(lyricsSearchHeldPlayerKey)) return;
+                lyricsSearchSnapshot = null;
+                MAIN.removeCallbacks(LYRICS_SEARCH_END);
+                latestSnapshot = snapshot;
             }
             for (Listener listener : LISTENERS) {
                 listener.onNowPlayingChanged(snapshot);

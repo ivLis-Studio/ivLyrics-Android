@@ -185,7 +185,25 @@ final class TrackSnapshot {
         if (!trackId.isEmpty()) {
             return "spotify:" + trackId;
         }
-        return normalizeForKey(title) + "|" + normalizeForKey(artist) + "|" + durationMs;
+        // A searched song learns its length from its lyrics; that must not make it another track.
+        return normalizeForKey(title) + "|" + normalizeForKey(artist) + "|" + (isLyricsSearch() ? 0L : durationMs);
+    }
+
+    /** A song opened from lyrics search, without a player. It plays on ivLyrics's own timer. */
+    static final String LYRICS_SEARCH_PACKAGE = "ivlyrics.search";
+
+    boolean isLyricsSearch() {
+        return LYRICS_SEARCH_PACKAGE.equals(packageName);
+    }
+
+    static TrackSnapshot lyricsSearch(String title, String artist) {
+        return new TrackSnapshot(title, artist, "", LYRICS_SEARCH_PACKAGE, "", "", 0L, 0L,
+                SystemClock.elapsedRealtime(), 1f, false, null, "");
+    }
+
+    TrackSnapshot withSearchPlayback(long positionMs, boolean playing, long durationMs) {
+        return new TrackSnapshot(title, artist, album, packageName, mediaId, isrc, durationMs, positionMs,
+                SystemClock.elapsedRealtime(), 1f, playing, artwork, artworkUri);
     }
 
     String artworkKey() {
