@@ -9,6 +9,7 @@ final class AppearanceOptions {
     static final String LANDSCAPE_ORIGINAL = "landscape_show_original";
     static final String LANDSCAPE_ARTWORK = "landscape_show_artwork";
     static final String EMPTY_NOTICE = "show_lyrics_not_found";
+    static final String ARTWORK_FIXED = "background_artwork_fixed";
 
     private AppearanceOptions() {}
 
@@ -28,6 +29,11 @@ final class AppearanceOptions {
 
     static int videoDimAlpha(int brightness) {
         return Math.round(255f * (1f - Math.max(0, Math.min(100, brightness)) / 100f));
+    }
+
+    /** Fixing the album art stills only an album-art background, as Reduce motion does. */
+    static boolean holdsArtworkStill(String backgroundMode, boolean artworkFixed) {
+        return artworkFixed && "gradient-background".equals(backgroundMode);
     }
 
     /** A navigation destination, never a playback command or an arbitrary external URL. */

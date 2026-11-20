@@ -51,7 +51,8 @@ public final class AppI18nInitializationTest {
     public void appearanceChoicesHaveTranslationsInEveryLanguage() {
         String[] keys = {"fallback", "title_tap", "title_player", "title_disabled", "title_album", "title_context",
                 "video_aspect", "video_fit", "video_fill", "video_stretch", "video_edges",
-                "landscape_original", "landscape_artwork", "empty_notice", "context_unavailable"};
+                "landscape_original", "landscape_artwork", "empty_notice", "context_unavailable",
+                "artwork_fixed", "artwork_fixed_desc"};
         for (AiLyricsSettings.Language language : AppI18n.UI_LANGUAGES) {
             for (String suffix : keys) {
                 String key = "appearance." + suffix;

@@ -38,4 +38,28 @@ public final class AppearanceOptionsTest {
         assertEquals("", AppearanceOptions.spotifyDestination("https://example.com/album/" + id, true));
         assertEquals("", AppearanceOptions.spotifyDestination("", false));
     }
+
+    @Test public void fixedArtworkStillsOnlyTheAlbumArtBackground() {
+        assertTrue(AppearanceOptions.holdsArtworkStill(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, true));
+        assertFalse(AppearanceOptions.holdsArtworkStill(AiLyricsSettings.BACKGROUND_MODE_GRADIENT, false));
+        assertFalse(AppearanceOptions.holdsArtworkStill(AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT, true));
+        assertFalse(AppearanceOptions.holdsArtworkStill(AiLyricsSettings.BACKGROUND_MODE_SOLID, true));
+        assertFalse(AppearanceOptions.holdsArtworkStill(AiLyricsSettings.BACKGROUND_MODE_VIDEO, true));
+
+        AiLyricsSettings.BackgroundSettings moving = new AiLyricsSettings.BackgroundSettings(
+                AiLyricsSettings.BACKGROUND_MODE_GRADIENT, 40, 30, true, false, "#123456", 120);
+        assertSame(moving, AiLyricsSettings.withArtworkFixed(moving, false));
+        AiLyricsSettings.BackgroundSettings still = AiLyricsSettings.withArtworkFixed(moving, true);
+        assertTrue(still.reduceMotion);
+        assertEquals(moving.mode, still.mode);
+        assertEquals(moving.brightness, still.brightness);
+        assertEquals(moving.blur, still.blur);
+        assertEquals(moving.noise, still.noise);
+        assertEquals(moving.solidColor, still.solidColor);
+        assertEquals(moving.videoScale, still.videoScale);
+        AiLyricsSettings.BackgroundSettings gradient = new AiLyricsSettings.BackgroundSettings(
+                AiLyricsSettings.BACKGROUND_MODE_BLUR_GRADIENT, 40, 30, false, false, "#123456", 120);
+        assertSame(gradient, AiLyricsSettings.withArtworkFixed(gradient, true));
+        assertNull(AiLyricsSettings.withArtworkFixed(null, true));
+    }
 }

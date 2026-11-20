@@ -418,6 +418,7 @@ public class BaseLyricsActivity extends Activity implements
     private Switch pipShowArtworkSwitch;
     private Switch backgroundNoiseSwitch;
     private Switch backgroundReduceMotionSwitch;
+    private Switch backgroundArtworkFixedSwitch;
     private Switch albumArtOpenLpSwitch;
     private Switch vinylAnimationsSwitch;
     private Switch vinylTrackChangesSwitch;
@@ -3609,7 +3610,8 @@ public class BaseLyricsActivity extends Activity implements
         pictureInPictureBackgroundView = new PlayerBackgroundView(this);
         pictureInPictureBackgroundView.setArtwork(currentArtworkBitmap, currentArtworkKey);
         if (aiLyricsSettings != null) {
-            pictureInPictureBackgroundView.setBackgroundSettings(effectiveBackgroundSettings(aiLyricsSettings.snapshot()));
+            pictureInPictureBackgroundView.setBackgroundSettings(
+                    fallbackBackgroundSettings(effectiveBackgroundSettings(aiLyricsSettings.snapshot())));
         }
         pictureInPictureStage.addView(pictureInPictureBackgroundView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -7106,6 +7108,13 @@ public class BaseLyricsActivity extends Activity implements
             applyBackgroundSettings(aiLyricsSettings.snapshot());
             showSavedToast(isChecked ? ui("toast.reduce_motion_on") : ui("toast.reduce_motion_off"));
         });
+        backgroundArtworkFixedSwitch = settingsToggle(tune, ui("appearance.artwork_fixed"), ui("appearance.artwork_fixed_desc"));
+        backgroundArtworkFixedSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressSettingsEvents || aiLyricsSettings == null) return;
+            aiLyricsSettings.setAppearanceToggle(AppearanceOptions.ARTWORK_FIXED, isChecked);
+            applyBackgroundSettings(aiLyricsSettings.snapshot());
+            showSavedToast(ui("toast.settings_saved"));
+        });
         if (embedded) {
             playerCardBackgroundSwitch = settingsToggle(tune, ui("setting.player_card_background"),
                     ui("setting.player_card_background_desc"));
@@ -7195,6 +7204,7 @@ public class BaseLyricsActivity extends Activity implements
         if (landscapeShowOriginalSwitch != null) landscapeShowOriginalSwitch.setChecked(aiLyricsSettings.landscapeShowOriginal());
         if (landscapeShowArtworkSwitch != null) landscapeShowArtworkSwitch.setChecked(aiLyricsSettings.landscapeShowArtwork());
         if (showLyricsNotFoundSwitch != null) showLyricsNotFoundSwitch.setChecked(aiLyricsSettings.showLyricsNotFound());
+        if (backgroundArtworkFixedSwitch != null) backgroundArtworkFixedSwitch.setChecked(aiLyricsSettings.backgroundArtworkFixed());
         suppressSettingsEvents = previous;
     }
 
@@ -11352,9 +11362,13 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private AiLyricsSettings.BackgroundSettings fallbackBackgroundSettings(AiLyricsSettings.BackgroundSettings settings) {
-        if (!AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(settings.mode)) return settings;
-        return new AiLyricsSettings.BackgroundSettings(aiLyricsSettings.videoFallback(), settings.brightness,
-                settings.blur, settings.noise, settings.reduceMotion, settings.solidColor, settings.videoScale);
+        if (settings == null || aiLyricsSettings == null) return settings;
+        AiLyricsSettings.BackgroundSettings shown = settings;
+        if (AiLyricsSettings.BACKGROUND_MODE_VIDEO.equals(settings.mode)) {
+            shown = new AiLyricsSettings.BackgroundSettings(aiLyricsSettings.videoFallback(), settings.brightness,
+                    settings.blur, settings.noise, settings.reduceMotion, settings.solidColor, settings.videoScale);
+        }
+        return AiLyricsSettings.withArtworkFixed(shown, aiLyricsSettings.backgroundArtworkFixed());
     }
 
     private void applyMobileAppearance() {

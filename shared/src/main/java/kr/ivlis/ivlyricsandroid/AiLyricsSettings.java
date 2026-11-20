@@ -194,7 +194,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             KEY_USE_SYNC_CREATOR_SPEAKER_COLORS, KEY_LYRICS_TEXT_ALIGNMENT,
             AppearanceOptions.FALLBACK, AppearanceOptions.TITLE_ACTION, AppearanceOptions.VIDEO_ASPECT,
             AppearanceOptions.VIDEO_EDGES, AppearanceOptions.LANDSCAPE_ORIGINAL,
-            AppearanceOptions.LANDSCAPE_ARTWORK, AppearanceOptions.EMPTY_NOTICE
+            AppearanceOptions.LANDSCAPE_ARTWORK, AppearanceOptions.EMPTY_NOTICE, AppearanceOptions.ARTWORK_FIXED
     )));
     private static final Set<String> CLOUD_FLOAT_SETTING_KEYS = Collections.singleton(KEY_TEMPERATURE);
 
@@ -984,6 +984,17 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
     boolean landscapeShowOriginal() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ORIGINAL, true); }
     boolean landscapeShowArtwork() { return prefs.getBoolean(AppearanceOptions.LANDSCAPE_ARTWORK, true); }
     boolean showLyricsNotFound() { return prefs.getBoolean(AppearanceOptions.EMPTY_NOTICE, true); }
+    boolean backgroundArtworkFixed() { return prefs.getBoolean(AppearanceOptions.ARTWORK_FIXED, false); }
+
+    /** The background as shown: with the album art fixed, an album-art background holds still. */
+    static BackgroundSettings withArtworkFixed(BackgroundSettings settings, boolean artworkFixed) {
+        if (settings == null || settings.reduceMotion
+                || !AppearanceOptions.holdsArtworkStill(settings.mode, artworkFixed)) {
+            return settings;
+        }
+        return new BackgroundSettings(settings.mode, settings.brightness, settings.blur,
+                settings.noise, true, settings.solidColor, settings.videoScale);
+    }
 
     void setAppearanceChoice(String key, String value) {
         if (AppearanceOptions.FALLBACK.equals(key)) value = AppearanceOptions.fallback(value);
@@ -995,7 +1006,8 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     void setAppearanceToggle(String key, boolean value) {
         if (!AppearanceOptions.VIDEO_EDGES.equals(key) && !AppearanceOptions.LANDSCAPE_ORIGINAL.equals(key)
-                && !AppearanceOptions.LANDSCAPE_ARTWORK.equals(key) && !AppearanceOptions.EMPTY_NOTICE.equals(key)) {
+                && !AppearanceOptions.LANDSCAPE_ARTWORK.equals(key) && !AppearanceOptions.EMPTY_NOTICE.equals(key)
+                && !AppearanceOptions.ARTWORK_FIXED.equals(key)) {
             throw new IllegalArgumentException(key);
         }
         prefs.edit().putBoolean(key, value).apply();

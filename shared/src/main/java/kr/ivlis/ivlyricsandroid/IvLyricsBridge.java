@@ -513,7 +513,10 @@ public final class IvLyricsBridge {
                         state.ui("interlude.prelude"), state.ui("interlude.break"), state.ui("interlude.postlude"));
                 boolean showBackground = state.settings.playerCardBackgroundEnabled();
                 background.setVisibility(showBackground ? View.VISIBLE : View.GONE);
-                if (showBackground) background.setBackgroundSettings(settings.background);
+                if (showBackground) {
+                    background.setBackgroundSettings(AiLyricsSettings.withArtworkFixed(
+                            settings.background, state.settings.backgroundArtworkFixed()));
+                }
                 else background.setArtwork(null, "");
                 setContentDescription("ivLyrics, " + state.ui("accessibility.open_lyrics"));
             }

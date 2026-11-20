@@ -23,7 +23,8 @@ methods = "\n".join(declaration(settings, signature) for signature in (
     "JSONObject exportCloudSettings()", "synchronized void importCloudSettings(",
     "String videoFallback()", "String titleTapAction()", "String videoAspect()",
     "boolean videoEdgeToEdge()", "boolean landscapeShowOriginal()", "boolean landscapeShowArtwork()",
-    "boolean showLyricsNotFound()", "void setAppearanceChoice(", "void setAppearanceToggle("))
+    "boolean showLyricsNotFound()", "boolean backgroundArtworkFixed()", "void setAppearanceChoice(",
+    "void setAppearanceToggle("))
 methods += "\n" + "\n".join(declaration(settings, signature) for signature in (
     "void setVinylTrackChanges(", "void setVinylRotationSpeed(", "void setVinylSimplifiedTitle(",
     "boolean albumArtOpenLp()", "void setAlbumArtOpenLp("))
@@ -77,6 +78,12 @@ public final class AppearanceRegression {
         check(settings.titleTapAction().equals("player"));
         check(settings.videoEdgeToEdge()); // A landscape video runs to the screen's edges unless turned off.
         check(settings.landscapeShowOriginal() && settings.landscapeShowArtwork() && settings.showLyricsNotFound());
+        check(!settings.backgroundArtworkFixed()); // Album art keeps drifting unless fixed.
+        check(AppearanceOptions.holdsArtworkStill("gradient-background", true));
+        for (String mode : new String[]{"blur-gradient-background", "solid-background", "video-background"}) {
+            check(!AppearanceOptions.holdsArtworkStill(mode, true)); // Only album art is fixed.
+        }
+        check(!AppearanceOptions.holdsArtworkStill("gradient-background", false));
         settings.prefs.edit().putString(Settings.KEY_BACKGROUND_MODE,"video-background").putInt(Settings.KEY_BACKGROUND_BRIGHTNESS,30).apply();
         settings.setAppearanceChoice(AppearanceOptions.FALLBACK,"solid-background");
         settings.setAppearanceChoice(AppearanceOptions.TITLE_ACTION,"context");
@@ -85,6 +92,7 @@ public final class AppearanceRegression {
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ORIGINAL,false);
         settings.setAppearanceToggle(AppearanceOptions.LANDSCAPE_ARTWORK,false);
         settings.setAppearanceToggle(AppearanceOptions.EMPTY_NOTICE,false);
+        settings.setAppearanceToggle(AppearanceOptions.ARTWORK_FIXED,true);
         settings.setVinylTrackChanges(false);
         settings.setVinylRotationSpeed(175);
         settings.setVinylSimplifiedTitle(true);
@@ -110,6 +118,7 @@ public final class AppearanceRegression {
         check(restored.videoAspect().equals("fit"));
         check(!restored.videoEdgeToEdge());
         check(!restored.landscapeShowOriginal() && !restored.landscapeShowArtwork() && !restored.showLyricsNotFound());
+        check(restored.backgroundArtworkFixed()); // Fixed album art survives cloud backup.
         check(restored.prefs.getString(Settings.KEY_BACKGROUND_MODE,"").equals("video-background"));
         check(restored.prefs.data.get(Settings.KEY_BACKGROUND_BRIGHTNESS).equals(30));
         check(restored.prefs.data.get(RecordRotation.CHANGE_KEY).equals(false));
