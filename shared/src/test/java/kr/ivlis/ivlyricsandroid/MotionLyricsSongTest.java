@@ -68,6 +68,15 @@ public final class MotionLyricsSongTest {
         assertFalse("no translation, no text2", json.contains("text2"));
     }
 
+    @Test public void withoutALeadPartTheFirstOneSungLeadsAndNoneIsLost() {
+        LyricsLine.VocalPart oh = new LyricsLine.VocalPart("e", "background", "", "vocal", "oh", timed(7000, "oh"));
+        LyricsLine.VocalPart yeah = new LyricsLine.VocalPart("f", "background", "", "vocal", "yeah", timed(7400, "yeah"));
+        LyricsLine answers = new LyricsLine(7000, 7800, "oh yeah", Collections.emptyList(), "", "vocal", Arrays.asList(oh, yeah));
+        String json = MotionLyricsSong.json("u", "t", "a", "", "", karaoke(true, answers));
+        assertTrue(json.contains("\"vocals\":{\"lead\":{\"text\":\"oh\",\"role\":\"background\""));
+        assertTrue("the other still sings", json.contains("\"background\":[{\"text\":\"yeah\""));
+    }
+
     @Test public void lineSyncedResultsSendNoLyricsSoThePageTurnsThemDown() {
         assertTrue(MotionLyricsSong.json("u", "t", "a", "", "", karaoke(false, PLAIN)).endsWith("\"lyrics\":[]}"));
         assertTrue(MotionLyricsSong.json("u", "t", "a", "", "", null).endsWith("\"lyrics\":[]}"));

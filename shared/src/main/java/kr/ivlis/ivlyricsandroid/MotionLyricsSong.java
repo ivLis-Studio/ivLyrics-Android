@@ -82,6 +82,7 @@ final class MotionLyricsSong {
             string(out, line.translationText);
         }
         // The first lead part leads the line; the others sing with it (a duet partner is another lead).
+        // Without a part marked lead (only other voices, or unmarked parts) the first one sung leads.
         List<LyricsLine.VocalPart> sung = new ArrayList<>();
         LyricsLine.VocalPart lead = null;
         for (LyricsLine.VocalPart part : line.vocalParts) {
@@ -93,6 +94,9 @@ final class MotionLyricsSong {
             } else {
                 sung.add(part);
             }
+        }
+        if (lead == null && !sung.isEmpty()) {
+            lead = sung.remove(0);
         }
         if (lead != null) {
             out.append(",\"vocals\":{\"lead\":");
