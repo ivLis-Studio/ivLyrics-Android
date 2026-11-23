@@ -82,6 +82,13 @@ public final class MotionLyricsSongTest {
         assertTrue(MotionLyricsSong.json("u", "t", "a", "", "", null).endsWith("\"lyrics\":[]}"));
     }
 
+    @Test public void theAlbumArtGoesToTheAiDirectorWhenItIsAnHttpImage() {
+        String json = MotionLyricsSong.json("u", "t", "a", "", "en", karaoke(true, PLAIN), "https://i.scdn.co/image/abc");
+        assertTrue(json.contains("\"language\":\"en\",\"cover\":\"https://i.scdn.co/image/abc\",\"lyrics\":["));
+        assertFalse("a content URI is not sent", MotionLyricsSong.json("u", "t", "a", "", "", karaoke(true, PLAIN), "content://media/1").contains("cover"));
+        assertFalse(MotionLyricsSong.json("u", "t", "a", "", "", karaoke(true, PLAIN), null).contains("cover"));
+    }
+
     @Test public void stringsAreSafeInsideAScript() {
         StringBuilder out = new StringBuilder();
         MotionLyricsSong.string(out, "He said \"hi\"\\\n\tnext\u2028line\u0001");

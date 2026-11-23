@@ -3090,6 +3090,10 @@ public class BaseLyricsActivity extends Activity implements
         if (motionLyricsModeView != null) {
             motionLyricsModeView.setUiText(
                     ui("button.close"), ui("motion.unavailable"), ui("motion.directing"), ui("motion.direct_failed"));
+            motionLyricsModeView.setOptionsText(ui("motion.options"), ui("motion.redirect"),
+                    ui("motion.intensity"), new String[]{ui("motion.intensity_calm"), ui("motion.intensity_normal"), ui("motion.intensity_wild")},
+                    ui("motion.rotation"), new String[]{ui("motion.rotation_full"), ui("motion.rotation_gentle"), ui("motion.rotation_off")},
+                    ui("motion.safe"));
         }
     }
 
@@ -3333,7 +3337,7 @@ public class BaseLyricsActivity extends Activity implements
                     uri,
                     MotionLyricsSong.json(uri, track.title, track.artist,
                             String.format(Locale.US, "#%06x", accent & 0xffffff),
-                            effectiveSelectedSourceLang(), currentLyricsResult),
+                            effectiveSelectedSourceLang(), currentLyricsResult, track.artworkUri),
                     !currentLyricsResult.loading && !currentLyricsResult.lines.isEmpty());
         }
         motionLyricsModeView.setPlayback(currentLyricsPlaybackPosition(track), track.playing, track.playbackSpeed);

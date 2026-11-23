@@ -2,6 +2,7 @@ package kr.ivlis.ivlyricsandroid;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -16,6 +17,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.json.JSONException;
@@ -45,8 +47,13 @@ final class MotionLyricsModeView extends FrameLayout {
     private static final long CONTROLS_HIDE_DELAY_MS = 3000L;
     private static final long FADE_MS = 260L;
     private static final int CLOSE_BUTTON_DP = 40;
-    /** The close button sits in the top end corner; the page keeps its small print clear of it. */
-    private static final int CLOSE_BUTTON_RESERVE_DP = 52;
+    /** The options and close buttons sit in the top end corner; the page keeps its small print clear of them. */
+    private static final int CLOSE_BUTTON_RESERVE_DP = 100;
+    private static final int BUTTON_GAP_DP = 8;
+    // The viewer's comfort (the desktop app's motion intensity, screen rotation and photosensitivity-safe settings).
+    private static final String PREFERENCES = "ivlyrics_motion_lyrics";
+    static final String[] INTENSITIES = {"calm", "normal", "wild"};
+    static final String[] ROTATIONS = {"full", "gentle", "off"};
 
     interface Listener {
         void onClose();
@@ -73,6 +80,15 @@ final class MotionLyricsModeView extends FrameLayout {
     private final Listener listener;
     private final WebView webView;
     private final TextView closeButton;
+    private final TextView optionsButton;
+    private final LinearLayout optionsPanel;
+    private final TextView redirectView;
+    private final TextView intensityLabel;
+    private final TextView rotationLabel;
+    private final TextView[] intensityChips = new TextView[INTENSITIES.length];
+    private final TextView[] rotationChips = new TextView[ROTATIONS.length];
+    private final TextView safeView;
+    private final SharedPreferences preferences;
     private final TextView noticeView;
     private final Runnable hideControls = this::fadeControlsOut;
 
@@ -98,6 +114,9 @@ final class MotionLyricsModeView extends FrameLayout {
     /** A quarter turn of the stage inside an upright window: 90 (clockwise), -90, or 0 for none. */
     private int quarterTurn;
     private boolean shown;
+    private String motionIntensity;
+    private String motionRotation;
+    private boolean motionSafe;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     MotionLyricsModeView(Context context, Listener listener) {
@@ -122,7 +141,7 @@ final class MotionLyricsModeView extends FrameLayout {
 
         // Touches belong to the mode's own controls, not to the page.
         View touchLayer = new View(context);
-        touchLayer.setOnClickListener(view -> showControls());
+        touchLayer.setOnClickListener(view -> onStageTapped());
         addView(touchLayer, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         noticeView = new TextView(context);
@@ -147,6 +166,48 @@ final class MotionLyricsModeView extends FrameLayout {
         closeButton.setFocusable(true);
         closeButton.setOnClickListener(view -> listener.onClose());
         addView(closeButton, new LayoutParams(dp(CLOSE_BUTTON_DP), dp(CLOSE_BUTTON_DP), Gravity.TOP | Gravity.END));
+
+        preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+        motionIntensity = known(preferences.getString("intensity", "normal"), INTENSITIES, "normal");
+        motionRotation = known(preferences.getString("rotation", "full"), ROTATIONS, "full");
+        motionSafe = preferences.getBoolean("safe", false);
+
+        optionsButton = new TextView(context);
+        optionsButton.setText("\u22EF");
+        optionsButton.setTextColor(Color.argb(235, 255, 255, 255));
+        optionsButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18f);
+        optionsButton.setGravity(Gravity.CENTER);
+        optionsButton.setIncludeFontPadding(false);
+        optionsButton.setBackground(pill(Color.argb(108, 0, 0, 0)));
+        optionsButton.setFocusable(true);
+        optionsButton.setOnClickListener(view -> toggleOptions());
+        addView(optionsButton, new LayoutParams(dp(CLOSE_BUTTON_DP), dp(CLOSE_BUTTON_DP), Gravity.TOP | Gravity.END));
+
+        // The options panel turns with the stage (the Spotify module's sheet turns it a quarter), unlike a popup.
+        optionsPanel = new LinearLayout(context);
+        optionsPanel.setOrientation(LinearLayout.VERTICAL);
+        optionsPanel.setPadding(dp(14), dp(12), dp(14), dp(14));
+        GradientDrawable panelBackground = new GradientDrawable();
+        panelBackground.setColor(Color.argb(222, 16, 16, 20));
+        panelBackground.setCornerRadius(dp(18));
+        optionsPanel.setBackground(panelBackground);
+        optionsPanel.setClickable(true);
+        optionsPanel.setVisibility(GONE);
+        redirectView = chip(context);
+        redirectView.setOnClickListener(view -> redirect());
+        optionsPanel.addView(redirectView, rowParams(0));
+        intensityLabel = sectionLabel(context);
+        optionsPanel.addView(intensityLabel, rowParams(12));
+        optionsPanel.addView(chipRow(context, intensityChips, index -> setComfort(INTENSITIES[index], motionRotation, motionSafe)), rowParams(6));
+        rotationLabel = sectionLabel(context);
+        optionsPanel.addView(rotationLabel, rowParams(12));
+        optionsPanel.addView(chipRow(context, rotationChips, index -> setComfort(motionIntensity, ROTATIONS[index], motionSafe)), rowParams(6));
+        safeView = chip(context);
+        safeView.setOnClickListener(view -> setComfort(motionIntensity, motionRotation, !motionSafe));
+        optionsPanel.addView(safeView, rowParams(12));
+        addView(optionsPanel, new LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
+        updateOptionStates();
         placeCloseButton();
 
         String page = readPage(context);
@@ -163,6 +224,23 @@ final class MotionLyricsModeView extends FrameLayout {
         directingText = directing == null ? "" : directing;
         failedText = failed == null ? "" : failed;
         flush();
+    }
+
+    /** The options panel's text: its button, "direct again", and the comfort settings (three choices each). */
+    void setOptionsText(String options, String redirect, String intensity, String[] intensities,
+                        String rotation, String[] rotations, String safe) {
+        optionsButton.setContentDescription(options);
+        redirectView.setText("\u21BB  " + redirect);
+        intensityLabel.setText(intensity);
+        rotationLabel.setText(rotation);
+        for (int index = 0; index < intensityChips.length && index < intensities.length; index++) {
+            intensityChips[index].setText(intensities[index]);
+        }
+        for (int index = 0; index < rotationChips.length && index < rotations.length; index++) {
+            rotationChips[index].setText(rotations[index]);
+        }
+        safeView.setTag(safe);
+        updateOptionStates();
     }
 
     /** An AI provider that answers prompts is set up. */
@@ -236,6 +314,7 @@ final class MotionLyricsModeView extends FrameLayout {
         handler.removeCallbacks(hideControls);
         animate().cancel();
         shown = false;
+        optionsPanel.setVisibility(GONE);
         // The page stops its frame loop; it follows the clock again when the mode returns.
         flush();
         Runnable finish = () -> {
@@ -315,6 +394,18 @@ final class MotionLyricsModeView extends FrameLayout {
                 (rtl ? stageInsetLeft() : 0) + dp(16), stageInsetTop() + dp(14),
                 (rtl ? 0 : stageInsetRight()) + dp(16), 0);
         closeButton.setLayoutParams(params);
+        // The options button beside it, and its panel under both.
+        int beside = dp(16 + CLOSE_BUTTON_DP + BUTTON_GAP_DP);
+        LayoutParams options = (LayoutParams) optionsButton.getLayoutParams();
+        options.setMargins(
+                rtl ? stageInsetLeft() + beside : 0, stageInsetTop() + dp(14),
+                rtl ? 0 : stageInsetRight() + beside, 0);
+        optionsButton.setLayoutParams(options);
+        LayoutParams panel = (LayoutParams) optionsPanel.getLayoutParams();
+        panel.setMargins(
+                (rtl ? stageInsetLeft() : 0) + dp(16), stageInsetTop() + dp(14 + CLOSE_BUTTON_DP + BUTTON_GAP_DP),
+                (rtl ? 0 : stageInsetRight()) + dp(16), dp(16));
+        optionsPanel.setLayoutParams(panel);
     }
 
     /** Only once the song's lyrics have loaded and the page has turned them down. */
@@ -325,19 +416,140 @@ final class MotionLyricsModeView extends FrameLayout {
 
     private void showControls() {
         handler.removeCallbacks(hideControls);
-        closeButton.animate().cancel();
-        closeButton.setVisibility(VISIBLE);
-        closeButton.animate().alpha(1f).setDuration(180L).start();
+        for (View button : new View[]{closeButton, optionsButton}) {
+            button.animate().cancel();
+            button.setVisibility(VISIBLE);
+            button.animate().alpha(1f).setDuration(180L).start();
+        }
         handler.postDelayed(hideControls, CONTROLS_HIDE_DELAY_MS);
     }
 
     private void fadeControlsOut() {
-        // A remote keeps its focus on the button, so it stays.
-        if (closeButton.isFocused() && !isInTouchMode()) {
+        // A remote keeps its focus on the buttons, so they stay; so does an open options panel.
+        if (optionsPanel.getVisibility() == VISIBLE || ((closeButton.isFocused() || optionsButton.isFocused()) && !isInTouchMode())) {
             return;
         }
-        closeButton.animate().alpha(0f).setDuration(400L)
-                .withEndAction(() -> closeButton.setVisibility(INVISIBLE)).start();
+        for (View button : new View[]{closeButton, optionsButton}) {
+            button.animate().alpha(0f).setDuration(400L)
+                    .withEndAction(() -> button.setVisibility(INVISIBLE)).start();
+        }
+    }
+
+    private void setOptionsOpen(boolean open) {
+        optionsPanel.setVisibility(open ? VISIBLE : GONE);
+        if (open) {
+            optionsPanel.bringToFront();
+            redirectView.requestFocus();
+        }
+        showControls();
+    }
+
+    private void toggleOptions() {
+        setOptionsOpen(optionsPanel.getVisibility() != VISIBLE);
+    }
+
+    /** A tap on the stage closes the options panel, or brings the buttons back. */
+    private void onStageTapped() {
+        if (optionsPanel.getVisibility() == VISIBLE) {
+            setOptionsOpen(false);
+        } else {
+            showControls();
+        }
+    }
+
+    /** "Direct again": a new edit of the current song (a new AI take, or another built-in one). */
+    private void redirect() {
+        if (pageReady) {
+            run("ivLyricsMotionHost.redirect()");
+        }
+        setOptionsOpen(false);
+    }
+
+    private void setComfort(String intensity, String rotation, boolean safe) {
+        motionIntensity = known(intensity, INTENSITIES, "normal");
+        motionRotation = known(rotation, ROTATIONS, "full");
+        motionSafe = safe;
+        preferences.edit()
+                .putString("intensity", motionIntensity)
+                .putString("rotation", motionRotation)
+                .putBoolean("safe", motionSafe)
+                .apply();
+        updateOptionStates();
+        showControls();
+        flush();
+    }
+
+    private void updateOptionStates() {
+        for (int index = 0; index < intensityChips.length; index++) {
+            markChip(intensityChips[index], INTENSITIES[index].equals(motionIntensity));
+        }
+        for (int index = 0; index < rotationChips.length; index++) {
+            markChip(rotationChips[index], ROTATIONS[index].equals(motionRotation));
+        }
+        Object safe = safeView.getTag();
+        safeView.setText((motionSafe ? "\u2713  " : "") + (safe == null ? "" : safe));
+        markChip(safeView, motionSafe);
+    }
+
+    private void markChip(TextView chip, boolean selected) {
+        chip.setSelected(selected);
+        chip.setBackground(pill(selected ? Color.argb(235, 255, 255, 255) : Color.argb(46, 255, 255, 255)));
+        chip.setTextColor(selected ? Color.rgb(16, 16, 20) : Color.argb(235, 255, 255, 255));
+    }
+
+    private TextView chip(Context context) {
+        TextView chip = new TextView(context);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        chip.setGravity(Gravity.CENTER);
+        chip.setSingleLine(true);
+        chip.setPadding(dp(14), dp(8), dp(14), dp(8));
+        chip.setFocusable(true);
+        chip.setClickable(true);
+        markChip(chip, false);
+        return chip;
+    }
+
+    private TextView sectionLabel(Context context) {
+        TextView label = new TextView(context);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        label.setTextColor(Color.argb(170, 255, 255, 255));
+        return label;
+    }
+
+    private interface ChipChoice {
+        void choose(int index);
+    }
+
+    private LinearLayout chipRow(Context context, TextView[] chips, ChipChoice choice) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        for (int index = 0; index < chips.length; index++) {
+            TextView chip = chip(context);
+            int chosen = index;
+            chip.setOnClickListener(view -> choice.choose(chosen));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.setMarginEnd(index < chips.length - 1 ? dp(6) : 0);
+            row.addView(chip, params);
+            chips[index] = chip;
+        }
+        return row;
+    }
+
+    private LinearLayout.LayoutParams rowParams(int topDp) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(topDp);
+        return params;
+    }
+
+    private static String known(String value, String[] choices, String fallback) {
+        for (String choice : choices) {
+            if (choice.equals(value)) {
+                return choice;
+            }
+        }
+        return fallback;
     }
 
     /** Sends what changed. Options go first: the page reads them when it takes a song. */
@@ -368,7 +580,11 @@ final class MotionLyricsModeView extends FrameLayout {
         MotionLyricsSong.string(out, directingText);
         out.append(",\"failed\":");
         MotionLyricsSong.string(out, failedText);
-        out.append("},\"ai\":").append(aiAvailable).append(",\"background\":true,\"insets\":{");
+        out.append("},\"ai\":").append(aiAvailable).append(",\"background\":true");
+        out.append(",\"motion\":{\"intensity\":\"").append(motionIntensity)
+                .append("\",\"rotation\":\"").append(motionRotation)
+                .append("\",\"safe\":").append(motionSafe).append('}');
+        out.append(",\"insets\":{");
         out.append(String.format(Locale.US, "\"top\":%.1f,\"right\":%.1f,\"bottom\":%.1f,\"left\":%.1f",
                 stageInsetTop() / density,
                 stageInsetRight() / density + (rtl ? 0f : reserve),

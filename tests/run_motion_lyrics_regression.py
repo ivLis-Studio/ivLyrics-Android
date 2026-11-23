@@ -36,7 +36,8 @@ for message in ("ready", "eligible", "background", "direct", "cacheGet", "cacheS
     assert 'case "' + message + '"' in view and 'type: "' + message + '"' in page, message
 # The system font scale must not move the page's own sizes; touches belong to the mode's controls.
 assert "settings.setTextZoom(100)" in view
-assert "touchLayer.setOnClickListener(view -> showControls())" in view
+assert "touchLayer.setOnClickListener(view -> onStageTapped())" in view
+assert "showControls();" in declaration(view, "private void onStageTapped()"), "a tap brings the controls back"
 # A closed mode stops the page's clock and no longer turns the player's background.
 assert "playing && shown" in declaration(view, "private void flush()")
 hide = declaration(view, "void hide(boolean animate, Runnable afterwards)")
@@ -149,4 +150,18 @@ strings = declaration(i18n, "private static void addMotionLyricsStrings(")
 assert '{"motion.mode", "motion.unavailable", "motion.directing", "motion.direct_failed"}' in strings
 assert strings.count('\n                {"') == 22, "one row per UI language"
 assert i18n.count("addMotionLyricsStrings(languages);") == 1
+
+# The options panel: "direct again" and the viewer's comfort reach the page; it turns with the stage.
+comfort = declaration(i18n, "private static void addMotionComfortStrings(")
+for key in ("motion.options", "motion.redirect", "motion.intensity", "motion.intensity_calm", "motion.intensity_normal",
+            "motion.intensity_wild", "motion.rotation", "motion.rotation_full", "motion.rotation_gentle",
+            "motion.rotation_off", "motion.safe"):
+    assert '"' + key + '"' in comfort, key
+assert comfort.count('\n                {"') == 22, "one comfort row per UI language"
+assert i18n.count("addMotionComfortStrings(languages);") == 1
+assert 'run("ivLyricsMotionHost.redirect()")' in view
+assert 'out.append(",\\"motion\\":{\\"intensity\\":\\"").append(motionIntensity)' in view, "the comfort settings go with the options"
+assert 'getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)' in view
+assert "motionLyricsModeView.setOptionsText(" in declaration(activity, "private void applyMotionLyricsUiText()")
+assert "currentLyricsResult, track.artworkUri)" in sync
 print("Motion lyrics wiring regression passed")

@@ -148,6 +148,7 @@ final class AppI18n {
         addVinylControlStrings(languages);
         addAlbumArtLpStrings(languages);
         addMotionLyricsStrings(languages);
+        addMotionComfortStrings(languages);
         addLyricsRegenerateStrings(languages);
         addSingAlongStrings(languages);
         addErrorMessageStrings(languages);
@@ -649,6 +650,37 @@ final class AppI18n {
                 {"id", "Lirik gerak", "Lirik gerak berfungsi untuk lagu dengan sinkronisasi per kata atau karakter.", "AI sedang mengarahkan animasi…", "Arahan AI gagal. Menggunakan arahan bawaan."},
                 {"ms", "Lirik gerakan", "Lirik gerakan berfungsi untuk lagu dengan penyegerakan perkataan atau aksara.", "AI sedang mengarahkan animasi…", "Arahan AI gagal. Menggunakan arahan terbina dalam."},
                 {"tr", "Hareketli sözler", "Hareketli sözler, kelime veya karakter senkronu olan şarkılarda çalışır.", "Yapay zekâ hareketi yönetiyor…", "Yapay zekâ yönetimi başarısız oldu. Yerleşik yönetim kullanılıyor."}
+        };
+        addRows(languages, keys, rows);
+    }
+
+
+    /** Motion lyrics' options panel (MotionLyricsModeView): a new edit of the song, and the viewer's comfort. */
+    private static void addMotionComfortStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {"motion.intensity", "motion.intensity_calm", "motion.intensity_normal", "motion.intensity_wild", "motion.rotation", "motion.rotation_full", "motion.rotation_gentle", "motion.rotation_off", "motion.safe", "motion.redirect", "motion.options"};
+        String[][] rows = {
+                {"ko", "모션 강도", "차분하게", "보통", "역동적으로", "화면 회전", "전체", "부드럽게", "끄기", "광과민 안전 모드", "다시 연출", "모션 옵션"},
+                {"en", "Motion intensity", "Calm", "Normal", "Wild", "Screen rotation", "Full", "Gentle", "Off", "Photosensitivity-safe mode", "Direct again", "Motion options"},
+                {"zh-CN", "动效强度", "柔和", "标准", "强烈", "画面旋转", "完整", "轻微", "关闭", "光敏安全模式", "重新演出", "动效选项"},
+                {"zh-TW", "動態強度", "柔和", "標準", "強烈", "畫面旋轉", "完整", "輕微", "關閉", "光敏安全模式", "重新演出", "動態選項"},
+                {"ja", "モーションの強さ", "控えめ", "標準", "ダイナミック", "画面の回転", "フル", "穏やか", "オフ", "光過敏性セーフモード", "演出し直す", "モーションの設定"},
+                {"hi", "मोशन की तीव्रता", "शांत", "सामान्य", "तेज़", "स्क्रीन घुमाव", "पूरा", "हल्का", "बंद", "प्रकाश-संवेदनशीलता सुरक्षित मोड", "फिर से निर्देशित करें", "मोशन विकल्प"},
+                {"es", "Intensidad del movimiento", "Tranquila", "Normal", "Intensa", "Rotación de pantalla", "Completa", "Suave", "Desactivada", "Modo seguro para fotosensibilidad", "Volver a dirigir", "Opciones de movimiento"},
+                {"fr", "Intensité du mouvement", "Calme", "Normale", "Intense", "Rotation de l’écran", "Complète", "Douce", "Désactivée", "Mode sûr photosensibilité", "Réaliser à nouveau", "Options d’animation"},
+                {"ar", "شدة الحركة", "هادئ", "عادي", "قوي", "دوران الشاشة", "كامل", "لطيف", "إيقاف", "الوضع الآمن للحساسية الضوئية", "إعادة الإخراج", "خيارات الحركة"},
+                {"fa", "شدت حرکت", "آرام", "معمولی", "پرشور", "چرخش صفحه", "کامل", "ملایم", "خاموش", "حالت ایمن برای حساسیت به نور", "کارگردانی دوباره", "گزینه‌های حرکت"},
+                {"de", "Bewegungsintensität", "Ruhig", "Normal", "Wild", "Bildschirmdrehung", "Voll", "Sanft", "Aus", "Modus für Lichtempfindliche", "Neu inszenieren", "Motion-Optionen"},
+                {"ru", "Интенсивность движения", "Спокойно", "Обычно", "Динамично", "Поворот экрана", "Полный", "Мягко", "Выкл.", "Безопасный режим для светочувствительных", "Поставить заново", "Параметры анимации"},
+                {"sv", "Rörelseintensitet", "Lugn", "Normal", "Vild", "Skärmrotation", "Full", "Mjuk", "Av", "Säkert läge för ljuskänsliga", "Regissera om", "Rörelsealternativ"},
+                {"pt", "Intensidade do movimento", "Calma", "Normal", "Intensa", "Rotação da tela", "Completa", "Suave", "Desligada", "Modo seguro para fotossensibilidade", "Dirigir de novo", "Opções de movimento"},
+                {"bn", "মোশনের তীব্রতা", "শান্ত", "সাধারণ", "তীব্র", "স্ক্রিন ঘোরানো", "পুরো", "মৃদু", "বন্ধ", "আলোক-সংবেদনশীলতা নিরাপদ মোড", "আবার নির্দেশনা দিন", "মোশন বিকল্প"},
+                {"cs", "Intenzita pohybu", "Klidně", "Normálně", "Divoce", "Otáčení obrazovky", "Plné", "Jemně", "Vypnuto", "Bezpečný režim pro fotosenzitivitu", "Znovu zrežírovat", "Možnosti pohybu"},
+                {"it", "Intensità del movimento", "Calma", "Normale", "Intensa", "Rotazione dello schermo", "Completa", "Delicata", "Disattivata", "Modalità sicura per fotosensibilità", "Rifai la regia", "Opzioni di movimento"},
+                {"th", "ความแรงของการเคลื่อนไหว", "นุ่มนวล", "ปกติ", "จัดเต็ม", "การหมุนหน้าจอ", "เต็มที่", "เบา", "ปิด", "โหมดปลอดภัยสำหรับผู้ไวต่อแสง", "กำกับใหม่", "ตัวเลือกการเคลื่อนไหว"},
+                {"vi", "Cường độ chuyển động", "Nhẹ nhàng", "Bình thường", "Mạnh mẽ", "Xoay màn hình", "Đầy đủ", "Nhẹ", "Tắt", "Chế độ an toàn cho người nhạy cảm ánh sáng", "Dàn dựng lại", "Tùy chọn chuyển động"},
+                {"id", "Intensitas gerakan", "Tenang", "Normal", "Liar", "Rotasi layar", "Penuh", "Lembut", "Mati", "Mode aman fotosensitif", "Arahkan ulang", "Opsi gerakan"},
+                {"ms", "Keamatan gerakan", "Tenang", "Biasa", "Liar", "Putaran skrin", "Penuh", "Lembut", "Mati", "Mod selamat fotosensitif", "Arahkan semula", "Pilihan gerakan"},
+                {"tr", "Hareket yoğunluğu", "Sakin", "Normal", "Coşkulu", "Ekran döndürme", "Tam", "Hafif", "Kapalı", "Işığa duyarlılık için güvenli mod", "Yeniden yönet", "Hareket seçenekleri"}
         };
         addRows(languages, keys, rows);
     }

@@ -45,6 +45,14 @@ final class MotionLyricsSong {
     static String json(
             String uri, String title, String artist, String accentHex, String language, LyricsResult lyrics
     ) {
+        return json(uri, title, artist, accentHex, language, lyrics, "");
+    }
+
+    /** As above, with the album art's address (an http(s) image; its colours go to the AI director). */
+    static String json(
+            String uri, String title, String artist, String accentHex, String language, LyricsResult lyrics,
+            String coverUrl
+    ) {
         StringBuilder out = new StringBuilder(8192);
         out.append("{\"uri\":");
         string(out, uri);
@@ -56,6 +64,11 @@ final class MotionLyricsSong {
         string(out, accentHex);
         out.append(",\"language\":");
         string(out, language);
+        String cover = coverUrl == null ? "" : coverUrl.trim();
+        if (cover.startsWith("https://") || cover.startsWith("http://")) {
+            out.append(",\"cover\":");
+            string(out, cover);
+        }
         out.append(",\"lyrics\":[");
         if (lyrics != null && lyrics.karaoke) {
             boolean first = true;
