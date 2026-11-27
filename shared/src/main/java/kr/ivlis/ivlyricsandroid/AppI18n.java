@@ -33,6 +33,8 @@ final class AppI18n {
     ));
 
     static final String[] LRCLIB_SETTING_KEYS = {"setting.lrclib_endpoint", "setting.lrclib_endpoint_desc", "setting.lrclib_endpoint_error"};
+    /** Settings > Advanced privacy section, which links the privacy policy (Google Play requires it in the app). */
+    static final String[] PRIVACY_SETTING_KEYS = {"section.privacy", "section.privacy_desc", "button.privacy_policy"};
     private static final Map<String, Map<String, String>> STRINGS = buildStrings();
 
     private AppI18n() {
@@ -157,6 +159,7 @@ final class AppI18n {
         addSettingsRedesignStrings(languages);
         FirstUseI18n.apply(languages);
         addLrclibPlaybackSettingsStrings(languages);
+        addPrivacyPolicyStrings(languages);
         assertComplete(languages);
         return Collections.unmodifiableMap(languages);
     }
@@ -11820,6 +11823,40 @@ final class AppI18n {
             table.put(values[index], values[index + 1]);
         }
         return Collections.unmodifiableMap(table);
+    }
+
+    private static void addPrivacyPolicyStrings(Map<String, Map<String, String>> languages) {
+        String[][] rows = {
+                {"ko", "개인정보", "ivLyrics가 기기에 저장하는 정보와 온라인 서비스로 보내는 정보를 안내해요.", "개인정보 처리방침"},
+                {"en", "Privacy", "What ivLyrics keeps on your device and what it sends to online services.", "Privacy Policy"},
+                {"zh-CN", "隐私", "了解 ivLyrics 在设备上保存哪些信息，以及向在线服务发送哪些信息。", "隐私政策"},
+                {"zh-TW", "隱私", "了解 ivLyrics 在裝置上保存哪些資訊，以及傳送哪些資訊給線上服務。", "隱私權政策"},
+                {"ja", "プライバシー", "ivLyrics が端末に保存する情報と、オンラインサービスに送信する情報を説明します。", "プライバシーポリシー"},
+                {"hi", "गोपनीयता", "ivLyrics आपके डिवाइस पर क्या रखता है और ऑनलाइन सेवाओं को क्या भेजता है।", "गोपनीयता नीति"},
+                {"es", "Privacidad", "Qué guarda ivLyrics en tu dispositivo y qué envía a los servicios en línea.", "Política de privacidad"},
+                {"fr", "Confidentialité", "Ce qu’ivLyrics conserve sur votre appareil et ce qu’il envoie aux services en ligne.", "Politique de confidentialité"},
+                {"ar", "الخصوصية", "ما يحتفظ به ivLyrics على جهازك وما يرسله إلى الخدمات عبر الإنترنت.", "سياسة الخصوصية"},
+                {"fa", "حریم خصوصی", "اطلاعاتی که ivLyrics روی دستگاه شما نگه می‌دارد و به سرویس‌های آنلاین می‌فرستد.", "سیاست حفظ حریم خصوصی"},
+                {"de", "Datenschutz", "Was ivLyrics auf deinem Gerät speichert und an Onlinedienste sendet.", "Datenschutzerklärung"},
+                {"ru", "Конфиденциальность", "Что ivLyrics хранит на устройстве и что отправляет онлайн-сервисам.", "Политика конфиденциальности"},
+                {"sv", "Integritet", "Vad ivLyrics sparar på din enhet och skickar till onlinetjänster.", "Integritetspolicy"},
+                {"pt", "Privacidade", "O que o ivLyrics guarda no seu dispositivo e envia para serviços online.", "Política de privacidade"},
+                {"bn", "গোপনীয়তা", "ivLyrics আপনার ডিভাইসে কী রাখে এবং অনলাইন পরিষেবায় কী পাঠায়।", "গোপনীয়তা নীতি"},
+                {"cs", "Soukromí", "Co ivLyrics ukládá ve vašem zařízení a co odesílá online službám.", "Zásady ochrany soukromí"},
+                {"it", "Privacy", "Cosa conserva ivLyrics sul dispositivo e cosa invia ai servizi online.", "Informativa sulla privacy"},
+                {"th", "ความเป็นส่วนตัว", "ข้อมูลที่ ivLyrics เก็บไว้ในอุปกรณ์และส่งไปยังบริการออนไลน์", "นโยบายความเป็นส่วนตัว"},
+                {"vi", "Quyền riêng tư", "Những gì ivLyrics lưu trên thiết bị và gửi tới các dịch vụ trực tuyến.", "Chính sách quyền riêng tư"},
+                {"id", "Privasi", "Apa yang disimpan ivLyrics di perangkat Anda dan dikirim ke layanan online.", "Kebijakan privasi"},
+                {"ms", "Privasi", "Apa yang disimpan oleh ivLyrics pada peranti anda dan dihantar kepada perkhidmatan dalam talian.", "Dasar privasi"},
+                {"tr", "Gizlilik", "ivLyrics'in cihazınızda sakladıkları ve çevrimiçi hizmetlere gönderdikleri.", "Gizlilik politikası"}
+        };
+        for (String[] row : rows) {
+            Map<String, String> existing = languages.get(row[0]);
+            if (existing == null) throw new IllegalStateException("Missing privacy locale " + row[0]);
+            Map<String, String> table = new java.util.LinkedHashMap<>(existing);
+            for (int index = 0; index < PRIVACY_SETTING_KEYS.length; index++) table.put(PRIVACY_SETTING_KEYS[index], row[index + 1]);
+            languages.put(row[0], java.util.Collections.unmodifiableMap(table));
+        }
     }
 
     private static void addLrclibPlaybackSettingsStrings(Map<String, Map<String, String>> languages) {

@@ -157,6 +157,7 @@ public class BaseLyricsActivity extends Activity implements
     private static final String LYRICS_POPUP_TAB_BACKGROUND = "background";
     private static final String LYRICS_POPUP_TAB_LRCLIB = "lrclib";
     private static final String CREATOR_PROFILE_ENDPOINT = "https://lyrics.api.ivl.is/user/creator-profile";
+    private static final String PRIVACY_POLICY_URL = "https://github.com/ivLis-Studio/ivLyrics-Android/blob/main/PRIVACY.md";
     private static final String SYNC_DATA_SPOTIFY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SYNC_DATA_SPOTIFY_REFERER = "https://xpui.app.spotify.com/";
     private static final String UI_HINTS_PREFS = "ui_hints";
@@ -7688,6 +7689,11 @@ public class BaseLyricsActivity extends Activity implements
         settingsAction(danger, ui("button.clear_all"), null, SettingsKit.ACTION_DANGER,
                 view -> confirmSettingsAction(ui("button.clear_all"), ui("settings.confirm_irreversible"),
                         this::clearAllLyricsCacheFromSettings));
+
+        // Google Play requires the privacy policy inside the app as well as on the store listing.
+        section = settingsSection(page, ui("section.privacy"), ui("section.privacy_desc"), -1);
+        settingsAction(settingsGroup(section), ui("button.privacy_policy"), null, SettingsKit.ACTION_LINK,
+                view -> openExternalUrl(PRIVACY_POLICY_URL));
     }
 
     private void clearAiCacheFromSettings() {
