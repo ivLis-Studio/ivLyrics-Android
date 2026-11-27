@@ -8,13 +8,20 @@ public class VinylRendererRegression {
         static class FontMetrics { float ascent=-8,descent=2; }
         enum Align {CENTER}
     }
+    static class Typeface { final String name; Typeface(String name){this.name=name;} }
     static class TextPaint {
-        float size; void setTextSize(float v){size=v;} void setTypeface(Object f){}
+        float size; Typeface typeface; int measures;
+        void setTextSize(float v){size=v;} void setTypeface(Typeface f){typeface=f;}
+        float getTextSize(){return size;} Typeface getTypeface(){return typeface;}
         void setTextAlign(Paint.Align a){} void setColor(int c){}
         Paint.FontMetrics getFontMetrics(){ Paint.FontMetrics f=new Paint.FontMetrics(); f.ascent=-size*.8f; f.descent=size*.2f; return f; }
-        float measureText(String text){return text.codePointCount(0,text.length())*size*.6f;}
+        float getFontMetrics(Paint.FontMetrics f){ f.ascent=-size*.8f; f.descent=size*.2f; return size; }
+        float measureText(String text){measures++; return text.codePointCount(0,text.length())*size*.6f;}
     }
-    static class AppFonts { static Object bold(Object c){return null;} static Object regular(Object c){return null;} }
+    static class AppFonts {
+        static final Typeface BOLD=new Typeface("bold"), REGULAR=new Typeface("regular");
+        static Typeface bold(Object c){return BOLD;} static Typeface regular(Object c){return REGULAR;}
+    }
     static class TextUtils {
         enum TruncateAt {END}
         static CharSequence ellipsize(String text,TextPaint paint,float width,TruncateAt mode) {
@@ -28,7 +35,8 @@ public class VinylRendererRegression {
         float left,right,top,bottom,drawWidth; String text;
         int save(){return 1;} void restoreToCount(int n){}
         void clipRect(float left,float top,float right,float bottom){this.left=left;this.right=right;this.top=top;this.bottom=bottom;}
-        void drawText(String text,float x,float y,TextPaint paint){this.text=text;drawWidth=paint.measureText(text);}
+        // Measures what was drawn without counting it as the renderer's own measuring.
+        void drawText(String text,float x,float y,TextPaint paint){this.text=text;drawWidth=text.codePointCount(0,text.length())*paint.size*.6f;}
     }
     static class VisualTrack {
         final String key,title,artist;
@@ -41,6 +49,8 @@ public class VinylRendererRegression {
         VisualTrack displayedTrack,incomingTrack; String accessible;
         boolean master=true,motion=true,playing=true,spinActive=true,scrubbingTonearm;
         float spinDegrees;
+        final Paint.FontMetrics recordTextMetrics=new Paint.FontMetrics();
+        final RecordLabel titleLabel=new RecordLabel(), artistLabel=new RecordLabel();
         Object getContext(){return null;}
         boolean animationsEnabled(){return master&&motion;}
         void invalidate(){}
@@ -57,6 +67,34 @@ public class VinylRendererRegression {
                 check(canvas.left>=100-radius*.53f && canvas.right<=100+radius*.53f);
                 check(canvas.text.length()<text.length());
             }
+        }
+        // A spinning record draws the same label every frame: it is ellipsized once, not once per frame.
+        String title="Very long record title repeated repeated repeated", artist="Artist name long enough to be cut short";
+        Canvas first=new Canvas();
+        view.drawSafeRecordText(first,title,100,100,50,0,true,40);
+        Canvas firstArtist=new Canvas();
+        view.drawSafeRecordText(firstArtist,artist,100,130,50,0,false,40);
+        int measured=view.textPaint.measures;
+        for(int frame=0;frame<120;frame++) {
+            Canvas titleFrame=new Canvas(), artistFrame=new Canvas();
+            view.drawSafeRecordText(titleFrame,title,100,100,50,0,true,40);
+            view.drawSafeRecordText(artistFrame,artist,100,130,50,0,false,40);
+            check(titleFrame.text.equals(first.text) && artistFrame.text.equals(firstArtist.text));
+            check(titleFrame.left==first.left && titleFrame.right==first.right && titleFrame.drawWidth==first.drawWidth);
+        }
+        check(view.textPaint.measures==measured);
+        // Another size, room, text or font measures again, with the result an uncached call gives.
+        Object[][] changes={{title,50f,80f,true},{title,12f,80f,true},{artist+" and more",50f,80f,false},{title,50f,80f,false}};
+        for(Object[] change:changes) {
+            String text=(String)change[0]; float size=(Float)change[1], radius=(Float)change[2]; boolean bold=(Boolean)change[3];
+            int before=view.textPaint.measures;
+            Canvas changed=new Canvas();
+            view.drawSafeRecordText(changed,text,100,100,size,0,bold,radius);
+            TextPaint fresh=new TextPaint();
+            fresh.setTextSize(Math.min(size,radius*(bold?0.23f:0.14f)));
+            fresh.setTypeface(bold?AppFonts.BOLD:AppFonts.REGULAR);
+            check(view.textPaint.measures>before);
+            check(changed.text.equals(TextUtils.ellipsize(text,fresh,radius*0.52f*2f,TextUtils.TruncateAt.END).toString()));
         }
         view.displayedTrack=new VisualTrack("track","Raw title","Raw artist");
         view.incomingTrack=new VisualTrack("next","Other title","Other artist");

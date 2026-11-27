@@ -222,6 +222,58 @@ public final class FuriganaWebViewRegression {
         pageFailureAndStaleBridge();
         initializationErrorAndTimeoutRetry();
         supersededAndShutdown();
-        System.out.println("PASS " + assertions + " assertions: module assets, UTF-8/HTTPS bootstrap, init/page failures, retry, stale callbacks, timeout and shutdown");
+        rendererGone();
+        boundedMemoryCache();
+        System.out.println("PASS " + assertions + " assertions: module assets, UTF-8/HTTPS bootstrap, init/page failures, retry, stale callbacks, timeout, shutdown, renderer death and bounded memory cache");
+    }
+    /** All WebViews of a process share one renderer; when it dies the page must go, never the app. */
+    private static void rendererGone() throws Exception {
+        try (Fixture fixture = new Fixture(true)) {
+            fixture.load();
+            WebView dead = fixture.view();
+            dead.finish();
+            String id = fixture.id();
+            check(dead.gone(true), "a crashed renderer is handled, so Android does not kill the app (Spotify)");
+            check(fixture.errors == 1 && fixture.pending().isEmpty() && fixture.view() == null,
+                    "the pending request ends and the dead page is dropped");
+            Handler.drain();
+            check(dead.destroyed, "the dead WebView is destroyed");
+            Handler.timeOut();
+            check(fixture.errors == 1, "renderer death leaves no timeout behind");
+            bridge(dead, "onResult", id, "{\"ok\":true,\"lines\":[]}");
+            Handler.drain();
+            check(fixture.loaded == 0 && fixture.errors == 1, "a late callback of the dead page is ignored");
+            fixture.load();
+            WebView next = fixture.view();
+            check(next != null && next != dead && WebView.instances.contains(next), "the next request loads a new page");
+            next.finish();
+            fixture.complete(next);
+            check(fixture.loaded == 1 && fixture.errors == 1, "the new page completes its request");
+            check(next.gone(false) && fixture.view() == null && fixture.errors == 1 && fixture.loaded == 1,
+                    "an idle page whose renderer was stopped is released without callbacks");
+            Handler.drain();
+            check(next.destroyed, "the idle dead WebView is destroyed");
+            fixture.load();
+            WebView current = fixture.view();
+            check(dead.gone(true) && fixture.view() == current && fixture.pending().size() == 1 && !current.destroyed,
+                    "a page that was already replaced leaves the current page alone");
+            current.finish();
+            fixture.complete(current);
+            check(fixture.loaded == 2 && fixture.errors == 1, "the current page still completes");
+        }
+    }
+    @SuppressWarnings("unchecked")
+    private static void boundedMemoryCache() throws Exception {
+        try (Fixture fixture = new Fixture(true)) {
+            Map<String, LyricsResult> cache = (Map<String, LyricsResult>) get(fixture.repository, "memoryCache");
+            for (int index = 0; index < 260; index++) cache.put("song" + index + "|", fixture.base);
+            check(cache.size() == 250 && !cache.containsKey("song9|") && cache.containsKey("song10|"),
+                    "the memory cache keeps the 250 most recent songs");
+            check(cache.get("song10|") == fixture.base, "a cached song is still returned");
+            cache.put("song260|", fixture.base);
+            check(cache.containsKey("song10|") && !cache.containsKey("song11|"), "a song just read stays; the least recently used leaves");
+            fixture.repository.clearTrackCache("song12");
+            check(!cache.containsKey("song12|") && cache.size() == 249, "clearing one track still removes only its entries");
+        }
     }
 }

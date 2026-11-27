@@ -74,7 +74,8 @@ Choose display and output languages in Settings, then enable and order services 
 | Feature | Provider setup |
 | --- | --- |
 | Lyric translation | Bing Translate and Google Translate need no personal API key. DeepL requires an API key. All three are translation-only. |
-| AI translation and pronunciation | Configure a supported service such as Gemini, an OpenAI-compatible API, or Claude, including its connection and model. Pronunciation needs a configured AI provider. |
+| Pronunciation without a key | **Pronunciation Lab** writes pronunciation only, using rules and dictionaries instead of AI. It needs no API key and is on from the start. It downloads the language data it needs on first use. Some languages, such as Russian and Thai, and synced pronunciation are not supported. |
+| AI translation and pronunciation | Configure a supported service such as Gemini, an OpenAI-compatible API, or Claude, including its connection and model. More natural or synced pronunciation needs a configured AI provider. |
 | On-device lyric translation | Enable **Local AI** and download a model. It does not generate pronunciation or translate titles and artists. |
 | Readings above Japanese kanji | Enable Japanese furigana separately from translation and AI pronunciation. |
 
@@ -105,7 +106,7 @@ For the standalone app, use **Settings → Advanced → Check for updates**, [Gi
 | Missing lyrics or artwork | Check internet and the Spotify credential-save result. Try another provider or manual LRCLIB search in current-track settings. |
 | Wrong lyrics or timing | Try manual search, clearing that song's cache, or song/Bluetooth offsets. Detailed sync data may be unavailable. |
 | No floating shortcut | Check overlay and Spotify-detection accessibility permissions, then open Spotify's now-playing screen. |
-| Translation without pronunciation | Check AI credentials/model and the pronunciation rule for that song language. Translation-only providers cannot generate pronunciation. |
+| Translation without pronunciation | Check that Pronunciation Lab is on and supports the song language, then check AI credentials/model and the pronunciation rule for that song language. Translation-only providers cannot generate pronunciation. |
 | Local AI fails, or a service returns 403/429 | Check the local provider test, device requirements, and model download. For online errors, check account access/quotas and wait before retrying. |
 
 Ask on [Discord](https://discord.gg/2fu36fUzdE). Include **standalone app or module**, app and Spotify versions, device/Android version, song link, provider, reproduction steps, and exact error. Redact API keys, Client Secrets, and authentication tokens.

@@ -16,7 +16,8 @@ def declaration(signature):
 work = REPORTS / "vinyl"
 work.mkdir(parents=True, exist_ok=True)
 production = "\n".join(declaration(signature) for signature in (
-    "private void drawSafeRecordText(", "private void updateSpin()", "        void setDisplayMetadata("))
+    "private void drawSafeRecordText(", "private static final class RecordLabel {", "private void updateSpin()",
+    "        void setDisplayMetadata("))
 target = work / "VinylRendererRegression.java"
 target.write_text(Path(__file__).with_name("VinylRendererRegression.java.in").read_text().replace("// PRODUCTION", production))
 subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "-d", str(work),

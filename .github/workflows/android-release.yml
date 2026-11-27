@@ -125,6 +125,10 @@ jobs:
           python3 tests/run_repository_completion_regression.py
           python3 tests/run_furigana_loading_regression.py
           python3 tests/run_furigana_webview_regression.py
+          python3 tests/run_pronunciation_lab_regression.py
+          python3 tests/run_webview_renderer_regression.py
+          python3 tests/run_notification_refresh_regression.py
+          python3 tests/run_native_surface_idle_regression.py
           node --test tests/furigana_bridge.test.mjs
           python3 tests/run_metadata_refresh_loading_regression.py
           python3 tests/run_ai_models_regression.py

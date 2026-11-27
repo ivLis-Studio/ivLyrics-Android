@@ -77,6 +77,8 @@ final class LyricsRepository {
     private static final long OPENDB_FRESH_MS = 6L * 60L * 60L * 1_000L;
     private static final long OPENDB_UNAVAILABLE_RETRY_MS = 5L * 60L * 1_000L;
     private static final int SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES = 8;
+    /** Songs kept in memory, as many as AiLyricsRepository keeps; an older song is read back from disk. */
+    static final int MEMORY_LYRICS_CACHE_MAX_ENTRIES = 250;
     private static final double DURATION_TOLERANCE_SECONDS = 15.0;
     private static final double LRCLIB_SYNCED_FALLBACK_SCORE_WINDOW = 0.50;
     private static final double LRCLIB_SYNCED_FALLBACK_MIN_TITLE_SCORE = 0.78;
@@ -105,7 +107,18 @@ final class LyricsRepository {
     private final LatestLyricsRequest latestLyricsRequest = new LatestLyricsRequest(executor);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final LrcRedWordSync wordSync = createWordSync(mainHandler);
-    private final Map<String, MemoryLyricsCacheEntry> cache = new HashMap<>();
+    // Guarded by this. The least recently used song leaves first, so a long session cannot grow it
+    // without bound (an entry used to stay until the same song was looked up again).
+    private final Map<String, MemoryLyricsCacheEntry> cache = new LinkedHashMap<String, MemoryLyricsCacheEntry>(
+            16,
+            0.75f,
+            true
+    ) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, MemoryLyricsCacheEntry> eldest) {
+            return size() > MEMORY_LYRICS_CACHE_MAX_ENTRIES;
+        }
+    };
     private final LocalLyricsStore localLyrics;
     private final Map<String, Bitmap> spotifyArtworkCache = new LinkedHashMap<String, Bitmap>(
             SPOTIFY_ARTWORK_CACHE_MAX_ENTRIES + 1,

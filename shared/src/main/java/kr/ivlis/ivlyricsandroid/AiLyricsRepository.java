@@ -93,6 +93,8 @@ final class AiLyricsRepository {
     private final Context localAiContext;
     /** Motion lyrics directions the page accepted, by the page's own key. */
     private final RawResponseDiskCache motionDirectionDiskCache;
+    /** Pronunciation Lab's page, shared by the whole process; null without a Context (host fixtures). */
+    private final PronunciationLabProtocol.Converter pronunciationLab;
 
     AiLyricsRepository() {
         diskCache = null;
@@ -103,6 +105,7 @@ final class AiLyricsRepository {
         pronunciationSlotsPrefs = null;
         localAiContext = null;
         motionDirectionDiskCache = null;
+        pronunciationLab = null;
     }
 
     AiLyricsRepository(Context context) {
@@ -128,6 +131,7 @@ final class AiLyricsRepository {
         motionDirectionDiskCache = context == null
                 ? null
                 : new RawResponseDiskCache(context.getApplicationContext(), "motion_direction", 500);
+        pronunciationLab = context == null ? null : PronunciationLabRepository.shared(context);
     }
 
     /**
@@ -969,6 +973,7 @@ final class AiLyricsRepository {
                 + "|detected=" + detectedSourceLang
                 + "|prompt=" + SUPPLEMENT_PROMPT_VERSION
                 + "|" + settings.cacheKey()
+                + (rule.pronunciationEnabled ? settings.pronunciationLabCacheKey() : "")
                 + "|text=" + sha256(textPayload);
         String pronunciationCacheKey = supplementTaskCacheKey(
                 trackKey,
@@ -1003,14 +1008,15 @@ final class AiLyricsRepository {
         }
 
         boolean translationSkipped = settings.shouldSkipTranslation(sourceLang, targetLang);
-        boolean selectedAiReady = settings.hasReadyAiProvider();
+        // Line pronunciation: a ready AI provider or Pronunciation Lab (keyless, so it is always ready when on).
+        boolean pronunciationReady = settings.hasLinePronunciationProvider();
         boolean translationReady = settings.hasLyricsTranslationProvider();
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
-        if (!selectedAiReady && requestedPronunciation && requestedTranslation && translationReady) {
-            emitLog(trackKey, callback, "ai pronunciation skipped: selected AI provider is not fully configured");
+        if (!pronunciationReady && requestedPronunciation && requestedTranslation && translationReady) {
+            emitLog(trackKey, callback, "ai pronunciation skipped: no AI provider is fully configured and Pronunciation Lab is off");
         }
-        boolean hasExecutableTask = (requestedPronunciation && selectedAiReady)
+        boolean hasExecutableTask = (requestedPronunciation && pronunciationReady)
                 || (requestedTranslation && translationReady);
         if (!hasExecutableTask && (requestedPronunciation || requestedTranslation)) {
             String message = AppI18n.t(settings.uiLang, "error.translation_providers_failed");
@@ -1028,7 +1034,7 @@ final class AiLyricsRepository {
                 + " / pronunciation=" + rule.pronunciationEnabled);
 
         List<SupplementRequest> requests = buildSupplementRequests(baseResult.lines);
-        boolean needsPronunciation = requestedPronunciation && selectedAiReady;
+        boolean needsPronunciation = requestedPronunciation && pronunciationReady;
         boolean needsTranslation = requestedTranslation && translationReady;
         if (translationSkipped) {
             emitLog(trackKey, callback, "ai translation skipped: source language matches target (" + sourceLang + " -> " + targetLang + ")");
@@ -1465,6 +1471,10 @@ final class AiLyricsRepository {
                         // Local AI translates lyrics only, never titles or artists.
                         continue;
                     }
+                    if (!provider.canTranslate()) {
+                        // Pronunciation Lab writes pronunciation only.
+                        continue;
+                    }
                     try {
                         if ("deepl".equals(provider.id)) {
                             AiLyricsSettings.Snapshot profile = settings.forProvider(provider.id);
@@ -1750,6 +1760,13 @@ final class AiLyricsRepository {
             if (!derived.isEmpty()) {
                 Map<String, List<String>> partial = withDerived(derived, Collections.emptyMap());
                 mainHandler.post(() -> callback.onTimedPronunciationLoaded(trackKey, cacheKey, partial));
+                return cacheKey;
+            }
+            if (!settings.hasReadyAiProvider()) {
+                // Unit timing comes from an AI provider. Pronunciation written without one (the keyless
+                // Pronunciation Lab) keeps its proportional timing quietly, as on iOS, instead of a timing
+                // failure shown on every karaoke song.
+                emitLog(trackKey, callback, "pronunciation timing skipped: no AI provider is ready");
                 return cacheKey;
             }
             mainHandler.post(() -> callback.onTimedPronunciationError(
@@ -2236,15 +2253,25 @@ final class AiLyricsRepository {
                     String subsetPrompt = buildPhoneticPrompt(subset, pronunciationLang, sourceLang, settings.pronunciationNotation);
                     List<String> lines = null;
                     Exception lastError = null;
-                    for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
+                    // Plain line pronunciation, so Pronunciation Lab may answer here in its place in the order.
+                    for (String providerId : settings.linePronunciationProviderIds()) {
+                        boolean lab = AiLyricsSettings.Provider.PRONUNCIATION_LAB_ID.equals(providerId);
+                        AiLyricsSettings.Snapshot providerSettings = lab ? null : settings.forProvider(providerId);
+                        if (!lab && providerSettings == null) continue;
+                        String label = lab ? PronunciationLabProtocol.LABEL : providerSettings.provider.label;
                         try {
-                            String raw = withOpenAIConnections(providerSettings, null,
-                                    connection -> callProviderRaw(subsetPrompt, connection));
-                            lines = parseTaggedTextLines(raw, subset, SUPPLEMENT_TASK_PRONUNCIATION, log);
+                            if (lab) {
+                                lines = pronunciationLabLines(subset, sourceLang, pronunciationLang, settings.pronunciationNotation);
+                            } else {
+                                String raw = withOpenAIConnections(providerSettings, null,
+                                        connection -> callProviderRaw(subsetPrompt, connection));
+                                lines = parseTaggedTextLines(raw, subset, SUPPLEMENT_TASK_PRONUNCIATION, log);
+                            }
                             break;
                         } catch (Exception providerError) {
+                            if (lab && providerError instanceof InterruptedException) throw providerError;
                             lastError = providerError;
-                            log.write("ai pronunciation fallback: provider=" + providerSettings.provider.label
+                            log.write("ai pronunciation fallback: provider=" + label
                                     + " / error=" + errorMessage(providerError));
                         }
                     }
@@ -2275,33 +2302,45 @@ final class AiLyricsRepository {
                         + " / notation=" + settings.pronunciationNotation);
                 values = null;
                 Exception lastError = null;
-                for (AiLyricsSettings.Snapshot providerSettings : settings.readyAiProviderSnapshots()) {
+                // Ready AI providers and Pronunciation Lab, in the user's order; a failure moves to the next one.
+                for (String providerId : settings.linePronunciationProviderIds()) {
+                    boolean lab = AiLyricsSettings.Provider.PRONUNCIATION_LAB_ID.equals(providerId);
+                    AiLyricsSettings.Snapshot providerSettings = lab ? null : settings.forProvider(providerId);
+                    if (!lab && providerSettings == null) continue;
+                    String label = lab ? PronunciationLabProtocol.LABEL : providerSettings.provider.label;
                     session.resetPronunciationValues();
-                    session.setProvider(true, providerSettings.provider.label);
-                    reportSupplementProvider(trackKey, callback, true, providerSettings.provider.label);
+                    session.setProvider(true, label);
+                    reportSupplementProvider(trackKey, callback, true, label);
                     try {
-                        log.write("ai pronunciation attempt: provider=" + providerSettings.provider.label
-                                + " / model=" + providerSettings.model);
-                        values = loadSupplementValuesStreamFirst(
-                                prompt,
-                                providerSettings,
-                                requests,
-                                SUPPLEMENT_TASK_PRONUNCIATION,
-                                session,
-                                true,
-                                trackKey,
-                                rule,
-                                sourceLang,
-                                targetLang,
-                                pronunciationLang,
-                                translationSkipped,
-                                partialDispatcher,
-                                log
-                        );
+                        if (lab) {
+                            log.write("pronunciation attempt: provider=" + label + " / lines=" + expectedLineCount);
+                            values = pronunciationLabLines(requests, sourceLang, pronunciationLang, settings.pronunciationNotation);
+                        } else {
+                            log.write("ai pronunciation attempt: provider=" + label
+                                    + " / model=" + providerSettings.model);
+                            values = loadSupplementValuesStreamFirst(
+                                    prompt,
+                                    providerSettings,
+                                    requests,
+                                    SUPPLEMENT_TASK_PRONUNCIATION,
+                                    session,
+                                    true,
+                                    trackKey,
+                                    rule,
+                                    sourceLang,
+                                    targetLang,
+                                    pronunciationLang,
+                                    translationSkipped,
+                                    partialDispatcher,
+                                    log
+                            );
+                        }
                         break;
                     } catch (Exception providerError) {
+                        // The repository is shutting down: stop instead of asking the next provider.
+                        if (lab && providerError instanceof InterruptedException) throw providerError;
                         lastError = providerError;
-                        log.write("ai pronunciation fallback: provider=" + providerSettings.provider.label
+                        log.write("ai pronunciation fallback: provider=" + label
                                 + " / error=" + errorMessage(providerError));
                     }
                 }
@@ -2322,7 +2361,8 @@ final class AiLyricsRepository {
                 prompt = buildTranslationPrompt(requests, targetLang);
                 for (String providerId : settings.enabledAiProviderOrder()) {
                     AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById(providerId);
-                    if (provider == null) {
+                    if (provider == null || !provider.canTranslate()) {
+                        // Pronunciation Lab writes pronunciation only.
                         continue;
                     }
                     session.resetTranslationValues();
@@ -2426,6 +2466,36 @@ final class AiLyricsRepository {
             }
             partialDispatcher.taskFailed(userErrorMessage(error, settings.uiLang));
         }
+    }
+
+    /**
+     * Line pronunciation from Pronunciation Lab for the rows an AI provider would get, one value per
+     * request. Its failures are localized like the keyless translators' (PronunciationLabProtocol.Failure).
+     */
+    private List<String> pronunciationLabLines(
+            List<SupplementRequest> requests,
+            String sourceLang,
+            String pronunciationLang,
+            String notation
+    ) throws Exception {
+        PronunciationLabProtocol.Converter lab = pronunciationLab;
+        if (lab == null) {
+            throw new PronunciationLabProtocol.Failure(PronunciationLabProtocol.UNAVAILABLE, "No page without a Context");
+        }
+        List<String> lines = new ArrayList<>(requests.size());
+        for (SupplementRequest request : requests) {
+            lines.add(promptRowText(request.text));
+        }
+        List<String> values = lab.convert(new PronunciationLabProtocol.Request(lines, sourceLang, pronunciationLang, notation));
+        if (values == null || values.size() != lines.size()) {
+            throw new PronunciationLabProtocol.Failure(PronunciationLabProtocol.FAILED,
+                    "Expected " + lines.size() + " lines, got " + (values == null ? 0 : values.size()));
+        }
+        List<String> cleaned = new ArrayList<>(values.size());
+        for (String value : values) {
+            cleaned.add(value == null ? "" : value.trim());
+        }
+        return cleaned;
     }
 
     private interface ConnectionRequest<T> {
@@ -2687,6 +2757,8 @@ final class AiLyricsRepository {
                 + "|connections=" + sha256(settings.cacheKey())
                 + "|tok=" + settings.maxTokens
                 + "|temp=" + settings.temperature
+                // Empty while Pronunciation Lab is only the last fallback (AiLyricsSettings.Snapshot).
+                + (SUPPLEMENT_TASK_PRONUNCIATION.equals(task) ? settings.pronunciationLabCacheKey() : "")
                 + "|output=" + outputLang
                 + "|text=" + sha256(textPayload);
     }

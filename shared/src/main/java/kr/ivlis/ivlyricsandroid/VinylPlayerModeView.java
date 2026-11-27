@@ -10,8 +10,10 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
 import android.text.TextPaint;
@@ -27,6 +29,8 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+
+import java.util.Objects;
 
 /** Focused LP presentation shared by the portrait and landscape player pages. */
 final class VinylPlayerModeView extends FrameLayout {
@@ -367,6 +371,46 @@ final class VinylPlayerModeView extends FrameLayout {
         private final RectF coverBounds = new RectF();
         private final RectF recordBounds = new RectF();
         private final RectF incomingCoverBounds = new RectF();
+        // A spinning record redraws every frame. What it draws with is made again only when what it is
+        // made from changes, so each frame draws with exactly the values it had before.
+        private final RectF grooveBounds = new RectF();
+        private final RectF shadowBounds = new RectF();
+        private final RectF labelArcBounds = new RectF();
+        private final RectF linearTonearmHead = new RectF(144f, 38f, 196f, 104f);
+        private final Paint.FontMetrics recordTextMetrics = new Paint.FontMetrics();
+        private final RecordLabel titleLabel = new RecordLabel();
+        private final RecordLabel artistLabel = new RecordLabel();
+        private RadialGradient recordShader;
+        private float recordShaderX;
+        private float recordShaderY;
+        private float recordShaderRadius;
+        private RadialGradient labelShader;
+        private float labelShaderX;
+        private float labelShaderY;
+        private float labelShaderRadius;
+        private Bitmap coverShaderArtwork;
+        private BitmapShader coverShader;
+        private LinearGradient placeholderCoverShader;
+        private final RectF placeholderCoverShaderBounds = new RectF();
+        private String tonearmShaderFinish;
+        private RadialGradient tonearmBaseShader;
+        private LinearGradient tonearmTubeShader;
+        private LinearGradient linearTonearmTubeShader;
+        private LinearGradient linearTonearmRailShader;
+        private float linearTonearmRailStart;
+        private float linearTonearmRailY;
+        private float linearTonearmRailEnd;
+        private String labelTitleSource;
+        private boolean labelTitleSimplified;
+        private String labelTitleText;
+        private String circularLabelAlbum;
+        private String circularLabelTitle;
+        private String circularLabelArtist;
+        private String circularLabelText;
+        private String circularLabelMeasuredText;
+        private Typeface circularLabelTypeface;
+        private float circularLabelSize = Float.NaN;
+        private float circularLabelWidth;
         private Listener listener;
         private VisualTrack displayedTrack;
         private VisualTrack incomingTrack;
@@ -955,7 +999,8 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStyle(Paint.Style.FILL);
             for (int layer = 3; layer >= 1; layer--) {
                 float spread = bounds.width() * 0.004f * layer;
-                RectF shadow = new RectF(bounds);
+                RectF shadow = shadowBounds;
+                shadow.set(bounds);
                 shadow.inset(-spread, -spread);
                 shadow.offset(0f, bounds.width() * (0.010f + layer * 0.004f));
                 paint.setColor(Color.argb(Math.round(alpha * (0.025f + layer * 0.018f)), 0, 0, 0));
@@ -963,7 +1008,7 @@ final class VinylPlayerModeView extends FrameLayout {
             }
             paint.setAlpha(alpha);
             if (track.artwork != null && !track.artwork.isRecycled()) {
-                BitmapShader shader = new BitmapShader(track.artwork, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                BitmapShader shader = coverShader(track.artwork);
                 float scale = Math.max(bounds.width() / track.artwork.getWidth(), bounds.height() / track.artwork.getHeight());
                 bitmapMatrix.reset();
                 bitmapMatrix.setScale(scale, scale);
@@ -974,12 +1019,7 @@ final class VinylPlayerModeView extends FrameLayout {
                 shader.setLocalMatrix(bitmapMatrix);
                 paint.setShader(shader);
             } else {
-                paint.setShader(new LinearGradient(
-                        bounds.left, bounds.top, bounds.right, bounds.bottom,
-                        new int[]{Color.rgb(244, 66, 145), Color.rgb(112, 53, 223)},
-                        null,
-                        Shader.TileMode.CLAMP
-                ));
+                paint.setShader(placeholderCoverShader(bounds));
             }
             canvas.drawRoundRect(bounds, radius, radius, paint);
             paint.setShader(null);
@@ -988,17 +1028,49 @@ final class VinylPlayerModeView extends FrameLayout {
             canvas.restoreToCount(save);
         }
 
+        /** The cover's shader; its matrix is set for each draw. */
+        private BitmapShader coverShader(Bitmap artwork) {
+            if (coverShader == null || coverShaderArtwork != artwork) {
+                coverShader = new BitmapShader(artwork, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                coverShaderArtwork = artwork;
+            }
+            return coverShader;
+        }
+
+        private LinearGradient placeholderCoverShader(RectF bounds) {
+            if (placeholderCoverShader == null || !placeholderCoverShaderBounds.equals(bounds)) {
+                placeholderCoverShader = new LinearGradient(
+                        bounds.left, bounds.top, bounds.right, bounds.bottom,
+                        new int[]{Color.rgb(244, 66, 145), Color.rgb(112, 53, 223)},
+                        null,
+                        Shader.TileMode.CLAMP
+                );
+                placeholderCoverShaderBounds.set(bounds);
+            }
+            return placeholderCoverShader;
+        }
+
         private void drawRecord(Canvas canvas, VisualTrack track, RectF bounds, int alpha) {
             int save = canvas.save();
             canvas.rotate(spinDegrees, bounds.centerX(), bounds.centerY());
-            paint.setShader(new android.graphics.RadialGradient(
-                    bounds.centerX() - bounds.width() * 0.13f,
-                    bounds.centerY() - bounds.height() * 0.18f,
-                    bounds.width() * 0.72f,
-                    new int[]{Color.rgb(32, 32, 34), Color.rgb(10, 10, 11), Color.rgb(24, 24, 25)},
-                    new float[]{0f, 0.72f, 1f},
-                    Shader.TileMode.CLAMP
-            ));
+            float shaderX = bounds.centerX() - bounds.width() * 0.13f;
+            float shaderY = bounds.centerY() - bounds.height() * 0.18f;
+            float shaderRadius = bounds.width() * 0.72f;
+            if (recordShader == null || Float.compare(shaderX, recordShaderX) != 0
+                    || Float.compare(shaderY, recordShaderY) != 0 || Float.compare(shaderRadius, recordShaderRadius) != 0) {
+                recordShader = new RadialGradient(
+                        shaderX,
+                        shaderY,
+                        shaderRadius,
+                        new int[]{Color.rgb(32, 32, 34), Color.rgb(10, 10, 11), Color.rgb(24, 24, 25)},
+                        new float[]{0f, 0.72f, 1f},
+                        Shader.TileMode.CLAMP
+                );
+                recordShaderX = shaderX;
+                recordShaderY = shaderY;
+                recordShaderRadius = shaderRadius;
+            }
+            paint.setShader(recordShader);
             paint.setAlpha(alpha);
             canvas.drawOval(bounds, paint);
             paint.setShader(null);
@@ -1008,8 +1080,9 @@ final class VinylPlayerModeView extends FrameLayout {
                 float grooveOpacity = index % 4 == 0 ? 0.055f : 0.020f;
                 groovePaint.setColor(Color.argb(Math.round(alpha * grooveOpacity), 255, 255, 255));
                 float inset = bounds.width() * (0.035f + index * 0.0113f);
-                canvas.drawOval(new RectF(bounds.left + inset, bounds.top + inset,
-                        bounds.right - inset, bounds.bottom - inset), groovePaint);
+                grooveBounds.set(bounds.left + inset, bounds.top + inset,
+                        bounds.right - inset, bounds.bottom - inset);
+                canvas.drawOval(grooveBounds, groovePaint);
             }
 
             if (!centerRotationEnabled) {
@@ -1018,12 +1091,21 @@ final class VinylPlayerModeView extends FrameLayout {
 
             float labelRadius = bounds.width() * 0.2235f;
             paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new android.graphics.RadialGradient(
-                    bounds.centerX(), bounds.centerY() - labelRadius * 0.10f, labelRadius,
-                    new int[]{Color.rgb(48, 38, 42), Color.rgb(33, 25, 28)},
-                    null,
-                    Shader.TileMode.CLAMP
-            ));
+            float labelX = bounds.centerX();
+            float labelY = bounds.centerY() - labelRadius * 0.10f;
+            if (labelShader == null || Float.compare(labelX, labelShaderX) != 0
+                    || Float.compare(labelY, labelShaderY) != 0 || Float.compare(labelRadius, labelShaderRadius) != 0) {
+                labelShader = new RadialGradient(
+                        labelX, labelY, labelRadius,
+                        new int[]{Color.rgb(48, 38, 42), Color.rgb(33, 25, 28)},
+                        null,
+                        Shader.TileMode.CLAMP
+                );
+                labelShaderX = labelX;
+                labelShaderY = labelY;
+                labelShaderRadius = labelRadius;
+            }
+            paint.setShader(labelShader);
             canvas.drawCircle(bounds.centerX(), bounds.centerY(), labelRadius, paint);
             paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);
@@ -1037,7 +1119,7 @@ final class VinylPlayerModeView extends FrameLayout {
 
             drawCircularLabel(canvas, track, bounds, labelRadius, alpha);
 
-            drawSafeRecordText(canvas, RecordRotation.displayTitle(track.title, simplifiedTitle), bounds.centerX(),
+            drawSafeRecordText(canvas, labelTitle(track.title), bounds.centerX(),
                     bounds.centerY() - labelRadius * 0.26f,
                     Math.max(dp(9), bounds.width() * 0.0455f),
                     withAlpha(mixColor(track.accentColor, Color.WHITE, 0.18f), alpha), true, labelRadius);
@@ -1050,24 +1132,61 @@ final class VinylPlayerModeView extends FrameLayout {
             canvas.restoreToCount(save);
         }
 
+        /** RecordRotation.displayTitle (two regular expressions), worked out again only for another title or setting. */
+        private String labelTitle(String title) {
+            if (labelTitleText == null || labelTitleSimplified != simplifiedTitle || !Objects.equals(labelTitleSource, title)) {
+                labelTitleText = RecordRotation.displayTitle(title, simplifiedTitle);
+                labelTitleSource = title;
+                labelTitleSimplified = simplifiedTitle;
+            }
+            return labelTitleText;
+        }
+
+        /** The album, or title · artist, in capitals; made again only for other labels. */
+        private String circularLabelText(VisualTrack track) {
+            if (circularLabelText == null || !Objects.equals(circularLabelAlbum, track.album)
+                    || !Objects.equals(circularLabelTitle, track.title) || !Objects.equals(circularLabelArtist, track.artist)) {
+                String source = track.album == null || track.album.trim().isEmpty()
+                        ? track.title + " · " + track.artist
+                        : track.album;
+                circularLabelText = ellipsize(source.toUpperCase(java.util.Locale.ROOT), 34);
+                circularLabelAlbum = track.album;
+                circularLabelTitle = track.title;
+                circularLabelArtist = track.artist;
+            }
+            return circularLabelText;
+        }
+
+        /** textPaint.measureText for the circular label; only its text, font and size change the width. */
+        private float circularLabelWidth(String text) {
+            Typeface typeface = textPaint.getTypeface();
+            float size = textPaint.getTextSize();
+            if (!text.equals(circularLabelMeasuredText) || circularLabelTypeface != typeface
+                    || Float.compare(circularLabelSize, size) != 0) {
+                circularLabelWidth = textPaint.measureText(text);
+                circularLabelMeasuredText = text;
+                circularLabelTypeface = typeface;
+                circularLabelSize = size;
+            }
+            return circularLabelWidth;
+        }
+
         private void drawCircularLabel(Canvas canvas, VisualTrack track, RectF bounds, float labelRadius, int alpha) {
-            String source = track.album == null || track.album.trim().isEmpty()
-                    ? track.title + " · " + track.artist
-                    : track.album;
-            String text = ellipsize(source.toUpperCase(java.util.Locale.ROOT), 34);
+            String text = circularLabelText(track);
             textPaint.setTypeface(AppFonts.semiBold(getContext()));
             textPaint.setTextAlign(Paint.Align.LEFT);
             textPaint.setTextSize(Math.max(dp(5.5f), bounds.width() * 0.0168f));
             textPaint.setColor(withAlpha(mixColor(track.accentColor, Color.WHITE, 0.28f), Math.round(alpha * 0.72f)));
             float radius = labelRadius * 0.725f;
-            RectF arcBounds = new RectF(
+            RectF arcBounds = labelArcBounds;
+            arcBounds.set(
                     bounds.centerX() - radius,
                     bounds.centerY() - radius,
                     bounds.centerX() + radius,
                     bounds.centerY() + radius
             );
             float arcLength = (float) (Math.toRadians(140f) * radius);
-            float offset = Math.max(0f, (arcLength - textPaint.measureText(text)) * 0.5f);
+            float offset = Math.max(0f, (arcLength - circularLabelWidth(text)) * 0.5f);
             labelArcPath.reset();
             labelArcPath.addArc(arcBounds, 200f, 140f);
             canvas.drawTextOnPath(text, labelArcPath, offset, 0f, textPaint);
@@ -1104,12 +1223,16 @@ final class VinylPlayerModeView extends FrameLayout {
             canvas.scale(scale, scale);
             canvas.translate(-TONEARM_PIVOT_SVG_X, -TONEARM_PIVOT_SVG_Y);
             paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new android.graphics.RadialGradient(
-                    172f, 43f, 95f,
-                    tonearmBaseColors(),
-                    new float[]{0f, 0.58f, 1f},
-                    Shader.TileMode.CLAMP
-            ));
+            prepareTonearmShaders();
+            if (tonearmBaseShader == null) {
+                tonearmBaseShader = new RadialGradient(
+                        172f, 43f, 95f,
+                        tonearmBaseColors(),
+                        new float[]{0f, 0.58f, 1f},
+                        Shader.TileMode.CLAMP
+                );
+            }
+            paint.setShader(tonearmBaseShader);
             canvas.drawCircle(183f, 64f, 66f, paint);
             paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);
@@ -1134,12 +1257,15 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setColor(Color.argb(82, 0, 0, 0));
             canvas.drawPath(tonearmPath, paint);
             paint.setStrokeWidth(14f);
-            paint.setShader(new LinearGradient(
-                    28f, 0f, 210f, 0f,
-                    tonearmTubeColors(),
-                    new float[]{0f, 0.24f, 0.55f, 1f},
-                    Shader.TileMode.CLAMP
-            ));
+            if (tonearmTubeShader == null) {
+                tonearmTubeShader = new LinearGradient(
+                        28f, 0f, 210f, 0f,
+                        tonearmTubeColors(),
+                        new float[]{0f, 0.24f, 0.55f, 1f},
+                        Shader.TileMode.CLAMP
+                );
+            }
+            paint.setShader(tonearmTubeShader);
             canvas.drawPath(tonearmPath, paint);
             paint.setShader(null);
 
@@ -1223,10 +1349,18 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setColor(Color.argb(78, 0, 0, 0));
             canvas.drawLine(railStart, railY + 4f * scale, railEnd, railY + 4f * scale, paint);
             paint.setStrokeWidth(16f * scale);
-            paint.setShader(new LinearGradient(
-                    railStart, railY, railEnd, railY,
-                    tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
-            ));
+            prepareTonearmShaders();
+            if (linearTonearmRailShader == null || Float.compare(railStart, linearTonearmRailStart) != 0
+                    || Float.compare(railY, linearTonearmRailY) != 0 || Float.compare(railEnd, linearTonearmRailEnd) != 0) {
+                linearTonearmRailShader = new LinearGradient(
+                        railStart, railY, railEnd, railY,
+                        tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
+                );
+                linearTonearmRailStart = railStart;
+                linearTonearmRailY = railY;
+                linearTonearmRailEnd = railEnd;
+            }
+            paint.setShader(linearTonearmRailShader);
             canvas.drawLine(railStart, railY, railEnd, railY, paint);
             paint.setShader(null);
             paint.setStyle(Paint.Style.FILL);
@@ -1256,10 +1390,13 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setColor(Color.argb(82, 0, 0, 0));
             canvas.drawPath(tonearmPath, paint);
             paint.setStrokeWidth(14f);
-            paint.setShader(new LinearGradient(
-                    140f, 0f, 200f, 0f,
-                    tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
-            ));
+            if (linearTonearmTubeShader == null) {
+                linearTonearmTubeShader = new LinearGradient(
+                        140f, 0f, 200f, 0f,
+                        tonearmTubeColors(), new float[]{0f, 0.24f, 0.55f, 1f}, Shader.TileMode.CLAMP
+                );
+            }
+            paint.setShader(linearTonearmTubeShader);
             canvas.drawPath(tonearmPath, paint);
             paint.setShader(null);
 
@@ -1271,7 +1408,7 @@ final class VinylPlayerModeView extends FrameLayout {
             canvas.drawPath(tonearmPath, paint);
 
             tonearmPath.reset();
-            tonearmPath.addRoundRect(new RectF(144f, 38f, 196f, 104f), 13f, 13f, Path.Direction.CW);
+            tonearmPath.addRoundRect(linearTonearmHead, 13f, 13f, Path.Direction.CW);
             drawTonearmFilledPath(canvas, tonearmPath);
             tonearmPath.reset();
             tonearmPath.moveTo(153f, 48f);
@@ -1342,6 +1479,17 @@ final class VinylPlayerModeView extends FrameLayout {
             paint.setStyle(Paint.Style.FILL);
             paint.setStrokeCap(Paint.Cap.BUTT);
             paint.setStrokeJoin(Paint.Join.MITER);
+        }
+
+        /** The tonearm's gradients take their colours from its finish; another finish makes them again. */
+        private void prepareTonearmShaders() {
+            if (!Objects.equals(tonearmShaderFinish, tonearmFinish)) {
+                tonearmShaderFinish = tonearmFinish;
+                tonearmBaseShader = null;
+                tonearmTubeShader = null;
+                linearTonearmTubeShader = null;
+                linearTonearmRailShader = null;
+            }
         }
 
         private void drawTonearmFilledPath(Canvas canvas, Path path) {
@@ -1645,13 +1793,37 @@ final class VinylPlayerModeView extends FrameLayout {
             textPaint.setTypeface(bold ? AppFonts.bold(getContext()) : AppFonts.regular(getContext()));
             textPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setColor(color);
-            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            Paint.FontMetrics metrics = recordTextMetrics;
+            textPaint.getFontMetrics(metrics);
             float halfWidth = radius * 0.52f;
             int save = canvas.save();
             canvas.clipRect(x - halfWidth, y - radius * 0.17f, x + halfWidth, y + radius * 0.17f);
-            String label = TextUtils.ellipsize(text, textPaint, halfWidth * 2f, TextUtils.TruncateAt.END).toString();
+            String label = (bold ? titleLabel : artistLabel).fit(text, textPaint, halfWidth * 2f);
             canvas.drawText(label, x, y - (metrics.ascent + metrics.descent) * 0.5f, textPaint);
             canvas.restoreToCount(save);
+        }
+
+        /** One line of the record's label, ellipsized again only when its text, font, size or room change. */
+        private static final class RecordLabel {
+            private String text;
+            private Typeface typeface;
+            private float textSize = Float.NaN;
+            private float room = Float.NaN;
+            private String fitted;
+
+            String fit(String value, TextPaint paint, float width) {
+                Typeface currentTypeface = paint.getTypeface();
+                float currentSize = paint.getTextSize();
+                if (fitted == null || !value.equals(text) || currentTypeface != typeface
+                        || Float.compare(currentSize, textSize) != 0 || Float.compare(width, room) != 0) {
+                    fitted = TextUtils.ellipsize(value, paint, width, TextUtils.TruncateAt.END).toString();
+                    text = value;
+                    typeface = currentTypeface;
+                    textSize = currentSize;
+                    room = width;
+                }
+                return fitted;
+            }
         }
 
         void setDisplayMetadata(String trackKey, String title, String artist) {
@@ -1662,14 +1834,6 @@ final class VinylPlayerModeView extends FrameLayout {
                 setContentDescription(title + ". " + artist); // Full labels remain accessible after ellipsis/simplification.
                 invalidate();
             }
-        }
-
-        private void drawCenteredText(Canvas canvas, String text, float x, float y, float size, int color, boolean bold) {
-            textPaint.setTextSize(size);
-            textPaint.setColor(color);
-            textPaint.setTypeface(bold ? AppFonts.bold(getContext()) : AppFonts.regular(getContext()));
-            Paint.FontMetrics metrics = textPaint.getFontMetrics();
-            canvas.drawText(text, x, y - (metrics.ascent + metrics.descent) * 0.5f, textPaint);
         }
 
         private boolean isLandscape() {

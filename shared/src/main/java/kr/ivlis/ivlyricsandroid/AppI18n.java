@@ -152,6 +152,7 @@ final class AppI18n {
         addLyricsRegenerateStrings(languages);
         addSingAlongStrings(languages);
         addErrorMessageStrings(languages);
+        addPronunciationLabStrings(languages);
         addAccessibilityLabelStrings(languages);
         addSettingsRedesignStrings(languages);
         FirstUseI18n.apply(languages);
@@ -204,6 +205,111 @@ final class AppI18n {
                 {"id", "Karaoke nonaktif. Ketuk untuk vokal pelan", "Karaoke dengan vokal pelan. Ketuk untuk vokal keras", "Karaoke dengan vokal keras. Ketuk untuk menonaktifkan", "Menonaktifkan karaoke", "Batalkan persiapan karaoke", "Putar lagu di Spotify terlebih dahulu.", "Putar di perangkat ini untuk menggunakan karaoke.", "Nonaktifkan mode offline Spotify untuk menggunakan karaoke.", "Pilih kualitas pemutaran di Spotify yang lebih tinggi dari “Rendah”.", "Karaoke tidak tersedia di versi Spotify ini.", "Saat ini Spotify belum menyediakan karaoke untuk lagu ini.", "Spotify belum mengaktifkan karaoke untuk akun ini.", "Spotify tidak dapat menyiapkan pengurangan vokal untuk lagu ini.", "Persiapan karaoke terlalu lama. Silakan coba lagi.", "Karaoke tidak dapat dinonaktifkan. Ketuk lagi untuk mencoba ulang.", "Karaoke tidak dapat dimulai. Silakan coba lagi.", "Memeriksa ketersediaan karaoke Spotify."},
                 {"ms", "Karaoke dimatikan. Ketik untuk vokal perlahan", "Karaoke dengan vokal perlahan. Ketik untuk vokal kuat", "Karaoke dengan vokal kuat. Ketik untuk mematikan", "Mematikan karaoke", "Batalkan penyediaan karaoke", "Mainkan lagu dalam Spotify terlebih dahulu.", "Mainkan pada peranti ini untuk menggunakan karaoke.", "Matikan mod luar talian Spotify untuk menggunakan karaoke.", "Pilih kualiti main balik dalam Spotify yang lebih tinggi daripada “Rendah”.", "Karaoke tidak tersedia dalam versi Spotify ini.", "Spotify belum menawarkan karaoke untuk lagu ini buat masa ini.", "Spotify belum mendayakan karaoke untuk akaun ini.", "Spotify tidak dapat menyediakan pengurangan vokal untuk lagu ini.", "Penyediaan karaoke mengambil masa terlalu lama. Sila cuba lagi.", "Karaoke tidak dapat dimatikan. Ketik sekali lagi untuk mencuba semula.", "Karaoke tidak dapat dimulakan. Sila cuba lagi.", "Menyemak ketersediaan karaoke Spotify."},
                 {"tr", "Karaoke kapalı. Düşük vokal için dokunun", "Karaoke: düşük vokal. Yüksek vokal için dokunun", "Karaoke: yüksek vokal. Kapatmak için dokunun", "Karaoke kapatılıyor", "Karaoke hazırlığını iptal et", "Önce Spotify’da bir şarkı çalın.", "Karaoke için şarkıyı bu cihazda çalın.", "Karaoke için Spotify’ın çevrimdışı modunu kapatın.", "Spotify’da “Düşük” seviyesinden yüksek bir çalma kalitesi seçin.", "Bu Spotify sürümünde karaoke kullanılamıyor.", "Spotify şu anda bu şarkı için karaoke sunmuyor.", "Spotify bu hesap için karaokeyi etkinleştirmedi.", "Spotify bu şarkı için vokal azaltmayı hazırlayamadı.", "Karaoke hazırlığı çok uzun sürdü. Lütfen tekrar deneyin.", "Karaoke kapatılamadı. Yeniden denemek için tekrar dokunun.", "Karaoke başlatılamadı. Lütfen tekrar deneyin.", "Spotify karaoke kullanılabilirliği kontrol ediliyor."}
+        };
+        addRows(languages, keys, rows);
+    }
+
+    /**
+     * Pronunciation Lab: its card in the provider list, and the failures that tell the user something
+     * (other failures use error.provider_unavailable_format). "Pronunciation Lab" and the library name
+     * "pronunciation-lab" are names and stay unlocalized, like "Local AI".
+     */
+    private static void addPronunciationLabStrings(Map<String, Map<String, String>> languages) {
+        String[] keys = {
+                "provider.desc.pronunciation-lab",
+                "error.pronunciation_lab_unsupported_source",
+                "error.pronunciation_lab_unsupported_target",
+                "error.pronunciation_lab_load_failed"
+        };
+        String[][] rows = {
+                {"ko", "규칙·사전 기반 발음 전용 제공자 (AI 아님, API 키 불필요). pronunciation-lab 최신 버전을 CDN에서 불러옵니다",
+                        "Pronunciation Lab은 이 곡의 언어를 읽을 수 없습니다.",
+                        "Pronunciation Lab은 이 언어로 발음을 표기할 수 없습니다.",
+                        "Pronunciation Lab 데이터를 내려받지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요."},
+                {"en", "Rule- and dictionary-based pronunciation-only provider (not AI, no API key required). Loads the latest pronunciation-lab release from a CDN",
+                        "Pronunciation Lab can't read this song's language.",
+                        "Pronunciation Lab can't write pronunciation in this language.",
+                        "Couldn't download Pronunciation Lab data. Check your connection and try again."},
+                {"zh-CN", "基于规则和词典、仅用于发音的提供商（不是 AI，无需 API 密钥）。从 CDN 加载最新版 pronunciation-lab",
+                        "Pronunciation Lab 无法读取这首歌的语言。",
+                        "Pronunciation Lab 无法用这种语言书写发音。",
+                        "无法下载 Pronunciation Lab 数据。请检查网络连接后重试。"},
+                {"zh-TW", "以規則與辭典為基礎、僅用於發音的供應商（不是 AI，不需要 API 金鑰）。從 CDN 載入最新版 pronunciation-lab",
+                        "Pronunciation Lab 無法讀取這首歌的語言。",
+                        "Pronunciation Lab 無法用這種語言標示發音。",
+                        "無法下載 Pronunciation Lab 資料。請檢查網路連線後再試一次。"},
+                {"ja", "ルールと辞書に基づく発音専用プロバイダー（AI ではなく、API キー不要）。pronunciation-lab の最新版を CDN から読み込みます",
+                        "Pronunciation Lab はこの曲の言語を読み取れません。",
+                        "Pronunciation Lab はこの言語で発音を表記できません。",
+                        "Pronunciation Lab のデータをダウンロードできませんでした。接続を確認して、もう一度お試しください。"},
+                {"hi", "नियमों और शब्दकोशों पर आधारित, केवल उच्चारण वाला प्रदाता (AI नहीं, API कुंजी की ज़रूरत नहीं)। CDN से pronunciation-lab का नवीनतम संस्करण लोड करता है",
+                        "Pronunciation Lab इस गाने की भाषा नहीं पढ़ सकता।",
+                        "Pronunciation Lab इस भाषा में उच्चारण नहीं लिख सकता।",
+                        "Pronunciation Lab का डेटा डाउनलोड नहीं हो सका। अपना कनेक्शन जाँचें और फिर से कोशिश करें।"},
+                {"es", "Proveedor solo para pronunciación basado en reglas y diccionarios (no es IA, no requiere clave API). Carga la versión más reciente de pronunciation-lab desde una CDN",
+                        "Pronunciation Lab no puede leer el idioma de esta canción.",
+                        "Pronunciation Lab no puede escribir la pronunciación en este idioma.",
+                        "No se pudieron descargar los datos de Pronunciation Lab. Revisa tu conexión e inténtalo de nuevo."},
+                {"fr", "Fournisseur dédié à la prononciation, basé sur des règles et des dictionnaires (pas d’IA, aucune clé API requise). Charge la dernière version de pronunciation-lab depuis un CDN",
+                        "Pronunciation Lab ne peut pas lire la langue de ce titre.",
+                        "Pronunciation Lab ne peut pas écrire la prononciation dans cette langue.",
+                        "Impossible de télécharger les données de Pronunciation Lab. Vérifiez votre connexion et réessayez."},
+                {"ar", "موفّر مخصّص للنطق يعتمد على القواعد والقواميس (ليس ذكاءً اصطناعيًا ولا يحتاج إلى مفتاح API). يحمّل أحدث إصدار من pronunciation-lab من شبكة CDN",
+                        "لا يستطيع Pronunciation Lab قراءة لغة هذه الأغنية.",
+                        "لا يستطيع Pronunciation Lab كتابة النطق بهذه اللغة.",
+                        "تعذّر تنزيل بيانات Pronunciation Lab. تحقّق من اتصالك وحاول مرة أخرى."},
+                {"fa", "ارائه‌دهنده مخصوص تلفظ بر پایه قواعد و واژه‌نامه‌ها (هوش مصنوعی نیست و کلید API نمی‌خواهد). جدیدترین نسخه pronunciation-lab را از CDN بارگیری می‌کند",
+                        "Pronunciation Lab نمی‌تواند زبان این آهنگ را بخواند.",
+                        "Pronunciation Lab نمی‌تواند تلفظ را به این زبان بنویسد.",
+                        "داده‌های Pronunciation Lab بارگیری نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید."},
+                {"de", "Reiner Ausspracheanbieter auf Basis von Regeln und Wörterbüchern (keine KI, kein API-Schlüssel nötig). Lädt die neueste pronunciation-lab-Version von einem CDN",
+                        "Pronunciation Lab kann die Sprache dieses Songs nicht lesen.",
+                        "Pronunciation Lab kann die Aussprache nicht in dieser Sprache schreiben.",
+                        "Die Daten von Pronunciation Lab konnten nicht heruntergeladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."},
+                {"ru", "Провайдер только для произношения на основе правил и словарей (не ИИ, API-ключ не нужен). Загружает последнюю версию pronunciation-lab из CDN",
+                        "Pronunciation Lab не может прочитать язык этой песни.",
+                        "Pronunciation Lab не может записать произношение на этом языке.",
+                        "Не удалось загрузить данные Pronunciation Lab. Проверьте подключение и повторите попытку."},
+                {"sv", "Leverantör endast för uttal, baserad på regler och ordböcker (inte AI, ingen API-nyckel krävs). Läser in den senaste versionen av pronunciation-lab från ett CDN",
+                        "Pronunciation Lab kan inte läsa språket i den här låten.",
+                        "Pronunciation Lab kan inte skriva uttal på det här språket.",
+                        "Det gick inte att ladda ned data för Pronunciation Lab. Kontrollera anslutningen och försök igen."},
+                {"pt", "Provedor exclusivo para pronúncia, baseado em regras e dicionários (não é IA e não precisa de chave API). Carrega a versão mais recente do pronunciation-lab de uma CDN",
+                        "O Pronunciation Lab não consegue ler o idioma desta música.",
+                        "O Pronunciation Lab não consegue escrever a pronúncia neste idioma.",
+                        "Não foi possível baixar os dados do Pronunciation Lab. Verifique sua conexão e tente novamente."},
+                {"bn", "নিয়ম ও অভিধানভিত্তিক, শুধু উচ্চারণের জন্য প্রদানকারী (AI নয়, API কী লাগে না)। CDN থেকে pronunciation-lab-এর সর্বশেষ সংস্করণ লোড করে",
+                        "Pronunciation Lab এই গানের ভাষা পড়তে পারে না।",
+                        "Pronunciation Lab এই ভাষায় উচ্চারণ লিখতে পারে না।",
+                        "Pronunciation Lab-এর ডেটা ডাউনলোড করা যায়নি। আপনার সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"},
+                {"cs", "Poskytovatel pouze pro výslovnost založený na pravidlech a slovnících (není to AI, nepotřebuje klíč API). Načítá nejnovější verzi pronunciation-lab z CDN",
+                        "Pronunciation Lab neumí přečíst jazyk této skladby.",
+                        "Pronunciation Lab neumí zapsat výslovnost v tomto jazyce.",
+                        "Data Pronunciation Lab se nepodařilo stáhnout. Zkontrolujte připojení a zkuste to znovu."},
+                {"it", "Provider dedicato alla pronuncia, basato su regole e dizionari (non è IA, non serve una chiave API). Carica l'ultima versione di pronunciation-lab da una CDN",
+                        "Pronunciation Lab non riesce a leggere la lingua di questo brano.",
+                        "Pronunciation Lab non riesce a scrivere la pronuncia in questa lingua.",
+                        "Impossibile scaricare i dati di Pronunciation Lab. Controlla la connessione e riprova."},
+                {"th", "ผู้ให้บริการสำหรับการออกเสียงเท่านั้น ทำงานด้วยกฎและพจนานุกรม (ไม่ใช่ AI และไม่ต้องใช้คีย์ API) โหลด pronunciation-lab เวอร์ชันล่าสุดจาก CDN",
+                        "Pronunciation Lab อ่านภาษาของเพลงนี้ไม่ได้",
+                        "Pronunciation Lab เขียนการออกเสียงเป็นภาษานี้ไม่ได้",
+                        "ดาวน์โหลดข้อมูลของ Pronunciation Lab ไม่สำเร็จ โปรดตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"},
+                {"vi", "Nhà cung cấp chỉ dành cho phát âm, dựa trên quy tắc và từ điển (không phải AI, không cần khóa API). Tải phiên bản pronunciation-lab mới nhất từ CDN",
+                        "Pronunciation Lab không đọc được ngôn ngữ của bài hát này.",
+                        "Pronunciation Lab không thể viết phát âm bằng ngôn ngữ này.",
+                        "Không tải được dữ liệu Pronunciation Lab. Hãy kiểm tra kết nối rồi thử lại."},
+                {"id", "Penyedia khusus pengucapan berbasis aturan dan kamus (bukan AI, tanpa kunci API). Memuat rilis pronunciation-lab terbaru dari CDN",
+                        "Pronunciation Lab tidak dapat membaca bahasa lagu ini.",
+                        "Pronunciation Lab tidak dapat menuliskan pengucapan dalam bahasa ini.",
+                        "Data Pronunciation Lab tidak dapat diunduh. Periksa koneksi Anda lalu coba lagi."},
+                {"ms", "Penyedia khusus untuk sebutan, berasaskan peraturan dan kamus (bukan AI, tiada kunci API diperlukan). Memuatkan keluaran pronunciation-lab terkini daripada CDN",
+                        "Pronunciation Lab tidak dapat membaca bahasa lagu ini.",
+                        "Pronunciation Lab tidak dapat menulis sebutan dalam bahasa ini.",
+                        "Data Pronunciation Lab tidak dapat dimuat turun. Semak sambungan anda dan cuba lagi."},
+                {"tr", "Kurallara ve sözlüklere dayalı, yalnızca telaffuz sağlayıcısı (AI değildir, API anahtarı gerekmez). pronunciation-lab'in en son sürümünü bir CDN'den yükler",
+                        "Pronunciation Lab bu şarkının dilini okuyamıyor.",
+                        "Pronunciation Lab bu dilde telaffuz yazamıyor.",
+                        "Pronunciation Lab verileri indirilemedi. Bağlantınızı kontrol edip tekrar deneyin."}
         };
         addRows(languages, keys, rows);
     }

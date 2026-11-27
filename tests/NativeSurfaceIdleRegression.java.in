@@ -1,0 +1,103 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.Context;
+import android.graphics.Rect;
+import android.view.Choreographer;
+import android.view.View;
+import android.widget.FrameLayout;
+
+import java.util.IdentityHashMap;
+import java.util.Map;
+
+/** Production NativeSurface scheduling with a fake main-thread queue and vsync. */
+public final class NativeSurfaceIdleRegression {
+    private static int checks;
+
+    private static void check(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+
+    static final class Activity { int getTaskId() { return 1; } }
+    static final class LyricsFrameProbe {
+        static boolean enabled(Context context) { return false; }
+        static void appendFixed(StringBuilder line, double value, int digits) { }
+        static void log(CharSequence line) { }
+    }
+    static final class Track { boolean playing; }
+    static final class Engine { final Track track = new Track(); }
+    static final Map<Object, View> PLAYER_COVERS = new IdentityHashMap<>();
+    static final Engine engine = new Engine();
+    static Activity activityOf(Context context) { return null; }
+    static void invalidateTree(View view) { view.invalidate(); }
+    static void attach(NativeSurface surface) { }
+    static void detach(NativeSurface surface) { }
+
+    // INSERT_NATIVE_SURFACE
+
+    static final class Surface extends NativeSurface {
+        int idleUpdates, frameUpdates;
+        Surface() { super(new Context()); }
+        @Override void render(Engine state) { }
+        @Override void updatePosition(Engine state, long frameTimeNanos) {
+            if (frameTimeNanos == 0L) idleUpdates++; else frameUpdates++;
+        }
+    }
+
+    public static void main(String[] args) {
+        Choreographer vsync = Choreographer.getInstance();
+        Surface surface = new Surface();
+        // Attached as Android dispatches it: onAttachedToWindow, then the window's visibility.
+        surface.dispatchAttachedToWindow();
+        check(View.QUEUE.size() == 1 && vsync.callbacks.isEmpty(), "one idle tick waits after attaching");
+        engine.track.playing = true;
+        View.runUntil(View.now);
+        check(surface.idleUpdates == 1 && vsync.callbacks.size() == 1, "the idle tick updates; a playing surface follows frames");
+        vsync.frame(1_000_000L);
+        check(surface.frameUpdates == 1 && vsync.callbacks.size() == 1 && View.QUEUE.isEmpty(), "each frame paints at its vsync");
+
+        // Spotify goes to the background: the window hides and the surface stops waking.
+        surface.dispatchWindowVisibilityChanged(View.GONE);
+        vsync.frame(2_000_000L);
+        check(surface.frameUpdates == 1 && vsync.callbacks.isEmpty() && View.QUEUE.isEmpty(),
+                "a hidden window leaves nothing scheduled");
+        int ran = View.runUntil(View.now + 60_000L);
+        check(ran == 0 && surface.idleUpdates == 1, "a minute in a hidden window wakes it 0 times (240 before)");
+
+        // Back in the foreground: updated at once, then frame by frame again.
+        surface.dispatchWindowVisibilityChanged(View.VISIBLE);
+        check(View.QUEUE.size() == 1, "the shown window queues the idle tick at once");
+        View.runUntil(View.now);
+        check(surface.idleUpdates == 2 && vsync.callbacks.size() == 1, "the idle tick updates the position, as the 250 ms poll did");
+        vsync.frame(3_000_000L);
+        check(surface.frameUpdates == 2, "frames resume");
+
+        // Paused and visible: polls every 250 ms, as before.
+        engine.track.playing = false;
+        vsync.frame(4_000_000L);
+        check(vsync.callbacks.isEmpty() && View.QUEUE.size() == 1, "a paused visible surface polls");
+        int before = surface.idleUpdates;
+        View.runUntil(View.now + 1000L);
+        check(surface.idleUpdates == before + 4, "four idle updates a second while paused and visible, as before");
+
+        // Not shown inside a shown window (its container hidden): still polls without painting, as before.
+        surface.shown = false;
+        before = surface.idleUpdates;
+        int polled = View.runUntil(View.now + 1000L);
+        check(polled == 4 && surface.idleUpdates == before && View.QUEUE.size() == 1,
+                "a surface hidden in a shown window keeps polling every 250 ms");
+        surface.shown = true;
+        View.runUntil(View.now + 250L);
+        check(surface.idleUpdates == before + 1, "and paints again within 250 ms of being shown");
+
+        // A detached surface ignores window events.
+        surface.dispatchWindowVisibilityChanged(View.GONE);
+        View.runUntil(View.now + 1000L);
+        check(View.QUEUE.isEmpty() && vsync.callbacks.isEmpty(), "hidden again: nothing scheduled");
+        surface.dispatchDetachedFromWindow();
+        surface.dispatchWindowVisibilityChanged(View.VISIBLE);
+        check(View.QUEUE.isEmpty() && vsync.callbacks.isEmpty(), "a detached surface stays asleep");
+        System.out.println("PASS " + checks + " checks: native surfaces sleep in a hidden window and resume with it");
+    }
+}
+

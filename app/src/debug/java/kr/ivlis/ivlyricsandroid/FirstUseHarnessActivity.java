@@ -89,6 +89,9 @@ public final class FirstUseHarnessActivity extends BaseLyricsActivity {
                 settings.setBackgroundReduceMotion(false);
             }
             for (AiLyricsSettings.Provider provider : AiLyricsSettings.PROVIDERS) settings.setAiProviderEnabled(provider.id, false);
+            // Pronunciation Lab is on by default and pronounces without AI; off here so the prompt's
+            // "pronunciation needs a provider" notice keeps its no-provider fixture.
+            settings.setAiProviderEnabled(AiLyricsSettings.Provider.PRONUNCIATION_LAB_ID, false);
             settings.setBingTranslateEnabled(false);
             settings.setGoogleTranslateEnabled(true);
             settings.shutdown();

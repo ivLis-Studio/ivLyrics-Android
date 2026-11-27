@@ -32,6 +32,8 @@ static class Snapshot {
 '''.replace('// PROVIDERS', providers).replace('// PROVIDER', provider).replace('// GATES', gates)
 (work / 'ProviderGates.java').write_text(fixture)
 deps = classpath(work, json_jar())
-sources = [SHARED / 'DeepLTranslationProvider.java', work / 'ProviderGates.java', ROOT / 'tests/kr/ivlis/ivlyricsandroid/DeepLRegression.java']
+# PROVIDERS names Perplexity's default model (PerplexityAgentApi.DEFAULT_MODEL).
+sources = [SHARED / 'DeepLTranslationProvider.java', SHARED / 'PerplexityAgentApi.java', work / 'ProviderGates.java',
+           ROOT / 'tests/kr/ivlis/ivlyricsandroid/DeepLRegression.java']
 subprocess.run([java_tool('javac'), '-cp', deps, '-d', str(work), *map(str, sources)], check=True)
 subprocess.run([java_tool('java'), '-cp', deps, 'kr.ivlis.ivlyricsandroid.DeepLRegression'], check=True)

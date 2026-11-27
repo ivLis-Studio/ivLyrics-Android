@@ -34,6 +34,10 @@ python3 tests/run_supplement_loading_regression.py
 python3 tests/run_repository_completion_regression.py
 python3 tests/run_furigana_loading_regression.py
 python3 tests/run_furigana_webview_regression.py
+python3 tests/run_pronunciation_lab_regression.py
+python3 tests/run_webview_renderer_regression.py
+python3 tests/run_notification_refresh_regression.py
+python3 tests/run_native_surface_idle_regression.py
 node --test tests/furigana_bridge.test.mjs
 python3 tests/run_metadata_refresh_loading_regression.py
 python3 tests/check_module_boundaries.py --built
@@ -252,6 +256,33 @@ callbacks, timeout and shutdown. The JavaScript bridge tests exercise library an
 dictionary fallback, retry and CDN URL preservation without real network requests.
 For opt-in real Android WebView and Kuromoji verification in a separate QA app,
 see [the device smoke test](FURIGANA_WEBVIEW_DEVICE_SMOKE.md).
+The Pronunciation Lab regression runs three host fixtures. The production page repository bootstraps
+against distinct module and host asset contexts and a scripted WebView: HTTPS app-assets origin,
+the bridge registered before loading, requests queued until the page's ready message, one page for
+every later request, concurrent ids, page error codes, the 90 s timeout and caller cancellation (both
+cancel in the page), page-load and renderer loss with recovery, and the blocking call from a worker
+thread including interruption. The production AiLyricsRepository then pronounces through an in-memory
+AI provider and a fake page: AI first, Pronunciation Lab as the fallback or alone, the exact rows,
+languages and notation it receives, its own cache keys, localized failures, never translation or
+titles, the unit-pronunciation fallback and an interrupted wait. Finally the production AiLyricsSettings
+runs on in-memory preferences: on by default and last, saved maps and orders from older versions,
+explicit choices across restarts, reordering and cloud settings. No WebView, CDN or AI provider is
+contacted; the JVM tests cover the page protocol, the request dispatcher and the provider gates.
+Every WebView of a process shares one renderer, and in the Spotify module that process is Spotify:
+a WebView whose client leaves `onRenderProcessGone` unhandled makes Android kill it. The furigana
+WebView regression covers that page's renderer death (pending request failed, page released, next
+request on a new page, stale callbacks dropped) and its bounded memory cache. The WebView renderer
+regression runs the production motion lyrics stage, video background and in-app browser page against
+minimal Android stubs: each handles the death and releases the dead WebView. Motion lyrics loads a
+new page at once while shown (once per showing) or at the next opening, the video background at the
+next video load, and the browser replaces its page and closes; messages of a dead page are dropped.
+The notification-refresh regression runs the production notification listener against a stub base
+and a counting session manager: Spotify's notifications re-read the media sessions as before (once,
+then the 80/240/560 ms burst), any other app's notifications not at all. The native-surface-idle
+regression runs the production Spotify card/inline surface scheduler (verbatim from IvLyricsBridge)
+with a fake main-thread queue and vsync: playing surfaces follow frames, paused or not-shown ones
+poll every 250 ms as before, and a hidden window (Spotify in the background, screen off) schedules
+nothing until it shows again, when the surface updates at once.
 The metadata-refresh-loading regression executes the activity's production refresh
 callbacks and provider-loading handler. It checks cached/current lyrics remain visible
 with accurate supplement progress while metadata refreshes, and old AI callbacks

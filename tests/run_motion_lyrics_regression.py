@@ -164,4 +164,55 @@ assert 'out.append(",\\"motion\\":{\\"intensity\\":\\"").append(motionIntensity)
 assert 'getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)' in view
 assert "motionLyricsModeView.setOptionsText(" in declaration(activity, "private void applyMotionLyricsUiText()")
 assert "currentLyricsResult, track.artworkUri)" in sync
+
+# The accent sent with the song is sampled from the artwork once per bitmap, not on every 250 ms report.
+import subprocess
+from regression_runtime import REPORTS, java_tool
+assert "int accent = motionLyricsAccent(track);" in sync
+accent_work = REPORTS / "motion-accent"
+accent_work.mkdir(parents=True, exist_ok=True)
+accent_test = accent_work / "MotionAccentRegression.java"
+accent_test.write_text("""
+public final class MotionAccentRegression {
+    static int samples;
+    static final class Bitmap {
+        final int color; boolean recycled;
+        Bitmap(int color) { this.color = color; }
+        boolean isRecycled() { return recycled; } int getWidth() { return 64; } int getHeight() { return 64; }
+    }
+    static final class TrackSnapshot { final String key; TrackSnapshot(String key) { this.key = key; } String stableKey() { return key; } }
+    static final class VinylPlayerModeView {
+        static int artworkAccent(Bitmap artwork, String key) {
+            if (artwork == null || artwork.isRecycled() || artwork.getWidth() <= 0 || artwork.getHeight() <= 0) return key.hashCode();
+            samples++;
+            return artwork.color;
+        }
+    }
+    Bitmap currentArtworkBitmap;
+    java.lang.ref.WeakReference<Bitmap> motionAccentArtwork = new java.lang.ref.WeakReference<>(null);
+    int motionAccent;
+""" + declaration(activity, "private int motionLyricsAccent(TrackSnapshot track)") + """
+    static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
+    public static void main(String[] args) {
+        MotionAccentRegression activity = new MotionAccentRegression();
+        TrackSnapshot track = new TrackSnapshot("spotify:track:a");
+        check(activity.motionLyricsAccent(track) == "spotify:track:a".hashCode(), "without artwork, the track's accent");
+        Bitmap first = new Bitmap(0xff3366), second = new Bitmap(0x44aa22);
+        activity.currentArtworkBitmap = first;
+        for (int tick = 0; tick < 240; tick++) check(activity.motionLyricsAccent(track) == 0xff3366, "the artwork's accent");
+        check(samples == 1, "a minute of reports samples the artwork once (240 before)");
+        activity.currentArtworkBitmap = second;
+        check(activity.motionLyricsAccent(track) == 0x44aa22 && samples == 2, "new artwork is sampled");
+        second.recycled = true;
+        check(activity.motionLyricsAccent(new TrackSnapshot("spotify:track:b")) == "spotify:track:b".hashCode() && samples == 2,
+                "recycled artwork gives the track's accent, as before");
+        activity.currentArtworkBitmap = first;
+        check(activity.motionLyricsAccent(track) == 0xff3366 && samples == 3, "returning artwork is sampled again");
+        System.out.println("Motion accent: " + samples + " artwork samples for 244 reports");
+    }
+}
+""")
+subprocess.run([java_tool("javac"), "-d", str(accent_work), str(accent_test)], check=True)
+print(subprocess.run([java_tool("java"), "-cp", str(accent_work), "MotionAccentRegression"],
+                     check=True, text=True, stdout=subprocess.PIPE).stdout, end="")
 print("Motion lyrics wiring regression passed")

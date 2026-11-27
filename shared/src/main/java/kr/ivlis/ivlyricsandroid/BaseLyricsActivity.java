@@ -89,6 +89,7 @@ import android.widget.Switch;
 import android.widget.CheckBox;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -727,6 +728,12 @@ public class BaseLyricsActivity extends Activity implements
     /** The lyrics and track last sent to the motion lyrics page. */
     private LyricsResult motionSongLyrics;
     private String motionSongKey = "";
+    /**
+     * The artwork the motion page's accent was last sampled from (up to 324 pixel reads), held weakly
+     * so a closed mode keeps no old artwork alive.
+     */
+    private java.lang.ref.WeakReference<Bitmap> motionAccentArtwork = new java.lang.ref.WeakReference<>(null);
+    private int motionAccent;
     /** The page runs its own clock between these reports. */
     private static final long MOTION_LYRICS_SYNC_MS = 250L;
     private final Runnable motionLyricsTick = new Runnable() {
@@ -3327,7 +3334,7 @@ public class BaseLyricsActivity extends Activity implements
         AiLyricsSettings.Snapshot settings = aiLyricsSettings == null ? null : aiLyricsSettings.snapshot();
         motionLyricsModeView.setAiAvailable(settings != null
                 && !settings.provider.translationOnly() && settings.hasApiKey() && settings.hasModel());
-        int accent = VinylPlayerModeView.artworkAccent(currentArtworkBitmap, track.stableKey());
+        int accent = motionLyricsAccent(track);
         String key = track.stableKey() + "|" + accent;
         if (currentLyricsResult != motionSongLyrics || !key.equals(motionSongKey)) {
             motionSongLyrics = currentLyricsResult;
@@ -3341,6 +3348,23 @@ public class BaseLyricsActivity extends Activity implements
                     !currentLyricsResult.loading && !currentLyricsResult.lines.isEmpty());
         }
         motionLyricsModeView.setPlayback(currentLyricsPlaybackPosition(track), track.playing, track.playbackSpeed);
+    }
+
+    /**
+     * VinylPlayerModeView.artworkAccent for the current artwork, sampled again only for another bitmap:
+     * this runs four times a second while motion lyrics shows, and artwork bitmaps never change in place.
+     * Without usable artwork the accent comes from the track key, which costs nothing to work out.
+     */
+    private int motionLyricsAccent(TrackSnapshot track) {
+        Bitmap artwork = currentArtworkBitmap;
+        if (artwork == null || artwork.isRecycled() || artwork.getWidth() <= 0 || artwork.getHeight() <= 0) {
+            return VinylPlayerModeView.artworkAccent(artwork, track.stableKey());
+        }
+        if (motionAccentArtwork.get() != artwork) {
+            motionAccent = VinylPlayerModeView.artworkAccent(artwork, track.stableKey());
+            motionAccentArtwork = new java.lang.ref.WeakReference<>(artwork);
+        }
+        return motionAccent;
     }
 
     private void requestDefaultRemoteFocusAfterVinylClose() {
@@ -4738,6 +4762,35 @@ public class BaseLyricsActivity extends Activity implements
         });
         page.requestApplyInsets();
 
+        addInAppBrowserWebView();
+
+        inAppBrowserLoadingView = buildInAppBrowserLoadingView();
+        inAppBrowserLoadingView.setVisibility(View.GONE);
+        inAppBrowserSheet.addView(inAppBrowserLoadingView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        inAppBrowserHandleTouchTarget = new FrameLayout(this);
+        inAppBrowserHandleTouchTarget.setBackgroundColor(Color.TRANSPARENT);
+        FrameLayout.LayoutParams handleTargetParams = new FrameLayout.LayoutParams(
+                dp(110),
+                dp(34),
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL
+        );
+        inAppBrowserSheet.addView(inAppBrowserHandleTouchTarget, handleTargetParams);
+        attachInAppBrowserSwipe(inAppBrowserHandleTouchTarget);
+
+        inAppBrowserHandleView = new View(this);
+        inAppBrowserHandleView.setBackground(roundDrawable(inAppBrowserHandleColor(), dp(1.5f)));
+        FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(dp(42), dp(3), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        handleParams.topMargin = dp(12);
+        inAppBrowserHandleTouchTarget.addView(inAppBrowserHandleView, handleParams);
+        return page;
+    }
+
+    /** The browser's page, beneath its loading view and drag handle. */
+    private void addInAppBrowserWebView() {
         inAppBrowserWebView = new AccessibleWebView(this);
         inAppBrowserWebView.setBackgroundColor(inAppBrowserBackgroundColor());
         inAppBrowserWebView.setHapticFeedbackEnabled(false);
@@ -4792,35 +4845,38 @@ public class BaseLyricsActivity extends Activity implements
                 injectInAppBrowserProfileCss(view, url);
                 handler.postDelayed(() -> showInAppBrowserLoading(false), 80L);
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // Every WebView of the process shares one renderer (Spotify's, in the module). Handled,
+                // so Android does not kill the app.
+                if (view == inAppBrowserWebView) {
+                    replaceDeadInAppBrowserWebView();
+                }
+                return true;
+            }
         });
-        inAppBrowserSheet.addView(inAppBrowserWebView, new FrameLayout.LayoutParams(
+        inAppBrowserSheet.addView(inAppBrowserWebView, 0, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+    }
 
-        inAppBrowserLoadingView = buildInAppBrowserLoadingView();
-        inAppBrowserLoadingView.setVisibility(View.GONE);
-        inAppBrowserSheet.addView(inAppBrowserLoadingView, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        inAppBrowserHandleTouchTarget = new FrameLayout(this);
-        inAppBrowserHandleTouchTarget.setBackgroundColor(Color.TRANSPARENT);
-        FrameLayout.LayoutParams handleTargetParams = new FrameLayout.LayoutParams(
-                dp(110),
-                dp(34),
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL
-        );
-        inAppBrowserSheet.addView(inAppBrowserHandleTouchTarget, handleTargetParams);
-        attachInAppBrowserSwipe(inAppBrowserHandleTouchTarget);
-
-        inAppBrowserHandleView = new View(this);
-        inAppBrowserHandleView.setBackground(roundDrawable(inAppBrowserHandleColor(), dp(1.5f)));
-        FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(dp(42), dp(3), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        handleParams.topMargin = dp(12);
-        inAppBrowserHandleTouchTarget.addView(inAppBrowserHandleView, handleParams);
-        return page;
+    /**
+     * The browser page's renderer died. Its WebView is released and a new one takes its place for the
+     * next page; an open browser closes, as its page is gone (which also ends a Discord login).
+     */
+    private void replaceDeadInAppBrowserWebView() {
+        AccessibleWebView dead = inAppBrowserWebView;
+        inAppBrowserWebView = null;
+        detachFromParent(dead);
+        dead.destroy();
+        if (isFinishing() || isDestroyed() || inAppBrowserSheet == null) {
+            return;
+        }
+        addInAppBrowserWebView();
+        showInAppBrowserLoading(false);
+        showInAppBrowser(false);
     }
 
     private LinearLayout buildLyricsLanguageSettingsPanel() {
@@ -10404,9 +10460,11 @@ public class BaseLyricsActivity extends Activity implements
         card.addView(top, matchWrap());
 
         SettingsKit.FlowLayout capabilities = kit.flow(8f, 6f);
-        capabilities.addView(kit.tag(ui("preview.translation"), kit.icon("translate", kit.p.text3, 15f),
-                provider.id.equals(aiTranslationOwnerId)));
-        if (!provider.translationOnly()) {
+        if (provider.canTranslate()) {
+            capabilities.addView(kit.tag(ui("preview.translation"), kit.icon("translate", kit.p.text3, 15f),
+                    provider.id.equals(aiTranslationOwnerId)));
+        }
+        if (provider.canPronounce()) {
             capabilities.addView(kit.tag(ui("preview.pronunciation"), kit.icon("pronunciation", kit.p.text3, 15f),
                     provider.id.equals(aiPronunciationOwnerId)));
         }
@@ -10427,8 +10485,8 @@ public class BaseLyricsActivity extends Activity implements
             if (!snapshot.isAiProviderEnabled(providerId)) continue;
             AiLyricsSettings.Provider provider = AiLyricsSettings.aiProviderById(providerId);
             if (provider == null) continue;
-            if (translation == null) translation = provider;
-            if (pronunciation == null && !provider.translationOnly()) pronunciation = provider;
+            if (translation == null && provider.canTranslate()) translation = provider;
+            if (pronunciation == null && provider.canPronounce()) pronunciation = provider;
         }
         if (translation != null) aiTranslationOwnerId = translation.id;
         if (pronunciation != null) aiPronunciationOwnerId = pronunciation.id;
@@ -13538,7 +13596,7 @@ public class BaseLyricsActivity extends Activity implements
         if (aiSettingsStatusView != null) {
             String status = ui("status.ai_disabled");
             if (snapshot.enabled()) {
-                status = snapshot.hasLyricsTranslationProvider() || snapshot.hasReadyAiProvider()
+                status = snapshot.hasLyricsTranslationProvider() || snapshot.hasLinePronunciationProvider()
                         ? ui("status.ai_lyrics_active")
                         : ui("status.ai_key_needed");
             }
@@ -15656,7 +15714,7 @@ public class BaseLyricsActivity extends Activity implements
             action.setText(ui(pronunciationSwitch.isChecked() || translationSwitch.isChecked()
                     ? "first_language.apply" : "first_language.original"));
             AiLyricsSettings.Snapshot providers = aiLyricsSettings.snapshot();
-            String hintKey = pronunciationSwitch.isChecked() && !providers.hasReadyAiProvider()
+            String hintKey = pronunciationSwitch.isChecked() && !providers.hasLinePronunciationProvider()
                     ? "first_language.pronunciation_ai_provider_hint"
                     : translationSwitch.isChecked() && !providers.hasLyricsTranslationProvider()
                     ? "first_language.translation_provider_hint" : null;
@@ -15771,10 +15829,11 @@ public class BaseLyricsActivity extends Activity implements
             requestJapaneseFurigana(clearCache);
             return;
         }
-        boolean selectedAiReady = snapshot.hasReadyAiProvider();
+        // Line pronunciation runs with a ready AI provider or with Pronunciation Lab (keyless).
+        boolean pronunciationReady = snapshot.hasLinePronunciationProvider();
         boolean requestedPronunciation = rule.pronunciationEnabled;
         boolean requestedTranslation = rule.translationEnabled && !translationSkipped;
-        boolean canRunTask = (requestedPronunciation && selectedAiReady)
+        boolean canRunTask = (requestedPronunciation && pronunciationReady)
                 || (requestedTranslation && snapshot.hasLyricsTranslationProvider());
         if (!canRunTask && !snapshot.hasApiKey()) {
             aiLyricsGenerating = false;
@@ -15816,7 +15875,7 @@ public class BaseLyricsActivity extends Activity implements
         currentLyricsResult = mergeCurrentFuriganaInto(currentBaseLyricsResult);
         setLyricsResultOnViews(currentLyricsResult);
         setLyricsSupplementLoading(
-                requestedPronunciation && selectedAiReady,
+                requestedPronunciation && pronunciationReady,
                 requestedTranslation,
                 shouldGenerateJapaneseFurigana(snapshot, source)
         );

@@ -14,8 +14,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -37,6 +39,11 @@ import java.util.Locale;
  * runs them unchanged in a web view. This view sends the page the song and the playback position,
  * passes on its two requests (an AI direction, the direction cache) and reports how its camera
  * turns the background. Edit the presentation there, not here.
+ *
+ * <p>Every WebView of the process shares one renderer (Spotify's, in the module). When it dies the
+ * page is released, so Android does not kill the app, and a new page takes its place: at once while
+ * the mode is shown (once per showing, so a page that keeps crashing cannot loop), otherwise when
+ * the mode next opens.
  */
 @SuppressLint("ViewConstructor")
 final class MotionLyricsModeView extends FrameLayout {
@@ -78,7 +85,13 @@ final class MotionLyricsModeView extends FrameLayout {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Listener listener;
-    private final WebView webView;
+    /** The page; null after its renderer died until a new page is added. */
+    private WebView webView;
+    /** Counts the pages: messages and answers meant for a page whose renderer died are dropped. */
+    private int pageGeneration;
+    /** A new page already replaced one whose renderer died during this showing. */
+    private boolean pageReplacedWhileShown;
+    private boolean released;
     private final TextView closeButton;
     private final TextView optionsButton;
     private final LinearLayout optionsPanel;
@@ -118,26 +131,13 @@ final class MotionLyricsModeView extends FrameLayout {
     private String motionRotation;
     private boolean motionSafe;
 
-    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     MotionLyricsModeView(Context context, Listener listener) {
         super(context);
         this.listener = listener;
         setVisibility(GONE);
         setAlpha(0f);
 
-        webView = new WebView(context);
-        webView.setBackgroundColor(Color.TRANSPARENT);
-        webView.setHorizontalScrollBarEnabled(false);
-        webView.setVerticalScrollBarEnabled(false);
-        webView.setOverScrollMode(OVER_SCROLL_NEVER);
-        webView.setFocusable(false);
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setSupportZoom(false);
-        // The page sets its own sizes from the screen; the system font scale must not move them.
-        settings.setTextZoom(100);
-        webView.addJavascriptInterface(new Bridge(), BRIDGE_NAME);
-        addView(webView, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addPage(context);
 
         // Touches belong to the mode's own controls, not to the page.
         View touchLayer = new View(context);
@@ -210,11 +210,54 @@ final class MotionLyricsModeView extends FrameLayout {
         updateOptionStates();
         placeCloseButton();
 
+        loadPage(context);
+    }
+
+    /** The page's web view, beneath the mode's own controls. */
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private void addPage(Context context) {
+        WebView view = new WebView(context);
+        view.setBackgroundColor(Color.TRANSPARENT);
+        view.setHorizontalScrollBarEnabled(false);
+        view.setVerticalScrollBarEnabled(false);
+        view.setOverScrollMode(OVER_SCROLL_NEVER);
+        view.setFocusable(false);
+        WebSettings settings = view.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setSupportZoom(false);
+        // The page sets its own sizes from the screen; the system font scale must not move them.
+        settings.setTextZoom(100);
+        view.addJavascriptInterface(new Bridge(pageGeneration), BRIDGE_NAME);
+        // The page never navigates; the client is there for its renderer's death.
+        view.setWebViewClient(new PageClient());
+        webView = view;
+        addView(view, 0, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void loadPage(Context context) {
         String page = readPage(context);
         if (page.isEmpty()) {
             listener.onLog("motion lyrics page is missing from the assets");
         } else {
             webView.loadDataWithBaseURL(PAGE_ORIGIN, page, "text/html", "UTF-8", null);
+        }
+    }
+
+    /** The renderer died: the page goes, and a new one comes now if the mode is shown and none came yet. */
+    private void onPageGone(boolean crashed) {
+        WebView dead = webView;
+        webView = null;
+        pageGeneration++;
+        pageReady = false;
+        sentSong = null;
+        sentOptions = null;
+        removeView(dead);
+        dead.destroy();
+        listener.onLog("motion lyrics page: renderer " + (crashed ? "crashed" : "stopped"));
+        if (shown && !pageReplacedWhileShown && !released) {
+            pageReplacedWhileShown = true;
+            addPage(getContext());
+            loadPage(getContext());
         }
     }
 
@@ -299,7 +342,13 @@ final class MotionLyricsModeView extends FrameLayout {
     void show(boolean animate) {
         animate().cancel();
         shown = true;
-        webView.onResume();
+        pageReplacedWhileShown = false;
+        if (webView == null && !released) {
+            // The renderer died while the mode was closed.
+            addPage(getContext());
+            loadPage(getContext());
+        }
+        if (webView != null) webView.onResume();
         setVisibility(VISIBLE);
         if (animate) {
             animate().alpha(1f).setDuration(FADE_MS).start();
@@ -319,7 +368,7 @@ final class MotionLyricsModeView extends FrameLayout {
         flush();
         Runnable finish = () -> {
             setVisibility(GONE);
-            webView.onPause();
+            if (webView != null) webView.onPause();
             listener.onBackgroundFrame(0f, 1f, 0f, 0f);
             if (afterwards != null) {
                 afterwards.run();
@@ -334,10 +383,15 @@ final class MotionLyricsModeView extends FrameLayout {
     }
 
     void release() {
+        released = true;
         handler.removeCallbacksAndMessages(null);
+        if (webView == null) {
+            return;
+        }
         webView.removeJavascriptInterface(BRIDGE_NAME);
         removeView(webView);
         webView.destroy();
+        webView = null;
     }
 
     @Override
@@ -624,7 +678,13 @@ final class MotionLyricsModeView extends FrameLayout {
                 break;
             case "direct": {
                 int id = message.optInt("id");
-                listener.onDirectionRequested(message.optString("prompt"), (answer, error) -> resolve(id, answer, error));
+                int generation = pageGeneration;
+                listener.onDirectionRequested(message.optString("prompt"), (answer, error) -> {
+                    // A page whose renderer died while the AI answered has nobody waiting for it.
+                    if (generation == pageGeneration) {
+                        resolve(id, answer, error);
+                    }
+                });
                 break;
             }
             case "cacheGet":
@@ -654,7 +714,9 @@ final class MotionLyricsModeView extends FrameLayout {
     }
 
     private void run(String script) {
-        webView.evaluateJavascript(script, null);
+        if (webView != null) {
+            webView.evaluateJavascript(script, null);
+        }
     }
 
     private static String readPage(Context context) {
@@ -684,9 +746,30 @@ final class MotionLyricsModeView extends FrameLayout {
 
     /** The page calls this from the web view's own thread. */
     private final class Bridge {
+        private final int generation;
+
+        Bridge(int generation) {
+            this.generation = generation;
+        }
+
         @JavascriptInterface
         public void postMessage(String message) {
-            handler.post(() -> receive(message));
+            handler.post(() -> {
+                if (generation == pageGeneration) {
+                    receive(message);
+                }
+            });
+        }
+    }
+
+    private final class PageClient extends WebViewClient {
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            // Handled, so the app (Spotify, in the module) keeps running.
+            if (view == webView) {
+                onPageGone(detail != null && detail.didCrash());
+            }
+            return true;
         }
     }
 }

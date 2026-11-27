@@ -153,6 +153,29 @@ cache keys are unchanged.
   release libraries require Android 9 and arm64-v8a; elsewhere, or when a host process cannot load
   them (LSPatch), the provider reports an error and the next enabled provider translates.
 
+## Pronunciation Lab provider
+
+`pronunciation-lab` ("Pronunciation Lab") writes line pronunciation with the rules and dictionaries of
+[pronunciation-lab](https://github.com/ivLis-Studio/pronunciation-lab) (GPL-3.0). It is not AI and needs no
+key. The library is never bundled: `shared/src/main/assets/pronunciation-lab/PronunciationLabPage.html` holds only
+the ivLyrics engine, generated in the PC repository by `.github/scripts/build_pronunciation_lab_mobile.mjs`
+(do not edit it here), and imports the newest release and each language's data from jsDelivr on first use.
+
+- It is in the unified provider list, on by default and appended after every other provider (a saved order
+  gains it at the end), so enabled AI providers answer first and it is the fallback, or the only
+  pronunciation provider without AI. `Provider.pronunciationOnly` keeps it out of translation, titles,
+  research, annotations, motion direction and pronunciation by sung unit or its timing; only plain line
+  pronunciation (`Snapshot.linePronunciationProviderIds`) includes it, including the line fallback of
+  unit pronunciation. Its cache-key part is set only while it writes the pronunciation (in front of every
+  ready AI provider, or alone), so pronunciation an AI already wrote stays cached, also after it is turned off.
+- `PronunciationLabRepository` owns one hidden WebView per process, created on the main thread at the first
+  request. It reads the page through the module context (as `FuriganaRepository` does, since android_asset
+  URLs read Spotify's APK in LSPatch), loads it at `https://appassets.androidplatform.net/pronunciation-lab/`,
+  queues requests until the page posts ready and fails a request after 90 s, cancelling it in the page.
+  A dead renderer is handled (the host keeps running) and the next request loads a new page. Workers block
+  in `convert`; the page contract (`PronunciationLabProtocol`) and request bookkeeping
+  (`PronunciationLabDispatcher`) are plain Java with JVM tests.
+
 ## Editing policy
 
 Appearance controls live in shared settings and cloud sync. Video fallback selects the existing

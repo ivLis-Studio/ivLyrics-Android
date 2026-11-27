@@ -1680,6 +1680,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         providers.addAll(PROVIDERS);
         // Added after the existing providers so a saved order keeps its positions; off until enabled.
         providers.add(new Provider(Provider.LOCAL_AI_ID, "Local AI", "", "", "", "", false, false, true));
+        // Last of all: a saved order gains it at the end (normalizeAiProviderOrder), so every AI provider
+        // the user enabled answers first. On by default like the keyless translators, which makes it the
+        // pronunciation provider of anyone without an AI provider. Keyless, and pronunciation only.
+        providers.add(new Provider(Provider.PRONUNCIATION_LAB_ID, PronunciationLabProtocol.LABEL,
+                "", "", "", "", true, true, false, true));
         return Collections.unmodifiableList(providers);
     }
 
@@ -2117,6 +2122,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
 
     static final class Provider {
         static final String LOCAL_AI_ID = "local-ai";
+        static final String PRONUNCIATION_LAB_ID = "pronunciation-lab";
 
         final String id;
         final String label;
@@ -2128,8 +2134,22 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
         final boolean defaultEnabled;
         /** Runs on this device (Local AI): translation only, no API key or profile. */
         final boolean localModel;
+        /**
+         * Rule- and dictionary-based, keyless and not AI (Pronunciation Lab): plain line pronunciation only.
+         * Never translation, titles, research, annotations, motion direction, or pronunciation by sung unit.
+         */
+        final boolean pronunciationOnly;
 
-        boolean translationOnly() { return keyless || localModel || "deepl".equals(id); }
+        /** Translates, and does nothing else (Bing, Google, DeepL, Local AI). */
+        boolean translationOnly() { return (keyless && !pronunciationOnly) || localModel || "deepl".equals(id); }
+
+        /** An AI model with an API key: every AI task, including pronunciation by sung unit and timing. */
+        boolean fullAi() { return !translationOnly() && !pronunciationOnly; }
+
+        boolean canTranslate() { return !pronunciationOnly; }
+
+        /** Plain line pronunciation: an AI provider, or Pronunciation Lab. */
+        boolean canPronounce() { return fullAi() || pronunciationOnly; }
 
         Provider(String id, String label, String description, String defaultBaseUrl, String defaultModel, String apiKeyUrl) {
             this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, false, false);
@@ -2159,6 +2179,21 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 boolean defaultEnabled,
                 boolean localModel
         ) {
+            this(id, label, description, defaultBaseUrl, defaultModel, apiKeyUrl, keyless, defaultEnabled, localModel, false);
+        }
+
+        Provider(
+                String id,
+                String label,
+                String description,
+                String defaultBaseUrl,
+                String defaultModel,
+                String apiKeyUrl,
+                boolean keyless,
+                boolean defaultEnabled,
+                boolean localModel,
+                boolean pronunciationOnly
+        ) {
             this.id = id;
             this.label = label;
             this.description = description;
@@ -2168,6 +2203,7 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             this.keyless = keyless;
             this.defaultEnabled = defaultEnabled;
             this.localModel = localModel;
+            this.pronunciationOnly = pronunciationOnly;
         }
     }
 
@@ -2657,11 +2693,15 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return Collections.unmodifiableList(enabled);
         }
 
+        /**
+         * The AI providers ready for AI tasks, in try order. Never a translation-only provider or
+         * Pronunciation Lab: unit pronunciation, timing, research and every other AI request use this.
+         */
         List<Snapshot> readyAiProviderSnapshots() {
             List<Snapshot> snapshots = new ArrayList<>();
             for (String providerId : enabledAiProviderOrder()) {
                 Provider candidate = aiProviderById(providerId);
-                if (candidate == null || candidate.translationOnly()) {
+                if (candidate == null || !candidate.fullAi()) {
                     continue;
                 }
                 Snapshot candidateSnapshot = forProvider(providerId);
@@ -2676,10 +2716,38 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
             return !readyAiProviderSnapshots().isEmpty();
         }
 
+        /**
+         * The providers asked for plain line pronunciation, in try order: the ready AI providers and
+         * Pronunciation Lab where the user placed it (last by default, so it answers when every AI
+         * provider failed, and alone when there is none).
+         */
+        List<String> linePronunciationProviderIds() {
+            List<String> ids = new ArrayList<>();
+            for (String providerId : enabledAiProviderOrder()) {
+                Provider candidate = aiProviderById(providerId);
+                if (candidate == null || !candidate.canPronounce()) {
+                    continue;
+                }
+                if (candidate.pronunciationOnly) {
+                    ids.add(candidate.id);
+                    continue;
+                }
+                Snapshot candidateSnapshot = forProvider(providerId);
+                if (candidateSnapshot != null && candidateSnapshot.hasApiKey() && candidateSnapshot.hasModel()) {
+                    ids.add(candidate.id);
+                }
+            }
+            return Collections.unmodifiableList(ids);
+        }
+
+        boolean hasLinePronunciationProvider() {
+            return !linePronunciationProviderIds().isEmpty();
+        }
+
         boolean hasEnabledAiProvider() {
             for (String providerId : enabledAiProviderOrder()) {
                 Provider candidate = aiProviderById(providerId);
-                if (candidate != null && !candidate.translationOnly()) {
+                if (candidate != null && candidate.fullAi()) {
                     return true;
                 }
             }
@@ -2844,6 +2912,11 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                     // Added after the other providers: while it is off, existing cache keys stay identical.
                     continue;
                 }
+                if (Provider.PRONUNCIATION_LAB_ID.equals(providerId)) {
+                    // Pronunciation only: pronunciationLabCacheKey() adds it to the pronunciation keys alone,
+                    // so translation, title, research and annotation caches never depend on it.
+                    continue;
+                }
                 builder.append("|provider=").append(providerId)
                         .append(":enabled=").append(isAiProviderEnabled(providerId));
                 if (localAi) {
@@ -2863,6 +2936,24 @@ final class AiLyricsSettings implements SharedPreferences.OnSharedPreferenceChan
                 builder.append("|rule=").append(rule.cacheKey());
             }
             return builder.toString();
+        }
+
+        /**
+         * Pronunciation Lab's part of the pronunciation cache keys (the pronunciation task and the combined
+         * result), set only while it writes the line pronunciation: when it comes before every ready AI
+         * provider, or there is none (a combined entry cached for that song before holds no pronunciation).
+         * Behind an AI provider it is a fallback like any later provider, so the part is empty: the keys
+         * stay the ones from before it existed and the pronunciation an AI already wrote stays cached,
+         * also after it is turned off. The same rule as linePronunciationCacheKey on iOS.
+         */
+        String pronunciationLabCacheKey() {
+            if (!aiProviderOrder.contains(Provider.PRONUNCIATION_LAB_ID)) {
+                return ""; // A snapshot built without the provider list (host fixtures).
+            }
+            List<String> providers = linePronunciationProviderIds();
+            return !providers.isEmpty() && Provider.PRONUNCIATION_LAB_ID.equals(providers.get(0))
+                    ? "|pronunciationProvider=" + Provider.PRONUNCIATION_LAB_ID
+                    : "";
         }
     }
 }

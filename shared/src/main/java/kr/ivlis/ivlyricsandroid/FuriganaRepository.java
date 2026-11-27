@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -22,6 +23,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +37,8 @@ final class FuriganaRepository {
     private static final long REQUEST_TIMEOUT_MS = 45_000L;
     private static final String BRIDGE_ASSET = "furigana/bridge.html";
     private static final String BRIDGE_URL = "https://appassets.androidplatform.net/furigana/bridge.html";
+    /** Songs kept in memory, as many as AiLyricsRepository keeps; an older song is read back from disk. */
+    private static final int MAX_MEMORY_ENTRIES = 250;
     private static final Pattern RUBY_TAG_PATTERN = Pattern.compile(
             "<ruby>([^<>]+)<rt>([^<>]*)</rt></ruby>",
             Pattern.CASE_INSENSITIVE
@@ -43,7 +47,13 @@ final class FuriganaRepository {
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService cacheExecutor = Executors.newSingleThreadExecutor();
-    private final Map<String, LyricsResult> memoryCache = new HashMap<>();
+    // Main thread only. Least recently used songs leave first, so one long session cannot grow it without bound.
+    private final Map<String, LyricsResult> memoryCache = new LinkedHashMap<String, LyricsResult>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, LyricsResult> eldest) {
+            return size() > MAX_MEMORY_ENTRIES;
+        }
+    };
     private final Map<String, PendingRequest> pendingRequests = new HashMap<>();
     private final List<String> queuedScripts = new ArrayList<>();
     private final LyricsDiskCache diskCache;
@@ -318,6 +328,16 @@ final class FuriganaRepository {
                 if (request.isForMainFrame()) {
                     failWebView(view, "후리가나 JS 페이지 로드 실패: " + error.getDescription());
                 }
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // Every WebView of the process shares one renderer (Spotify's, in the module). Unhandled,
+                // its death makes Android kill the whole app; here this page's requests fail instead, its
+                // WebView is released and the next request loads a new page.
+                failWebView(view, "후리가나 JS 렌더러 종료: "
+                        + (detail != null && detail.didCrash() ? "crash" : "stopped"));
+                return true;
             }
         });
         webView.loadDataWithBaseURL(BRIDGE_URL, bridgeHtml, "text/html", "UTF-8", null);

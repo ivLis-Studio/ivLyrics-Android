@@ -52,6 +52,7 @@ public final class VideoTimingShareRegression {
         final CallbackQueue handler = new CallbackQueue();
         final Runnable syncRunnable = () -> {};
         final WebView webView = new WebView();
+        boolean ensureWebView() { return true; }
         void ensureVisibleState() {}
         void ensureSyncLoop() {}
         void setVisibility(int visibility) {}

@@ -66,6 +66,16 @@ package android.webkit;
 public class WebViewClient {
     public void onPageFinished(WebView view, String url) { }
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) { }
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) { return false; }
+}
+""",
+    "android/webkit/RenderProcessGoneDetail.java": """
+package android.webkit;
+public class RenderProcessGoneDetail {
+    private final boolean crashed;
+    public RenderProcessGoneDetail(boolean crashed) { this.crashed = crashed; }
+    public boolean didCrash() { return crashed; }
+    public int rendererPriorityAtExit() { return 0; }
 }
 """,
     "android/webkit/WebResourceRequest.java": """
@@ -123,6 +133,8 @@ public class WebView {
     public void destroy() { destroyed = true; }
     public void finish() { client.onPageFinished(this, baseUrl); }
     public void fail(boolean mainFrame) { client.onReceivedError(this, () -> mainFrame, new WebResourceError()); }
+    /** The shared renderer died; true when the client handled it (Android would otherwise kill the app). */
+    public boolean gone(boolean crashed) { return client.onRenderProcessGone(this, new RenderProcessGoneDetail(crashed)); }
 }
 """,
 }

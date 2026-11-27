@@ -364,6 +364,7 @@ public final class NowPlayingService extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         super.onNotificationPosted(sbn);
+        if (!affectsSpotifySession(sbn)) return;
         refreshSessions();
         scheduleRefreshBurst();
     }
@@ -371,7 +372,18 @@ public final class NowPlayingService extends NotificationListenerService {
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
         super.onNotificationRemoved(sbn);
+        if (!affectsSpotifySession(sbn)) return;
         refreshSessions();
+    }
+
+    /**
+     * Only Spotify's own notifications can change which Spotify session plays: refreshSessions
+     * considers no other app's session, and the selected session's changes arrive through its
+     * callback. Any other app's notification (a message, a download's progress) used to re-read the
+     * sessions four times and republish an unchanged snapshot to every listener.
+     */
+    private static boolean affectsSpotifySession(StatusBarNotification sbn) {
+        return sbn == null || isSpotifyPackage(sbn.getPackageName());
     }
 
     @Override

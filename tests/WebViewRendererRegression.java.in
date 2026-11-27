@@ -1,0 +1,271 @@
+package kr.ivlis.ivlyricsandroid;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Each owner of a WebView survives the shared renderer's death and replaces its page as documented. */
+public final class WebViewRendererRegression {
+    private static int checks;
+
+    private static void check(boolean value, String message) {
+        checks++;
+        if (!value) throw new AssertionError(message);
+    }
+
+    private static Field field(Class<?> type, String name) throws NoSuchFieldException {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            try {
+                Field field = current.getDeclaredField(name);
+                field.setAccessible(true);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        throw new NoSuchFieldException(name);
+    }
+
+    private static Object get(Object target, String name) throws Exception {
+        return field(target.getClass(), name).get(target);
+    }
+
+    private static void set(Object target, String name, Object value) throws Exception {
+        field(target.getClass(), name).set(target, value);
+    }
+
+    /** Calls the page bridge as Chromium would, from its own thread; the message reaches the UI queue. */
+    private static void call(WebView view, String bridgeName, String method, Object... args) throws Exception {
+        Object bridge = view.bridges.get(bridgeName);
+        for (Method candidate : bridge.getClass().getDeclaredMethods()) {
+            if (candidate.getName().equals(method)) {
+                candidate.setAccessible(true);
+                candidate.invoke(bridge, args);
+                return;
+            }
+        }
+        throw new NoSuchMethodException(method);
+    }
+
+    private static long count(List<String> scripts, String prefix) {
+        return scripts.stream().filter(script -> script.startsWith(prefix)).count();
+    }
+
+    private static final class MotionListener implements MotionLyricsModeView.Listener {
+        final List<String> logs = new ArrayList<>();
+        MotionLyricsModeView.DirectionCallback direction;
+
+        @Override public void onClose() { }
+        @Override public void onDirectionRequested(String prompt, MotionLyricsModeView.DirectionCallback callback) { direction = callback; }
+        @Override public String onCacheRead(String key) { return ""; }
+        @Override public void onCacheWrite(String key, String value) { }
+        @Override public void onBackgroundFrame(float rotate, float scale, float x, float y) { }
+        @Override public void onLog(String message) { logs.add(message); }
+    }
+
+    private static void motionLyrics() throws Exception {
+        Handler.reset();
+        Context context = new Context();
+        context.assets.files.put(MotionLyricsModeView.PAGE_ASSET, "<!doctype html><title>motion fixture</title>");
+        MotionListener listener = new MotionListener();
+        int created = WebView.instances.size();
+        MotionLyricsModeView mode = new MotionLyricsModeView(context, listener);
+        WebView first = (WebView) get(mode, "webView");
+        check(WebView.instances.size() == created + 1 && mode.getChildAt(0) == first && mode.getChildCount() == 6,
+                "one page, beneath the touch layer, notice, buttons and options");
+        check(first.html.contains("motion fixture") && first.baseUrl.equals("https://motion.ivlyrics.app/")
+                && first.settings.javascript && !first.settings.zoom && first.settings.textZoom == 100
+                && first.bridges.containsKey("ivLyricsMotionNative") && first.client != null,
+                "the page is set up and loaded as before");
+        call(first, "ivLyricsMotionNative", "postMessage", "{\"type\":\"ready\"}");
+        Handler.drain();
+        check(count(first.scripts, "ivLyricsMotionHost.configure(") == 1
+                && count(first.scripts, "ivLyricsMotionHost.setTrack(") == 1
+                && count(first.scripts, "ivLyricsMotionHost.setPlayback(") == 1, "a ready page receives options, song and playback");
+        mode.show(false);
+        mode.hide(false, null);
+        check(first.resumes == 1 && first.pauses == 1 && WebView.instances.size() == created + 1,
+                "showing and closing pause and resume the same page");
+
+        // While the mode is closed: the page goes, and the next opening loads a new one.
+        check(first.gone(false), "a stopped renderer is handled while the mode is closed");
+        check(first.destroyed && first.getParent() == null && get(mode, "webView") == null
+                && WebView.instances.size() == created + 1, "the dead page is released; a closed mode makes none");
+        mode.setPlayback(1000L, true, 1f);
+        call(first, "ivLyricsMotionNative", "postMessage", "{\"type\":\"ready\"}");
+        Handler.drain();
+        check(!(Boolean) get(mode, "pageReady"), "a message the dead page had in flight is dropped");
+        mode.show(false);
+        WebView second = (WebView) get(mode, "webView");
+        check(second != null && second != first && mode.getChildAt(0) == second && mode.getChildCount() == 6
+                && second.html.contains("motion fixture") && second.resumes == 1 && second.client != null
+                && second.bridges.containsKey("ivLyricsMotionNative"), "opening the mode loads a new page in the same place");
+        call(second, "ivLyricsMotionNative", "postMessage", "{\"type\":\"ready\"}");
+        Handler.drain();
+        check(count(second.scripts, "ivLyricsMotionHost.configure(") == 1
+                && count(second.scripts, "ivLyricsMotionHost.setTrack(") == 1, "the new page receives the options and song again");
+
+        // While shown: replaced at once, once per showing.
+        call(second, "ivLyricsMotionNative", "postMessage", "{\"type\":\"direct\",\"id\":7,\"prompt\":\"fixture\"}");
+        Handler.drain();
+        check(listener.direction != null, "the page asked the AI for a direction");
+        check(second.gone(true), "a crashed renderer is handled while the mode is shown");
+        WebView third = (WebView) get(mode, "webView");
+        check(second.destroyed && second.getParent() == null && third != null && third != second
+                && mode.getChildAt(0) == third && third.html.contains("motion fixture"), "a shown mode loads a new page at once");
+        listener.direction.onAnswer("{}", null);
+        Handler.drain();
+        check(count(third.scripts, "ivLyricsMotionHost.resolve(") == 0, "an answer meant for the dead page is not sent to the new one");
+        int beforeLoop = WebView.instances.size();
+        check(third.gone(true) && get(mode, "webView") == null && WebView.instances.size() == beforeLoop,
+                "a second death in the same showing waits for the next showing, so a crashing page cannot loop");
+        mode.setPlayback(2000L, true, 1f);
+        mode.hide(false, null);
+        mode.show(false);
+        WebView fourth = (WebView) get(mode, "webView");
+        check(fourth != null && fourth != third && WebView.instances.size() == beforeLoop + 1, "the next showing loads a new page");
+        mode.release();
+        check(fourth.destroyed && fourth.getParent() == null && get(mode, "webView") == null, "release destroys the page");
+        mode.show(false);
+        check(get(mode, "webView") == null && WebView.instances.size() == beforeLoop + 1, "a released mode makes no page");
+        check(listener.logs.stream().filter(message -> message.contains("renderer")).count() == 3, "each death is logged");
+    }
+
+    private static YouTubeBackgroundRepository.VideoInfo video(String id) {
+        return new YouTubeBackgroundRepository.VideoInfo("USAAA2600001", "1234567890123456789012",
+                id, "Fixture video", true, 12d, false, "");
+    }
+
+    private static void videoBackground() throws Exception {
+        Handler.reset();
+        Build.VERSION.SDK_INT = 31;
+        List<WebView> scripted = new ArrayList<>();
+        WebViewSupport.install((view, script, origins) -> scripted.add(view));
+        YouTubeBackgroundView background = new YouTubeBackgroundView(new Context());
+        WebView first = (WebView) get(background, "webView");
+        View dim = (View) get(background, "dimView");
+        check(background.getChildCount() == 2 && background.getChildAt(0) == first && background.getChildAt(1) == dim,
+                "the video lies beneath the dimming layer");
+        check(first.renderEffect == null && scripted.size() == 1 && scripted.get(0) == first
+                && first.settings.javascript && first.settings.domStorage && !first.settings.gestureRequired
+                && first.settings.mixedContent == WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                && first.chromeClient != null && first.bridges.containsKey("AndroidYouTubeBackground"),
+                "the WebView is set up as before");
+        background.setVideoBackgroundEnabled(true);
+        YouTubeBackgroundRepository.VideoInfo info = video("Abc_123-XyZ");
+        background.loadVideo(info);
+        long generation = (Long) get(background, "videoLoadGeneration");
+        check(first.html.contains("Abc_123-XyZ"), "the video page loads");
+        call(first, "AndroidYouTubeBackground", "onReady", "Abc_123-XyZ", generation);
+        background.setPlaybackState(5000L, true, 1000L, 0);
+        Handler.drain();
+        check(background.appliedVideoInfo() == info && background.getAlpha() == 1f, "the video plays");
+        int synced = first.scripts.size();
+        Handler.elapse();
+        check(first.scripts.size() > synced, "the playing video is kept in sync");
+        set(background, "videoBlurRadius", 12f);
+
+        check(first.gone(true), "a crashed renderer is handled, so the app (Spotify) keeps running");
+        check(first.destroyed && first.getParent() == null && get(background, "webView") == null
+                && background.getChildCount() == 1 && background.getChildAt(0) == dim, "the dead WebView is released");
+        check(background.appliedVideoInfo() == null && background.getAlpha() == 0f,
+                "nothing shows, as while a video is unavailable");
+        Handler.elapse();
+        Handler.elapse();
+        check(Handler.READY.isEmpty() && Handler.DELAYED.isEmpty(), "the sync loop stopped with the page");
+        call(first, "AndroidYouTubeBackground", "onReady", "Abc_123-XyZ", generation);
+        Handler.drain();
+        check(background.appliedVideoInfo() == null, "a late ready from the dead page is ignored");
+
+        background.loadVideo(info);
+        WebView second = (WebView) get(background, "webView");
+        check(second != null && second != first && background.getChildAt(0) == second && background.getChildAt(1) == dim,
+                "the next load, of the same video too, uses a new WebView beneath the dimming layer");
+        check(second.html.contains("Abc_123-XyZ") && second.client != null && second.chromeClient != null
+                && second.bridges.containsKey("AndroidYouTubeBackground") && scripted.size() == 2 && scripted.get(1) == second
+                && second.renderEffect != null && second.renderEffect.radiusX == 12f && second.renderEffect.radiusY == 12f,
+                "the new WebView gets the same setup, the document-start script and the current blur");
+        long replaced = (Long) get(background, "videoLoadGeneration");
+        call(second, "AndroidYouTubeBackground", "onReady", "Abc_123-XyZ", replaced);
+        Handler.drain();
+        check(background.appliedVideoInfo() == info, "the video plays again in the new WebView");
+        background.destroy();
+        background.loadVideo(video("Zyx_987-WvU"));
+        check(second.destroyed && get(background, "webView") == null, "a destroyed view never makes another WebView");
+        Build.VERSION.SDK_INT = 26;
+    }
+
+    static class BrowserHost extends Context {
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final FrameLayout inAppBrowserSheet = new FrameLayout(this);
+        final List<WebView> swipes = new ArrayList<>();
+        AccessibleWebView inAppBrowserWebView;
+        boolean creatorPrivacyLoginInProgress, finishing, destroyed;
+        int loadingHidden, closed;
+
+        int inAppBrowserBackgroundColor() { return 0xFF101114; }
+        void attachInAppBrowserContentSwipe(AccessibleWebView view) { swipes.add(view); }
+        boolean consumeCreatorPrivacyLoginRedirect(String url) { return false; }
+        boolean isCreatorPrivacyLoginWebUrl(String url) { return false; }
+        boolean shouldOpenBrowserNavigationExternally(String url) { return false; }
+        void showInAppBrowserLoading(boolean show) { if (!show) loadingHidden++; }
+        void injectInAppBrowserProfileCss(WebView view, String url) { }
+        boolean isFinishing() { return finishing; }
+        boolean isDestroyed() { return destroyed; }
+        void showInAppBrowser(boolean show) { if (!show) closed++; }
+
+        // INSERT_BROWSER_DECLARATIONS
+    }
+
+    private static void inAppBrowser() throws Exception {
+        BrowserHost host = new BrowserHost();
+        host.addInAppBrowserWebView();
+        View loading = new View(host);
+        View handle = new View(host);
+        host.inAppBrowserSheet.addView(loading, new FrameLayout.LayoutParams(-1, -1));
+        host.inAppBrowserSheet.addView(handle, new FrameLayout.LayoutParams(-1, -1));
+        WebView first = host.inAppBrowserWebView;
+        check(host.inAppBrowserSheet.getChildAt(0) == first && first.settings.javascript && !first.settings.fileAccess
+                && !first.settings.contentAccess && first.settings.safeBrowsing
+                && first.settings.mixedContent == WebSettings.MIXED_CONTENT_NEVER_ALLOW && host.swipes.contains(first)
+                && first.backgroundColor == 0xFF101114, "the browser page lies beneath its loading view and handle");
+        check(first.gone(true), "a crashed renderer is handled in the browser");
+        WebView second = host.inAppBrowserWebView;
+        check(first.destroyed && first.getParent() == null && second != null && second != first
+                && host.inAppBrowserSheet.getChildAt(0) == second && host.inAppBrowserSheet.getChildCount() == 3
+                && host.inAppBrowserSheet.getChildAt(1) == loading && host.inAppBrowserSheet.getChildAt(2) == handle,
+                "a new page takes the dead page's place");
+        check(second.settings.javascript && !second.settings.fileAccess && second.settings.safeBrowsing
+                && host.swipes.contains(second) && second.client != null && second.backgroundColor == 0xFF101114,
+                "the new page is set up the same way");
+        check(host.closed == 1 && host.loadingHidden == 1, "an open browser closes and its loading view goes");
+        check(first.gone(false) && host.inAppBrowserWebView == second && host.closed == 1, "a page already replaced changes nothing");
+        host.finishing = true;
+        check(second.gone(true) && host.inAppBrowserWebView == null && second.destroyed && second.getParent() == null
+                && host.closed == 1, "a finishing Activity releases the page and makes no other");
+    }
+
+    public static void main(String[] args) throws Exception {
+        motionLyrics();
+        videoBackground();
+        inAppBrowser();
+        System.out.println("PASS " + checks + " checks: motion lyrics, video background and in-app browser survive renderer death, "
+                + "release the dead WebView and replace it as documented; stale page messages are dropped");
+    }
+}
+

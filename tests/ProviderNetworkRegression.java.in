@@ -247,7 +247,26 @@ public final class ProviderNetworkRegression {
             protected URLConnection openConnection(URL url) { return new Connection(url); }
         } : null);
         bases = (List<String>) call(LyricsPlusLyricsProvider.class, "decodedApiBases");
-        mirrorTests(); artworkTests();
-        System.out.println("PASS " + checks + " checks: hedged mirrors, health preference, deadlines, cancellation and nonblocking artwork");
+        mirrorTests(); artworkTests(); memoryCacheTests();
+        System.out.println("PASS " + checks + " checks: hedged mirrors, health preference, deadlines, cancellation, nonblocking artwork and bounded memory cache");
+    }
+    /** One long session must not keep every song's lyrics in memory: the least recently used leave first. */
+    @SuppressWarnings("unchecked")
+    static void memoryCacheTests() throws Exception {
+        LyricsRepository repo = new LyricsRepository(null);
+        LyricsResult lyrics = new LyricsResult(List.of(new LyricsLine(0, 1000, "Hello", List.of())), "LRCLIB", "", false);
+        for (int index = 0; index < 260; index++) call(repo, "putMemoryCachedLyrics", "song" + index, lyrics);
+        Map<String, ?> cache = (Map<String, ?>) field(repo, "cache");
+        check(cache.size() == LyricsRepository.MEMORY_LYRICS_CACHE_MAX_ENTRIES && cache.size() == 250,
+                "the memory cache keeps the 250 most recent songs");
+        check(call(repo, "getMemoryCachedLyrics", "song9") == null && call(repo, "getMemoryCachedLyrics", "song10") == lyrics,
+                "the oldest songs left; a kept song is still returned");
+        call(repo, "putMemoryCachedLyrics", "song260", lyrics);
+        check(call(repo, "getMemoryCachedLyrics", "song10") == lyrics && call(repo, "getMemoryCachedLyrics", "song11") == null,
+                "a song just read stays; the least recently used leaves");
+        call(repo, "removeMemoryCachedLyrics", "song12");
+        check(cache.size() == 249 && call(repo, "getMemoryCachedLyrics", "song12") == null, "removing one song still works");
+        call(repo, "clearMemoryLyricsCache");
+        check(cache.isEmpty(), "clearing still empties it");
     }
 }

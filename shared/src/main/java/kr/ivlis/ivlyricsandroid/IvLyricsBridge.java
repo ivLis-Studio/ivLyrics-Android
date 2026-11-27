@@ -316,7 +316,8 @@ public final class IvLyricsBridge {
         }
         /** Draw-time state that could not advance while this surface was covered resumes from now. */
         void resumeAfterCover() {}
-        // A visible surface follows every display frame at its vsync time; a hidden one polls.
+        // A visible surface follows every display frame at its vsync time; one hidden in a shown window
+        // polls. In a hidden window (Spotify in the background, the screen off) it waits for the window.
         private final Choreographer.FrameCallback frameTick = this::tick;
         private final Runnable idleTick = () -> tick(0L);
         private final int[] coverLocation = new int[2];
@@ -333,10 +334,21 @@ public final class IvLyricsBridge {
                 setCovered(true);
                 return;
             }
-            boolean visible = isShown() && getWindowVisibility() == View.VISIBLE;
+            boolean windowVisible = getWindowVisibility() == View.VISIBLE;
+            boolean visible = isShown() && windowVisible;
             if (visible && engine != null) updatePosition(engine, frameTimeNanos);
             if (visible && needsPlaybackFrames(engine)) Choreographer.getInstance().postFrameCallback(frameTick);
-            else postDelayed(idleTick, 250L);
+            else if (windowVisible) postDelayed(idleTick, 250L);
+            // A hidden window used to wake this four times a second for as long as Spotify ran.
+        }
+
+        @Override protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(visibility);
+            // The idle tick a hidden window stopped: now, where it used to come within 250 ms.
+            if (visibility == View.VISIBLE && isAttachedToWindow() && !covered) {
+                stopTicks();
+                post(idleTick);
+            }
         }
 
         void wakeTicks() {
@@ -888,7 +900,8 @@ public final class IvLyricsBridge {
             AiLyricsSettings.Snapshot snapshot = settings.snapshot();
             AiLyricsSettings.LanguageRule rule = snapshot.ruleForSource(sourceLanguage);
             boolean ready = snapshot.hasReadyAiProvider();
-            pronunciationLoading = rule.pronunciationEnabled && ready;
+            // Line pronunciation also comes from Pronunciation Lab (keyless) when no AI provider is ready.
+            pronunciationLoading = rule.pronunciationEnabled && snapshot.hasLinePronunciationProvider();
             translationLoading = rule.translationEnabled
                     && !snapshot.shouldSkipTranslation(sourceLanguage, snapshot.resolveTargetLanguage(sourceLanguage))
                     && (ready || snapshot.hasKeylessTranslationProvider()

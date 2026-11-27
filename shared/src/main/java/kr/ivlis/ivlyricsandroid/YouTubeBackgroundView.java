@@ -13,6 +13,7 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -74,6 +75,9 @@ public final class YouTubeBackgroundView extends FrameLayout {
 
     private WebView webView;
     private View dimView;
+    /** The video's blur (Android 12 and later), kept for a WebView made after its renderer died. */
+    private float videoBlurRadius;
+    private boolean destroyed;
     private YouTubeBackgroundRepository.VideoInfo currentInfo;
     private String currentVideoId = "";
     private long videoLoadGeneration;
@@ -102,7 +106,6 @@ public final class YouTubeBackgroundView extends FrameLayout {
         init(context);
     }
 
-    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private void init(Context context) {
         setVisibility(GONE);
         setAlpha(0f);
@@ -110,26 +113,50 @@ public final class YouTubeBackgroundView extends FrameLayout {
         setClipChildren(true);
         setClipToPadding(true);
 
-        webView = new WebView(context);
-        webView.setBackgroundColor(Color.TRANSPARENT);
-        webView.setHorizontalScrollBarEnabled(false);
-        webView.setVerticalScrollBarEnabled(false);
-        webView.setOverScrollMode(OVER_SCROLL_NEVER);
-        webView.setWebChromeClient(new WebChromeClient());
-        webView.setWebViewClient(new WebViewClient() {
+        addWebView(context);
+
+        dimView = new View(context);
+        dimView.setBackgroundColor(Color.argb(176, 0, 0, 0));
+        dimView.setClickable(false);
+        addView(dimView, new LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+    }
+
+    /** The video's WebView, beneath the dimming layer. */
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private void addWebView(Context context) {
+        WebView view = new WebView(context);
+        view.setBackgroundColor(Color.TRANSPARENT);
+        view.setHorizontalScrollBarEnabled(false);
+        view.setVerticalScrollBarEnabled(false);
+        view.setOverScrollMode(OVER_SCROLL_NEVER);
+        view.setWebChromeClient(new WebChromeClient());
+        view.setWebViewClient(new WebViewClient() {
             @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            public WebResourceResponse shouldInterceptRequest(WebView page, WebResourceRequest request) {
                 String url = request == null || request.getUrl() == null ? "" : request.getUrl().toString();
-                return shouldBlockUrl(url) ? emptyBlockedResponse() : super.shouldInterceptRequest(view, request);
+                return shouldBlockUrl(url) ? emptyBlockedResponse() : super.shouldInterceptRequest(page, request);
             }
 
             @Override
             @SuppressWarnings("deprecation")
-            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-                return shouldBlockUrl(url) ? emptyBlockedResponse() : super.shouldInterceptRequest(view, url);
+            public WebResourceResponse shouldInterceptRequest(WebView page, String url) {
+                return shouldBlockUrl(url) ? emptyBlockedResponse() : super.shouldInterceptRequest(page, url);
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView page, RenderProcessGoneDetail detail) {
+                // Every WebView of the process shares one renderer (Spotify's, in the module). Handled,
+                // so Android does not kill the app; the dead page is released.
+                if (page == webView) {
+                    releaseDeadWebView();
+                }
+                return true;
             }
         });
-        WebSettings settings = webView.getSettings();
+        WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
@@ -139,23 +166,44 @@ public final class YouTubeBackgroundView extends FrameLayout {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
         WebViewSupport.addDocumentStartJavaScript(
-                webView,
+                view,
                 YOUTUBE_COMMAND_FEEDBACK_SCRIPT,
                 Collections.singleton("https://www.youtube-nocookie.com")
         );
-        webView.addJavascriptInterface(new Bridge(), "AndroidYouTubeBackground");
-        addView(webView, new LayoutParams(
+        view.addJavascriptInterface(new Bridge(), "AndroidYouTubeBackground");
+        if (videoBlurRadius > 0f) {
+            applyVideoBlur(view);
+        }
+        webView = view;
+        addView(view, 0, new LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+    }
 
-        dimView = new View(context);
-        dimView.setBackgroundColor(Color.argb(176, 0, 0, 0));
-        dimView.setClickable(false);
-        addView(dimView, new LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+    /** A WebView for the next video: the current one, or a new one after the renderer died. */
+    private boolean ensureWebView() {
+        if (webView == null && !destroyed) {
+            addWebView(getContext());
+        }
+        return webView != null;
+    }
+
+    /**
+     * The renderer died, and the video with it. Nothing shows until the next video loads, in a new
+     * WebView (also when it is this video again), just as while a video is unavailable.
+     */
+    private void releaseDeadWebView() {
+        WebView dead = webView;
+        webView = null;
+        handler.removeCallbacks(syncRunnable);
+        syncLoopStarted = false;
+        removeView(dead);
+        dead.destroy();
+        currentVideoId = "";
+        videoLoadGeneration++;
+        playerReady = false;
+        ensureVisibleState();
     }
 
     void setBackgroundSettings(AiLyricsSettings.BackgroundSettings settings) {
@@ -167,10 +215,18 @@ public final class YouTubeBackgroundView extends FrameLayout {
         setVideoScalePercent(safeSettings.videoScale);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             int effectiveBlur = Math.min(200, Math.max(0, safeSettings.blur * 2));
-            float radius = effectiveBlur <= 0 ? 0f : Math.min(36f, Math.max(0f, effectiveBlur * 0.16f));
-            webView.setRenderEffect(radius <= 0f
+            videoBlurRadius = effectiveBlur <= 0 ? 0f : Math.min(36f, Math.max(0f, effectiveBlur * 0.16f));
+            if (webView != null) {
+                applyVideoBlur(webView);
+            }
+        }
+    }
+
+    private void applyVideoBlur(WebView view) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            view.setRenderEffect(videoBlurRadius <= 0f
                     ? null
-                    : RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
+                    : RenderEffect.createBlurEffect(videoBlurRadius, videoBlurRadius, Shader.TileMode.CLAMP));
         }
     }
 
@@ -254,6 +310,9 @@ public final class YouTubeBackgroundView extends FrameLayout {
             ensureSyncLoop();
             return;
         }
+        if (!ensureWebView()) {
+            return;
+        }
         currentVideoId = info.youtubeVideoId;
         videoLoadGeneration++;
         playerReady = false;
@@ -306,6 +365,7 @@ public final class YouTubeBackgroundView extends FrameLayout {
     }
 
     void destroy() {
+        destroyed = true;
         handler.removeCallbacks(syncRunnable);
         syncLoopStarted = false;
         if (webView != null) {

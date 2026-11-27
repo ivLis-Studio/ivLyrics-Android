@@ -11,6 +11,10 @@ Unless this notice says otherwise, the files in this repository are licensed und
 - Code from the PC files `LyricsWordSegmenter.js` and `style.css`, which are licensed under the GNU Lesser General Public License v2.1 as listed in the PC repository's [NOTICE.md](https://github.com/ivLis-Studio/ivLyrics/blob/main/NOTICE.md). The full text is in [LICENSES/LGPL-2.1.txt](LICENSES/LGPL-2.1.txt). You may use, modify, and redistribute that code under the LGPL.
 - TinySegmenter (BSD-3-Clause) and Preact (MIT). Their notices are kept inside the file.
 
+## Generated Pronunciation Lab page
+
+`shared/src/main/assets/pronunciation-lab/PronunciationLabPage.html` is generated from [ivLyrics for PC](https://github.com/ivLis-Studio/ivLyrics) by `.github/scripts/build_pronunciation_lab_mobile.mjs`. Do not edit it directly. It contains only ivLyrics code. The [pronunciation-lab](https://github.com/ivLis-Studio/pronunciation-lab) library it uses (GPL-3.0; its dictionaries and data under their sources' licenses) is not included in this repository or the apps: when the Pronunciation Lab provider writes pronunciation, the page downloads the newest release and the language data it needs from jsDelivr at run time.
+
 ## Third-party components
 
 | Component | License | Where |
