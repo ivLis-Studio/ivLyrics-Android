@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Google Play build (the "play" build type). Google Play delivers updates itself, so the GitHub APK
+    updater's install permission and result receiver go, and the Spotify shortcut, whose accessibility
+    service only watches for Spotify's now-playing screen, goes with its overlay permission. The
+    meta-data tells the shared code (DistributionChannel) to hide those features and the Discord account.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
+
+    <application>
+        <meta-data
+            android:name="kr.ivlis.ivlyricsandroid.DISTRIBUTION"
+            android:value="play" />
+
+        <receiver
+            android:name="kr.ivlis.ivlyricsandroid.UpdateInstallResultReceiver"
+            tools:node="remove" />
+
+        <service
+            android:name="kr.ivlis.ivlyricsandroid.SpotifyForegroundAccessibilityService"
+            tools:node="remove" />
+    </application>
+</manifest>

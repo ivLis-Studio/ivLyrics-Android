@@ -351,7 +351,10 @@ public final class NowPlayingService extends NotificationListenerService {
     public void onCreate() {
         super.onCreate();
         instance = new WeakReference<>(this);
-        shortcutOverlayController = new SpotifyShortcutOverlayController(this);
+        // The Google Play build has no Spotify shortcut: no overlay permission or accessibility service.
+        if (!DistributionChannel.isGooglePlay(this)) {
+            shortcutOverlayController = new SpotifyShortcutOverlayController(this);
+        }
     }
 
     @Override

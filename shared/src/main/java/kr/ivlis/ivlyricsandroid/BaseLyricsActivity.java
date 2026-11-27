@@ -901,7 +901,10 @@ public class BaseLyricsActivity extends Activity implements
         lyricsRepository = new LyricsRepository(this);
         observeLocalLyricsChanges();
         youtubeBackgroundRepository = new YouTubeBackgroundRepository(this);
-        if (!IvLyricsBridge.isEmbedded(this)) updateChecker = new UpdateChecker(this);
+        // Google Play installs update through Google Play, never from GitHub APKs.
+        if (!IvLyricsBridge.isEmbedded(this) && !DistributionChannel.isGooglePlay(this)) {
+            updateChecker = new UpdateChecker(this);
+        }
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         registerAudioDeviceCallback();
         Window window = getWindow();
@@ -5227,7 +5230,10 @@ public class BaseLyricsActivity extends Activity implements
         ), dp(8)));
         videoTimingShareButton = languageButton(ui("video.share_timing"), false);
         videoTimingShareButton.setOnClickListener(view -> shareCurrentVideoTiming());
-        content.addView(videoTimingShareButton, topMargin(matchWrap(), dp(8)));
+        // Sharing needs the Discord account, which the Google Play build leaves out.
+        if (!DistributionChannel.isGooglePlay(this)) {
+            content.addView(videoTimingShareButton, topMargin(matchWrap(), dp(8)));
+        }
         return content;
     }
 
@@ -7621,30 +7627,39 @@ public class BaseLyricsActivity extends Activity implements
     private void buildSystemSettingsMenu(LinearLayout content) {
         LinearLayout page = settingsMenuPage(content, SETTINGS_TAB_SYSTEM);
         boolean embedded = IvLyricsBridge.isEmbedded(this);
-        LinearLayout section = settingsSection(page, ui("creator_privacy.section"), ui("creator_privacy.section_desc"), -1);
-        buildCreatorPrivacyControl(section);
+        // The Google Play build has no Discord account (creator privacy, cloud settings), no GitHub
+        // updater and no Spotify shortcut; see DistributionChannel.
+        boolean googlePlay = DistributionChannel.isGooglePlay(this);
+        LinearLayout section;
+        if (!googlePlay) {
+            section = settingsSection(page, ui("creator_privacy.section"), ui("creator_privacy.section_desc"), -1);
+            buildCreatorPrivacyControl(section);
 
-        section = settingsSection(page, ui("cloud_sync.section"),
-                ui("cloud_sync.monthly_required") + "\n" + ui("cloud_sync.section_desc"), -1);
-        buildCloudSettingsControl(section);
+            section = settingsSection(page, ui("cloud_sync.section"),
+                    ui("cloud_sync.monthly_required") + "\n" + ui("cloud_sync.section_desc"), -1);
+            buildCloudSettingsControl(section);
+        }
 
         if (!embedded) {
-            section = settingsSection(page, ui("section.app_update"), ui("section.app_update_desc"), -1);
-            LinearLayout group = settingsGroup(section);
-            updateStatusView = settingsKit.text(ui("update.status_idle"), 14f, settingsKit.p.text2, settingsKit.regular);
-            updateStatusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-            group.addView(settingsKit.statusLine(updateStatusView), matchWrap());
-            settingsAction(group, ui("button.check_updates"), null, SettingsKit.ACTION_NORMAL, view -> checkForUpdates(true));
-            settingsAction(group, ui("button.open_release_page"), null, SettingsKit.ACTION_LINK,
-                    view -> openExternalUrl("https://github.com/ivLis-Studio/ivLyrics-Android/releases"));
+            LinearLayout group;
+            if (!googlePlay) {
+                section = settingsSection(page, ui("section.app_update"), ui("section.app_update_desc"), -1);
+                group = settingsGroup(section);
+                updateStatusView = settingsKit.text(ui("update.status_idle"), 14f, settingsKit.p.text2, settingsKit.regular);
+                updateStatusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+                group.addView(settingsKit.statusLine(updateStatusView), matchWrap());
+                settingsAction(group, ui("button.check_updates"), null, SettingsKit.ACTION_NORMAL, view -> checkForUpdates(true));
+                settingsAction(group, ui("button.open_release_page"), null, SettingsKit.ACTION_LINK,
+                        view -> openExternalUrl("https://github.com/ivLis-Studio/ivLyrics-Android/releases"));
 
-            section = settingsSection(page, ui("section.spotify_shortcut"), ui("section.spotify_shortcut_desc"), -1);
-            group = settingsGroup(section);
-            spotifyDetectionPermissionButton = settingsAction(group, ui("button.open_accessibility_permission"), null,
-                    SettingsKit.ACTION_NORMAL, view -> openSpotifyDetectionPermissionSettings());
-            overlayPermissionButton = settingsAction(group, ui("button.open_overlay_permission"), null,
-                    SettingsKit.ACTION_NORMAL, view -> openOverlayPermissionSettings());
-            updateOverlayPermissionButton();
+                section = settingsSection(page, ui("section.spotify_shortcut"), ui("section.spotify_shortcut_desc"), -1);
+                group = settingsGroup(section);
+                spotifyDetectionPermissionButton = settingsAction(group, ui("button.open_accessibility_permission"), null,
+                        SettingsKit.ACTION_NORMAL, view -> openSpotifyDetectionPermissionSettings());
+                overlayPermissionButton = settingsAction(group, ui("button.open_overlay_permission"), null,
+                        SettingsKit.ACTION_NORMAL, view -> openOverlayPermissionSettings());
+                updateOverlayPermissionButton();
+            }
 
             section = settingsSection(page, ui("section.spotify_api"), ui("section.spotify_api_desc"), -1);
             section.addView(buildSpotifyApiSetupInstructions(), matchWrap());
@@ -9413,7 +9428,8 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void beginCreatorPrivacyLogin() {
-        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight || creatorPrivacyLoginInProgress) {
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight || creatorPrivacyLoginInProgress
+                || DistributionChannel.isGooglePlay(this)) {
             return;
         }
         creatorPrivacyRequestInFlight = true;
@@ -14088,7 +14104,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void maybeStartAutomaticUpdateCheck() {
-        if (IvLyricsBridge.isEmbedded(this)) return;
+        if (IvLyricsBridge.isEmbedded(this) || DistributionChannel.isGooglePlay(this)) return;
         if (automaticUpdateCheckStarted || !isInitialSetupComplete()) {
             return;
         }
@@ -14104,7 +14120,7 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void checkForUpdates(boolean manual) {
-        if (IvLyricsBridge.isEmbedded(this)) return;
+        if (IvLyricsBridge.isEmbedded(this) || DistributionChannel.isGooglePlay(this)) return;
         if (updateChecker == null) {
             setUpdateStatus(uiFormat("update.status_failed_format", ui("spotify.error.repository_unavailable")));
             return;

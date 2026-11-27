@@ -15,7 +15,8 @@ android {
     defaultConfig {
         applicationId "kr.ivlis.ivlyricsandroid"
         minSdk 26
-        targetSdk 35
+        // Google Play requires API 36 for new apps and updates from August 31, 2026.
+        targetSdk 36
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         versionCode providers.gradleProperty("ivLyricsVersionCode").get().toInteger()
         versionName providers.gradleProperty("ivLyricsVersionName").get()
@@ -32,6 +33,13 @@ android {
             if (ivLyricsReleaseSigningConfigured) {
                 signingConfig signingConfigs.release
             }
+        }
+        // Google Play build: the release build plus src/play/AndroidManifest.xml, which leaves out the
+        // GitHub APK updater, the Discord account and the Spotify shortcut (see DistributionChannel).
+        // Built as an app bundle with :app:bundlePlay; the GitHub release keeps building :app:assembleRelease.
+        play {
+            initWith release
+            matchingFallbacks = ["release"]
         }
     }
 
