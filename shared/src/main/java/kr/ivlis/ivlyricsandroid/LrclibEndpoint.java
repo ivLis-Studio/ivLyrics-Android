@@ -3,7 +3,10 @@ package kr.ivlis.ivlyricsandroid;
 import java.net.URI;
 import java.util.Locale;
 
-/** Playback-only LRCLIB base URL. Never accepts credentials or weakens Android's TLS policy. */
+/**
+ * Playback-only LRCLIB base URL. Never accepts credentials or weakens Android's TLS policy. HTTP is
+ * accepted for self-hosted servers, except in the Google Play build, where all traffic stays HTTPS.
+ */
 final class LrclibEndpoint {
     static final String OFFICIAL = "https://lrclib.net/api";
 
@@ -19,6 +22,9 @@ final class LrclibEndpoint {
                     || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                     || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535) {
                 throw new IllegalArgumentException("Invalid LRCLIB endpoint");
+            }
+            if ("http".equals(scheme) && DistributionChannel.isGooglePlay()) {
+                throw new IllegalArgumentException("The Google Play build only accepts HTTPS LRCLIB servers");
             }
             // HTTP request lines are ASCII. Preserve Unicode reverse-proxy paths
             // as UTF-8 percent escapes instead of replacing their letters with '?'.

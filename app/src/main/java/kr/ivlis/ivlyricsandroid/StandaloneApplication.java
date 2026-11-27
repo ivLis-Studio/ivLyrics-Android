@@ -6,6 +6,8 @@ import android.app.Application;
 public final class StandaloneApplication extends Application {
     @Override public void onCreate() {
         super.onCreate();
+        // Read the distribution channel before any shared code needs it without a Context.
+        DistributionChannel.isGooglePlay(this);
         StandaloneWebViewSupport.install();
     }
 }

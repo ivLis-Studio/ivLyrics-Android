@@ -11,8 +11,9 @@ import android.os.Bundle;
  * in app/src/play/AndroidManifest.xml and, like the iOS App Store build, leaves out the GitHub APK
  * updater and the optional Discord account (creator privacy, cloud settings backup, video timing
  * sharing). That manifest also drops the Spotify shortcut's accessibility service and overlay
- * permission, so its settings section is hidden too. Playback, lyrics, translation and community
- * videos are identical. The Spotify module runs in Spotify's package and is never the Play build.
+ * permission, so its settings section is hidden too, and a custom LRCLIB server must use HTTPS so
+ * every request stays encrypted in transit. Playback, lyrics, translation and community videos are
+ * identical. The Spotify module runs in Spotify's package and is never the Play build.
  */
 final class DistributionChannel {
     static final String META_DATA_KEY = "kr.ivlis.ivlyricsandroid.DISTRIBUTION";
@@ -43,6 +44,15 @@ final class DistributionChannel {
     static boolean isGooglePlay(Bundle metaData) {
         String value = metaData == null ? null : metaData.getString(META_DATA_KEY);
         return value != null && GOOGLE_PLAY.equalsIgnoreCase(value.trim());
+    }
+
+    /**
+     * For code without a Context: the value {@link #isGooglePlay(Context)} read, which the standalone
+     * app does in StandaloneApplication before any shared code runs; false until then.
+     */
+    static boolean isGooglePlay() {
+        Boolean cached = googlePlay;
+        return cached != null && cached;
     }
 
     @SuppressWarnings("deprecation")

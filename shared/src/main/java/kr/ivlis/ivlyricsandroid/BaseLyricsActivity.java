@@ -9348,7 +9348,8 @@ public class BaseLyricsActivity extends Activity implements
     }
 
     private void refreshCreatorPrivacy(boolean announceFailure) {
-        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight) {
+        // The Google Play build has no Discord account, so it never refreshes a creator session.
+        if (creatorPrivacyRepository == null || creatorPrivacyRequestInFlight || DistributionChannel.isGooglePlay(this)) {
             return;
         }
         if (!creatorPrivacyRepository.hasAuthenticatedSession()) {
