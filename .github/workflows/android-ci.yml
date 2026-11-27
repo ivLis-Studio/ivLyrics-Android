@@ -120,12 +120,13 @@ jobs:
           export IVLYRICS_RELEASE_STORE_PASSWORD=ci-test-only
           export IVLYRICS_RELEASE_KEY_ALIAS=ci-fixture
           export IVLYRICS_RELEASE_KEY_PASSWORD=ci-test-only
-          ./gradlew :app:assembleRelease :spotify-module:assembleRelease \
+          ./gradlew :app:assembleRelease :spotify-module:assembleRelease :app:bundlePlay \
             -PivLyricsRequireReleaseSigning=true --console=plain
           ivlyrics_ci_version="$(sed -n 's/^ivLyricsVersionName=//p' gradle.properties)"
           python3 .github/scripts/collect_release_apks.py --tag "v${ivlyrics_ci_version}" \
             --output build/reports/release-packaging
           python3 tests/check_module_boundaries.py --built --variant release
+          python3 tests/check_play_bundle.py
 
       - name: Upload verification reports and debug/QA APKs
         if: always()

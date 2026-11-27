@@ -1,0 +1,110 @@
+name: Android Play Bundle
+
+# Builds the Google Play app bundle (:app:bundlePlay) from any branch, tag or commit, signed with the
+# release key, which Google Play uses as the upload key (Play App Signing holds the app signing key).
+# Tagged releases also attach the same bundle to their workflow run (android-release.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to build"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-play-bundle
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  bundle:
+    name: Build the signed Google Play bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The NDK and CMake build the Local AI JNI wrapper (shared/tools/prepare_local_ai.py).
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36.1" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+
+      - name: Restore release signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing repository secret: ${name}"
+              missing=1
+            fi
+          done
+          if [[ "${missing}" != "0" ]]; then
+            exit 1
+          fi
+
+          keystore_path="${RUNNER_TEMP}/ivlyrics-release.jks"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+          {
+            echo "IVLYRICS_RELEASE_STORE_FILE=${keystore_path}"
+            echo "IVLYRICS_RELEASE_STORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "IVLYRICS_RELEASE_KEY_ALIAS=${ANDROID_KEY_ALIAS}"
+            echo "IVLYRICS_RELEASE_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build the Play bundle and the GitHub release APK
+        run: ./gradlew :app:bundlePlay :app:assembleRelease -PivLyricsRequireReleaseSigning=true --console=plain
+
+      - name: Verify the Play build
+        run: python3 tests/check_play_bundle.py
+
+      - name: Collect the signed bundle
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(sed -n 's/^ivLyricsVersionName=//p' gradle.properties)"
+          version_code="$(sed -n 's/^ivLyricsVersionCode=//p' gradle.properties)"
+          bundle="play-bundle/ivLyrics-Android-v${version_name}-${version_code}-play.aab"
+          mkdir -p play-bundle
+          cp app/build/outputs/bundle/play/app-play.aab "${bundle}"
+          jarsigner -verify "${bundle}" | tee play-bundle/jarsigner.txt
+          grep -q "jar verified" play-bundle/jarsigner.txt
+          keytool -printcert -jarfile "${bundle}" | tee play-bundle/upload-certificate.txt
+          echo "version=v${version_name}-${version_code}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload the Play bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ivLyrics-Android-${{ steps.collect.outputs.version }}-play-bundle
+          path: |
+            play-bundle/*.aab
+            play-bundle/upload-certificate.txt
+            build/reports/regressions/play-bundle/result.txt
+          if-no-files-found: error

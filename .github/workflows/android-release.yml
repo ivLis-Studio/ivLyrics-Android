@@ -172,11 +172,14 @@ jobs:
             echo "IVLYRICS_RELEASE_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
           } >> "${GITHUB_ENV}"
 
-      - name: Build both signed release APKs
-        run: ./gradlew :app:assembleRelease :spotify-module:assembleRelease -PivLyricsRequireReleaseSigning=true
+      - name: Build both signed release APKs and the Google Play bundle
+        run: ./gradlew :app:assembleRelease :spotify-module:assembleRelease :app:bundlePlay -PivLyricsRequireReleaseSigning=true
 
       - name: Verify module boundaries
         run: python3 tests/check_module_boundaries.py --built --variant release
+
+      - name: Verify the Google Play bundle
+        run: python3 tests/check_play_bundle.py
 
       - name: Verify and collect both release APKs
         id: collect
@@ -215,6 +218,14 @@ jobs:
             release-apks/*.apk
             release-apks/packaging-report.json
             release-metadata/*
+          if-no-files-found: error
+
+      # Not a release asset: the bundle is uploaded to Google Play (the release key is its upload key).
+      - name: Upload Google Play bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ivLyrics-Android-${{ steps.collect.outputs.release_tag }}-play-bundle
+          path: app/build/outputs/bundle/play/app-play.aab
           if-no-files-found: error
 
       - name: Create or update GitHub Release
