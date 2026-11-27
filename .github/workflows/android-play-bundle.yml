@@ -38,18 +38,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Install Android SDK platform
         shell: bash
@@ -110,7 +110,7 @@ jobs:
           echo "version=v${version_name}-${version_code}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload the Play bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ivLyrics-Android-${{ steps.collect.outputs.version }}-play-bundle
           path: |
@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload the package-ownership APK
         if: inputs.developer_verification_apk
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ivLyrics-Android-developer-verification-apk
           path: developer-verification/*.apk
