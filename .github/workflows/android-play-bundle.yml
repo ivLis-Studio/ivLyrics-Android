@@ -3,6 +3,11 @@ name: Android Play Bundle
 # Builds the Google Play app bundle (:app:bundlePlay) from any branch, tag or commit, signed with the
 # release key, which Google Play uses as the upload key (Play App Signing holds the app signing key).
 # Tagged releases also attach the same bundle to their workflow run (android-release.yml).
+#
+# With developer_verification_apk it also builds the release APK that proves ownership of the release
+# key in Play Console (Android developer verification > Package names > Sign and upload APK). The account
+# snippet Play Console shows goes in the ANDROID_DEVELOPER_VERIFICATION_SNIPPET secret, never in the
+# repository; it lands in assets/adi-registration.properties of that APK only, after the bundle is built.
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +15,11 @@ on:
         description: "Branch, tag or commit to build"
         required: true
         default: "main"
+      developer_verification_apk:
+        description: "Also build the package-ownership APK for Android developer verification"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -107,4 +117,32 @@ jobs:
             play-bundle/*.aab
             play-bundle/upload-certificate.txt
             build/reports/regressions/play-bundle/result.txt
+          if-no-files-found: error
+
+      - name: Build the package-ownership APK
+        if: inputs.developer_verification_apk
+        shell: bash
+        env:
+          ANDROID_DEVELOPER_VERIFICATION_SNIPPET: ${{ secrets.ANDROID_DEVELOPER_VERIFICATION_SNIPPET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_DEVELOPER_VERIFICATION_SNIPPET:-}" ]]; then
+            echo "::error::Missing repository secret: ANDROID_DEVELOPER_VERIFICATION_SNIPPET"
+            exit 1
+          fi
+          mkdir -p app/src/main/assets
+          printf '%s\n' "${ANDROID_DEVELOPER_VERIFICATION_SNIPPET}" > app/src/main/assets/adi-registration.properties
+          ./gradlew :app:assembleRelease -PivLyricsRequireReleaseSigning=true --console=plain
+          mkdir -p developer-verification
+          cp app/build/outputs/apk/release/*.apk developer-verification/ivLyrics-Android-developer-verification.apk
+          unzip -l developer-verification/ivLyrics-Android-developer-verification.apk | grep -q "assets/adi-registration.properties"
+          rm app/src/main/assets/adi-registration.properties
+
+      - name: Upload the package-ownership APK
+        if: inputs.developer_verification_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: ivLyrics-Android-developer-verification-apk
+          path: developer-verification/*.apk
+          retention-days: 1
           if-no-files-found: error
